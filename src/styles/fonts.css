@@ -1,0 +1,186 @@
+/*
+ * The Typekit service used to deliver this font or fonts for use on websites
+ * is provided by Adobe and is subject to these Terms of Use
+ * http://www.adobe.com/products/eulas/tou_typekit. For font license
+ * information, see the list below.
+ *
+ * pt-sans-pro:
+ *   - http://typekit.com/eulas/00000000000000007735bca4
+ *   - http://typekit.com/eulas/00000000000000007735bcad
+ *   - http://typekit.com/eulas/00000000000000007735bcaa
+ *   - http://typekit.com/eulas/00000000000000007735bcb1
+ *   - http://typekit.com/eulas/00000000000000007735bcba
+ *   - http://typekit.com/eulas/00000000000000007735bcc1
+ *   - http://typekit.com/eulas/00000000000000007735bcc5
+ *   - http://typekit.com/eulas/00000000000000007735bcca
+ * pt-serif-pro:
+ *   - http://typekit.com/eulas/00000000000000007735bc9e
+ *   - http://typekit.com/eulas/00000000000000007735bcbd
+ *
+ * © 2009-2025 Adobe Systems Incorporated. All Rights Reserved.
+ */
+/*{"last_published":"2024-10-28 19:30:29 UTC"}*/
+
+/*
+Taken ODBM Font Library created for Arana
+https://use.typekit.net/axb0fql.css
+*/
+
+@import url("https://p.typekit.net/p.css?s=1&k=axb0fql&ht=tk&f=39955.39956.39957.39958.39959.39960.39961.39962.39987.39988&a=89512480&app=typekit&e=css");
+
+@font-face {
+  font-family: "pt-sans-pro";
+  src:
+    url("https://use.typekit.net/af/d1e3fb/00000000000000007735bca4/30/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i4&v=3")
+      format("woff2"),
+    url("https://use.typekit.net/af/d1e3fb/00000000000000007735bca4/30/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i4&v=3")
+      format("woff"),
+    url("https://use.typekit.net/af/d1e3fb/00000000000000007735bca4/30/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i4&v=3")
+      format("opentype");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 400;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "pt-sans-pro";
+  src:
+    url("https://use.typekit.net/af/5b84ba/00000000000000007735bcad/30/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n4&v=3")
+      format("woff2"),
+    url("https://use.typekit.net/af/5b84ba/00000000000000007735bcad/30/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n4&v=3")
+      format("woff"),
+    url("https://use.typekit.net/af/5b84ba/00000000000000007735bcad/30/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n4&v=3")
+      format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "pt-sans-pro";
+  src:
+    url("https://use.typekit.net/af/42ca87/00000000000000007735bcaa/30/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i6&v=3")
+      format("woff2"),
+    url("https://use.typekit.net/af/42ca87/00000000000000007735bcaa/30/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i6&v=3")
+      format("woff"),
+    url("https://use.typekit.net/af/42ca87/00000000000000007735bcaa/30/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i6&v=3")
+      format("opentype");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 600;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "pt-sans-pro";
+  src:
+    url("https://use.typekit.net/af/de4047/00000000000000007735bcb1/30/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n6&v=3")
+      format("woff2"),
+    url("https://use.typekit.net/af/de4047/00000000000000007735bcb1/30/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n6&v=3")
+      format("woff"),
+    url("https://use.typekit.net/af/de4047/00000000000000007735bcb1/30/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n6&v=3")
+      format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "pt-sans-pro";
+  src:
+    url("https://use.typekit.net/af/0cd9df/00000000000000007735bcba/30/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3")
+      format("woff2"),
+    url("https://use.typekit.net/af/0cd9df/00000000000000007735bcba/30/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3")
+      format("woff"),
+    url("https://use.typekit.net/af/0cd9df/00000000000000007735bcba/30/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3")
+      format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "pt-sans-pro";
+  src:
+    url("https://use.typekit.net/af/6186bb/00000000000000007735bcc1/30/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i7&v=3")
+      format("woff2"),
+    url("https://use.typekit.net/af/6186bb/00000000000000007735bcc1/30/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i7&v=3")
+      format("woff"),
+    url("https://use.typekit.net/af/6186bb/00000000000000007735bcc1/30/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i7&v=3")
+      format("opentype");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 700;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "pt-sans-pro";
+  src:
+    url("https://use.typekit.net/af/30f492/00000000000000007735bcc5/30/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i8&v=3")
+      format("woff2"),
+    url("https://use.typekit.net/af/30f492/00000000000000007735bcc5/30/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i8&v=3")
+      format("woff"),
+    url("https://use.typekit.net/af/30f492/00000000000000007735bcc5/30/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i8&v=3")
+      format("opentype");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 800;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "pt-sans-pro";
+  src:
+    url("https://use.typekit.net/af/7b95ab/00000000000000007735bcca/30/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n8&v=3")
+      format("woff2"),
+    url("https://use.typekit.net/af/7b95ab/00000000000000007735bcca/30/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n8&v=3")
+      format("woff"),
+    url("https://use.typekit.net/af/7b95ab/00000000000000007735bcca/30/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n8&v=3")
+      format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 800;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "pt-serif-pro";
+  src:
+    url("https://use.typekit.net/af/a9fcac/00000000000000007735bc9e/30/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i4&v=3")
+      format("woff2"),
+    url("https://use.typekit.net/af/a9fcac/00000000000000007735bc9e/30/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i4&v=3")
+      format("woff"),
+    url("https://use.typekit.net/af/a9fcac/00000000000000007735bc9e/30/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=i4&v=3")
+      format("opentype");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 400;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "pt-serif-pro";
+  src:
+    url("https://use.typekit.net/af/279e9f/00000000000000007735bcbd/30/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n4&v=3")
+      format("woff2"),
+    url("https://use.typekit.net/af/279e9f/00000000000000007735bcbd/30/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n4&v=3")
+      format("woff"),
+    url("https://use.typekit.net/af/279e9f/00000000000000007735bcbd/30/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n4&v=3")
+      format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: normal;
+}
+
+.tk-pt-sans-pro {
+  font-family: "pt-sans-pro", sans-serif;
+}
+.tk-pt-serif-pro {
+  font-family: "pt-serif-pro", sans-serif;
+}

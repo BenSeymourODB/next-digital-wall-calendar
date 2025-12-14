@@ -1,0 +1,10 @@
+{
+  "setup-worktree-unix": [
+    "touch worktree-setup-unix-ran.txt",
+    "echo 'Unix Setup script executed' > worktree-setup-unix-ran.txt"
+  ],
+  "setup-worktree": [
+    "touch worktree-setup-ran.txt",
+    "echo 'Default Setup script executed' > worktree-setup-ran.txt"
+  ]
+}

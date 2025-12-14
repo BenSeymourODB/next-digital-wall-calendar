@@ -1,0 +1,40 @@
+name: Build Next.js in standalone mode
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint code and check types
+        run: |
+          pnpm lint && pnpm check-types
+
+      - name: Build Next.js Standalone
+        run: |
+          # Build Next.js in standalone mode
+          pnpm run build
+
+          # Copy static assets into standalone using the script
+          node scripts/copy-static-to-standalone.js
+
+          # Lift pnpm modules to fix Azure deployment
+          node scripts/lift-pnpm-standalone.js
