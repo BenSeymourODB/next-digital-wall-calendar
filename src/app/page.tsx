@@ -32,6 +32,12 @@ export default function Home() {
           <div className="flex w-full flex-col gap-4 text-base font-medium sm:flex-row sm:gap-3">
             <Link
               className="bg-foreground text-background flex h-12 w-full items-center justify-center gap-2 rounded-full px-6 shadow-sm transition-all hover:scale-105 hover:bg-[#383838] hover:shadow-md sm:w-auto"
+              href="/calendar"
+            >
+              📅 Wall Calendar
+            </Link>
+            <Link
+              className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/8 px-6 shadow-sm transition-all hover:scale-105 hover:border-transparent hover:bg-black/4 hover:shadow-md sm:w-auto"
               href="/components"
             >
               Components
