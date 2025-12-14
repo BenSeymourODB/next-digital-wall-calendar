@@ -22,6 +22,7 @@ import {
 } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 export function AccountManager() {
   const { refreshEvents } = useCalendar();
@@ -50,9 +51,10 @@ export function AccountManager() {
       await refreshEvents();
 
       logger.event("AccountAdded", { accountId: account.id });
+      toast.success("Calendar account added successfully");
     } catch (error) {
       logger.error(error as Error, { context: "handleSignIn" });
-      alert("Failed to sign in. Please try again.");
+      toast.error("Failed to sign in. Please try again.");
     } finally {
       setIsSigningIn(false);
     }
@@ -66,9 +68,10 @@ export function AccountManager() {
       await refreshEvents();
 
       logger.event("AccountRemoved", { accountId });
+      toast.success("Calendar account removed");
     } catch (error) {
       logger.error(error as Error, { context: "handleSignOut" });
-      alert("Failed to sign in. Please try again.");
+      toast.error("Failed to sign out. Please try again.");
     }
   };
 

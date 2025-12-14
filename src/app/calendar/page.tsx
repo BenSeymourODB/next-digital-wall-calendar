@@ -4,6 +4,7 @@ import { AccountManager } from "@/components/calendar/AccountManager";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { CalendarProvider } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { Toaster } from "@/components/ui/sonner";
 import { useState } from "react";
 import { Settings } from "lucide-react";
 
@@ -47,6 +48,7 @@ export default function CalendarPage() {
           </div>
         </div>
       </div>
+      <Toaster />
     </CalendarProvider>
   );
 }

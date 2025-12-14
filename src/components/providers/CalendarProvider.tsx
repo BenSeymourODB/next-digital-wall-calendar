@@ -36,7 +36,7 @@ interface ICalendarContext {
   events: IEvent[];
   addEvent: (event: IEvent) => void;
   updateEvent: (event: IEvent) => void;
-  removeEvent: (eventId: number) => void;
+  removeEvent: (eventId: string) => void;
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
   isLoading: boolean;
@@ -69,10 +69,7 @@ export function useCalendar() {
 /**
  * Transform Google Calendar event to our IEvent format
  */
-function transformGoogleEvent(
-  googleEvent: GoogleCalendarEvent,
-  eventId: number
-): IEvent {
+function transformGoogleEvent(googleEvent: GoogleCalendarEvent): IEvent {
   // Map Google Calendar color IDs to our color system
   const colorMap: Record<string, TEventColor> = {
     "1": "blue",
@@ -98,7 +95,7 @@ function transformGoogleEvent(
     new Date().toISOString();
 
   return {
-    id: eventId,
+    id: googleEvent.id,
     startDate,
     endDate,
     title: googleEvent.summary || "Untitled Event",
@@ -203,7 +200,7 @@ export function CalendarProvider({
     setAllEvents((prev) => prev.map((e) => (e.id === event.id ? event : e)));
   };
 
-  const removeEvent = (eventId: number) => {
+  const removeEvent = (eventId: string) => {
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
@@ -233,8 +230,8 @@ export function CalendarProvider({
       );
 
       // Transform events
-      const transformedEvents = googleEvents.map((event, index) =>
-        transformGoogleEvent(event, index + 1)
+      const transformedEvents = googleEvents.map((event) =>
+        transformGoogleEvent(event)
       );
 
       setAllEvents(transformedEvents);
@@ -251,8 +248,8 @@ export function CalendarProvider({
       // Try to load from cache
       try {
         const cachedEvents = await eventCache.getEvents();
-        const transformedEvents = cachedEvents.map((event, index) =>
-          transformGoogleEvent(event, index + 1)
+        const transformedEvents = cachedEvents.map((event) =>
+          transformGoogleEvent(event)
         );
         setAllEvents(transformedEvents);
         logger.log("Loaded events from cache", {
@@ -271,8 +268,8 @@ export function CalendarProvider({
     const loadCachedEvents = async () => {
       try {
         const cachedEvents = await eventCache.getEvents();
-        const transformedEvents = cachedEvents.map((event, index) =>
-          transformGoogleEvent(event, index + 1)
+        const transformedEvents = cachedEvents.map((event) =>
+          transformGoogleEvent(event)
         );
         setAllEvents(transformedEvents);
         logger.log("Loaded events from cache on mount", {
