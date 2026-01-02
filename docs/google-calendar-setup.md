@@ -36,8 +36,10 @@ This guide will walk you through setting up Google Calendar API credentials for 
 5. Click **"Save and Continue"**
 6. On the **Scopes** page:
    - Click **"Add or Remove Scopes"**
-   - Search for "Google Calendar API"
-   - Select the scope: `https://www.googleapis.com/auth/calendar.readonly`
+   - Search for and add the following scopes:
+     - `https://www.googleapis.com/auth/calendar.readonly` (Google Calendar API - Read-only access)
+     - `https://www.googleapis.com/auth/userinfo.email` (View your email address)
+     - `https://www.googleapis.com/auth/userinfo.profile` (See your personal info, including any personal info you've made publicly available)
    - Click **"Update"**
    - Click **"Save and Continue"**
 7. On the **Test users** page:

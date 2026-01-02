@@ -1,6 +1,7 @@
 /**
  * Google Calendar API integration for client-side calendar fetching
  * This module handles OAuth authentication and event fetching from multiple Google Calendars
+ * Uses Google Identity Services (GIS) for modern OAuth authentication
  */
 import { logger } from "@/lib/logger";
 
@@ -50,11 +51,107 @@ const GOOGLE_CALENDAR_CONFIG: GoogleCalendarConfig = {
   discoveryDocs: [
     "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",
   ],
-  scopes: "https://www.googleapis.com/auth/calendar.readonly",
+  // Request calendar access + user profile information (email and name)
+  scopes:
+    "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
 };
 
 let gapiInitialized = false;
 let gapiInitPromise: Promise<void> | null = null;
+let gisInitialized = false;
+let gisInitPromise: Promise<void> | null = null;
+let tokenClient: google.accounts.oauth2.TokenClient | null = null;
+
+/**
+ * Wait for a global object to be available (script loaded by Next.js Script component)
+ */
+function waitForGlobal<T>(
+  globalName: string,
+  checkInterval = 100,
+  maxWait = 10000
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+
+    const check = () => {
+      // Check if the global exists
+      const globalObj = (window as unknown as Record<string, unknown>)[
+        globalName
+      ];
+      if (globalObj) {
+        logger.log("Global object available", { globalName });
+        resolve(globalObj as T);
+        return;
+      }
+
+      // Check if we've exceeded max wait time
+      if (Date.now() - startTime > maxWait) {
+        const error = new Error(
+          `Timeout waiting for global object: ${globalName}`
+        );
+        logger.error(error, {
+          context: "waitForGlobal",
+          globalName,
+          maxWait,
+        });
+        reject(error);
+        return;
+      }
+
+      // Check again after interval
+      setTimeout(check, checkInterval);
+    };
+
+    check();
+  });
+}
+
+/**
+ * Initialize Google Identity Services (GIS) for OAuth
+ */
+async function initGoogleIdentityServices(): Promise<void> {
+  if (gisInitialized) {
+    return;
+  }
+
+  if (gisInitPromise) {
+    return gisInitPromise;
+  }
+
+  gisInitPromise = (async () => {
+    if (typeof window === "undefined") {
+      throw new Error(
+        "Google Identity Services can only be initialized in the browser"
+      );
+    }
+
+    if (!GOOGLE_CALENDAR_CONFIG.clientId) {
+      throw new Error(
+        "Google Client ID is not configured. Please set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your .env.local file."
+      );
+    }
+
+    try {
+      // Wait for Google Identity Services to load (loaded via Next.js Script component)
+      await waitForGlobal<typeof google>("google");
+
+      // Initialize token client for OAuth
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CALENDAR_CONFIG.clientId,
+        scope: GOOGLE_CALENDAR_CONFIG.scopes,
+        callback: "", // Will be set per-request
+      });
+
+      gisInitialized = true;
+      logger.log("Google Identity Services initialized successfully");
+    } catch (error) {
+      gisInitPromise = null;
+      throw error;
+    }
+  })();
+
+  return gisInitPromise;
+}
 
 /**
  * Initialize the Google API client
@@ -68,87 +165,138 @@ export async function initGoogleAPI(): Promise<void> {
     return gapiInitPromise;
   }
 
-  gapiInitPromise = new Promise((resolve, reject) => {
+  gapiInitPromise = (async () => {
     if (typeof window === "undefined") {
-      reject(new Error("Google API can only be initialized in the browser"));
-      return;
+      throw new Error("Google API can only be initialized in the browser");
     }
 
-    // Load gapi script dynamically
-    const script = document.createElement("script");
-    script.src = "https://apis.google.com/js/api.js";
-    script.onload = () => {
-      window.gapi.load("client:auth2", async () => {
-        try {
-          await window.gapi.client.init({
-            apiKey: GOOGLE_CALENDAR_CONFIG.apiKey,
-            clientId: GOOGLE_CALENDAR_CONFIG.clientId,
-            discoveryDocs: GOOGLE_CALENDAR_CONFIG.discoveryDocs,
-            scope: GOOGLE_CALENDAR_CONFIG.scopes,
-          });
-          gapiInitialized = true;
-          logger.log("Google API initialized successfully");
-          resolve();
-        } catch (error) {
-          logger.error(error as Error, { context: "initGoogleAPI" });
-          reject(error);
-        }
+    if (!GOOGLE_CALENDAR_CONFIG.clientId) {
+      throw new Error(
+        "Google Client ID is not configured. Please set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your .env.local file."
+      );
+    }
+
+    try {
+      // Wait for gapi to load (loaded via Next.js Script component)
+      await waitForGlobal<typeof gapi>("gapi");
+
+      // Load the calendar API client
+      await new Promise<void>((resolve, reject) => {
+        window.gapi.load("client", {
+          callback: resolve,
+          onerror: reject,
+        });
       });
-    };
-    script.onerror = () => {
-      const error = new Error("Failed to load Google API script");
-      logger.error(error, { context: "initGoogleAPI" });
-      reject(error);
-    };
-    document.body.appendChild(script);
-  });
+
+      // Initialize the API client
+      await window.gapi.client.init({
+        apiKey: GOOGLE_CALENDAR_CONFIG.apiKey || undefined,
+        discoveryDocs: GOOGLE_CALENDAR_CONFIG.discoveryDocs,
+      });
+
+      gapiInitialized = true;
+      logger.log("Google API client initialized successfully");
+    } catch (error) {
+      gapiInitPromise = null;
+      logger.error(error as Error, { context: "initGoogleAPI" });
+      throw error;
+    }
+  })();
 
   return gapiInitPromise;
 }
 
 /**
- * Sign in to Google and get user credentials
+ * Sign in to Google and get user credentials using Google Identity Services
  */
 export async function signInToGoogle(): Promise<GoogleCalendarAccount> {
-  await initGoogleAPI();
+  // Initialize both GIS (for auth) and GAPI (for API calls)
+  await Promise.all([initGoogleIdentityServices(), initGoogleAPI()]);
 
-  try {
-    const auth2 = window.gapi.auth2.getAuthInstance();
-    const googleUser = await auth2.signIn();
-    const authResponse = googleUser.getAuthResponse(true);
-    const profile = googleUser.getBasicProfile();
-
-    const account: GoogleCalendarAccount = {
-      id: profile.getId(),
-      email: profile.getEmail(),
-      name: profile.getName(),
-      accessToken: authResponse.access_token,
-      expiresAt: authResponse.expires_at,
-      calendarIds: ["primary"], // Start with primary calendar
-    };
-
-    logger.event("GoogleCalendarSignIn", {
-      userId: account.id,
-      email: account.email,
-    });
-
-    return account;
-  } catch (error) {
-    logger.error(error as Error, { context: "signInToGoogle" });
-    throw error;
+  if (!tokenClient) {
+    throw new Error("Token client not initialized");
   }
+
+  return new Promise((resolve, reject) => {
+    try {
+      // Request an access token
+      tokenClient!.callback = async (
+        response: google.accounts.oauth2.TokenResponse
+      ) => {
+        if (response.error) {
+          const error = new Error(
+            `OAuth error: ${response.error} - ${response.error_description || ""}`
+          );
+          logger.error(error, { context: "signInToGoogle" });
+          reject(error);
+          return;
+        }
+
+        try {
+          // Set the access token for API calls
+          window.gapi.client.setToken({
+            access_token: response.access_token,
+          });
+
+          // Get user info using People API
+          const userInfoResponse = await fetch(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            {
+              headers: {
+                Authorization: `Bearer ${response.access_token}`,
+              },
+            }
+          );
+
+          if (!userInfoResponse.ok) {
+            throw new Error("Failed to fetch user info");
+          }
+
+          const userInfo = await userInfoResponse.json();
+
+          const account: GoogleCalendarAccount = {
+            id: userInfo.id,
+            email: userInfo.email,
+            name: userInfo.name || userInfo.email,
+            accessToken: response.access_token,
+            expiresAt: Date.now() + (response.expires_in || 3600) * 1000,
+            calendarIds: ["primary"], // Start with primary calendar
+          };
+
+          logger.event("GoogleCalendarSignIn", {
+            userId: account.id,
+            email: account.email,
+          });
+
+          resolve(account);
+        } catch (error) {
+          logger.error(error as Error, { context: "signInToGoogle" });
+          reject(error);
+        }
+      };
+
+      // Request access token
+      tokenClient!.requestAccessToken({ prompt: "consent" });
+    } catch (error) {
+      logger.error(error as Error, { context: "signInToGoogle" });
+      reject(error);
+    }
+  });
 }
 
 /**
  * Sign out from Google
  */
 export async function signOutFromGoogle(): Promise<void> {
-  await initGoogleAPI();
-
   try {
-    const auth2 = window.gapi.auth2.getAuthInstance();
-    await auth2.signOut();
-    logger.event("GoogleCalendarSignOut");
+    // Revoke the access token
+    const token = window.gapi.client.getToken();
+    if (token) {
+      google.accounts.oauth2.revoke(token.access_token, () => {
+        logger.event("GoogleCalendarSignOut");
+      });
+      window.gapi.client.setToken(null);
+    }
   } catch (error) {
     logger.error(error as Error, { context: "signOutFromGoogle" });
     throw error;
@@ -160,9 +308,12 @@ export async function signOutFromGoogle(): Promise<void> {
  */
 export async function isSignedIn(): Promise<boolean> {
   try {
-    await initGoogleAPI();
-    const auth2 = window.gapi.auth2.getAuthInstance();
-    return auth2.isSignedIn.get();
+    if (!gapiInitialized) {
+      return false;
+    }
+    const token = window.gapi.client.getToken();
+    // Token exists means user is signed in (we'll let the API handle token refresh)
+    return !!token;
   } catch (error) {
     logger.error(error as Error, { context: "isSignedIn" });
     return false;

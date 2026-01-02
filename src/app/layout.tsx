@@ -2,6 +2,7 @@ import { AppInsightsProvider } from "@/components/providers/AppInsightsProvider"
 import "@/styles/fonts.css";
 import "@/styles/odbm.css";
 import type { Metadata } from "next";
+import Script from "next/script";
 
 // Note: Application Insights Server SDK auto-initializes when first imported
 // (typically by middleware in src/proxy.ts). No manual initialization needed here.
@@ -22,6 +23,18 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="font-sans antialiased">
+        {/* Google Identity Services - Load globally for OAuth */}
+        <Script
+          src="https://accounts.google.com/gsi/client"
+          strategy="afterInteractive"
+          async
+        />
+        {/* Google API Client - Load globally for Calendar API */}
+        <Script
+          src="https://apis.google.com/js/api.js"
+          strategy="afterInteractive"
+          async
+        />
         <AppInsightsProvider>{children}</AppInsightsProvider>
       </body>
     </html>

@@ -131,12 +131,12 @@ function generateCSPHeader(): string {
 
   const cspHeader = `
   default-src 'self';
-  connect-src 'self' ${isDev ? `webpack://* ${process.env.NEXT_PUBLIC_API_ENDPOINT?.replace("/api", "")}` : ""} https://cg.optimizely.com https://*.odbm.org https://api.stripe.com https://api.addressy.com https://*.google.com https://js.monitor.azure.com https://*.applicationinsights.azure.com https://www.googletagmanager.com https://stats.g.doubleclick.net https://*.google-analytics.com https://*.google.com https://*.google.co.uk https://*.cookiebot.eu https://*.cookiebot.com https://*.usercentrics.eu https://*.usercentrics.com;
-  script-src 'self' ${isDev ? "'unsafe-eval'" : ""} 'unsafe-inline' https://p.typekit.net https://js.stripe.com https://*.js.stripe.com https://www.google.com https://www.gstatic.com https://www.googletagmanager.com https://*.cookiebot.eu https://*.cookiebot.com;
+  connect-src 'self' ${isDev ? `webpack://* ${process.env.NEXT_PUBLIC_API_ENDPOINT?.replace("/api", "")}` : ""} https://cg.optimizely.com https://*.odbm.org https://api.stripe.com https://api.addressy.com https://*.google.com https://js.monitor.azure.com https://*.applicationinsights.azure.com https://www.googletagmanager.com https://stats.g.doubleclick.net https://*.google-analytics.com https://*.google.com https://*.googleapis.com https://*.google.co.uk https://*.cookiebot.eu https://*.cookiebot.com https://*.usercentrics.eu https://*.usercentrics.com;
+  script-src 'self' ${isDev ? "'unsafe-eval'" : ""} 'unsafe-inline' https://p.typekit.net https://js.stripe.com https://*.js.stripe.com https://www.google.com https://www.gstatic.com https://www.googletagmanager.com https://accounts.google.com https://apis.google.com https://*.googleapis.com https://*.cookiebot.eu https://*.cookiebot.com;
   style-src 'self' 'unsafe-inline' p.typekit.net;
   img-src 'self' blob: data: https://www.googletagmanager.com https://avatars.githubusercontent.com https://www.google.co.uk https://github.com https://www.google.com https://*.usercentrics.eu https://*.usercentrics.com;
   font-src 'self' use.typekit.net;
-  frame-src 'self' https://*.js.stripe.com https://js.stripe.com https://hooks.stripe.com https://www.google.com https://*.cookiebot.eu https://*.cookiebot.com;
+  frame-src 'self' https://*.js.stripe.com https://js.stripe.com https://hooks.stripe.com https://www.google.com https://accounts.google.com https://content.googleapis.com https://*.cookiebot.eu https://*.cookiebot.com;
   object-src 'none';
   base-uri 'self';
   form-action 'self';
