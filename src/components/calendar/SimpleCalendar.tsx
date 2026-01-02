@@ -6,6 +6,7 @@ import {
   eachDayOfInterval,
   endOfMonth,
   format,
+  getDay,
   isSameDay,
   startOfMonth,
 } from "date-fns";
@@ -17,6 +18,12 @@ export function SimpleCalendar() {
   const monthStart = startOfMonth(selectedDate);
   const monthEnd = endOfMonth(selectedDate);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+  // Get the day of week for the first day (0 = Sunday, 6 = Saturday)
+  const startDayOfWeek = getDay(monthStart);
+
+  // Create padding cells for days before the first day of the month
+  const paddingDays = Array.from({ length: startDayOfWeek }, (_, i) => i);
 
   const previousMonth = () => {
     const newDate = new Date(selectedDate);
@@ -87,6 +94,15 @@ export function SimpleCalendar() {
 
         {/* Calendar days */}
         <div className="grid grid-cols-7">
+          {/* Padding cells for days before the first day of the month */}
+          {paddingDays.map((index) => (
+            <div
+              key={`padding-${index}`}
+              className="min-h-[100px] border-r border-b border-stone-200 bg-stone-50"
+            />
+          ))}
+
+          {/* Actual days of the month */}
           {daysInMonth.map((day) => {
             const dayEvents = getEventsForDay(day);
             const isToday = isSameDay(day, today);

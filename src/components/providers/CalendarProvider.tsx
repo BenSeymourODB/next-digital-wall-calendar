@@ -15,6 +15,7 @@ import type {
 } from "@/types/calendar";
 import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
+import { startOfMonth } from "date-fns";
 
 interface ICalendarContext {
   selectedDate: Date;
@@ -217,8 +218,8 @@ export function CalendarProvider({
         return;
       }
 
-      // Fetch events for the next 6 months
-      const timeMin = new Date();
+      // Fetch events for the next 6 months starting from beginning of current month
+      const timeMin = startOfMonth(new Date()); // Start of current month
       const timeMax = new Date();
       timeMax.setMonth(timeMax.getMonth() + 6);
 
