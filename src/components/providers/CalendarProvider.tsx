@@ -264,10 +264,11 @@ export function CalendarProvider({
     }
   };
 
-  // Load cached events on mount
+  // Load cached events on mount, then refresh from Google Calendar
   useEffect(() => {
-    const loadCachedEvents = async () => {
+    const initializeEvents = async () => {
       try {
+        // First, load cached events for immediate display
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
           transformGoogleEvent(event)
@@ -281,9 +282,15 @@ export function CalendarProvider({
       } finally {
         setIsLoading(false);
       }
+
+      // Then, refresh from Google Calendar if accounts are connected
+      const accounts = loadAccounts();
+      if (accounts.length > 0) {
+        await refreshEvents();
+      }
     };
 
-    loadCachedEvents();
+    initializeEvents();
   }, []);
 
   // Auto-refresh events based on settings

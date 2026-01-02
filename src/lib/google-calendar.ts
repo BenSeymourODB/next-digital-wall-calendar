@@ -355,11 +355,31 @@ export async function fetchCalendarEvents(
         calendarId,
       })
     );
-  } catch (error) {
+  } catch (error: unknown) {
+    const err = error as {
+      result?: { error?: { code?: number; message?: string } };
+    };
+    const errorCode = err.result?.error?.code;
+    const errorMessage = err.result?.error?.message;
+
     logger.error(error as Error, {
       context: "fetchCalendarEvents",
       calendarId,
+      errorCode,
+      errorMessage,
     });
+
+    // Provide helpful error messages
+    if (errorCode === 404) {
+      throw new Error(
+        `Calendar not found: ${calendarId}. The calendar may not exist or you may not have access to it.`
+      );
+    } else if (errorCode === 403) {
+      throw new Error(
+        `Access denied to calendar: ${calendarId}. Please check your permissions.`
+      );
+    }
+
     throw error;
   }
 }

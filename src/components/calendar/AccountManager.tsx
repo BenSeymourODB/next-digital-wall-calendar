@@ -40,11 +40,23 @@ export function AccountManager() {
       setIsSigningIn(true);
       const account = await signInToGoogle();
 
-      // Fetch available calendars for this account (not used in UI yet, but good for future)
-      await fetchUserCalendars();
+      // Fetch available calendars for this account and get their actual IDs
+      const calendars = await fetchUserCalendars();
+
+      // Use the actual calendar IDs instead of "primary"
+      // Include all calendars by default, or just the primary one
+      const calendarIds = calendars
+        .filter((cal) => cal.primary || cal.id) // Get primary calendar or all
+        .map((cal) => cal.id);
+
+      // Update account with actual calendar IDs
+      const updatedAccount = {
+        ...account,
+        calendarIds: calendarIds.length > 0 ? calendarIds : [account.email], // Fallback to email as calendar ID
+      };
 
       // Save account
-      addAccount(account);
+      addAccount(updatedAccount);
       setAccounts(loadAccounts());
 
       // Refresh events
