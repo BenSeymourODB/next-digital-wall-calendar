@@ -259,6 +259,7 @@ export async function signInToGoogle(): Promise<GoogleCalendarAccount> {
             email: userInfo.email,
             name: userInfo.name || userInfo.email,
             accessToken: response.access_token,
+            refreshToken: response.refresh_token, // Capture refresh token (only provided on first consent)
             expiresAt: Date.now() + (response.expires_in || 3600) * 1000,
             calendarIds: ["primary"], // Start with primary calendar
           };
@@ -301,6 +302,100 @@ export async function signOutFromGoogle(): Promise<void> {
     logger.error(error as Error, { context: "signOutFromGoogle" });
     throw error;
   }
+}
+
+/**
+ * Refresh an expired access token using a refresh token
+ * Calls server-side endpoint to securely handle the token exchange
+ */
+export async function refreshAccessToken(
+  account: GoogleCalendarAccount
+): Promise<GoogleCalendarAccount> {
+  if (!account.refreshToken) {
+    throw new Error(
+      "No refresh token available. Please re-authenticate your account."
+    );
+  }
+
+  try {
+    const response = await fetch("/api/auth/refresh-token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        refreshToken: account.refreshToken,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+
+      if (errorData.requiresReauth) {
+        throw new Error(
+          "Refresh token is invalid or expired. Please re-authenticate your account."
+        );
+      }
+
+      throw new Error(errorData.error || "Failed to refresh access token");
+    }
+
+    const data = await response.json();
+
+    // Update account with new access token and expiry
+    const updatedAccount: GoogleCalendarAccount = {
+      ...account,
+      accessToken: data.access_token,
+      expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
+    };
+
+    // Update the token in gapi client
+    await initGoogleAPI();
+    window.gapi.client.setToken({
+      access_token: data.access_token,
+    });
+
+    logger.log("Access token refreshed successfully", {
+      accountId: account.id,
+    });
+
+    return updatedAccount;
+  } catch (error) {
+    logger.error(error as Error, {
+      context: "refreshAccessToken",
+      accountId: account.id,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Ensure the account has a valid access token, refreshing if necessary
+ * Returns the account with a valid token, or throws if refresh fails
+ */
+export async function ensureValidToken(
+  account: GoogleCalendarAccount
+): Promise<GoogleCalendarAccount> {
+  // Check if token is expired or about to expire (5-minute buffer)
+  const EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
+  const isExpired = Date.now() + EXPIRY_BUFFER_MS >= account.expiresAt;
+
+  if (!isExpired) {
+    // Token is still valid, set it in gapi client
+    await initGoogleAPI();
+    window.gapi.client.setToken({
+      access_token: account.accessToken,
+    });
+    return account;
+  }
+
+  // Token is expired or about to expire, refresh it
+  logger.log("Token expired or expiring soon, refreshing", {
+    accountId: account.id,
+    expiresAt: new Date(account.expiresAt).toISOString(),
+  });
+
+  return await refreshAccessToken(account);
 }
 
 /**
@@ -365,8 +460,8 @@ export async function fetchCalendarEvents(
     logger.error(error as Error, {
       context: "fetchCalendarEvents",
       calendarId,
-      errorCode,
-      errorMessage,
+      ...(errorCode !== undefined && { errorCode }),
+      ...(errorMessage !== undefined && { errorMessage }),
     });
 
     // Provide helpful error messages

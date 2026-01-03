@@ -61,7 +61,9 @@ This guide will walk you through setting up Google Calendar API credentials for 
    - For local development: `http://localhost:3000`
    - For production: `https://your-domain.com`
 7. Click **"Create"**
-8. **Copy the Client ID** - you'll need this for your `.env.local` file
+8. A dialog will appear with your **Client ID** and **Client Secret**
+   - **Copy both the Client ID and Client Secret** - you'll need these for your `.env.local` file
+   - ⚠️ **Important**: Keep the Client Secret secure! Never commit it to version control.
 
 ## Step 4: Create API Key
 
@@ -86,7 +88,10 @@ This guide will walk you through setting up Google Calendar API credentials for 
    ```
    NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
    NEXT_PUBLIC_GOOGLE_API_KEY=your-api-key
+   GOOGLE_CLIENT_SECRET=your-client-secret
    ```
+
+   ⚠️ **Important**: The `GOOGLE_CLIENT_SECRET` is used server-side to refresh access tokens automatically. Keep it secure and never expose it in client-side code.
 
 3. Replace the placeholders with the values you copied in previous steps
 
@@ -156,9 +161,24 @@ When deploying to production:
 - ✅ **DO** restrict your API key to only the APIs you need
 - ✅ **DO** add domain restrictions to your API key
 - ✅ **DO** use HTTPS in production
+- ✅ **DO** keep your Client Secret secure (server-side only)
 - ❌ **DON'T** commit credentials to version control
-- ❌ **DON'T** share your API key or Client ID publicly
+- ❌ **DON'T** share your API key, Client ID, or Client Secret publicly
+- ❌ **DON'T** expose the Client Secret in client-side code
 - ❌ **DON'T** request more permissions than you need
+
+## How Token Refresh Works
+
+The application automatically refreshes expired access tokens using the refresh token obtained during the initial sign-in:
+
+1. When you first sign in, Google provides both an **access token** (expires in ~1 hour) and a **refresh token** (long-lived)
+2. Both tokens are securely stored in browser localStorage
+3. Before fetching calendar events, the app checks if the access token is expired or expiring soon (within 5 minutes)
+4. If expired, the app makes a server-side API call to exchange the refresh token for a new access token
+5. The new access token is stored and used for subsequent API calls
+6. This happens automatically in the background - no user interaction needed
+
+**Note**: If the refresh token becomes invalid (e.g., user revokes permissions), you'll need to remove and re-add the calendar account.
 
 ## Additional Resources
 

@@ -1,9 +1,16 @@
 "use client";
 
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { eventCache, loadAccounts, loadSettings } from "@/lib/calendar-storage";
 import {
+  eventCache,
+  loadAccounts,
+  loadSettings,
+  updateAccount,
+} from "@/lib/calendar-storage";
+import {
+  type GoogleCalendarAccount,
   type GoogleCalendarEvent,
+  ensureValidToken,
   fetchEventsFromMultipleCalendars,
 } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
@@ -218,12 +225,45 @@ export function CalendarProvider({
         return;
       }
 
+      // Validate and refresh tokens for all accounts
+      const validatedAccounts: GoogleCalendarAccount[] = [];
+      for (const account of accounts) {
+        try {
+          const validatedAccount = await ensureValidToken(account);
+          validatedAccounts.push(validatedAccount);
+
+          // Update account in storage if token was refreshed
+          if (validatedAccount.accessToken !== account.accessToken) {
+            updateAccount(validatedAccount);
+            logger.log("Updated account with refreshed token", {
+              accountId: account.id,
+            });
+          }
+        } catch (error) {
+          logger.error(error as Error, {
+            context: "validateAccountToken",
+            accountId: account.id,
+          });
+          // Continue with other accounts even if one fails
+          // User will need to re-authenticate this specific account
+        }
+      }
+
+      if (validatedAccounts.length === 0) {
+        logger.log("No accounts have valid tokens");
+        setAllEvents([]);
+        setIsLoading(false);
+        return;
+      }
+
       // Fetch events for the next 6 months starting from beginning of current month
       const timeMin = startOfMonth(new Date()); // Start of current month
       const timeMax = new Date();
       timeMax.setMonth(timeMax.getMonth() + 6);
 
-      const allCalendarIds = accounts.flatMap((account) => account.calendarIds);
+      const allCalendarIds = validatedAccounts.flatMap(
+        (account) => account.calendarIds
+      );
       const googleEvents = await fetchEventsFromMultipleCalendars(
         allCalendarIds,
         timeMin,
