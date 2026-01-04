@@ -4,6 +4,8 @@
  * Uses Google Identity Services (GIS) for modern OAuth authentication
  */
 import { logger } from "@/lib/logger";
+import { type CalendarColorMapping } from "./calendar-storage";
+import { mapHexToTailwindColor } from "./color-utils";
 
 // Google API configuration types
 export interface GoogleCalendarConfig {
@@ -536,6 +538,36 @@ export async function fetchUserCalendars() {
     );
   } catch (error) {
     logger.error(error as Error, { context: "fetchUserCalendars" });
+    throw error;
+  }
+}
+
+/**
+ * Fetch calendar color mappings from Google Calendar API
+ * Maps Google Calendar hex colors to Tailwind colors for consistent styling
+ */
+export async function fetchCalendarColorMappings(): Promise<
+  CalendarColorMapping[]
+> {
+  try {
+    const calendars = await fetchUserCalendars();
+
+    const mappings: CalendarColorMapping[] = calendars.map((calendar) => {
+      const hexColor = calendar.backgroundColor || "#3b82f6"; // Default to blue-500
+      const tailwindColor = mapHexToTailwindColor(hexColor);
+
+      return {
+        calendarId: calendar.id,
+        colorId: "", // Google Calendar API doesn't provide colorId in calendarList
+        hexColor,
+        tailwindColor,
+      };
+    });
+
+    logger.log("Fetched calendar color mappings", { count: mappings.length });
+    return mappings;
+  } catch (error) {
+    logger.error(error as Error, { context: "fetchCalendarColorMappings" });
     throw error;
   }
 }
