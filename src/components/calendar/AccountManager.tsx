@@ -88,24 +88,24 @@ export function AccountManager() {
   };
 
   return (
-    <Card className="border-stone-200">
+    <Card className="border-gray-200">
       <CardHeader>
-        <CardTitle className="text-stone-900">Calendar Accounts</CardTitle>
-        <CardDescription className="text-stone-600">
+        <CardTitle className="text-gray-900">Calendar Accounts</CardTitle>
+        <CardDescription className="text-gray-600">
           Connect your Google Calendar accounts to display events
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {accounts.length === 0 ? (
           <div className="py-8 text-center">
-            <p className="mb-4 text-stone-600">
+            <p className="mb-4 text-gray-600">
               No accounts connected yet. Add a Google Calendar account to get
               started.
             </p>
             <Button
               onClick={handleSignIn}
               disabled={isSigningIn}
-              className="bg-sky-600 text-white hover:bg-sky-700"
+              className="bg-blue-600 text-white hover:bg-blue-700"
             >
               {isSigningIn ? "Signing in..." : "Add Google Calendar Account"}
             </Button>
@@ -116,12 +116,12 @@ export function AccountManager() {
               {accounts.map((account) => (
                 <div
                   key={account.id}
-                  className="flex items-center justify-between rounded-lg border border-stone-200 bg-stone-50 p-3"
+                  className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3"
                 >
                   <div>
-                    <p className="font-medium text-stone-900">{account.name}</p>
-                    <p className="text-sm text-stone-600">{account.email}</p>
-                    <p className="mt-1 text-xs text-stone-500">
+                    <p className="font-medium text-gray-900">{account.name}</p>
+                    <p className="text-sm text-gray-600">{account.email}</p>
+                    <p className="mt-1 text-xs text-gray-500">
                       {account.calendarIds.length} calendar(s) selected
                     </p>
                   </div>
@@ -129,7 +129,7 @@ export function AccountManager() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleSignOut(account.id)}
-                    className="border-rose-200 text-rose-600 hover:bg-rose-50"
+                    className="border-red-200 text-red-600 hover:bg-red-50"
                   >
                     Remove
                   </Button>
@@ -141,7 +141,7 @@ export function AccountManager() {
               onClick={handleSignIn}
               disabled={isSigningIn}
               variant="outline"
-              className="w-full border-stone-200 hover:bg-stone-50"
+              className="w-full border-gray-200 hover:bg-gray-50"
             >
               {isSigningIn ? "Adding..." : "Add Another Account"}
             </Button>

@@ -53,4 +53,4 @@ For detailed setup instructions, usage guide, and wall display configuration, se
 - **[Google Calendar Setup](./docs/google-calendar-setup.md)** - Step-by-step API setup
 - **[CLAUDE.md](./CLAUDE.md)** - Architecture overview, MCP setup, and development commands
 - **[Application Insights](./docs/application-insights.md)** - Logging and monitoring
-- **[Styling Guide](./docs/styling.md)** - ODBM color palette and Tailwind usage
+- **[Styling Guide](./docs/styling.md)** - Tailwind CSS usage and component patterns

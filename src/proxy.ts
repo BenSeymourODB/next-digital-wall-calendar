@@ -97,7 +97,6 @@ function createFallbackResponse(
   const response = NextResponse.next();
 
   // Add error tracking headers
-  response.headers.set("X-Custom-Header", "ODBM-Custom-Middleware");
   response.headers.set("X-Request-Timestamp", new Date().toISOString());
   response.headers.set("X-Request-Path", pathname);
   response.headers.set("X-Middleware-Error", "true");
@@ -117,7 +116,6 @@ function addCustomHeaders(
   response: NextResponse,
   pathname: string
 ): NextResponse {
-  response.headers.set("X-Custom-Header", "ODBM-Custom-Middleware");
   response.headers.set("X-Request-Timestamp", new Date().toISOString());
   response.headers.set("X-Request-Path", pathname);
   return response;
@@ -305,13 +303,12 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico, sitemap.xml, robots.txt (metadata files)
-     * - ODBM-Mark_RGB.webp (logo file)
      * - auth (Signin/Signout/Transfer)
      * - Ignore matching prefetches (from next/link) that don't need the CSP header.
      */
     {
       source:
-        "/((?!api|_next/static|_next/image|public|favicon.ico|sitemap.xml|robots.txt|ODBM-Mark_RGB.webp|auth).*)",
+        "/((?!api|_next/static|_next/image|public|favicon.ico|sitemap.xml|robots.txt|auth).*)",
       missing: [
         {
           type: "header",

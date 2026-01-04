@@ -50,7 +50,7 @@ export function SimpleCalendar() {
     <div className="w-full space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-stone-900">
+        <h2 className="text-2xl font-bold text-gray-900">
           {format(selectedDate, "MMMM yyyy")}
         </h2>
         <div className="flex gap-2">
@@ -58,7 +58,7 @@ export function SimpleCalendar() {
             variant="outline"
             size="icon"
             onClick={previousMonth}
-            className="border-stone-200 hover:bg-stone-50"
+            className="border-gray-200 hover:bg-gray-50"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -66,7 +66,7 @@ export function SimpleCalendar() {
             variant="outline"
             size="icon"
             onClick={nextMonth}
-            className="border-stone-200 hover:bg-stone-50"
+            className="border-gray-200 hover:bg-gray-50"
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -75,17 +75,17 @@ export function SimpleCalendar() {
 
       {/* Loading indicator */}
       {isLoading && (
-        <div className="text-center text-stone-600">Loading events...</div>
+        <div className="text-center text-gray-600">Loading events...</div>
       )}
 
       {/* Calendar Grid */}
-      <div className="rounded-lg border border-stone-200 bg-white">
+      <div className="rounded-lg border border-gray-200 bg-white">
         {/* Day headers */}
-        <div className="grid grid-cols-7 border-b border-stone-200 bg-stone-50">
+        <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
             <div
               key={day}
-              className="p-3 text-center text-sm font-semibold text-stone-700"
+              className="p-3 text-center text-sm font-semibold text-gray-700"
             >
               {day}
             </div>
@@ -98,7 +98,7 @@ export function SimpleCalendar() {
           {paddingDays.map((index) => (
             <div
               key={`padding-${index}`}
-              className="min-h-[100px] border-r border-b border-stone-200 bg-stone-50"
+              className="min-h-[100px] border-r border-b border-gray-200 bg-gray-50"
             />
           ))}
 
@@ -110,15 +110,15 @@ export function SimpleCalendar() {
             return (
               <div
                 key={day.toISOString()}
-                className={`min-h-[100px] border-r border-b border-stone-200 p-2 ${
-                  isToday ? "bg-sky-50" : "bg-white"
+                className={`min-h-[100px] border-r border-b border-gray-200 p-2 ${
+                  isToday ? "bg-blue-50" : "bg-white"
                 }`}
               >
                 <div
                   className={`mb-1 text-sm ${
                     isToday
-                      ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-sky-600 text-white"
-                      : "text-stone-700"
+                      ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white"
+                      : "text-gray-700"
                   }`}
                 >
                   {format(day, "d")}
@@ -131,13 +131,13 @@ export function SimpleCalendar() {
                       key={event.id}
                       className={`rounded px-2 py-1 text-xs ${
                         event.color === "blue"
-                          ? "bg-sky-100 text-sky-800"
+                          ? "bg-blue-100 text-blue-800"
                           : event.color === "green"
-                            ? "bg-lime-100 text-lime-800"
+                            ? "bg-green-100 text-green-800"
                             : event.color === "red"
-                              ? "bg-rose-100 text-rose-800"
+                              ? "bg-red-100 text-red-800"
                               : event.color === "yellow"
-                                ? "bg-amber-100 text-amber-800"
+                                ? "bg-yellow-100 text-yellow-800"
                                 : event.color === "purple"
                                   ? "bg-purple-100 text-purple-800"
                                   : "bg-orange-100 text-orange-800"
@@ -147,7 +147,7 @@ export function SimpleCalendar() {
                     </div>
                   ))}
                   {dayEvents.length > 3 && (
-                    <div className="text-xs text-stone-500">
+                    <div className="text-xs text-gray-500">
                       +{dayEvents.length - 3} more
                     </div>
                   )}

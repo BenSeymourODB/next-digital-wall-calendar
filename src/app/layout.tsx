@@ -1,6 +1,4 @@
 import { AppInsightsProvider } from "@/components/providers/AppInsightsProvider";
-import "@/styles/fonts.css";
-import "@/styles/odbm.css";
 import type { Metadata } from "next";
 import Script from "next/script";
 
@@ -10,8 +8,8 @@ import Script from "next/script";
 export const metadata: Metadata = {
   metadataBase: new URL("https://example.com"), // TODO: Replace with your actual domain
   title: {
-    template: "%s | Our Daily Bread Ministries",
-    default: "Welcome | Our Daily Bread Ministries",
+    template: "%s | Digital Wall Calendar",
+    default: "Welcome | Digital Wall Calendar",
   },
 };
 

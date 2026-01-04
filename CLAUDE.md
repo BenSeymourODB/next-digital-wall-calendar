@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a Next.js 16 template repository for Our Daily Bread Ministries. The project demonstrates:
+This is a Next.js 16 Digital Wall Calendar application. The project demonstrates:
 
 1. **Windows + pnpm compatibility** - Uses hoisted node_modules (`node-linker=hoisted` in `.npmrc`)
 2. **Secretless Azure authentication** - OIDC-based GitHub Actions deployment
@@ -43,28 +43,26 @@ pnpm bump-ui          # Update shadcn components
 - **Next.js 16** with Turbopack and App Router
 - **React 19** with React Compiler enabled
 - **TypeScript 5** with strict mode
-- **Tailwind CSS 4** with custom ODBM color palette
+- **Tailwind CSS 4** with default color palette
 - **shadcn/ui** components (copied, not installed)
 - **Application Insights** for logging and telemetry
 - **Azure Web Apps** for hosting
 
 ## Important AI Agent Instructions
 
-### 1. Color System - CRITICAL
+### 1. Styling
 
-**⚠️ DO NOT use default Tailwind colors** like `bg-blue-600`, `text-red-500`, etc.
+This project uses **standard Tailwind CSS colors**. Use the default Tailwind color palette (gray, blue, red, green, yellow, etc.).
 
-This project uses a **custom ODBM color palette** defined in `src/styles/odbm.css`.
+**Examples:**
 
-**Required color usage:**
+- **Grays/Neutrals:** `gray-*` (e.g., `bg-gray-50`, `text-gray-900`, `border-gray-200`)
+- **Blue/Info:** `blue-*` (e.g., `bg-blue-600`, `text-blue-700`)
+- **Red/Error:** `red-*` (e.g., `bg-red-600`, `text-red-700`)
+- **Yellow/Warning:** `yellow-*` (e.g., `bg-yellow-600`, `text-yellow-700`)
+- **Green/Success:** `green-*` (e.g., `bg-green-600`, `text-green-700`)
 
-- **Grays/Neutrals:** `stone-*` (e.g., `bg-stone-50`, `text-stone-900`, `border-stone-200`)
-- **Blue/Info:** `sky-*` (e.g., `bg-sky-600`, `text-sky-700`)
-- **Red/Error:** `rose-*` or `poppy` (e.g., `bg-rose-600`, `text-rose-700`)
-- **Orange/Warning:** `amber-*` (e.g., `bg-amber-600`, `text-amber-700`)
-- **Green/Success:** `lime-*` or `donation-green` (e.g., `bg-lime-600`, `text-donation-green`)
-
-**See:** [docs/styling.md](./docs/styling.md) for complete color system documentation.
+**See:** [docs/styling.md](./docs/styling.md) for complete styling documentation.
 
 ### 2. Application Insights Logging
 
@@ -140,11 +138,10 @@ Write clean, simple React code - the compiler handles optimization automatically
 
 UI components are **copied into `src/components/ui/`** (not installed as package).
 
-\*\*⚠️ Notify user if components are installed and overwrite existing customizations
+**⚠️ Notify user if components are installed and overwrite existing customizations**
 
 - Use the Shadcn MCP server to browse and install components
 - Components are fully customizable and version-controlled
-- All components use the custom ODBM color palette
 
 **See:** [docs/mcp-servers.md](./docs/mcp-servers.md) for MCP server usage.
 
@@ -202,7 +199,7 @@ src/
 │   ├── ui/          # shadcn/ui components (copied)
 │   └── providers/   # Context providers
 ├── lib/             # Utility functions and shared logic
-├── styles/          # Global styles and odbm.css
+├── styles/          # Global styles
 └── types/           # TypeScript type definitions
 
 docs/                # Documentation (for humans, not AI agents)
@@ -229,7 +226,7 @@ scripts/             # Build and deployment scripts
 - **[Application Insights](./docs/application-insights.md)** - Logging, telemetry, troubleshooting
 - **[React Compiler](./docs/react-compiler.md)** - How it works, best practices
 - **[Deployment](./docs/deployment.md)** - Azure deployment, workflows, scripts
-- **[Styling](./docs/styling.md)** - Color system, Tailwind usage, components
+- **[Styling](./docs/styling.md)** - Tailwind CSS usage, components
 - **[MCP Servers](./docs/mcp-servers.md)** - Next.js DevTools, Context7, Shadcn
 
 ## Project Structure Context
@@ -240,7 +237,6 @@ scripts/             # Build and deployment scripts
 - `.npmrc` - pnpm configuration (hoisted node_modules)
 - `.nvmrc` - Node.js version (22.x required)
 - `src/lib/logger.ts` - Unified logging interface
-- `src/styles/odbm.css` - Custom color palette (CRITICAL)
 - `.mcp.json` - MCP server configuration
 
 ### Deployment Scripts
@@ -278,8 +274,7 @@ This project automatically loads these MCP servers:
 export default function MyPage() {
   return (
     <div className="container mx-auto p-8">
-      <h1 className="text-3xl font-bold text-stone-900">My Page</h1>
-      {/* Use stone-* colors, not default Tailwind colors */}
+      <h1 className="text-3xl font-bold text-gray-900">My Page</h1>
     </div>
   );
 }
@@ -374,9 +369,8 @@ import { Button } from "@/components/ui/button";
 export function MyComponent() {
   return (
     <div className="space-y-4">
-      {/* Use stone-* for grays, sky-* for blues */}
-      <p className="text-stone-600">Description text</p>
-      <Button className="bg-sky-600 hover:bg-sky-700">Click me</Button>
+      <p className="text-gray-600">Description text</p>
+      <Button className="bg-blue-600 hover:bg-blue-700">Click me</Button>
     </div>
   );
 }
@@ -384,7 +378,7 @@ export function MyComponent() {
 
 ## Important Notes
 
-1. **Always use custom colors** - Never default Tailwind colors
+1. **Use standard Tailwind colors** - Default color palette (gray, blue, red, etc.)
 2. **Use the logger** - For all errors, events, and performance tracking
 3. **Let React Compiler optimize** - Don't add manual memoization
 4. **ALWAYS lint and format** - Run `pnpm lint:fix && pnpm format:fix && pnpm check-types` after generating/modifying code

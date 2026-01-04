@@ -1,6 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import logo from "../../public/ODBM_Logo.png";
 import nextLogo from "../../public/next.svg";
 
 export default function Home() {
@@ -11,14 +10,11 @@ export default function Home() {
         <div className="flex flex-col items-center justify-center gap-8 sm:items-start">
           {/* Logos container */}
           <div className="flex w-full flex-col items-center gap-4 sm:items-start">
-            <Image
-              src={logo}
-              alt="ODBM logo"
-              priority
-              className="h-auto w-full max-w-md"
-            />
+            <h1 className="text-4xl font-bold text-gray-900 sm:text-5xl">
+              Digital Wall Calendar
+            </h1>
             <div className="flex items-center gap-3 opacity-60">
-              <span className="text-sm text-stone-500">Powered by</span>
+              <span className="text-sm text-gray-500">Powered by</span>
               <Image
                 src={nextLogo}
                 alt="Next.js logo"
