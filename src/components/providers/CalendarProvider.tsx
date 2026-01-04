@@ -1,9 +1,16 @@
 "use client";
 
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { eventCache, loadAccounts, loadSettings } from "@/lib/calendar-storage";
 import {
+  eventCache,
+  loadAccounts,
+  loadSettings,
+  updateAccount,
+} from "@/lib/calendar-storage";
+import {
+  type GoogleCalendarAccount,
   type GoogleCalendarEvent,
+  ensureValidToken,
   fetchEventsFromMultipleCalendars,
 } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
@@ -15,6 +22,7 @@ import type {
 } from "@/types/calendar";
 import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
+import { startOfMonth } from "date-fns";
 
 interface ICalendarContext {
   selectedDate: Date;
@@ -217,12 +225,45 @@ export function CalendarProvider({
         return;
       }
 
-      // Fetch events for the next 6 months
-      const timeMin = new Date();
+      // Validate and refresh tokens for all accounts
+      const validatedAccounts: GoogleCalendarAccount[] = [];
+      for (const account of accounts) {
+        try {
+          const validatedAccount = await ensureValidToken(account);
+          validatedAccounts.push(validatedAccount);
+
+          // Update account in storage if token was refreshed
+          if (validatedAccount.accessToken !== account.accessToken) {
+            updateAccount(validatedAccount);
+            logger.log("Updated account with refreshed token", {
+              accountId: account.id,
+            });
+          }
+        } catch (error) {
+          logger.error(error as Error, {
+            context: "validateAccountToken",
+            accountId: account.id,
+          });
+          // Continue with other accounts even if one fails
+          // User will need to re-authenticate this specific account
+        }
+      }
+
+      if (validatedAccounts.length === 0) {
+        logger.log("No accounts have valid tokens");
+        setAllEvents([]);
+        setIsLoading(false);
+        return;
+      }
+
+      // Fetch events for the next 6 months starting from beginning of current month
+      const timeMin = startOfMonth(new Date()); // Start of current month
       const timeMax = new Date();
       timeMax.setMonth(timeMax.getMonth() + 6);
 
-      const allCalendarIds = accounts.flatMap((account) => account.calendarIds);
+      const allCalendarIds = validatedAccounts.flatMap(
+        (account) => account.calendarIds
+      );
       const googleEvents = await fetchEventsFromMultipleCalendars(
         allCalendarIds,
         timeMin,
@@ -263,10 +304,11 @@ export function CalendarProvider({
     }
   };
 
-  // Load cached events on mount
+  // Load cached events on mount, then refresh from Google Calendar
   useEffect(() => {
-    const loadCachedEvents = async () => {
+    const initializeEvents = async () => {
       try {
+        // First, load cached events for immediate display
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
           transformGoogleEvent(event)
@@ -280,9 +322,15 @@ export function CalendarProvider({
       } finally {
         setIsLoading(false);
       }
+
+      // Then, refresh from Google Calendar if accounts are connected
+      const accounts = loadAccounts();
+      if (accounts.length > 0) {
+        await refreshEvents();
+      }
     };
 
-    loadCachedEvents();
+    initializeEvents();
   }, []);
 
   // Auto-refresh events based on settings

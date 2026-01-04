@@ -95,6 +95,25 @@ export function getAccount(accountId: string): GoogleCalendarAccount | null {
 }
 
 /**
+ * Update an existing account (e.g., for token refresh)
+ */
+export function updateAccount(updatedAccount: GoogleCalendarAccount): void {
+  const accounts = loadAccounts();
+  const index = accounts.findIndex((a) => a.id === updatedAccount.id);
+
+  if (index >= 0) {
+    accounts[index] = updatedAccount;
+    saveAccounts(accounts);
+    logger.log("Updated account", { accountId: updatedAccount.id });
+  } else {
+    logger.error(new Error("Account not found for update"), {
+      context: "updateAccount",
+      accountId: updatedAccount.id,
+    });
+  }
+}
+
+/**
  * Update calendar IDs for a specific account
  */
 export function updateAccountCalendars(

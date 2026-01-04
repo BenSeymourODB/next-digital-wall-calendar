@@ -1,7 +1,64 @@
 /**
- * Type declarations for Google Calendar API
+ * Type declarations for Google Calendar API and Google Identity Services
  * Extends the existing gapi types with calendar-specific interfaces
  */
+
+/**
+ * Google Identity Services (GIS) types for OAuth2
+ */
+declare namespace google.accounts.oauth2 {
+  interface TokenResponse {
+    access_token: string;
+    expires_in: number;
+    scope: string;
+    token_type: string;
+    refresh_token?: string;
+    error?: string;
+    error_description?: string;
+  }
+
+  interface TokenClient {
+    callback: (response: TokenResponse) => void;
+    requestAccessToken: (overrideConfig?: {
+      prompt?: "" | "none" | "consent" | "select_account";
+    }) => void;
+  }
+
+  interface TokenClientConfig {
+    client_id: string;
+    scope: string;
+    callback: string | ((response: TokenResponse) => void);
+    prompt?: "" | "none" | "consent" | "select_account";
+  }
+
+  function initTokenClient(config: TokenClientConfig): TokenClient;
+  function revoke(token: string, done?: () => void): void;
+}
+
+/**
+ * GAPI client types
+ */
+declare namespace gapi {
+  function load(
+    apiName: string,
+    options: { callback: () => void; onerror?: () => void }
+  ): void;
+
+  namespace client {
+    function init(config: {
+      apiKey?: string;
+      discoveryDocs?: string[];
+    }): Promise<void>;
+
+    function getToken(): {
+      access_token: string;
+      expires_in?: number;
+      expires_at?: number;
+    } | null;
+
+    function setToken(token: { access_token: string } | null): void;
+  }
+}
 
 declare namespace gapi.client.calendar {
   interface Event {
