@@ -397,7 +397,6 @@ From the original PR review:
 - Event creation/editing (read-only by design)
 - Recurring event special handling
 - Time zone selection
-- Custom color schemes (only ODBM palette)
 - Weather integration
 - Smart reminders
 - Conflict detection

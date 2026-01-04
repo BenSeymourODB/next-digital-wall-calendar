@@ -172,7 +172,6 @@ All improvements maintain the same high code quality standards:
 - ✅ Prettier formatted
 - ✅ TypeScript strict mode (zero errors)
 - ✅ No manual memoization (React Compiler compatible)
-- ✅ ODBM color palette
 - ✅ Application Insights logging
 - ✅ Comprehensive error handling
 
@@ -374,7 +373,6 @@ See [Future Enhancements](.claude/future-enhancements.md) for prioritized roadma
 - ✅ All calendars fetched by default (not just primary)
 - ✅ Local caching for offline use
 - ✅ Token refresh for persistent authentication
-- ✅ ODBM color palette used throughout
 - ✅ Comprehensive documentation
 - ✅ All code quality checks pass
 - ✅ Production build succeeds

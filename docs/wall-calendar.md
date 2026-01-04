@@ -130,17 +130,15 @@ const DEFAULT_SETTINGS: CalendarSettings = {
 
 ### Color Palette
 
-The calendar uses the ODBM color palette (defined in `src/styles/odbm.css`):
+The calendar uses the standard Tailwind colors, except for:
 
-- **Primary**: `sky-*` colors for highlights
-- **Text**: `stone-*` colors for text and borders
 - **Events**: Colored backgrounds based on Google Calendar colors
 
 ### Styling
 
 All components follow the project's styling guidelines:
 
-- Uses Tailwind CSS with custom ODBM colors
+- Uses Tailwind CSS with standard colors
 - Consistent spacing and typography
 - Responsive design patterns
 
@@ -312,10 +310,6 @@ Contributions are welcome! Please:
 2. Run linters and type checks
 3. Test your changes thoroughly
 4. Update documentation as needed
-
-## License
-
-This project is part of the ODBM Next.js 16 template and follows the same license.
 
 ## Support
 

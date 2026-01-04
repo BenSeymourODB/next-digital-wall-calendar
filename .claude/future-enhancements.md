@@ -16,7 +16,6 @@ This document tracks planned features, improvements, and enhancement opportuniti
 **Implementation Considerations:**
 
 - Reuse existing calendar infrastructure
-- Maintain ODBM color palette consistency
 - Ensure responsive design for wall displays
 - Consider touch/click interactions for each view type
 
@@ -90,10 +89,6 @@ This document tracks planned features, improvements, and enhancement opportuniti
 
 **Priority: Low**
 
-- Custom color schemes (beyond ODBM palette)
-  - User-defined color mappings
-  - Dark/light theme toggle
-  - High contrast mode
 - Multiple layout options
   - Grid layouts
   - List layouts
@@ -109,7 +104,6 @@ This document tracks planned features, improvements, and enhancement opportuniti
 
 **Implementation Considerations:**
 
-- Maintain ODBM palette as default
 - Use CSS custom properties for theme switching
 - Persist theme preferences to localStorage
 - Consider theme export/import for sharing
@@ -202,7 +196,6 @@ _No community requests yet - this is a new project._
 ## Implementation Notes
 
 - All enhancements should follow CLAUDE.md standards
-- Use ODBM color palette unless customization explicitly allows otherwise
 - Maintain TypeScript strict mode compliance
 - Add comprehensive documentation for new features
 - Include Application Insights logging for new functionality
