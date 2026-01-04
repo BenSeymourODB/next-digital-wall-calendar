@@ -105,7 +105,6 @@ export class ErrorBoundary extends Component<
 
 /**
  * Default Error Fallback UI
- * Styled with ODBM colors
  */
 function DefaultErrorFallback({
   error,
@@ -116,12 +115,12 @@ function DefaultErrorFallback({
 }) {
   return (
     <div className="flex min-h-[400px] flex-col items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-6 rounded-lg border border-stone-200 bg-white p-8 shadow-sm">
+      <div className="w-full max-w-md space-y-6 rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
         {/* Error Icon */}
         <div className="flex justify-center">
-          <div className="rounded-full bg-rose-50 p-3">
+          <div className="rounded-full bg-red-50 p-3">
             <svg
-              className="h-8 w-8 text-rose-600"
+              className="h-8 w-8 text-red-600"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -138,10 +137,10 @@ function DefaultErrorFallback({
 
         {/* Error Title */}
         <div className="text-center">
-          <h2 className="text-2xl font-semibold text-stone-900">
+          <h2 className="text-2xl font-semibold text-gray-900">
             Something went wrong
           </h2>
-          <p className="mt-2 text-sm text-stone-600">
+          <p className="mt-2 text-sm text-gray-600">
             We encountered an error while rendering this component. The issue
             has been logged and we&apos;ll look into it.
           </p>
@@ -149,9 +148,9 @@ function DefaultErrorFallback({
 
         {/* Error Details (dev mode only) */}
         {process.env.NODE_ENV === "development" && (
-          <div className="rounded-md bg-stone-50 p-4">
-            <p className="text-xs font-medium text-stone-700">Error Details:</p>
-            <p className="mt-1 font-mono text-xs wrap-break-word text-stone-600">
+          <div className="rounded-md bg-gray-50 p-4">
+            <p className="text-xs font-medium text-gray-700">Error Details:</p>
+            <p className="mt-1 font-mono text-xs wrap-break-word text-gray-600">
               {error.message}
             </p>
           </div>
@@ -161,13 +160,13 @@ function DefaultErrorFallback({
         <div className="flex flex-col gap-3">
           <button
             onClick={resetError}
-            className="w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
+            className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
           >
             Try Again
           </button>
           <Link
             href="/"
-            className="w-full rounded-md border border-stone-300 bg-white px-4 py-2 text-center text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50"
+            className="w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-center text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
           >
             Back to Home
           </Link>

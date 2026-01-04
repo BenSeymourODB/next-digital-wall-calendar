@@ -1,6 +1,6 @@
 # Styling Guide
 
-This document covers the styling approach, custom color system, and UI component conventions for this Next.js 16 template.
+This document covers the styling approach and UI component conventions for the Digital Wall Calendar.
 
 ## Styling Approach
 
@@ -16,69 +16,49 @@ This document covers the styling approach, custom color system, and UI component
 - Uses Radix UI primitives for accessibility
 - Styled with Tailwind utilities
 
-## Custom Color System
+## Color System
 
-**⚠️ IMPORTANT:** This project uses a custom ODBM color palette defined in `src/styles/odbm.css`. **DO NOT use default Tailwind colors** like `bg-blue-600`, `text-red-500`, etc.
+This project uses **standard Tailwind CSS colors**. Use the default Tailwind color palette for all styling.
 
-### Available Custom Colors
+### Available Colors
 
-#### Brand Colors
+Tailwind CSS provides comprehensive color scales from 50-950 for each color:
 
-- `gold` - Primary gold (#FAB432)
-- `stone` - Dark gray (#58595B)
-- `dark-blue` - Navy (#173A64)
-- `donation-green` - Green (#69923E)
-- `light-blue` - Sky blue (#6DACDE)
-- `poppy` - Red-orange (#E84B25)
-- `light-stone` - Light gray-blue (#D5E2E9)
-- `ecru` - Cream (#E5DBB8)
-- `orange` - Light orange (#FFD6A4)
-
-#### Color Scales (50-950)
-
-- `amber-*` (amber-50 through amber-950)
-- `lime-*` (lime-50 through lime-950)
-- `sky-*` (sky-50 through sky-950)
-- `purple-*` (purple-50 through purple-950)
-- `stone-*` (stone-25 through stone-950) - **Use for grays**
-- `slate-*` (slate-50 through slate-950)
-- `rose-*` (rose-50 through rose-950) - **Use for reds**
-
-#### Semantic Colors
-
-- `primary` = amber-400
-- `secondary` = sky-900
-- `destructive` = error (red)
-- `background` = stone-25
-- `foreground` = digital-text-stone
+- **Gray** - For neutrals and text (`gray-50` through `gray-950`)
+- **Blue** - For primary actions and info (`blue-50` through `blue-950`)
+- **Red** - For errors and destructive actions (`red-50` through `red-950`)
+- **Yellow** - For warnings (`yellow-50` through `yellow-950`)
+- **Green** - For success states (`green-50` through `green-950`)
+- **Purple** - For special highlights (`purple-50` through `purple-950`)
+- **Orange** - For warnings and alerts (`orange-50` through `orange-950`)
 
 ### Color Usage Guidelines
 
-1. **Grays/Neutrals:** Use `stone-*` colors (e.g., `bg-stone-50`, `text-stone-900`, `border-stone-200`)
-2. **Blue/Info:** Use `sky-*` colors (e.g., `bg-sky-600`, `text-sky-700`)
-3. **Red/Error:** Use `rose-*` colors or `poppy` (e.g., `bg-rose-600`, `text-rose-700`)
-4. **Orange/Warning:** Use `amber-*` colors (e.g., `bg-amber-600`, `text-amber-700`)
-5. **Green/Success:** Use `lime-*` or `donation-green` (e.g., `bg-lime-600`, `text-donation-green`)
+1. **Grays/Neutrals:** Use `gray-*` colors (e.g., `bg-gray-50`, `text-gray-900`, `border-gray-200`)
+2. **Blue/Info:** Use `blue-*` colors (e.g., `bg-blue-600`, `text-blue-700`)
+3. **Red/Error:** Use `red-*` colors (e.g., `bg-red-600`, `text-red-700`)
+4. **Yellow/Warning:** Use `yellow-*` colors (e.g., `bg-yellow-600`, `text-yellow-700`)
+5. **Green/Success:** Use `green-*` colors (e.g., `bg-green-600`, `text-green-700`)
 
 ### Common Patterns
 
 ```tsx
 // Background colors
-className = "bg-stone-50"; // Light gray background
+className = "bg-gray-50"; // Light gray background
 className = "bg-white"; // White background
 
 // Text colors
-className = "text-stone-900"; // Primary text
-className = "text-stone-600"; // Secondary text
-className = "text-stone-500"; // Tertiary text
+className = "text-gray-900"; // Primary text
+className = "text-gray-600"; // Secondary text
+className = "text-gray-500"; // Tertiary text
 
 // Borders
-className = "border-stone-200"; // Default borders
+className = "border-gray-200"; // Default borders
 
 // Interactive elements (buttons, links)
-className = "bg-sky-600 hover:bg-sky-700 text-white"; // Primary action
-className = "bg-stone-900 hover:bg-stone-800 text-white"; // Dark action
-className = "bg-rose-600 hover:bg-rose-700 text-white"; // Error/Delete action
+className = "bg-blue-600 hover:bg-blue-700 text-white"; // Primary action
+className = "bg-gray-900 hover:bg-gray-800 text-white"; // Dark action
+className = "bg-red-600 hover:bg-red-700 text-white"; // Error/Delete action
 ```
 
 ## Component Variants
@@ -93,10 +73,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-sky-600 text-white hover:bg-sky-700",
-        destructive: "bg-rose-600 text-white hover:bg-rose-700",
-        outline: "border border-stone-200 bg-white hover:bg-stone-50",
-        ghost: "hover:bg-stone-100",
+        default: "bg-blue-600 text-white hover:bg-blue-700",
+        destructive: "bg-red-600 text-white hover:bg-red-700",
+        outline: "border border-gray-200 bg-white hover:bg-gray-50",
+        ghost: "hover:bg-gray-100",
       },
       size: {
         default: "h-10 px-4 py-2",
@@ -134,7 +114,7 @@ className = "p-4 md:p-6 lg:p-8"; // Responsive spacing
 
 ## Dark Mode (Future)
 
-This template currently doesn't include dark mode, but the color system is designed to support it. When implementing:
+This template currently doesn't include dark mode, but Tailwind's color system is designed to support it. When implementing:
 
 1. Add dark mode variants to all components
 2. Use `dark:` prefix for dark mode styles
@@ -143,7 +123,7 @@ This template currently doesn't include dark mode, but the color system is desig
 
 ## Best Practices
 
-1. **Always use custom colors** - Never use default Tailwind colors
+1. **Use standard Tailwind colors** - Consistent with the Tailwind ecosystem
 2. **Use CVA for variants** - Consistent component API
 3. **Keep components accessible** - Follow WCAG guidelines
 4. **Use semantic HTML** - Proper element hierarchy
