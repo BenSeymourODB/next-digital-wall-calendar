@@ -72,6 +72,16 @@ function groupEventsByDate(events: IEvent[]): Map<string, IEvent[]> {
 }
 
 /**
+ * Parse a date key string (yyyy-MM-dd) as local time, not UTC
+ * This fixes timezone offset issues where new Date("2026-01-05") is interpreted
+ * as UTC midnight, which can shift to the previous day in local timezones
+ */
+function parseDateKeyAsLocal(dateKey: string): Date {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/**
  * Get color classes for event cards
  */
 function getColorClasses(color: TEventColor): string {
@@ -159,8 +169,8 @@ export function AgendaCalendar() {
   // Convert grouped events to sorted array of [date, events] pairs
   const sortedGroupedEvents = Array.from(groupedEvents.entries()).sort(
     (a, b) => {
-      const dateA = new Date(a[0]);
-      const dateB = new Date(b[0]);
+      const dateA = parseDateKeyAsLocal(a[0]);
+      const dateB = parseDateKeyAsLocal(b[0]);
       return dateA.getTime() - dateB.getTime();
     }
   );
@@ -186,7 +196,7 @@ export function AgendaCalendar() {
                 {/* Date Header - Sticky */}
                 <div className="sticky top-0 z-10 border-b border-gray-200 bg-white pt-2 pb-2">
                   <h3 className="text-lg font-semibold text-gray-900">
-                    {format(new Date(dateKey), "EEEE, MMMM d")}
+                    {format(parseDateKeyAsLocal(dateKey), "EEEE, MMMM d")}
                   </h3>
                   <p className="text-sm text-gray-600">
                     {dayEvents.length}{" "}
