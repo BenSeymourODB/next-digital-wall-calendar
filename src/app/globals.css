@@ -64,16 +64,16 @@
   }
 
   li {
-    @apply text-foreground text-base; /* Tailwind utility classes for list item text */
+    @apply text-base text-gray-900; /* Tailwind utility classes for list item text */
   }
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-gray-200 outline-blue-500/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-white text-gray-900;
   }
 
   /* Hide scrollbar for Chrome, Safari and Opera */
