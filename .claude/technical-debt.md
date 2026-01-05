@@ -4,20 +4,6 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 ## High Priority
 
-### 1. Next.js Security Vulnerability
-
-**Issue:** CVE-2025-66478 in Next.js 16.0.1
-
-**Impact:** Security vulnerability affecting entire application
-
-**Action Required:** Upgrade to patched Next.js version when available
-
-**Timeline:** As soon as patch is released
-
-**Dependencies:** None
-
-**Related:** See [Security Considerations](.claude/security-considerations.md)
-
 ### 2. Manual Testing Gap
 
 **Issue:** Calendar feature not manually tested with real Google Calendar accounts
@@ -407,7 +393,7 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 Monitor these dependencies for security updates:
 
-- `next` - Web framework (CVE-2025-66478 pending patch)
+- `next` - Web framework
 - `react` / `react-dom` - UI library
 - `gapi-script` - Google API client
 - `date-fns` - Date utilities
