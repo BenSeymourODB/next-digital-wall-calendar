@@ -93,30 +93,6 @@ This document tracks security considerations, vulnerabilities, and recommendatio
 - If moving to multi-user or enterprise use, backend will be required
 - Could add optional backend for enhanced features while maintaining privacy
 
-### 3. Next.js Version Vulnerability
-
-**Status:** ⚠️ Action Required
-
-**CVE:** CVE-2025-66478 in Next.js 16.0.1
-
-**Description:** Dependency vulnerability in current Next.js version
-
-**Impact:** Not specific to calendar feature (affects entire template)
-
-**Recommendation:** Upgrade to patched Next.js version when available
-
-**Tracking:**
-
-- Monitor Next.js security advisories
-- Update dependencies regularly with `pnpm bump-deps`
-- Test thoroughly after upgrade
-
-**Timeline:**
-
-- Check for patches: Weekly
-- Upgrade priority: High (when patch available)
-- Testing required: Full regression test
-
 ### 4. Google Calendar API Security
 
 **Implemented Protections:**
