@@ -2,15 +2,19 @@
 
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import {
+  type CalendarColorMapping,
   eventCache,
   loadAccounts,
+  loadColorMappings,
   loadSettings,
+  saveColorMappings,
   updateAccount,
 } from "@/lib/calendar-storage";
 import {
   type GoogleCalendarAccount,
   type GoogleCalendarEvent,
   ensureValidToken,
+  fetchCalendarColorMappings,
   fetchEventsFromMultipleCalendars,
 } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
@@ -76,9 +80,42 @@ export function useCalendar() {
 
 /**
  * Transform Google Calendar event to our IEvent format
+ * Uses color mappings from Google Calendar API when available
  */
-function transformGoogleEvent(googleEvent: GoogleCalendarEvent): IEvent {
-  // Map Google Calendar color IDs to our color system
+function transformGoogleEvent(
+  googleEvent: GoogleCalendarEvent,
+  colorMappings: CalendarColorMapping[]
+): IEvent {
+  const startDate =
+    googleEvent.start.dateTime ||
+    googleEvent.start.date ||
+    new Date().toISOString();
+  const endDate =
+    googleEvent.end.dateTime ||
+    googleEvent.end.date ||
+    new Date().toISOString();
+
+  // Priority 1: Look up by calendarId in color mappings (from Google Calendar API)
+  const calendarMapping = colorMappings.find(
+    (m) => m.calendarId === googleEvent.calendarId
+  );
+  if (calendarMapping) {
+    return {
+      id: googleEvent.id,
+      startDate,
+      endDate,
+      title: googleEvent.summary || "Untitled Event",
+      description: googleEvent.description || "",
+      color: calendarMapping.tailwindColor,
+      user: {
+        id: googleEvent.creator?.email || "unknown",
+        name: googleEvent.creator?.displayName || "Unknown",
+        picturePath: null,
+      },
+    };
+  }
+
+  // Priority 2: Fall back to existing colorId mapping (legacy)
   const colorMap: Record<string, TEventColor> = {
     "1": "blue",
     "2": "green",
@@ -93,22 +130,30 @@ function transformGoogleEvent(googleEvent: GoogleCalendarEvent): IEvent {
     "11": "red",
   };
 
-  const startDate =
-    googleEvent.start.dateTime ||
-    googleEvent.start.date ||
-    new Date().toISOString();
-  const endDate =
-    googleEvent.end.dateTime ||
-    googleEvent.end.date ||
-    new Date().toISOString();
+  if (googleEvent.colorId && colorMap[googleEvent.colorId]) {
+    return {
+      id: googleEvent.id,
+      startDate,
+      endDate,
+      title: googleEvent.summary || "Untitled Event",
+      description: googleEvent.description || "",
+      color: colorMap[googleEvent.colorId],
+      user: {
+        id: googleEvent.creator?.email || "unknown",
+        name: googleEvent.creator?.displayName || "Unknown",
+        picturePath: null,
+      },
+    };
+  }
 
+  // Priority 3: Default to blue
   return {
     id: googleEvent.id,
     startDate,
     endDate,
     title: googleEvent.summary || "Untitled Event",
     description: googleEvent.description || "",
-    color: colorMap[googleEvent.colorId || "1"] || "blue",
+    color: "blue",
     user: {
       id: googleEvent.creator?.email || "unknown",
       name: googleEvent.creator?.displayName || "Unknown",
@@ -157,6 +202,9 @@ export function CalendarProvider({
   const [allEvents, setAllEvents] = useState<IEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<IEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [colorMappings, setColorMappings] = useState<CalendarColorMapping[]>(
+    []
+  );
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
     setSettings({
@@ -256,6 +304,23 @@ export function CalendarProvider({
         return;
       }
 
+      // Fetch and cache calendar color mappings if not already loaded
+      if (colorMappings.length === 0) {
+        try {
+          const mappings = await fetchCalendarColorMappings();
+          saveColorMappings(mappings);
+          setColorMappings(mappings);
+          logger.log("Fetched and cached calendar color mappings", {
+            count: mappings.length,
+          });
+        } catch (error) {
+          logger.error(error as Error, {
+            context: "fetchCalendarColorMappings",
+          });
+          // Continue with event fetching even if color mapping fails
+        }
+      }
+
       // Fetch events for the next 6 months starting from beginning of current month
       const timeMin = startOfMonth(new Date()); // Start of current month
       const timeMax = new Date();
@@ -272,7 +337,7 @@ export function CalendarProvider({
 
       // Transform events
       const transformedEvents = googleEvents.map((event) =>
-        transformGoogleEvent(event)
+        transformGoogleEvent(event, colorMappings)
       );
 
       setAllEvents(transformedEvents);
@@ -290,7 +355,7 @@ export function CalendarProvider({
       try {
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
-          transformGoogleEvent(event)
+          transformGoogleEvent(event, colorMappings)
         );
         setAllEvents(transformedEvents);
         logger.log("Loaded events from cache", {
@@ -304,6 +369,13 @@ export function CalendarProvider({
     }
   };
 
+  // Load color mappings from localStorage on mount
+  useEffect(() => {
+    const mappings = loadColorMappings();
+    setColorMappings(mappings);
+    logger.log("Loaded color mappings on mount", { count: mappings.length });
+  }, []);
+
   // Load cached events on mount, then refresh from Google Calendar
   useEffect(() => {
     const initializeEvents = async () => {
@@ -311,7 +383,7 @@ export function CalendarProvider({
         // First, load cached events for immediate display
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
-          transformGoogleEvent(event)
+          transformGoogleEvent(event, colorMappings)
         );
         setAllEvents(transformedEvents);
         logger.log("Loaded events from cache on mount", {
@@ -331,6 +403,7 @@ export function CalendarProvider({
     };
 
     initializeEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-refresh events based on settings
@@ -343,6 +416,7 @@ export function CalendarProvider({
     }, intervalMs);
 
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Filter events

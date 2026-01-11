@@ -3,6 +3,7 @@
  * Handles localStorage for accounts and IndexedDB for event caching
  */
 import { logger } from "@/lib/logger";
+import type { TEventColor } from "@/types/calendar";
 import type {
   GoogleCalendarAccount,
   GoogleCalendarEvent,
@@ -12,6 +13,7 @@ const STORAGE_KEYS = {
   ACCOUNTS: "calendar_accounts",
   SETTINGS: "calendar_settings",
   LAST_SYNC: "calendar_last_sync",
+  COLOR_MAPPINGS: "calendar_color_mappings",
 } as const;
 
 export interface CalendarSettings {
@@ -27,6 +29,74 @@ const DEFAULT_SETTINGS: CalendarSettings = {
   theme: "auto",
   use24HourFormat: true,
 };
+
+/**
+ * Calendar color mapping
+ * Maps calendar IDs to their Google Calendar colors and Tailwind color equivalents
+ */
+export interface CalendarColorMapping {
+  calendarId: string;
+  colorId: string; // Google colorId (if available)
+  hexColor: string; // backgroundColor from Google Calendar API
+  tailwindColor: TEventColor; // Mapped Tailwind color
+}
+
+/**
+ * Save calendar color mappings to localStorage
+ */
+export function saveColorMappings(mappings: CalendarColorMapping[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.COLOR_MAPPINGS, JSON.stringify(mappings));
+    logger.log("Saved calendar color mappings", { count: mappings.length });
+  } catch (error) {
+    logger.error(error as Error, { context: "saveColorMappings" });
+    throw error;
+  }
+}
+
+/**
+ * Load calendar color mappings from localStorage
+ */
+export function loadColorMappings(): CalendarColorMapping[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.COLOR_MAPPINGS);
+    if (!data) {
+      return [];
+    }
+    const mappings = JSON.parse(data) as CalendarColorMapping[];
+    logger.log("Loaded calendar color mappings", { count: mappings.length });
+    return mappings;
+  } catch (error) {
+    logger.error(error as Error, { context: "loadColorMappings" });
+    return [];
+  }
+}
+
+/**
+ * Get color mapping for a specific calendar
+ */
+export function getColorMapping(
+  calendarId: string
+): CalendarColorMapping | null {
+  const mappings = loadColorMappings();
+  return mappings.find((m) => m.calendarId === calendarId) || null;
+}
+
+/**
+ * Update color mappings (adds new or updates existing)
+ */
+export function updateColorMappings(newMappings: CalendarColorMapping[]): void {
+  const existingMappings = loadColorMappings();
+  const mappingsMap = new Map(existingMappings.map((m) => [m.calendarId, m]));
+
+  // Add or update each new mapping
+  newMappings.forEach((mapping) => {
+    mappingsMap.set(mapping.calendarId, mapping);
+  });
+
+  const updatedMappings = Array.from(mappingsMap.values());
+  saveColorMappings(updatedMappings);
+}
 
 /**
  * Save calendar accounts to localStorage
@@ -196,6 +266,7 @@ export function clearAllData(): void {
     localStorage.removeItem(STORAGE_KEYS.ACCOUNTS);
     localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     localStorage.removeItem(STORAGE_KEYS.LAST_SYNC);
+    localStorage.removeItem(STORAGE_KEYS.COLOR_MAPPINGS);
     logger.log("Cleared all calendar data");
   } catch (error) {
     logger.error(error as Error, { context: "clearAllData" });

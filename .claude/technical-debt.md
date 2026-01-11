@@ -4,20 +4,6 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 ## High Priority
 
-### 1. Next.js Security Vulnerability
-
-**Issue:** CVE-2025-66478 in Next.js 16.0.1
-
-**Impact:** Security vulnerability affecting entire application
-
-**Action Required:** Upgrade to patched Next.js version when available
-
-**Timeline:** As soon as patch is released
-
-**Dependencies:** None
-
-**Related:** See [Security Considerations](.claude/security-considerations.md)
-
 ### 2. Manual Testing Gap
 
 **Issue:** Calendar feature not manually tested with real Google Calendar accounts
@@ -68,6 +54,56 @@ This document tracks known issues, limitations, technical debt, and improvements
 - Rate limiting detection and backoff
 
 **Timeline:** Medium priority (add as issues are discovered)
+
+### 4. Google Auth Missing Refresh Token
+
+**Issue:** After being away for a few hours, users get the error: "No refresh token available. Please re-authenticate your account."
+
+**Root Cause:** Current auth implementation follows the client-side implicit flow instead of the server-side authorization code flow, and thus does not receive a refresh token from Google.
+
+**Impact:** Users must re-authenticate frequently after token expiration, leading to poor user experience.
+
+**References:**
+
+- Stack Overflow explanation of OAuth flows: https://stackoverflow.com/a/74607003/5403341
+
+**Action Required:** Migrate from implicit flow to server-side authorization code flow to receive and store refresh tokens.
+
+**Timeline:** High priority (severely impacts user experience)
+
+**Dependencies:** May require backend implementation for secure token storage
+
+### 5. Calendar Event Colors Not Persisting After Refresh
+
+**Issue:** When a user authenticates with Google and loads Google calendar events, events from different connected calendars initially load in their distinct colors. However, after refreshing the page or switching tabs and returning a few minutes later, all events display in only blue.
+
+**Impact:** Users lose visual distinction between different calendars, making it harder to identify event sources at a glance.
+
+**Action Required:** Investigate event color storage/retrieval logic and ensure calendar colors persist across page reloads.
+
+**Possible Causes:**
+
+- Calendar metadata not being cached properly
+- Color mapping being lost during deserialization
+- Race condition in event loading
+
+**Timeline:** High priority (impacts core calendar functionality)
+
+### 6. Agenda View Date Offset Bug
+
+**Issue:** Events show on the correct days in SimpleCalendar month view, but the agenda view shows events offset one day prior to when they are scheduled.
+
+**Impact:** Users see incorrect event dates in the agenda view, leading to confusion and potential missed appointments.
+
+**Action Required:** Debug date handling in agenda view component and ensure timezone/date conversion is consistent with month view.
+
+**Possible Causes:**
+
+- Timezone conversion inconsistency
+- UTC vs local time handling
+- Date parsing during event transformation for agenda view
+
+**Timeline:** High priority (data accuracy is critical)
 
 ## Medium Priority
 
@@ -357,7 +393,7 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 Monitor these dependencies for security updates:
 
-- `next` - Web framework (CVE-2025-66478 pending patch)
+- `next` - Web framework
 - `react` / `react-dom` - UI library
 - `gapi-script` - Google API client
 - `date-fns` - Date utilities
