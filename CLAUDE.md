@@ -4,12 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a Next.js 16 Digital Wall Calendar application. The project demonstrates:
+This is a Next.js 16 Digital Wall Calendar application with full backend server architecture. The project demonstrates:
 
-1. **Windows + pnpm compatibility** - Uses hoisted node_modules (`node-linker=hoisted` in `.npmrc`)
-2. **Secretless Azure authentication** - OIDC-based GitHub Actions deployment
-3. **Application Insights integration** - Comprehensive logging and telemetry
-4. **React Compiler** - Automatic memoization for performance
+1. **Full-stack application** - Backend server with PostgreSQL database, NextAuth.js authentication, and API routes
+2. **Privacy-first family hub** - Self-hosted, multi-profile support, local face recognition integration
+3. **Windows + pnpm compatibility** - Uses hoisted node_modules (`node-linker=hoisted` in `.npmrc`)
+4. **Secretless Azure authentication** - OIDC-based GitHub Actions deployment
+5. **Application Insights integration** - Comprehensive logging and telemetry
+6. **React Compiler** - Automatic memoization for performance
+7. **Test-Driven Development** - All new features require tests before implementation
 
 ## Quick Reference
 
@@ -40,6 +43,7 @@ pnpm bump-ui          # Update shadcn components
 
 ## Key Technologies
 
+### Current
 - **Next.js 16** with Turbopack and App Router
 - **React 19** with React Compiler enabled
 - **TypeScript 5** with strict mode
@@ -47,6 +51,15 @@ pnpm bump-ui          # Update shadcn components
 - **shadcn/ui** components (copied, not installed)
 - **Application Insights** for logging and telemetry
 - **Azure Web Apps** for hosting
+
+### Planned
+- **PostgreSQL** - Primary database via Prisma ORM
+- **NextAuth.js v5** - Authentication with Google OAuth 2.0
+- **Google Calendar API** - Calendar integration (server-side)
+- **Google Tasks API** - Task management integration
+- **Frigate NVR** - Local face recognition for profile switching
+- **Amazon Alexa Skills Kit** - Voice integration
+- **bcrypt** - PIN hashing for profile security
 
 ## Important AI Agent Instructions
 
@@ -190,7 +203,165 @@ This project uses **Husky** and **lint-staged** to automatically enforce code qu
 
 **Note:** Do not consider a task complete until all quality checks pass.
 
-### 7. File Organization
+### 7. Test-Driven Development (TDD) - MANDATORY
+
+**⚠️ All new features MUST follow Test-Driven Development methodology.**
+
+This project requires TDD for all feature development. No feature is considered complete until all tests are passing.
+
+**TDD Workflow:**
+
+1. **Write tests first** - Before writing any implementation code
+   - Unit tests for functions and utilities
+   - Integration tests for API routes and database interactions
+   - Component tests for React components
+   - E2E tests for critical user flows
+
+2. **Implement feature** - Write the minimum code to make tests pass
+   - Follow existing patterns and conventions
+   - Keep implementation simple and focused
+   - Avoid over-engineering
+
+3. **Refactor** - Improve code while keeping tests green
+   - Optimize performance
+   - Improve readability
+   - Remove duplication
+
+4. **Verify** - All checks must pass before completion
+   ```bash
+   pnpm test          # All tests passing
+   pnpm lint:fix      # Zero ESLint errors
+   pnpm format:fix    # Code formatted
+   pnpm check-types   # Zero TypeScript errors
+   ```
+
+**Critical TDD Rules:**
+
+- **NEVER remove tests** without explicit user authorization
+- **NEVER modify test conditions** to make tests pass without explicit user authorization
+- **ALWAYS write tests before implementation** (red-green-refactor cycle)
+- **NO feature is complete** until all tests pass
+- **Test coverage is mandatory** for new code
+
+**When to write tests:**
+
+- ✅ Before adding new features
+- ✅ Before fixing bugs (regression tests)
+- ✅ Before refactoring existing code
+- ✅ For all API routes and database operations
+- ✅ For all business logic and utilities
+- ✅ For critical user interactions
+
+**Test Types:**
+
+```typescript
+// Unit tests - Pure functions, utilities
+describe('calculatePoints', () => {
+  it('should award correct points for task completion', () => {
+    expect(calculatePoints(task, profile)).toBe(10);
+  });
+});
+
+// Integration tests - API routes, database
+describe('POST /api/tasks', () => {
+  it('should create task and award points', async () => {
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+  });
+});
+
+// Component tests - React components
+describe('TaskList', () => {
+  it('should render tasks for active profile', () => {
+    render(<TaskList />);
+    expect(screen.getByText('My Task')).toBeInTheDocument();
+  });
+});
+
+// E2E tests - Critical user flows
+test('user can complete task and see points update', async ({ page }) => {
+  await page.click('[data-testid="task-checkbox"]');
+  await expect(page.locator('[data-testid="points"]')).toHaveText('10');
+});
+```
+
+**See:** Comprehensive feature plans in [`.claude/plans/`](./.claude/plans/) all include detailed testing strategies.
+
+### 8. Local Storage and Caching Strategy
+
+**⚠️ Backend server is the source of truth. Client-side storage is for performance optimization ONLY.**
+
+This project uses a full backend server with PostgreSQL database. IndexedDB and LocalStorage are used strategically for performance, not as primary data stores.
+
+**Architecture:**
+
+```
+Backend (Source of Truth)          Client (Performance Cache)
+├─ PostgreSQL Database         →   ├─ IndexedDB (structured data)
+├─ NextAuth.js Sessions        →   ├─ LocalStorage (preferences)
+├─ Google Calendar API         →   └─ Memory (ephemeral state)
+└─ Google Tasks API
+```
+
+**When to use client-side storage:**
+
+- ✅ **IndexedDB**: Caching API responses for offline/fast access
+  - Google Calendar events (sync every 5 minutes)
+  - Task lists (sync on change)
+  - Profile data (sync on switch)
+
+- ✅ **LocalStorage**: User preferences and settings
+  - Theme selection (dark/light mode)
+  - Screen rotation settings
+  - UI preferences (collapsed sections, etc.)
+
+- ✅ **Session Storage**: Temporary UI state
+  - Form drafts (auto-save)
+  - Modal state
+  - Navigation history
+
+**When NOT to use client-side storage:**
+
+- ❌ **User authentication** - Use NextAuth.js server sessions only
+- ❌ **Sensitive data** - PINs, tokens, secrets (server-side only)
+- ❌ **Source of truth** - Database is always authoritative
+- ❌ **Cross-device sync** - Use backend for data that needs to sync
+
+**Best Practices:**
+
+1. **Always validate cached data** - Check timestamps, handle stale data
+2. **Sync on write** - Update backend immediately, cache is secondary
+3. **Handle cache misses** - Gracefully fallback to backend
+4. **Clear on logout** - Remove all cached user data
+5. **Version cache schema** - Handle migrations for cache structure changes
+
+**Example Pattern:**
+
+```typescript
+// ✅ Good: Backend is source of truth, cache for speed
+async function getTasks(profileId: string) {
+  // Try cache first for fast response
+  const cached = await cache.get(`tasks:${profileId}`);
+  if (cached && !isStale(cached)) {
+    return cached.data;
+  }
+
+  // Fetch from backend (source of truth)
+  const tasks = await fetch(`/api/tasks?profileId=${profileId}`);
+
+  // Update cache for next time
+  await cache.set(`tasks:${profileId}`, tasks);
+
+  return tasks;
+}
+
+// ❌ Bad: Client-side storage as source of truth
+async function updateTask(task: Task) {
+  await indexedDB.put('tasks', task); // Wrong! Backend not updated
+}
+```
+
+### 9. File Organization
 
 ```text
 src/
@@ -202,12 +373,30 @@ src/
 ├── styles/          # Global styles
 └── types/           # TypeScript type definitions
 
+.claude/
+└── plans/           # Feature implementation plans (MUST READ before implementing)
+                     # - multi-profile-family-support.md
+                     # - server-side-auth.md
+                     # - google-tasks-todo-list.md
+                     # - reward-point-system.md
+                     # - meal-planning.md
+                     # - face-recognition-profile-switching.md
+                     # - voice-integration.md
+                     # - And more...
+
 docs/                # Documentation (for humans, not AI agents)
 scripts/             # Build and deployment scripts
 .github/workflows/   # CI/CD workflows
 ```
 
-### 8. Next.js 16 Specific
+**⚠️ Important:** Before implementing any planned feature, ALWAYS read the corresponding plan in `.claude/plans/` first. These plans contain:
+- Complete technical specifications
+- Database schemas and API routes
+- Visual mockups and component hierarchies
+- Testing strategies
+- Implementation roadmaps
+
+### 10. Next.js 16 Specific
 
 - **Turbopack** - Used for all builds (stable in Next.js 16)
 - **Standalone output** - Configured for Azure deployment
@@ -378,19 +567,37 @@ export function MyComponent() {
 
 ## Important Notes
 
-1. **Use standard Tailwind colors** - Default color palette (gray, blue, red, etc.)
-2. **Use the logger** - For all errors, events, and performance tracking
-3. **Let React Compiler optimize** - Don't add manual memoization
-4. **ALWAYS lint and format** - Run `pnpm lint:fix && pnpm format:fix && pnpm check-types` after generating/modifying code
-5. **Test locally** - Use `pnpm build:standalone && pnpm start:standalone`
-6. **Consult docs/** - For detailed information on specific topics
+1. **Follow TDD methodology** - Write tests first, never remove tests without authorization
+2. **Read feature plans first** - Check `.claude/plans/` before implementing planned features
+3. **Backend is source of truth** - Use IndexedDB/LocalStorage for performance only, not as primary data store
+4. **Use standard Tailwind colors** - Default color palette (gray, blue, red, etc.)
+5. **Use the logger** - For all errors, events, and performance tracking
+6. **Let React Compiler optimize** - Don't add manual memoization
+7. **ALWAYS lint and format** - Run `pnpm lint:fix && pnpm format:fix && pnpm check-types` after generating/modifying code
+8. **Test locally** - Use `pnpm build:standalone && pnpm start:standalone`
+9. **Consult docs/** - For detailed information on specific topics
 
-**⚠️ Critical:** Do not consider any task complete until all code quality checks pass (ESLint, Prettier, TypeScript).
+**⚠️ Critical:** Do not consider any task complete until:
+- All tests are passing (`pnpm test`)
+- All code quality checks pass (ESLint, Prettier, TypeScript)
+- Feature matches the plan specification (if implementing from `.claude/plans/`)
 
 ## Need More Information?
 
+### Documentation
 - **Application Insights:** See [docs/application-insights.md](./docs/application-insights.md)
 - **React Compiler:** See [docs/react-compiler.md](./docs/react-compiler.md)
 - **Deployment:** See [docs/deployment.md](./docs/deployment.md)
 - **Styling:** See [docs/styling.md](./docs/styling.md)
 - **MCP Servers:** See [docs/mcp-servers.md](./docs/mcp-servers.md)
+
+### Feature Plans
+- **All Features:** See [`.claude/plans/`](./.claude/plans/) for comprehensive implementation plans
+  - Multi-Profile Family Support
+  - Server-Side Authentication
+  - Task Management (Google Tasks)
+  - Reward Point System
+  - Meal Planning
+  - Face Recognition Profile Switching
+  - Voice Integration (Alexa/Google)
+  - And more...
