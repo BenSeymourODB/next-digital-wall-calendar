@@ -1,11 +1,13 @@
 # Analog Clock Face Component with Calendar Events
 
 ## Overview
+
 Create an analog clock face component that displays Google Calendar events for the current 12-hour period as colored radial arcs on the border of the clock dial.
 
 ## Requirements
 
 ### Visual Design
+
 - **Clock Face**: Standard analog clock with hour and minute hands
 - **Event Arcs**: Colored radial arcs drawn on the border of the dial
   - Arc thickness: Sufficient to display emoji (minimum ~40-60px depending on clock size)
@@ -13,6 +15,7 @@ Create an analog clock face component that displays Google Calendar events for t
   - Arc angle: Calculated from event start/end times within 12-hour period
 
 ### Event Display Features
+
 - **Color Coding**: Events can be color-coded via color dot emoji prefix
   - Example: "🟢 Team Meeting" → green arc
   - Example: "🔴 Deadline" → red arc
@@ -31,6 +34,7 @@ Create an analog clock face component that displays Google Calendar events for t
   - Use curved text rendering if possible, otherwise use straight text rotated to match arc angle
 
 ### Time Period Logic
+
 - **12-Hour Period Selection**:
   - If current time is 12:00 AM - 11:59 AM: Show events from 12:00 AM - 11:59 AM
   - If current time is 12:00 PM - 11:59 PM: Show events from 12:00 PM - 11:59 PM
@@ -41,6 +45,7 @@ Create an analog clock face component that displays Google Calendar events for t
   - Calculate arc start/end angles based on event times
 
 ### Google Calendar Integration
+
 - **API Requirements**:
   - Fetch events from Google Calendar API
   - Filter events for current 12-hour period
@@ -55,6 +60,7 @@ Create an analog clock face component that displays Google Calendar events for t
 ## Technical Implementation Plan
 
 ### 1. Component Structure
+
 ```
 src/components/calendar/
 ├── analog-clock.tsx          # Main clock component
@@ -67,6 +73,7 @@ src/components/calendar/
 ### 2. Key Components
 
 #### AnalogClock Component
+
 - **Props**:
   - `size?: number` - Clock diameter in pixels (default: 600)
   - `refreshInterval?: number` - Event refresh interval in ms (default: 300000 = 5min)
@@ -78,6 +85,7 @@ src/components/calendar/
   - Loading/error states
 
 #### EventArc Component
+
 - **Props**:
   - `event: CalendarEvent` - Event data
   - `startAngle: number` - Arc start angle in degrees
@@ -123,15 +131,15 @@ interface ParsedEventTitle {
 
 function parseEventTitle(title: string, fallbackColor: string): ParsedEventTitle {
   const colorEmojiMap = {
-    '🔴': '#EF4444', // red-500
-    '🟠': '#F97316', // orange-500
-    '🟡': '#EAB308', // yellow-500
-    '🟢': '#22C55E', // green-500
-    '🔵': '#3B82F6', // blue-500
-    '🟣': '#A855F7', // purple-500
-    '⚫': '#1F2937', // gray-800
-    '⚪': '#F3F4F6', // gray-100
-    '🟤': '#92400E', // amber-800
+    "🔴": "#EF4444", // red-500
+    "🟠": "#F97316", // orange-500
+    "🟡": "#EAB308", // yellow-500
+    "🟢": "#22C55E", // green-500
+    "🔵": "#3B82F6", // blue-500
+    "🟣": "#A855F7", // purple-500
+    "⚫": "#1F2937", // gray-800
+    "⚪": "#F3F4F6", // gray-100
+    "🟤": "#92400E", // amber-800
   };
 
   // Extract color emoji (if first character)
@@ -199,6 +207,7 @@ async function fetchCalendarEvents(
 ```
 
 ### 8. Dependencies
+
 - **Required packages**:
   - Google Calendar API client library or direct fetch
   - Date manipulation: Use built-in Date or date-fns for timezone handling
@@ -246,6 +255,7 @@ async function fetchCalendarEvents(
 ## Challenges and Considerations
 
 ### Challenge 1: Curved Text Rendering
+
 - **Problem**: SVG doesn't natively support text following a circular path easily
 - **Solutions**:
   - Option A: Use `<textPath>` with arc path definition
@@ -253,6 +263,7 @@ async function fetchCalendarEvents(
   - Option C: Use straight text rotated to match arc center angle (simpler)
 
 ### Challenge 2: Overlapping Events
+
 - **Problem**: Multiple events at same time will overlap
 - **Solutions**:
   - Option A: Stack arcs at different radii (inner/outer rings)
@@ -260,6 +271,7 @@ async function fetchCalendarEvents(
   - Option C: Show only primary event, indicate others with counter
 
 ### Challenge 3: Very Short Events
+
 - **Problem**: Events under ~15 minutes may have arcs too small for text/emoji
 - **Solutions**:
   - Minimum arc size of X degrees
@@ -267,6 +279,7 @@ async function fetchCalendarEvents(
   - On hover/click, show full event details in tooltip
 
 ### Challenge 4: Server-Side Auth Requirement
+
 - **Problem**: Component needs server-side auth infrastructure
 - **Dependencies**:
   - Requires "server-side auth with refresh token storage" feature to be implemented first
@@ -274,6 +287,7 @@ async function fetchCalendarEvents(
   - Handle token refresh transparently
 
 ### Challenge 5: Timezone Handling
+
 - **Problem**: Google Calendar events have timezones, need to convert to local time
 - **Solution**:
   - Use Google Calendar API timezone fields

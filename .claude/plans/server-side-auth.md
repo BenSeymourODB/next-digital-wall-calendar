@@ -1,6 +1,7 @@
 # Server-Side Authentication with Refresh Token Storage
 
 ## Overview
+
 Transition from client-side Google Identity Services (GIS) to server-side OAuth 2.0 authentication with refresh tokens stored in a database. This enables secure, persistent access to Google APIs (Calendar, Tasks) without requiring users to re-authenticate frequently.
 
 ## Requirements
@@ -8,6 +9,7 @@ Transition from client-side Google Identity Services (GIS) to server-side OAuth 
 ### Core Features
 
 #### 1. OAuth 2.0 Flow
+
 - **Authorization Code Flow**: Server-side OAuth with PKCE (recommended)
 - **Scopes**:
   - `https://www.googleapis.com/auth/calendar.readonly` - Read calendar events
@@ -17,12 +19,14 @@ Transition from client-side Google Identity Services (GIS) to server-side OAuth 
 - **Callback Handling**: Receive and process authorization code
 
 #### 2. Token Management
+
 - **Access Tokens**: Short-lived (1 hour), stored in session
 - **Refresh Tokens**: Long-lived, stored in database
 - **Automatic Refresh**: Refresh access tokens when expired
 - **Token Revocation**: Support for revoking tokens (logout)
 
 #### 3. Session Management
+
 - **Options**:
   - **Option A**: NextAuth.js (recommended for ease of use)
   - **Option B**: Custom session with JWT
@@ -31,6 +35,7 @@ Transition from client-side Google Identity Services (GIS) to server-side OAuth 
 - **Secure Cookies**: HttpOnly, Secure, SameSite
 
 #### 4. Database Schema
+
 - **Users Table**: Store user information
 - **OAuth Tokens Table**: Store refresh tokens per user
 - **Database Options**:
@@ -39,6 +44,7 @@ Transition from client-side Google Identity Services (GIS) to server-side OAuth 
   - Prisma ORM (for type-safe database access)
 
 #### 5. Multi-User Support
+
 - **User Isolation**: Each user has separate data
 - **Multiple Accounts**: Users can connect multiple Google accounts
 - **Account Switching**: UI to switch between connected accounts
@@ -64,12 +70,14 @@ Google APIs (Calendar, Tasks)
 ### 2. Technology Stack
 
 **Recommended Stack:**
+
 - **Auth Library**: NextAuth.js v5 (Auth.js)
 - **Database**: PostgreSQL with Prisma ORM
 - **Session**: JWT-based sessions (NextAuth default)
 - **Deployment**: Azure Web Apps with PostgreSQL
 
 **Alternative Stack:**
+
 - **Auth Library**: Custom implementation
 - **Database**: Azure SQL Database
 - **Session**: Server-side with Redis
@@ -175,8 +183,8 @@ model RewardPoints {
 
 ```typescript
 // src/lib/auth/auth.config.ts
-import { NextAuthConfig } from 'next-auth';
-import Google from 'next-auth/providers/google';
+import { NextAuthConfig } from "next-auth";
+import Google from "next-auth/providers/google";
 
 export const authConfig: NextAuthConfig = {
   providers: [
@@ -186,14 +194,14 @@ export const authConfig: NextAuthConfig = {
       authorization: {
         params: {
           scope: [
-            'openid',
-            'email',
-            'profile',
-            'https://www.googleapis.com/auth/calendar.readonly',
-            'https://www.googleapis.com/auth/tasks',
-          ].join(' '),
-          access_type: 'offline',  // Request refresh token
-          prompt: 'consent',        // Force consent to get refresh token
+            "openid",
+            "email",
+            "profile",
+            "https://www.googleapis.com/auth/calendar.readonly",
+            "https://www.googleapis.com/auth/tasks",
+          ].join(" "),
+          access_type: "offline", // Request refresh token
+          prompt: "consent", // Force consent to get refresh token
         },
       },
     }),
@@ -228,11 +236,11 @@ export const authConfig: NextAuthConfig = {
     },
   },
   pages: {
-    signIn: '/auth/signin',
-    error: '/auth/error',
+    signIn: "/auth/signin",
+    error: "/auth/error",
   },
   session: {
-    strategy: 'jwt',
+    strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 };
@@ -242,15 +250,15 @@ async function refreshAccessToken(token: any) {
     const body = new URLSearchParams({
       client_id: process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      grant_type: 'refresh_token',
+      grant_type: "refresh_token",
       refresh_token: token.refreshToken,
     });
 
-    const response = await fetch('https://oauth2.googleapis.com/token', {
+    const response = await fetch("https://oauth2.googleapis.com/token", {
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-      method: 'POST',
+      method: "POST",
       body,
     });
 
@@ -268,12 +276,12 @@ async function refreshAccessToken(token: any) {
     };
   } catch (error) {
     logger.error(error as Error, {
-      context: 'RefreshAccessTokenError',
+      context: "RefreshAccessTokenError",
     });
 
     return {
       ...token,
-      error: 'RefreshAccessTokenError',
+      error: "RefreshAccessTokenError",
     };
   }
 }
@@ -281,10 +289,10 @@ async function refreshAccessToken(token: any) {
 
 ```typescript
 // src/lib/auth/auth.ts
-import NextAuth from 'next-auth';
-import { authConfig } from './auth.config';
-import { PrismaAdapter } from '@auth/prisma-adapter';
-import { prisma } from '@/lib/db';
+import { prisma } from "@/lib/db";
+import NextAuth from "next-auth";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import { authConfig } from "./auth.config";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
@@ -296,13 +304,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
 ```typescript
 // src/middleware.ts
-import { auth } from '@/lib/auth/auth';
-import { NextResponse } from 'next/server';
+import { auth } from "@/lib/auth/auth";
+import { NextResponse } from "next/server";
 
 export default auth((req) => {
   const isAuthenticated = !!req.auth;
-  const isApiRoute = req.nextUrl.pathname.startsWith('/api');
-  const isAuthRoute = req.nextUrl.pathname.startsWith('/api/auth');
+  const isApiRoute = req.nextUrl.pathname.startsWith("/api");
+  const isAuthRoute = req.nextUrl.pathname.startsWith("/api/auth");
 
   // Allow auth routes
   if (isAuthRoute) {
@@ -311,17 +319,14 @@ export default auth((req) => {
 
   // Protect API routes (except auth)
   if (isApiRoute && !isAuthenticated) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   return NextResponse.next();
 });
 
 export const config = {
-  matcher: ['/api/:path*', '/dashboard/:path*', '/settings/:path*'],
+  matcher: ["/api/:path*", "/dashboard/:path*", "/settings/:path*"],
 };
 ```
 
@@ -329,8 +334,8 @@ export const config = {
 
 ```typescript
 // src/lib/auth/helpers.ts
-import { auth } from '@/lib/auth/auth';
-import { NextRequest } from 'next/server';
+import { auth } from "@/lib/auth/auth";
+import { NextRequest } from "next/server";
 
 /**
  * Get the current user's session
@@ -346,11 +351,11 @@ export async function getAccessToken(request?: NextRequest): Promise<string> {
   const session = await getSession();
 
   if (!session?.accessToken) {
-    throw new Error('No access token available');
+    throw new Error("No access token available");
   }
 
-  if (session.error === 'RefreshAccessTokenError') {
-    throw new Error('Failed to refresh access token');
+  if (session.error === "RefreshAccessTokenError") {
+    throw new Error("Failed to refresh access token");
   }
 
   return session.accessToken;
@@ -363,7 +368,7 @@ export async function getCurrentUser() {
   const session = await getSession();
 
   if (!session?.user) {
-    throw new Error('Not authenticated');
+    throw new Error("Not authenticated");
   }
 
   return session.user;
@@ -376,7 +381,7 @@ export async function requireAuth() {
   const session = await getSession();
 
   if (!session) {
-    throw new Error('Not authenticated');
+    throw new Error("Not authenticated");
   }
 
   return session;
@@ -387,33 +392,27 @@ export async function requireAuth() {
 
 ```typescript
 // src/app/api/tasks/route.ts
-import { getAccessToken } from '@/lib/auth/helpers';
-import { logger } from '@/lib/logger';
-import { NextRequest, NextResponse } from 'next/server';
+import { getAccessToken } from "@/lib/auth/helpers";
+import { logger } from "@/lib/logger";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const listId = searchParams.get('listId');
+    const listId = searchParams.get("listId");
 
     if (!listId) {
-      return NextResponse.json(
-        { error: 'listId is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "listId is required" }, { status: 400 });
     }
 
     // Get access token from session (automatically refreshed if needed)
     const accessToken = await getAccessToken();
 
-    const response = await fetch(
-      `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }
-    );
+    const response = await fetch(`https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
 
     if (!response.ok) {
       throw new Error(`Google Tasks API error: ${response.statusText}`);
@@ -421,7 +420,7 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
 
-    logger.log('Tasks fetched successfully', {
+    logger.log("Tasks fetched successfully", {
       listId,
       taskCount: data.items?.length || 0,
     });
@@ -429,14 +428,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(data.items || []);
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/tasks',
-      errorType: 'fetch_tasks',
+      endpoint: "/api/tasks",
+      errorType: "fetch_tasks",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch tasks' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
   }
 }
 ```
@@ -445,10 +441,10 @@ export async function GET(request: NextRequest) {
 
 ```tsx
 // src/app/auth/signin/page.tsx
-'use client';
+"use client";
 
-import { signIn } from 'next-auth/react';
-import { useState } from 'react';
+import { useState } from "react";
+import { signIn } from "next-auth/react";
 
 export default function SignInPage() {
   const [loading, setLoading] = useState(false);
@@ -456,34 +452,34 @@ export default function SignInPage() {
   const handleSignIn = async () => {
     setLoading(true);
     try {
-      await signIn('google', { callbackUrl: '/dashboard' });
+      await signIn("google", { callbackUrl: "/dashboard" });
     } catch (error) {
-      console.error('Sign in error:', error);
+      console.error("Sign in error:", error);
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md">
+        <h1 className="mb-6 text-center text-2xl font-bold text-gray-900">
           Sign in to Digital Wall Calendar
         </h1>
 
-        <p className="text-gray-600 mb-6 text-center">
+        <p className="mb-6 text-center text-gray-600">
           Sign in with your Google account to access your calendar and tasks.
         </p>
 
         <button
           onClick={handleSignIn}
           disabled={loading}
-          className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? (
-            'Signing in...'
+            "Signing in..."
           ) : (
             <>
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
+              <svg className="h-5 w-5" viewBox="0 0 24 24">
                 {/* Google icon SVG */}
               </svg>
               Sign in with Google
@@ -491,9 +487,8 @@ export default function SignInPage() {
           )}
         </button>
 
-        <p className="text-sm text-gray-500 mt-4 text-center">
-          By signing in, you agree to allow this app to access your Google
-          Calendar and Tasks.
+        <p className="mt-4 text-center text-sm text-gray-500">
+          By signing in, you agree to allow this app to access your Google Calendar and Tasks.
         </p>
       </div>
     </div>
@@ -505,25 +500,22 @@ export default function SignInPage() {
 
 ```tsx
 // src/components/providers/session-provider.tsx
-'use client';
+"use client";
 
-import { SessionProvider as NextAuthSessionProvider } from 'next-auth/react';
+// Usage in root layout
+// src/app/layout.tsx
+import { SessionProvider } from "@/components/providers/session-provider";
+import { SessionProvider as NextAuthSessionProvider } from "next-auth/react";
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   return <NextAuthSessionProvider>{children}</NextAuthSessionProvider>;
 }
 
-// Usage in root layout
-// src/app/layout.tsx
-import { SessionProvider } from '@/components/providers/session-provider';
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <SessionProvider>
-          {children}
-        </SessionProvider>
+        <SessionProvider>{children}</SessionProvider>
       </body>
     </html>
   );
@@ -532,14 +524,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 ```tsx
 // Example: Using session in a client component
-'use client';
+"use client";
 
-import { useSession, signOut } from 'next-auth/react';
+import { signOut, useSession } from "next-auth/react";
 
 export function UserMenu() {
   const { data: session, status } = useSession();
 
-  if (status === 'loading') {
+  if (status === "loading") {
     return <div>Loading...</div>;
   }
 
@@ -581,6 +573,7 @@ DATABASE_URL=postgresql://user:password@localhost:5432/calendar_db
 ### Phase 1: Setup (Foundation)
 
 1. **Install dependencies**
+
    ```bash
    pnpm add next-auth@beta @auth/prisma-adapter prisma @prisma/client
    pnpm add -D @types/bcrypt
@@ -651,22 +644,26 @@ DATABASE_URL=postgresql://user:password@localhost:5432/calendar_db
 ## Challenges and Considerations
 
 ### Challenge 1: Token Refresh Complexity
+
 - **Problem**: Access tokens expire every hour, need automatic refresh
 - **Solution**: NextAuth.js handles this automatically via JWT callback
 
 ### Challenge 2: Multiple Google Accounts
+
 - **Problem**: Users may want to connect multiple Google accounts
 - **Solution**:
   - Phase 1: Support one account per user
   - Phase 2: Add support for multiple accounts with account switching UI
 
 ### Challenge 3: Migration from Client-Side
+
 - **Problem**: Existing users may have client-side sessions
 - **Solution**:
   - No migration needed (client-side is stateless)
   - Users will need to sign in again
 
 ### Challenge 4: Database Hosting
+
 - **Problem**: Need to host PostgreSQL database
 - **Solution**:
   - Development: Local PostgreSQL or SQLite
@@ -674,12 +671,14 @@ DATABASE_URL=postgresql://user:password@localhost:5432/calendar_db
   - Alternative: Supabase (managed PostgreSQL)
 
 ### Challenge 5: Secret Management
+
 - **Problem**: Storing client secret and NextAuth secret securely
 - **Solution**:
   - Development: .env.local (gitignored)
   - Production: Azure App Settings or Key Vault
 
 ### Challenge 6: Session Security
+
 - **Problem**: JWT tokens can be large, need to secure session cookies
 - **Solution**:
   - Use HttpOnly cookies (NextAuth default)
@@ -764,19 +763,19 @@ DATABASE_URL=postgresql://user:password@localhost:5432/calendar_db
 
 ```typescript
 // Example logging
-logger.event('UserSignedIn', {
+logger.event("UserSignedIn", {
   userId: user.id,
   email: user.email,
-  provider: 'google',
+  provider: "google",
 });
 
-logger.event('TokenRefreshed', {
+logger.event("TokenRefreshed", {
   userId: user.id,
   success: true,
 });
 
 logger.error(error, {
-  context: 'TokenRefreshFailed',
+  context: "TokenRefreshFailed",
   userId: user.id,
 });
 ```
@@ -792,12 +791,14 @@ logger.error(error, {
 ## Integration with Other Features
 
 All features that use Google APIs depend on this:
+
 - Analog Clock Calendar component
 - Google Tasks to-do list
 - New task modal
 - Any future Google API integrations
 
 User-specific features also depend on this:
+
 - User settings page
 - Reward points system
 - Task list configurations

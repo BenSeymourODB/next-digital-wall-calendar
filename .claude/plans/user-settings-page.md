@@ -1,6 +1,7 @@
 # User Settings Page
 
 ## Overview
+
 Create a comprehensive settings page for managing user accounts, preferences, and application configuration. Each account is tied to a Google account, with settings stored server-side in a database.
 
 ## Requirements
@@ -8,6 +9,7 @@ Create a comprehensive settings page for managing user accounts, preferences, an
 ### Core Features
 
 #### 1. Account Management
+
 - **Current Account Display**:
   - User name
   - Email address
@@ -27,6 +29,7 @@ Create a comprehensive settings page for managing user accounts, preferences, an
   - Remove account
 
 #### 2. User Preferences
+
 - **Display Settings**:
   - Default theme (light/dark/auto)
   - Default zoom level for recipe display
@@ -49,11 +52,13 @@ Create a comprehensive settings page for managing user accounts, preferences, an
   - Pause duration on interaction
 
 #### 3. Notification Preferences (Future)
+
 - Email notifications
 - Task reminders
 - Calendar event reminders
 
 #### 4. Privacy & Data
+
 - View connected permissions/scopes
 - Revoke specific permissions
 - Export user data
@@ -146,8 +151,8 @@ interface UserSettings {
   userId: string;
 
   // Display
-  theme: 'light' | 'dark' | 'auto';
-  timeFormat: '12h' | '24h';
+  theme: "light" | "dark" | "auto";
+  timeFormat: "12h" | "24h";
   dateFormat: string;
   defaultZoomLevel: number;
 
@@ -157,8 +162,8 @@ interface UserSettings {
   showPointsOnCompletion: boolean;
 
   // Task Lists
-  defaultTaskView: 'single' | 'multi';
-  defaultTaskSort: 'dueDate' | 'created' | 'manual';
+  defaultTaskView: "single" | "multi";
+  defaultTaskSort: "dueDate" | "created" | "manual";
   showCompletedByDefault: boolean;
 
   // Screen Rotation
@@ -189,9 +194,9 @@ interface ConnectedAccount {
 
 ```tsx
 // src/app/settings/page.tsx
-import { requireAuth, getCurrentUser } from '@/lib/auth/helpers';
-import { prisma } from '@/lib/db';
-import { SettingsForm } from '@/components/settings/settings-form';
+import { SettingsForm } from "@/components/settings/settings-form";
+import { getCurrentUser, requireAuth } from "@/lib/auth/helpers";
+import { prisma } from "@/lib/db";
 
 export default async function SettingsPage() {
   // Require authentication
@@ -218,8 +223,8 @@ export default async function SettingsPage() {
   }
 
   return (
-    <div className="container mx-auto p-8 max-w-4xl">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Settings</h1>
+    <div className="container mx-auto max-w-4xl p-8">
+      <h1 className="mb-8 text-3xl font-bold text-gray-900">Settings</h1>
 
       <SettingsForm
         user={user}
@@ -232,17 +237,17 @@ export default async function SettingsPage() {
 
 function getDefaultSettings(): UserSettings {
   return {
-    id: '',
-    userId: '',
-    theme: 'auto',
-    timeFormat: '12h',
-    dateFormat: 'MM/DD/YYYY',
+    id: "",
+    userId: "",
+    theme: "auto",
+    timeFormat: "12h",
+    dateFormat: "MM/DD/YYYY",
     defaultZoomLevel: 1.0,
     rewardSystemEnabled: false,
     defaultTaskPoints: 10,
     showPointsOnCompletion: true,
-    defaultTaskView: 'single',
-    defaultTaskSort: 'dueDate',
+    defaultTaskView: "single",
+    defaultTaskSort: "dueDate",
     showCompletedByDefault: false,
     rotationEnabled: false,
     rotationIntervalSeconds: 60,
@@ -255,17 +260,17 @@ function getDefaultSettings(): UserSettings {
 
 ```tsx
 // src/components/settings/settings-form.tsx
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { AccountSection } from './account-section';
-import { DisplaySection } from './display-section';
-import { RewardSection } from './reward-section';
-import { TaskSection } from './task-section';
-import { RotationSection } from './rotation-section';
-import { PrivacySection } from './privacy-section';
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { AccountSection } from "./account-section";
+import { DisplaySection } from "./display-section";
+import { PrivacySection } from "./privacy-section";
+import { RewardSection } from "./reward-section";
+import { RotationSection } from "./rotation-section";
+import { TaskSection } from "./task-section";
 
 interface SettingsFormProps {
   user: UserAccount;
@@ -284,20 +289,20 @@ export function SettingsForm({ user, settings, accounts }: SettingsFormProps) {
     setError(null);
 
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PUT',
+      const response = await fetch("/api/settings", {
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(formData),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save settings');
+        throw new Error(errorData.error || "Failed to save settings");
       }
 
-      logger.event('SettingsSaved', {
+      logger.event("SettingsSaved", {
         userId: user.id,
       });
 
@@ -305,10 +310,10 @@ export function SettingsForm({ user, settings, accounts }: SettingsFormProps) {
       router.refresh();
 
       // Show success message (could use a toast notification)
-      alert('Settings saved successfully!');
+      alert("Settings saved successfully!");
     } catch (err) {
       logger.error(err as Error, {
-        context: 'SaveSettingsFailed',
+        context: "SaveSettingsFailed",
         userId: user.id,
       });
       setError((err as Error).message);
@@ -318,7 +323,7 @@ export function SettingsForm({ user, settings, accounts }: SettingsFormProps) {
   };
 
   const handleCancel = () => {
-    router.push('/dashboard');
+    router.push("/dashboard");
   };
 
   return (
@@ -348,24 +353,24 @@ export function SettingsForm({ user, settings, accounts }: SettingsFormProps) {
       <PrivacySection user={user} accounts={accounts} />
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded p-4">
+        <div className="rounded border border-red-200 bg-red-50 p-4">
           <p className="text-red-700">{error}</p>
         </div>
       )}
 
-      <div className="flex justify-end gap-3 pt-6 border-t">
+      <div className="flex justify-end gap-3 border-t pt-6">
         <button
           onClick={handleCancel}
-          className="px-6 py-2 text-gray-700 hover:bg-gray-100 rounded"
+          className="rounded px-6 py-2 text-gray-700 hover:bg-gray-100"
         >
           Cancel
         </button>
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-6 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded bg-blue-600 px-6 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {saving ? 'Saving...' : 'Save Changes'}
+          {saving ? "Saving..." : "Save Changes"}
         </button>
       </div>
     </div>
@@ -377,11 +382,11 @@ export function SettingsForm({ user, settings, accounts }: SettingsFormProps) {
 
 ```tsx
 // src/components/settings/account-section.tsx
-'use client';
+"use client";
 
-import { signOut } from 'next-auth/react';
-import { useState } from 'react';
-import { SettingsSection } from './settings-section';
+import { useState } from "react";
+import { signOut } from "next-auth/react";
+import { SettingsSection } from "./settings-section";
 
 interface AccountSectionProps {
   user: UserAccount;
@@ -392,12 +397,12 @@ export function AccountSection({ user, accounts }: AccountSectionProps) {
   const [deleting, setDeleting] = useState(false);
 
   const handleSignOut = async () => {
-    await signOut({ callbackUrl: '/' });
+    await signOut({ callbackUrl: "/" });
   };
 
   const handleDeleteAccount = async () => {
     const confirmed = confirm(
-      'Are you sure you want to delete your account? This action cannot be undone and will delete all your data.'
+      "Are you sure you want to delete your account? This action cannot be undone and will delete all your data."
     );
 
     if (!confirmed) return;
@@ -405,19 +410,19 @@ export function AccountSection({ user, accounts }: AccountSectionProps) {
     setDeleting(true);
 
     try {
-      const response = await fetch('/api/settings/delete-account', {
-        method: 'DELETE',
+      const response = await fetch("/api/settings/delete-account", {
+        method: "DELETE",
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete account');
+        throw new Error("Failed to delete account");
       }
 
       // Sign out and redirect
-      await signOut({ callbackUrl: '/' });
+      await signOut({ callbackUrl: "/" });
     } catch (error) {
-      console.error('Delete account error:', error);
-      alert('Failed to delete account. Please try again.');
+      console.error("Delete account error:", error);
+      alert("Failed to delete account. Please try again.");
       setDeleting(false);
     }
   };
@@ -426,19 +431,13 @@ export function AccountSection({ user, accounts }: AccountSectionProps) {
     <SettingsSection title="Account">
       <div className="flex items-start gap-4">
         {user.image && (
-          <img
-            src={user.image}
-            alt={user.name || 'User'}
-            className="w-16 h-16 rounded-full"
-          />
+          <img src={user.image} alt={user.name || "User"} className="h-16 w-16 rounded-full" />
         )}
 
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-gray-900">
-            {user.name || 'User'}
-          </h3>
+          <h3 className="text-lg font-semibold text-gray-900">{user.name || "User"}</h3>
           <p className="text-gray-600">{user.email}</p>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="mt-1 text-sm text-gray-500">
             Member since {new Date(user.createdAt).toLocaleDateString()}
           </p>
 
@@ -457,19 +456,19 @@ export function AccountSection({ user, accounts }: AccountSectionProps) {
         </div>
       </div>
 
-      <div className="flex gap-3 mt-6">
+      <div className="mt-6 flex gap-3">
         <button
           onClick={handleSignOut}
-          className="px-4 py-2 bg-gray-200 text-gray-900 hover:bg-gray-300 rounded"
+          className="rounded bg-gray-200 px-4 py-2 text-gray-900 hover:bg-gray-300"
         >
           Sign Out
         </button>
         <button
           onClick={handleDeleteAccount}
           disabled={deleting}
-          className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {deleting ? 'Deleting...' : 'Delete Account'}
+          {deleting ? "Deleting..." : "Delete Account"}
         </button>
       </div>
     </SettingsSection>
@@ -488,11 +487,9 @@ export function DisplaySection({ settings, onChange }: DisplaySectionProps) {
       <div className="space-y-4">
         {/* Theme */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Theme
-          </label>
+          <label className="mb-2 block text-sm font-medium text-gray-700">Theme</label>
           <div className="flex gap-4">
-            {(['light', 'auto', 'dark'] as const).map((theme) => (
+            {(["light", "auto", "dark"] as const).map((theme) => (
               <label key={theme} className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -509,11 +506,9 @@ export function DisplaySection({ settings, onChange }: DisplaySectionProps) {
 
         {/* Time Format */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Time Format
-          </label>
+          <label className="mb-2 block text-sm font-medium text-gray-700">Time Format</label>
           <div className="flex gap-4">
-            {(['12h', '24h'] as const).map((format) => (
+            {(["12h", "24h"] as const).map((format) => (
               <label key={format} className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -522,7 +517,7 @@ export function DisplaySection({ settings, onChange }: DisplaySectionProps) {
                   checked={settings.timeFormat === format}
                   onChange={(e) => onChange({ timeFormat: e.target.value as any })}
                 />
-                <span>{format === '12h' ? '12-hour' : '24-hour'}</span>
+                <span>{format === "12h" ? "12-hour" : "24-hour"}</span>
               </label>
             ))}
           </div>
@@ -530,7 +525,7 @@ export function DisplaySection({ settings, onChange }: DisplaySectionProps) {
 
         {/* Default Zoom */}
         <div>
-          <label htmlFor="zoom" className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="zoom" className="mb-2 block text-sm font-medium text-gray-700">
             Default Zoom Level: {Math.round(settings.defaultZoomLevel * 100)}%
           </label>
           <input
@@ -571,7 +566,7 @@ export function RewardSection({ settings, onChange }: RewardSectionProps) {
         {settings.rewardSystemEnabled && (
           <>
             <div>
-              <label htmlFor="points" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="points" className="mb-1 block text-sm font-medium text-gray-700">
                 Default points per task
               </label>
               <input
@@ -581,7 +576,7 @@ export function RewardSection({ settings, onChange }: RewardSectionProps) {
                 max="1000"
                 value={settings.defaultTaskPoints}
                 onChange={(e) => onChange({ defaultTaskPoints: parseInt(e.target.value) })}
-                className="border border-gray-300 rounded px-3 py-2 w-32"
+                className="w-32 rounded border border-gray-300 px-3 py-2"
               />
             </div>
 
@@ -607,10 +602,10 @@ export function RewardSection({ settings, onChange }: RewardSectionProps) {
 
 ```typescript
 // src/app/api/settings/route.ts
-import { requireAuth, getCurrentUser } from '@/lib/auth/helpers';
-import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
-import { NextRequest, NextResponse } from 'next/server';
+import { getCurrentUser, requireAuth } from "@/lib/auth/helpers";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET() {
   try {
@@ -624,14 +619,11 @@ export async function GET() {
     return NextResponse.json(settings);
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/settings',
-      method: 'GET',
+      endpoint: "/api/settings",
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch settings' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });
   }
 }
 
@@ -653,7 +645,7 @@ export async function PUT(request: NextRequest) {
       },
     });
 
-    logger.event('SettingsUpdated', {
+    logger.event("SettingsUpdated", {
       userId: user.id,
       updatedFields: Object.keys(updates),
     });
@@ -661,14 +653,11 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(settings);
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/settings',
-      method: 'PUT',
+      endpoint: "/api/settings",
+      method: "PUT",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to update settings' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
   }
 }
 
@@ -683,7 +672,7 @@ export async function DELETE() {
       where: { id: user.id },
     });
 
-    logger.event('AccountDeleted', {
+    logger.event("AccountDeleted", {
       userId: user.id,
       email: user.email,
     });
@@ -691,13 +680,10 @@ export async function DELETE() {
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/settings/delete-account',
+      endpoint: "/api/settings/delete-account",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to delete account' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
   }
 }
 ```
@@ -753,22 +739,27 @@ export async function DELETE() {
 ## Challenges and Considerations
 
 ### Challenge 1: Form State Management
+
 - **Problem**: Many settings fields, complex state
 - **Solution**: Use controlled components with single state object
 
 ### Challenge 2: Optimistic Updates
+
 - **Problem**: Should UI update before server confirms?
 - **Solution**: Wait for server confirmation, show loading state
 
 ### Challenge 3: Account Deletion
+
 - **Problem**: Need to delete all user data safely
 - **Solution**: Use Prisma cascade deletes, test thoroughly
 
 ### Challenge 4: Settings Validation
+
 - **Problem**: Need to validate settings on client and server
 - **Solution**: Create shared validation schema (Zod)
 
 ### Challenge 5: Theme Application
+
 - **Problem**: How to apply theme setting immediately?
 - **Solution**: Use CSS variables and update on change
 

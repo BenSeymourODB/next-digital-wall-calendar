@@ -1,6 +1,7 @@
 # Screen Rotation/Navigation Scheduler
 
 ## Overview
+
 Implement a system for automatically navigating between different screens (pages) in the application based on configurable schedules. Support both interval-based rotation and time-specific navigation with pause-on-interaction functionality.
 
 ## Requirements
@@ -8,6 +9,7 @@ Implement a system for automatically navigating between different screens (pages
 ### Schedule Types
 
 #### 1. Sequence Rotation
+
 - **Definition**: Automatically navigate through a list of screens at regular intervals
 - **Configuration**:
   - List of screen/page paths to rotate through
@@ -21,6 +23,7 @@ Implement a system for automatically navigating between different screens (pages
   ```
 
 #### 2. Time-Specific Navigation
+
 - **Definition**: Navigate to a specific screen at a particular time of day
 - **Configuration**:
   - Screen/page path
@@ -36,6 +39,7 @@ Implement a system for automatically navigating between different screens (pages
   ```
 
 ### User Interaction Handling
+
 - **Pause on Interaction**: When user interacts with the app, pause automatic navigation
 - **Interaction Types**:
   - Mouse clicks
@@ -46,6 +50,7 @@ Implement a system for automatically navigating between different screens (pages
 - **Resume Behavior**: After pause duration, resume from current position in sequence
 
 ### Navigation Controls
+
 - **UI Elements**: Floating control bar at bottom of screen
   - Previous button (←)
   - Pause/Play toggle button (⏸/▶)
@@ -88,18 +93,18 @@ interface ScreenSequence {
   id: string;
   name: string;
   enabled: boolean;
-  screens: string[];           // Page paths
-  intervalSeconds: number;     // Rotation interval
+  screens: string[]; // Page paths
+  intervalSeconds: number; // Rotation interval
   pauseOnInteractionSeconds: number; // How long to pause after interaction
 }
 
 interface TimeSpecificNavigation {
   id: string;
   enabled: boolean;
-  screen: string;              // Page path
-  time: string;                // "HH:MM" format
-  durationMinutes: number;     // How long to stay on this screen
-  days?: number[];             // Optional: days of week (0=Sunday, 6=Saturday)
+  screen: string; // Page path
+  time: string; // "HH:MM" format
+  durationMinutes: number; // How long to stay on this screen
+  days?: number[]; // Optional: days of week (0=Sunday, 6=Saturday)
 }
 
 interface ScheduleConfig {
@@ -113,7 +118,7 @@ interface SchedulerState {
   isPaused: boolean;
   currentSequenceId: string | null;
   currentIndex: number;
-  timeUntilNextNav: number;    // Seconds
+  timeUntilNextNav: number; // Seconds
   pausedUntil: Date | null;
   activeTimeSpecific: TimeSpecificNavigation | null;
 }
@@ -122,6 +127,7 @@ interface SchedulerState {
 ### 3. Core Components
 
 #### ScreenScheduler Component
+
 - **Purpose**: Orchestrates automatic navigation
 - **Location**: App-level wrapper (layout.tsx or providers)
 - **Responsibilities**:
@@ -132,6 +138,7 @@ interface SchedulerState {
   - Render navigation controls
 
 #### NavigationControls Component
+
 - **Purpose**: Floating UI for manual control
 - **Props**:
   - `onPrevious: () => void`
@@ -147,6 +154,7 @@ interface SchedulerState {
 ### 4. Hooks
 
 #### useScreenScheduler Hook
+
 ```typescript
 function useScreenScheduler(config: ScheduleConfig) {
   const [state, setState] = useState<SchedulerState>({...});
@@ -216,11 +224,9 @@ function useScreenScheduler(config: ScheduleConfig) {
 ```
 
 #### useInteractionDetector Hook
+
 ```typescript
-function useInteractionDetector(
-  onInteraction: () => void,
-  pauseDurationMs: number
-) {
+function useInteractionDetector(onInteraction: () => void, pauseDurationMs: number) {
   const [isPaused, setIsPaused] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout>();
 
@@ -241,14 +247,14 @@ function useInteractionDetector(
 
   useEffect(() => {
     // Add event listeners
-    const events = ['click', 'scroll', 'keydown', 'touchstart', 'wheel'];
+    const events = ["click", "scroll", "keydown", "touchstart", "wheel"];
 
-    events.forEach(event => {
+    events.forEach((event) => {
       window.addEventListener(event, handleInteraction, { passive: true });
     });
 
     return () => {
-      events.forEach(event => {
+      events.forEach((event) => {
         window.removeEventListener(event, handleInteraction);
       });
 
@@ -271,9 +277,9 @@ function navigateToScreen(path: string) {
   router.push(path);
 
   // Log navigation event
-  logger.event('ScreenNavigation', {
+  logger.event("ScreenNavigation", {
     path,
-    type: 'automatic',
+    type: "automatic",
     timestamp: new Date().toISOString(),
   });
 }
@@ -287,11 +293,14 @@ function handleTimeSpecificNav(nav: TimeSpecificNavigation) {
   navigateToScreen(nav.screen);
 
   // Set timer to resume sequence after duration
-  setTimeout(() => {
-    resumeSequence();
-  }, nav.durationMinutes * 60 * 1000);
+  setTimeout(
+    () => {
+      resumeSequence();
+    },
+    nav.durationMinutes * 60 * 1000
+  );
 
-  logger.event('TimeSpecificNavigation', {
+  logger.event("TimeSpecificNavigation", {
     screen: nav.screen,
     time: nav.time,
     durationMinutes: nav.durationMinutes,
@@ -302,12 +311,14 @@ function handleTimeSpecificNav(nav: TimeSpecificNavigation) {
 ### 6. Schedule Configuration UI
 
 **Option A: Settings Page**
+
 - Add schedule management section to settings page
 - UI for creating/editing sequences
 - UI for creating/editing time-specific navigations
 - Enable/disable toggle for each schedule
 
 **Option B: Dedicated Schedule Page**
+
 - `/settings/schedules` route
 - Full CRUD interface for schedules
 - Preview mode to test schedules
@@ -316,6 +327,7 @@ function handleTimeSpecificNav(nav: TimeSpecificNavigation) {
 ### 7. Data Persistence
 
 **Database Schema** (when server-side DB is implemented):
+
 ```sql
 CREATE TABLE screen_sequences (
   id VARCHAR PRIMARY KEY,
@@ -343,9 +355,10 @@ CREATE TABLE time_specific_navigations (
 ```
 
 **Temporary: LocalStorage** (before DB):
+
 ```typescript
 // src/lib/scheduler/schedule-storage.ts
-const STORAGE_KEY = 'screen_schedules';
+const STORAGE_KEY = "screen_schedules";
 
 function loadSchedules(): ScheduleConfig {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -386,9 +399,9 @@ export function NavigationControls({
       }, 5000);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener("mousemove", handleMouseMove);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener("mousemove", handleMouseMove);
       if (hideTimeoutRef.current) {
         clearTimeout(hideTimeoutRef.current);
       }
@@ -397,14 +410,14 @@ export function NavigationControls({
 
   return (
     <div
-      className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 transition-opacity duration-300 ${
-        isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 transition-opacity duration-300 ${
+        isVisible ? "opacity-100" : "pointer-events-none opacity-0"
       }`}
     >
-      <div className="flex items-center gap-2 bg-gray-800 text-white rounded-full px-4 py-2 shadow-lg">
+      <div className="flex items-center gap-2 rounded-full bg-gray-800 px-4 py-2 text-white shadow-lg">
         <button
           onClick={onPrevious}
-          className="p-2 hover:bg-gray-700 rounded-full transition"
+          className="rounded-full p-2 transition hover:bg-gray-700"
           aria-label="Previous screen"
         >
           ← {/* Or use icon */}
@@ -412,21 +425,21 @@ export function NavigationControls({
 
         <button
           onClick={onTogglePause}
-          className="p-2 hover:bg-gray-700 rounded-full transition"
-          aria-label={isPaused ? 'Resume rotation' : 'Pause rotation'}
+          className="rounded-full p-2 transition hover:bg-gray-700"
+          aria-label={isPaused ? "Resume rotation" : "Pause rotation"}
         >
-          {isPaused ? '▶' : '⏸'}
+          {isPaused ? "▶" : "⏸"}
         </button>
 
         <button
           onClick={onNext}
-          className="p-2 hover:bg-gray-700 rounded-full transition"
+          className="rounded-full p-2 transition hover:bg-gray-700"
           aria-label="Next screen"
         >
           → {/* Or use icon */}
         </button>
 
-        <span className="text-sm ml-2">
+        <span className="ml-2 text-sm">
           {currentIndex + 1} / {totalScreens}
         </span>
       </div>
@@ -486,14 +499,17 @@ export function NavigationControls({
 ## Challenges and Considerations
 
 ### Challenge 1: Router State Management
+
 - **Problem**: Next.js router doesn't provide easy way to track navigation history
 - **Solution**: Maintain own state for current position in sequence
 
 ### Challenge 2: Page Transitions
+
 - **Problem**: Page transitions may take time, affecting interval timing
 - **Solution**: Reset timer after navigation completes, not when it starts
 
 ### Challenge 3: Browser Tab Visibility
+
 - **Problem**: When tab is not visible, timers may be throttled
 - **Solution**: Use Page Visibility API to pause scheduler when tab is hidden
 
@@ -507,14 +523,15 @@ useEffect(() => {
     }
   };
 
-  document.addEventListener('visibilitychange', handleVisibilityChange);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
   return () => {
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
   };
 }, []);
 ```
 
 ### Challenge 4: Interaction Detection Performance
+
 - **Problem**: Too many event listeners may impact performance
 - **Solution**:
   - Use passive event listeners
@@ -522,6 +539,7 @@ useEffect(() => {
   - Only listen when scheduler is active
 
 ### Challenge 5: Time-Specific Navigation Accuracy
+
 - **Problem**: Checking every minute may miss exact time
 - **Solution**:
   - Check at top of each minute
@@ -529,6 +547,7 @@ useEffect(() => {
   - Log when time-specific nav triggers for debugging
 
 ### Challenge 6: Multiple Time-Specific Navigations
+
 - **Problem**: What if multiple time-specific navs scheduled for same time?
 - **Solution**:
   - Priority system (order in config)
