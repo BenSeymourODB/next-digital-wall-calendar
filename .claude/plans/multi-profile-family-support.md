@@ -46,12 +46,29 @@ Implement multi-profile family support that enables multiple family members to h
 
 #### 6. Profile Permissions
 - **Admin Profiles**: Can manage other profiles (parents)
+  - **Multiple Admins**: Support multiple admin profiles (both parents)
+  - **Admin Actions**: Create/delete profiles, edit any task, give points, manage settings
+  - **PIN Required**: All admin profiles must set a PIN for security
 - **Standard Profiles**: Can only edit own tasks (children)
+  - **Optional PIN**: Can optionally set PIN for privacy
+  - **Limited Access**: Cannot modify other profiles or settings
 - **Create/Delete Profiles**: Admin only
 - **Edit Tasks**: Admins can edit any task, standard only their own
 - **Give Points**: Admin only
 
-#### 7. Profile Display
+#### 7. PIN Security
+- **PIN Protection**: Optional 4-6 digit PIN per profile
+- **Admin PIN Required**: Admin profiles must set PIN (cannot be skipped)
+- **Standard PIN Optional**: Standard profiles can choose to set PIN
+- **PIN Entry**: Required when switching to PIN-protected profile
+- **Fallback Security**: Essential when face recognition is off or not working
+- **PIN Reset**: Admins can reset PINs for standard profiles
+- **Self-Reset**: Users can reset own PIN with account password
+- **Lockout Protection**: Temporary lockout after 5 failed attempts
+- **PIN Masking**: Always show dots/asterisks when entering PIN
+- **No PIN Storage**: PINs hashed with bcrypt (never stored in plain text)
+
+#### 8. Profile Display
 - **Profile Avatar Grid**: Show all profiles on dashboard
 - **Profile Stats**: Quick stats (tasks today, points, streak)
 - **Profile Cards**: Tappable cards to switch profile or view details
@@ -181,6 +198,145 @@ Implement multi-profile family support that enables multiple family members to h
 └─────────────────────────────────────┘
 ```
 
+#### PIN Entry Modal
+```
+┌─────────────────────────────────────┐
+│  Switch to Ben's Profile            │
+│                                     │
+│  👤 Ben (Admin)                     │
+│  🔒 PIN Required                    │
+│                                     │
+│  Enter PIN:                         │
+│  ┌──────────────────────────────┐  │
+│  │  [● ● ● ●]                   │  │
+│  └──────────────────────────────┘  │
+│                                     │
+│  ┌───────┬───────┬───────┐         │
+│  │   1   │   2   │   3   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   4   │   5   │   6   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   7   │   8   │   9   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   ←   │   0   │   ✓   │         │
+│  └───────┴───────┴───────┘         │
+│                                     │
+│  [Forgot PIN?]        [Cancel]     │
+└─────────────────────────────────────┘
+```
+
+#### Set PIN Flow (Admin Profile Creation)
+```
+┌─────────────────────────────────────┐
+│  Create Admin Profile               │
+│  Step 2 of 3: Set PIN               │
+│                                     │
+│  🔒 Security Required               │
+│  Admin profiles must have a PIN to  │
+│  protect sensitive actions.         │
+│                                     │
+│  Create a 4-6 digit PIN:            │
+│  ┌──────────────────────────────┐  │
+│  │  [● ● ● ●]                   │  │
+│  └──────────────────────────────┘  │
+│                                     │
+│  ┌───────┬───────┬───────┐         │
+│  │   1   │   2   │   3   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   4   │   5   │   6   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   7   │   8   │   9   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   ←   │   0   │   ✓   │         │
+│  └───────┴───────┴───────┘         │
+│                                     │
+│  Tips:                              │
+│  • Use 4-6 digits                   │
+│  • Avoid obvious PINs (1234)        │
+│  • Make it memorable                │
+│                                     │
+│  [Back]                    [Next]   │
+└─────────────────────────────────────┘
+```
+
+#### PIN Confirmation
+```
+┌─────────────────────────────────────┐
+│  Create Admin Profile               │
+│  Step 2 of 3: Confirm PIN           │
+│                                     │
+│  🔒 Confirm Your PIN                │
+│  Re-enter the PIN you just created. │
+│                                     │
+│  Confirm PIN:                       │
+│  ┌──────────────────────────────┐  │
+│  │  [● ●]                       │  │
+│  └──────────────────────────────┘  │
+│                                     │
+│  ┌───────┬───────┬───────┐         │
+│  │   1   │   2   │   3   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   4   │   5   │   6   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   7   │   8   │   9   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   ←   │   0   │   ✓   │         │
+│  └───────┴───────┴───────┘         │
+│                                     │
+│  [Back]                    [Next]   │
+└─────────────────────────────────────┘
+```
+
+#### Failed PIN Attempts
+```
+┌─────────────────────────────────────┐
+│  Switch to Ben's Profile            │
+│                                     │
+│  👤 Ben (Admin)                     │
+│  ❌ Incorrect PIN                   │
+│                                     │
+│  Enter PIN:                         │
+│  ┌──────────────────────────────┐  │
+│  │  [● ● ● ●]                   │  │
+│  └──────────────────────────────┘  │
+│                                     │
+│  ⚠️ 2 attempts remaining            │
+│  Account will lock after 5 failed   │
+│  attempts.                          │
+│                                     │
+│  ┌───────┬───────┬───────┐         │
+│  │   1   │   2   │   3   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   4   │   5   │   6   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   7   │   8   │   9   │         │
+│  ├───────┼───────┼───────┤         │
+│  │   ←   │   0   │   ✓   │         │
+│  └───────┴───────┴───────┘         │
+│                                     │
+│  [Forgot PIN?]        [Cancel]     │
+└─────────────────────────────────────┘
+```
+
+#### Profile Switcher with PIN Indicators
+```
+┌─────────────────────────────────────────────────────┐
+│  📅 Calendar    [👤 Ben ▼]    🏆 1,250 pts         │
+│                                                     │
+│  Dropdown when clicked:                            │
+│  ┌─────────────────────┐                          │
+│  │  👤 Ben (You) 🔒    │ ← Current (Admin + PIN)  │
+│  │  👧 Evelyn   🔒     │ ← Has PIN                │
+│  │  👦 Liv            │ ← No PIN                 │
+│  │  👨 Sean Mark 🔒    │ ← Admin (requires PIN)   │
+│  │  👶 Titus          │ ← No PIN                 │
+│  │  ─────────────────  │                          │
+│  │  👨‍👩‍👧‍👦 Family View   │                          │
+│  │  ⚙️ Manage Profiles  │                          │
+│  └─────────────────────┘                          │
+└─────────────────────────────────────────────────────┘
+```
+
 ## Technical Implementation Plan
 
 ### 1. Component Structure
@@ -195,6 +351,9 @@ src/components/profiles/
 ├── profile-manager.tsx          # Admin profile management UI
 ├── profile-form.tsx             # Create/edit profile form
 ├── give-points-modal.tsx        # Admin give points UI
+├── pin-entry-modal.tsx          # PIN entry modal with keypad
+├── pin-setup-modal.tsx          # PIN setup flow (create + confirm)
+├── pin-settings.tsx             # PIN management in profile settings
 └── use-profile.ts               # Hook for profile operations
 
 src/components/tasks/
@@ -210,11 +369,19 @@ src/app/profiles/
 src/app/api/profiles/
 ├── route.ts                     # GET all profiles, POST create
 ├── [id]/
-│   └── route.ts                 # GET/PATCH/DELETE profile
-├── [id]/stats/
-│   └── route.ts                 # GET profile stats
-└── [id]/give-points/
-    └── route.ts                 # POST admin give points
+│   ├── route.ts                 # GET/PATCH/DELETE profile
+│   ├── stats/
+│   │   └── route.ts             # GET profile stats
+│   ├── give-points/
+│   │   └── route.ts             # POST admin give points
+│   ├── set-pin/
+│   │   └── route.ts             # POST set/update PIN
+│   ├── verify-pin/
+│   │   └── route.ts             # POST verify PIN
+│   ├── remove-pin/
+│   │   └── route.ts             # POST remove PIN (standard only)
+│   └── reset-pin/
+│       └── route.ts             # POST admin reset PIN
 ```
 
 ### 2. Data Models
@@ -232,6 +399,10 @@ interface Profile {
   ageGroup: AgeGroup;     // for age-appropriate features
   color: string;          // hex color for visual distinction
   avatar: ProfileAvatar;
+  pinHash?: string;       // Hashed PIN (bcrypt), null if no PIN set
+  pinEnabled: boolean;    // Whether PIN is enabled for this profile
+  failedPinAttempts: number; // Counter for failed PIN attempts
+  pinLockedUntil?: Date;  // Temporary lockout timestamp
   createdAt: Date;
   updatedAt: Date;
   isActive: boolean;      // soft delete
@@ -334,16 +505,20 @@ enum AgeGroup {
 }
 
 model Profile {
-  id        String      @id @default(cuid())
-  userId    String      // Account owner
-  name      String
-  type      ProfileType @default(standard)
-  ageGroup  AgeGroup    @default(adult)
-  color     String      @default("#3b82f6") // Tailwind blue-600
-  avatar    Json        // ProfileAvatar as JSON
-  isActive  Boolean     @default(true)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id                String      @id @default(cuid())
+  userId            String      // Account owner
+  name              String
+  type              ProfileType @default(standard)
+  ageGroup          AgeGroup    @default(adult)
+  color             String      @default("#3b82f6") // Tailwind blue-600
+  avatar            Json        // ProfileAvatar as JSON
+  pinHash           String?     // Bcrypt hashed PIN (null if no PIN)
+  pinEnabled        Boolean     @default(false)
+  failedPinAttempts Int         @default(0)
+  pinLockedUntil    DateTime?   // Temporary lockout timestamp
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   taskAssignments  TaskAssignment[]
@@ -1228,6 +1403,404 @@ export async function POST(
     );
   }
 }
+
+// src/app/api/profiles/[id]/set-pin/route.ts
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await requireAuth();
+    const user = await getCurrentUser();
+
+    const { pin, currentPin } = await request.json();
+
+    // Validate PIN format (4-6 digits)
+    if (!pin || !/^\d{4,6}$/.test(pin)) {
+      return NextResponse.json(
+        { error: 'PIN must be 4-6 digits' },
+        { status: 400 }
+      );
+    }
+
+    // Get profile
+    const profile = await prisma.profile.findFirst({
+      where: {
+        id: params.id,
+        userId: user.id,
+        isActive: true,
+      },
+    });
+
+    if (!profile) {
+      return NextResponse.json(
+        { error: 'Profile not found' },
+        { status: 404 }
+      );
+    }
+
+    // If profile already has a PIN, verify current PIN
+    if (profile.pinEnabled && profile.pinHash) {
+      if (!currentPin) {
+        return NextResponse.json(
+          { error: 'Current PIN required' },
+          { status: 400 }
+        );
+      }
+
+      const isValid = await bcrypt.compare(currentPin, profile.pinHash);
+      if (!isValid) {
+        return NextResponse.json(
+          { error: 'Current PIN is incorrect' },
+          { status: 401 }
+        );
+      }
+    }
+
+    // Hash new PIN
+    const pinHash = await bcrypt.hash(pin, 10);
+
+    // Update profile
+    await prisma.profile.update({
+      where: { id: params.id },
+      data: {
+        pinHash,
+        pinEnabled: true,
+        failedPinAttempts: 0,
+        pinLockedUntil: null,
+      },
+    });
+
+    logger.event('ProfilePinSet', {
+      userId: user.id,
+      profileId: params.id,
+      isUpdate: profile.pinEnabled,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    logger.error(error as Error, {
+      endpoint: `/api/profiles/${params.id}/set-pin`,
+      method: 'POST',
+    });
+
+    return NextResponse.json(
+      { error: 'Failed to set PIN' },
+      { status: 500 }
+    );
+  }
+}
+
+// src/app/api/profiles/[id]/verify-pin/route.ts
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await requireAuth();
+    const user = await getCurrentUser();
+
+    const { pin } = await request.json();
+
+    if (!pin) {
+      return NextResponse.json(
+        { error: 'PIN required' },
+        { status: 400 }
+      );
+    }
+
+    // Get profile
+    const profile = await prisma.profile.findFirst({
+      where: {
+        id: params.id,
+        userId: user.id,
+        isActive: true,
+      },
+    });
+
+    if (!profile) {
+      return NextResponse.json(
+        { error: 'Profile not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check if profile is locked
+    if (profile.pinLockedUntil && profile.pinLockedUntil > new Date()) {
+      const remainingSeconds = Math.ceil(
+        (profile.pinLockedUntil.getTime() - Date.now()) / 1000
+      );
+
+      return NextResponse.json(
+        {
+          error: 'Profile locked due to too many failed attempts',
+          lockedFor: remainingSeconds,
+        },
+        { status: 429 }
+      );
+    }
+
+    // Check if PIN is set
+    if (!profile.pinEnabled || !profile.pinHash) {
+      return NextResponse.json({ success: true }); // No PIN required
+    }
+
+    // Verify PIN
+    const isValid = await bcrypt.compare(pin, profile.pinHash);
+
+    if (isValid) {
+      // Reset failed attempts
+      await prisma.profile.update({
+        where: { id: params.id },
+        data: {
+          failedPinAttempts: 0,
+          pinLockedUntil: null,
+        },
+      });
+
+      logger.event('ProfilePinVerified', {
+        userId: user.id,
+        profileId: params.id,
+      });
+
+      return NextResponse.json({ success: true });
+    } else {
+      // Increment failed attempts
+      const failedAttempts = profile.failedPinAttempts + 1;
+      const lockout = failedAttempts >= 5;
+      const pinLockedUntil = lockout
+        ? new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
+        : null;
+
+      await prisma.profile.update({
+        where: { id: params.id },
+        data: {
+          failedPinAttempts: failedAttempts,
+          pinLockedUntil,
+        },
+      });
+
+      logger.event('ProfilePinFailed', {
+        userId: user.id,
+        profileId: params.id,
+        failedAttempts,
+        locked: lockout,
+      });
+
+      return NextResponse.json(
+        {
+          error: 'Incorrect PIN',
+          attemptsRemaining: Math.max(0, 5 - failedAttempts),
+          locked: lockout,
+        },
+        { status: 401 }
+      );
+    }
+  } catch (error) {
+    logger.error(error as Error, {
+      endpoint: `/api/profiles/${params.id}/verify-pin`,
+      method: 'POST',
+    });
+
+    return NextResponse.json(
+      { error: 'Failed to verify PIN' },
+      { status: 500 }
+    );
+  }
+}
+
+// src/app/api/profiles/[id]/remove-pin/route.ts
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await requireAuth();
+    const user = await getCurrentUser();
+
+    const { currentPin } = await request.json();
+
+    // Get profile
+    const profile = await prisma.profile.findFirst({
+      where: {
+        id: params.id,
+        userId: user.id,
+        isActive: true,
+      },
+    });
+
+    if (!profile) {
+      return NextResponse.json(
+        { error: 'Profile not found' },
+        { status: 404 }
+      );
+    }
+
+    // Admin profiles cannot remove PIN
+    if (profile.type === 'admin') {
+      return NextResponse.json(
+        { error: 'Admin profiles must have a PIN' },
+        { status: 403 }
+      );
+    }
+
+    // Verify current PIN
+    if (profile.pinEnabled && profile.pinHash) {
+      if (!currentPin) {
+        return NextResponse.json(
+          { error: 'Current PIN required' },
+          { status: 400 }
+        );
+      }
+
+      const isValid = await bcrypt.compare(currentPin, profile.pinHash);
+      if (!isValid) {
+        return NextResponse.json(
+          { error: 'Current PIN is incorrect' },
+          { status: 401 }
+        );
+      }
+    }
+
+    // Remove PIN
+    await prisma.profile.update({
+      where: { id: params.id },
+      data: {
+        pinHash: null,
+        pinEnabled: false,
+        failedPinAttempts: 0,
+        pinLockedUntil: null,
+      },
+    });
+
+    logger.event('ProfilePinRemoved', {
+      userId: user.id,
+      profileId: params.id,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    logger.error(error as Error, {
+      endpoint: `/api/profiles/${params.id}/remove-pin`,
+      method: 'POST',
+    });
+
+    return NextResponse.json(
+      { error: 'Failed to remove PIN' },
+      { status: 500 }
+    );
+  }
+}
+
+// src/app/api/profiles/[id]/reset-pin/route.ts
+// Admin can reset PIN for standard profiles
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await requireAuth();
+    const user = await getCurrentUser();
+
+    const { adminProfileId, adminPin, newPin } = await request.json();
+
+    // Validate new PIN format (4-6 digits)
+    if (!newPin || !/^\d{4,6}$/.test(newPin)) {
+      return NextResponse.json(
+        { error: 'New PIN must be 4-6 digits' },
+        { status: 400 }
+      );
+    }
+
+    // Verify admin profile
+    const adminProfile = await prisma.profile.findFirst({
+      where: {
+        id: adminProfileId,
+        userId: user.id,
+        type: 'admin',
+      },
+    });
+
+    if (!adminProfile) {
+      return NextResponse.json(
+        { error: 'Admin profile not found' },
+        { status: 404 }
+      );
+    }
+
+    // Verify admin PIN
+    if (!adminProfile.pinHash || !adminPin) {
+      return NextResponse.json(
+        { error: 'Admin PIN required' },
+        { status: 400 }
+      );
+    }
+
+    const isAdminPinValid = await bcrypt.compare(adminPin, adminProfile.pinHash);
+    if (!isAdminPinValid) {
+      return NextResponse.json(
+        { error: 'Admin PIN is incorrect' },
+        { status: 401 }
+      );
+    }
+
+    // Get target profile
+    const targetProfile = await prisma.profile.findFirst({
+      where: {
+        id: params.id,
+        userId: user.id,
+        isActive: true,
+      },
+    });
+
+    if (!targetProfile) {
+      return NextResponse.json(
+        { error: 'Profile not found' },
+        { status: 404 }
+      );
+    }
+
+    // Cannot reset another admin's PIN
+    if (targetProfile.type === 'admin' && targetProfile.id !== adminProfileId) {
+      return NextResponse.json(
+        { error: 'Cannot reset another admin\'s PIN' },
+        { status: 403 }
+      );
+    }
+
+    // Hash new PIN
+    const pinHash = await bcrypt.hash(newPin, 10);
+
+    // Update profile
+    await prisma.profile.update({
+      where: { id: params.id },
+      data: {
+        pinHash,
+        pinEnabled: true,
+        failedPinAttempts: 0,
+        pinLockedUntil: null,
+      },
+    });
+
+    logger.event('ProfilePinReset', {
+      userId: user.id,
+      profileId: params.id,
+      resetBy: adminProfileId,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    logger.error(error as Error, {
+      endpoint: `/api/profiles/${params.id}/reset-pin`,
+      method: 'POST',
+    });
+
+    return NextResponse.json(
+      { error: 'Failed to reset PIN' },
+      { status: 500 }
+    );
+  }
+}
 ```
 
 ### 10. Integration with Task System
@@ -1417,28 +1990,86 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
     - Per-profile preferences
     - Test settings isolation
 
-### Phase 6: Polish and Testing
+### Phase 5.5: PIN Security
 
-15. **Add profile colors**
+15. **Add PIN management API routes**
+    - `/api/profiles/[id]/set-pin` - Create/update PIN
+    - `/api/profiles/[id]/verify-pin` - Verify PIN on profile switch
+    - `/api/profiles/[id]/remove-pin` - Remove PIN (standard profiles only)
+    - `/api/profiles/[id]/reset-pin` - Admin reset PIN
+    - Install bcrypt: `pnpm add bcrypt && pnpm add -D @types/bcrypt`
+    - Test PIN hashing and verification
+
+16. **Build PIN entry modal**
+    - Numeric keypad UI (0-9, backspace, submit)
+    - PIN masking (show dots)
+    - Failed attempt counter
+    - Lockout timer display
+    - "Forgot PIN?" link
+    - Test modal UX
+
+17. **Implement PIN verification flow**
+    - Check if profile has PIN before switching
+    - Show PIN modal if required
+    - Verify PIN via API
+    - Handle failed attempts and lockout
+    - Test PIN verification
+
+18. **Add PIN setup flow**
+    - Require PIN during admin profile creation
+    - Optional PIN for standard profiles
+    - PIN confirmation step
+    - PIN strength indicators
+    - Test admin mandatory PIN requirement
+
+19. **Add PIN management UI**
+    - "Set PIN" button in profile settings
+    - "Change PIN" flow (requires current PIN)
+    - "Remove PIN" option (standard profiles only)
+    - Admin PIN reset for child profiles
+    - Show lock icon on profiles with PINs
+    - Test all PIN management flows
+
+20. **Add lockout handling**
+    - Temporary 5-minute lockout after 5 failed attempts
+    - Display remaining time
+    - Reset attempts on successful verification
+    - Test lockout behavior
+
+### Phase 6: Multiple Admin Support
+
+21. **Update profile creation validation**
+    - Allow multiple admin profiles
+    - Validate first profile must be admin
+    - Test creating multiple admins
+
+22. **Update admin permission checks**
+    - Check for admin type (not just single admin)
+    - Test admin actions with multiple admins
+    - Verify both admins can perform admin actions
+
+### Phase 7: Polish and Testing
+
+23. **Add profile colors**
     - Color picker in profile form
     - Use profile color in UI
     - Test color contrast and accessibility
 
-16. **Implement streak tracking**
+24. **Implement streak tracking**
     - Track daily task completions
     - Update currentStreak on completion
     - Reset on missed days
     - Test streak logic
 
-17. **Add family leaderboard**
+25. **Add family leaderboard**
     - Sort profiles by points
     - Display rank on profile cards
     - Optional leaderboard page
     - Test ranking accuracy
 
-18. **Accessibility and UX**
-    - Keyboard navigation
-    - Screen reader support
+26. **Accessibility and UX**
+    - Keyboard navigation (tab through profiles, arrow keys in PIN pad)
+    - Screen reader support (announce PIN entry, profile switches)
     - Loading states
     - Error handling
     - Test with assistive technologies
@@ -1491,6 +2122,24 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
   - Phase 2: Allow profiles to connect own Google account
   - Filter events by profile (color/tag based)
 
+### Challenge 7: PIN Security and Usability
+- **Problem**: Balancing security (PIN required) with usability (not too annoying)
+- **Solution**:
+  - Admin profiles require PIN (mandatory for security)
+  - Standard profiles have optional PIN
+  - PIN timeout/grace period (don't require every switch)
+  - Lockout protection prevents brute force
+  - Face recognition as alternative to PIN entry
+  - Clear "Forgot PIN?" recovery flow
+
+### Challenge 8: Multiple Admin Coordination
+- **Problem**: Two parents both admins, need to coordinate
+- **Solution**:
+  - Both admins have equal permissions
+  - Either admin can reset child PINs
+  - Activity log shows which admin made changes
+  - No hierarchy among admins
+
 ## Testing Strategy
 
 1. **Unit Tests**:
@@ -1499,12 +2148,18 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
    - Streak tracking
    - Permission checks
    - Stats calculations
+   - PIN hashing and verification (bcrypt)
+   - Failed attempt counter logic
+   - Lockout timer calculation
 
 2. **Integration Tests**:
    - API routes (all endpoints)
    - Database transactions
    - Profile switching flow
    - Point awarding flow
+   - PIN set/verify/remove/reset flows
+   - Lockout mechanism
+   - Multiple admin creation
 
 3. **Component Tests**:
    - ProfileCard rendering
@@ -1512,21 +2167,30 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
    - ProfileGrid layout
    - Avatar variants
    - Forms (create/edit)
+   - PIN entry modal
+   - PIN keypad interaction
 
 4. **E2E Tests**:
-   - Create profile flow
+   - Create profile flow (with mandatory PIN for admin)
    - Switch profiles and verify view
+   - Switch to PIN-protected profile (PIN entry)
    - Assign task to profile
    - Complete task and earn points
    - Admin give bonus points
    - Delete profile
+   - Set PIN flow (create, confirm)
+   - Failed PIN attempts and lockout
+   - Admin reset child PIN
+   - Create second admin profile
 
 5. **Manual Tests**:
    - Test with 5-10 profiles
-   - Test on mobile devices
-   - Test family scenarios (parent + kids)
-   - Test permission boundaries
+   - Test on mobile devices (PIN keypad UX)
+   - Test family scenarios (2 parents + kids)
+   - Test permission boundaries (admin vs standard)
    - Test edge cases (0 profiles, max profiles)
+   - Test PIN UX (easy to enter, not annoying)
+   - Test with face recognition fallback
 
 ## Accessibility
 
@@ -1584,6 +2248,26 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
    - Avatar photos stored securely
    - Option to delete profile permanently (future)
 
+5. **PIN Security**:
+   - PINs hashed with bcrypt (never stored in plain text)
+   - Salt rounds: 10 (balances security and performance)
+   - PINs are 4-6 digits (sufficient for family use)
+   - Lockout after 5 failed attempts (prevents brute force)
+   - Temporary 5-minute lockout (not permanent)
+   - Admin profiles require PIN (mandatory, cannot be disabled)
+   - Standard profiles have optional PIN
+   - Admin can reset child PINs (with admin PIN verification)
+   - Failed attempt counter stored in database (not client)
+   - Lockout timer enforced server-side
+
+6. **Multi-Admin Security**:
+   - Multiple admins supported (both parents)
+   - No hierarchy among admins (equal permissions)
+   - Either admin can perform admin actions
+   - Either admin can reset child PINs
+   - Admin cannot reset another admin's PIN
+   - Activity log shows which admin made changes
+
 ## Monitoring and Analytics
 
 Track these metrics:
@@ -1593,6 +2277,10 @@ Track these metrics:
 - Most active profile per account
 - Points distribution across profiles
 - Family view vs profile view usage
+- PIN usage (how many profiles have PINs enabled)
+- PIN verification success/failure rates
+- Lockout frequency
+- Admin count per account (single vs dual-admin households)
 
 ```typescript
 logger.event('ProfileCreated', {
@@ -1618,6 +2306,30 @@ logger.event('BonusPointsAwarded', {
   awardedBy: adminProfile.id,
   points: amount,
 });
+
+logger.event('ProfilePinSet', {
+  userId: user.id,
+  profileId: profile.id,
+  isUpdate: boolean,  // true if changing existing PIN
+});
+
+logger.event('ProfilePinVerified', {
+  userId: user.id,
+  profileId: profile.id,
+});
+
+logger.event('ProfilePinFailed', {
+  userId: user.id,
+  profileId: profile.id,
+  failedAttempts: number,
+  locked: boolean,  // true if now locked
+});
+
+logger.event('ProfilePinReset', {
+  userId: user.id,
+  profileId: profile.id,
+  resetBy: adminProfile.id,
+});
 ```
 
 ## Dependencies
@@ -1625,7 +2337,7 @@ logger.event('BonusPointsAwarded', {
 - Prisma (database ORM)
 - React Context API
 - Existing auth system (user accounts)
-- No additional packages required
+- bcrypt (PIN hashing) - `pnpm add bcrypt @types/bcrypt`
 
 ## Integration with Other Features
 
