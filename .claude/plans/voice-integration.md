@@ -1,6 +1,7 @@
 # Voice Assistant Integration
 
 ## Overview
+
 Integrate voice assistant support (Amazon Alexa, Google Assistant) to enable hands-free interaction with the digital wall calendar. Users can add tasks, check schedules, add grocery items, and control the calendar using voice commands, similar to Skylight's Alexa integration.
 
 ## Requirements
@@ -8,6 +9,7 @@ Integrate voice assistant support (Amazon Alexa, Google Assistant) to enable han
 ### Core Features
 
 #### 1. Voice Platforms
+
 - **Amazon Alexa**: Alexa Skills Kit integration
 - **Google Assistant**: Actions on Google integration
 - **Cross-Platform**: Unified backend for both platforms
@@ -16,6 +18,7 @@ Integrate voice assistant support (Amazon Alexa, Google Assistant) to enable han
 #### 2. Supported Voice Commands
 
 ##### Task Management
+
 - "Alexa, add 'buy milk' to my grocery list"
 - "Alexa, add task 'doctor appointment tomorrow at 2pm'"
 - "Alexa, mark 'buy groceries' as complete"
@@ -23,43 +26,51 @@ Integrate voice assistant support (Amazon Alexa, Google Assistant) to enable han
 - "Alexa, what's on Ben's task list?"
 
 ##### Calendar
+
 - "Alexa, what's on my calendar today?"
 - "Alexa, when is my next appointment?"
 - "Alexa, what events does Evelyn have this week?"
 
 ##### Meal Planning
+
 - "Alexa, what's for dinner tonight?"
 - "Alexa, add spaghetti to Monday's dinner"
 - "Alexa, add chicken to the grocery list"
 
 ##### Rewards/Points
+
 - "Alexa, how many points does Liv have?"
 - "Alexa, give Ben 10 points for helping with dishes"
 
 ##### General
+
 - "Alexa, open my family calendar"
 - "Alexa, show today's schedule"
 - "Alexa, refresh the calendar"
 
 #### 3. Account Linking
+
 - **OAuth 2.0**: Link Alexa/Google account with calendar account
 - **Secure**: Use existing OAuth infrastructure
 - **One-Time Setup**: Link once, use everywhere
 - **Multiple Devices**: Link multiple Alexa devices to same account
 
 #### 4. Multi-Profile Voice Recognition
+
 - **Voice Profiles**: Recognize different family members by voice
 - **Context**: Commands apply to speaker's profile
 - **Fallback**: Default to account owner if voice not recognized
 - **Override**: "Alexa, add task for Ben..." to specify profile
 
 #### 5. Responses and Confirmations
+
 - **Verbal Feedback**: "I've added 'buy milk' to your grocery list"
 - **Error Handling**: "I couldn't find that task. Please try again."
 - **Clarification**: "Did you mean breakfast or lunch for spaghetti?"
 - **Privacy**: Don't read sensitive information aloud by default
 
 #### 6. Display Integration (Optional)
+
 - **Echo Show/Nest Hub**: Visual cards for tasks/calendar
 - **APL/Canvas**: Alexa Presentation Language for rich displays
 - **Touch Support**: Tap to complete tasks on screen
@@ -67,6 +78,7 @@ Integrate voice assistant support (Amazon Alexa, Google Assistant) to enable han
 ### Visual Design (Alexa Skill Card)
 
 #### Echo Show Display Card
+
 ```
 ┌─────────────────────────────────────┐
 │  Family Calendar                    │
@@ -83,6 +95,7 @@ Integrate voice assistant support (Amazon Alexa, Google Assistant) to enable han
 ```
 
 #### Voice Interaction Flow
+
 ```
 User:  "Alexa, open family calendar"
 Alexa: "Welcome to your family calendar. You have 3 tasks today
@@ -115,18 +128,21 @@ Database (Tasks, Calendar, Profiles)
 ### 2. Technology Stack
 
 **For Alexa:**
+
 - **Alexa Skills Kit (ASK)**: Define intents, slots, utterances
 - **AWS Lambda**: Serverless function to handle requests
 - **ask-sdk-core**: Node.js SDK for Alexa
 - **Account Linking**: OAuth 2.0 with your existing auth
 
 **For Google Assistant:**
+
 - **Actions on Google**: Define intents and conversation flows
 - **Google Cloud Functions**: Serverless function handler
 - **actions-on-google**: Node.js SDK
 - **Account Linking**: OAuth 2.0
 
 **Shared Backend:**
+
 - **API Gateway**: Unified API for both platforms
 - **Voice API Endpoints**: Specialized endpoints for voice commands
 - **Existing Auth**: Reuse NextAuth.js OAuth flow
@@ -134,6 +150,7 @@ Database (Tasks, Calendar, Profiles)
 ### 3. Alexa Skill Configuration
 
 #### Interaction Model (JSON)
+
 ```json
 {
   "interactionModel": {
@@ -191,11 +208,7 @@ Database (Tasks, Calendar, Profiles)
               "type": "AMAZON.SearchQuery"
             }
           ],
-          "samples": [
-            "mark {taskName} as complete",
-            "complete {taskName}",
-            "I finished {taskName}"
-          ]
+          "samples": ["mark {taskName} as complete", "complete {taskName}", "I finished {taskName}"]
         },
         {
           "name": "GetDinnerIntent",
@@ -261,15 +274,15 @@ Database (Tasks, Calendar, Profiles)
 
 ```typescript
 // alexa-skill/src/index.ts
-import * as Alexa from 'ask-sdk-core';
-import { RequestEnvelope, ResponseEnvelope } from 'ask-sdk-model';
+import * as Alexa from "ask-sdk-core";
+import { RequestEnvelope, ResponseEnvelope } from "ask-sdk-model";
 
 // Add Task Intent Handler
 const AddTaskIntentHandler: Alexa.RequestHandler = {
   canHandle(handlerInput) {
     return (
-      Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest' &&
-      Alexa.getIntentName(handlerInput.requestEnvelope) === 'AddTaskIntent'
+      Alexa.getRequestType(handlerInput.requestEnvelope) === "IntentRequest" &&
+      Alexa.getIntentName(handlerInput.requestEnvelope) === "AddTaskIntent"
     );
   },
   async handle(handlerInput) {
@@ -281,56 +294,54 @@ const AddTaskIntentHandler: Alexa.RequestHandler = {
 
     if (!accessToken) {
       return handlerInput.responseBuilder
-        .speak('Please link your account in the Alexa app to use this skill.')
+        .speak("Please link your account in the Alexa app to use this skill.")
         .withLinkAccountCard()
         .getResponse();
     }
 
     // Extract slots
-    const slots = Alexa.getSlot(handlerInput.requestEnvelope, 'taskName');
+    const slots = Alexa.getSlot(handlerInput.requestEnvelope, "taskName");
     const taskName = slots?.value;
-    const profileName = Alexa.getSlot(handlerInput.requestEnvelope, 'profileName')?.value;
-    const dueDate = Alexa.getSlot(handlerInput.requestEnvelope, 'dueDate')?.value;
+    const profileName = Alexa.getSlot(handlerInput.requestEnvelope, "profileName")?.value;
+    const dueDate = Alexa.getSlot(handlerInput.requestEnvelope, "dueDate")?.value;
 
     if (!taskName) {
       return handlerInput.responseBuilder
-        .speak('I didn\'t catch the task name. Please try again.')
-        .reprompt('What task would you like to add?')
+        .speak("I didn't catch the task name. Please try again.")
+        .reprompt("What task would you like to add?")
         .getResponse();
     }
 
     try {
       // Call your API
-      const response = await fetch('https://your-domain.com/api/voice/tasks', {
-        method: 'POST',
+      const response = await fetch("https://your-domain.com/api/voice/tasks", {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           taskName,
           profileName,
           dueDate,
-          source: 'alexa',
+          source: "alexa",
         }),
       });
 
       if (!response.ok) {
-        throw new Error('API request failed');
+        throw new Error("API request failed");
       }
 
       const data = await response.json();
 
-      const speakOutput = `I've added "${taskName}" to ${profileName ? `${profileName}'s` : 'your'} task list${dueDate ? ` for ${dueDate}` : ''}.`;
+      const speakOutput = `I've added "${taskName}" to ${profileName ? `${profileName}'s` : "your"} task list${dueDate ? ` for ${dueDate}` : ""}.`;
 
-      return handlerInput.responseBuilder
-        .speak(speakOutput)
-        .getResponse();
+      return handlerInput.responseBuilder.speak(speakOutput).getResponse();
     } catch (error) {
-      console.error('Error adding task:', error);
+      console.error("Error adding task:", error);
 
       return handlerInput.responseBuilder
-        .speak('Sorry, I had trouble adding that task. Please try again.')
+        .speak("Sorry, I had trouble adding that task. Please try again.")
         .getResponse();
     }
   },
@@ -340,8 +351,8 @@ const AddTaskIntentHandler: Alexa.RequestHandler = {
 const GetTasksIntentHandler: Alexa.RequestHandler = {
   canHandle(handlerInput) {
     return (
-      Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest' &&
-      Alexa.getIntentName(handlerInput.requestEnvelope) === 'GetTasksIntent'
+      Alexa.getRequestType(handlerInput.requestEnvelope) === "IntentRequest" &&
+      Alexa.getIntentName(handlerInput.requestEnvelope) === "GetTasksIntent"
     );
   },
   async handle(handlerInput) {
@@ -349,20 +360,20 @@ const GetTasksIntentHandler: Alexa.RequestHandler = {
 
     if (!accessToken) {
       return handlerInput.responseBuilder
-        .speak('Please link your account in the Alexa app.')
+        .speak("Please link your account in the Alexa app.")
         .withLinkAccountCard()
         .getResponse();
     }
 
-    const profileName = Alexa.getSlot(handlerInput.requestEnvelope, 'profileName')?.value;
-    const date = Alexa.getSlot(handlerInput.requestEnvelope, 'date')?.value || 'today';
+    const profileName = Alexa.getSlot(handlerInput.requestEnvelope, "profileName")?.value;
+    const date = Alexa.getSlot(handlerInput.requestEnvelope, "date")?.value || "today";
 
     try {
       const response = await fetch(
-        `https://your-domain.com/api/voice/tasks?profileName=${profileName || ''}&date=${date}`,
+        `https://your-domain.com/api/voice/tasks?profileName=${profileName || ""}&date=${date}`,
         {
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
+            Authorization: `Bearer ${accessToken}`,
           },
         }
       );
@@ -372,21 +383,19 @@ const GetTasksIntentHandler: Alexa.RequestHandler = {
 
       if (tasks.length === 0) {
         return handlerInput.responseBuilder
-          .speak(`${profileName ? `${profileName} has` : 'You have'} no tasks for ${date}.`)
+          .speak(`${profileName ? `${profileName} has` : "You have"} no tasks for ${date}.`)
           .getResponse();
       }
 
-      const taskList = tasks.map((t: any) => t.title).join(', ');
-      const speakOutput = `${profileName ? `${profileName} has` : 'You have'} ${tasks.length} task${tasks.length > 1 ? 's' : ''} for ${date}: ${taskList}`;
+      const taskList = tasks.map((t: any) => t.title).join(", ");
+      const speakOutput = `${profileName ? `${profileName} has` : "You have"} ${tasks.length} task${tasks.length > 1 ? "s" : ""} for ${date}: ${taskList}`;
 
-      return handlerInput.responseBuilder
-        .speak(speakOutput)
-        .getResponse();
+      return handlerInput.responseBuilder.speak(speakOutput).getResponse();
     } catch (error) {
-      console.error('Error getting tasks:', error);
+      console.error("Error getting tasks:", error);
 
       return handlerInput.responseBuilder
-        .speak('Sorry, I had trouble retrieving your tasks.')
+        .speak("Sorry, I had trouble retrieving your tasks.")
         .getResponse();
     }
   },
@@ -396,8 +405,8 @@ const GetTasksIntentHandler: Alexa.RequestHandler = {
 const GetDinnerIntentHandler: Alexa.RequestHandler = {
   canHandle(handlerInput) {
     return (
-      Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest' &&
-      Alexa.getIntentName(handlerInput.requestEnvelope) === 'GetDinnerIntent'
+      Alexa.getRequestType(handlerInput.requestEnvelope) === "IntentRequest" &&
+      Alexa.getIntentName(handlerInput.requestEnvelope) === "GetDinnerIntent"
     );
   },
   async handle(handlerInput) {
@@ -405,19 +414,19 @@ const GetDinnerIntentHandler: Alexa.RequestHandler = {
 
     if (!accessToken) {
       return handlerInput.responseBuilder
-        .speak('Please link your account in the Alexa app.')
+        .speak("Please link your account in the Alexa app.")
         .withLinkAccountCard()
         .getResponse();
     }
 
-    const date = Alexa.getSlot(handlerInput.requestEnvelope, 'date')?.value || 'today';
+    const date = Alexa.getSlot(handlerInput.requestEnvelope, "date")?.value || "today";
 
     try {
       const response = await fetch(
         `https://your-domain.com/api/voice/meals?type=dinner&date=${date}`,
         {
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
+            Authorization: `Bearer ${accessToken}`,
           },
         }
       );
@@ -432,13 +441,13 @@ const GetDinnerIntentHandler: Alexa.RequestHandler = {
       }
 
       return handlerInput.responseBuilder
-        .speak(`For dinner ${date === 'today' ? 'tonight' : date}, you're having ${meal.name}.`)
+        .speak(`For dinner ${date === "today" ? "tonight" : date}, you're having ${meal.name}.`)
         .getResponse();
     } catch (error) {
-      console.error('Error getting dinner:', error);
+      console.error("Error getting dinner:", error);
 
       return handlerInput.responseBuilder
-        .speak('Sorry, I had trouble checking your meal plan.')
+        .speak("Sorry, I had trouble checking your meal plan.")
         .getResponse();
     }
   },
@@ -448,8 +457,8 @@ const GetDinnerIntentHandler: Alexa.RequestHandler = {
 const GivePointsIntentHandler: Alexa.RequestHandler = {
   canHandle(handlerInput) {
     return (
-      Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest' &&
-      Alexa.getIntentName(handlerInput.requestEnvelope) === 'GivePointsIntent'
+      Alexa.getRequestType(handlerInput.requestEnvelope) === "IntentRequest" &&
+      Alexa.getIntentName(handlerInput.requestEnvelope) === "GivePointsIntent"
     );
   },
   async handle(handlerInput) {
@@ -457,31 +466,31 @@ const GivePointsIntentHandler: Alexa.RequestHandler = {
 
     if (!accessToken) {
       return handlerInput.responseBuilder
-        .speak('Please link your account in the Alexa app.')
+        .speak("Please link your account in the Alexa app.")
         .withLinkAccountCard()
         .getResponse();
     }
 
-    const profileName = Alexa.getSlot(handlerInput.requestEnvelope, 'profileName')?.value;
-    const points = parseInt(Alexa.getSlot(handlerInput.requestEnvelope, 'points')?.value || '0');
+    const profileName = Alexa.getSlot(handlerInput.requestEnvelope, "profileName")?.value;
+    const points = parseInt(Alexa.getSlot(handlerInput.requestEnvelope, "points")?.value || "0");
 
     if (!profileName || points <= 0) {
       return handlerInput.responseBuilder
-        .speak('Please specify a profile name and a positive number of points.')
+        .speak("Please specify a profile name and a positive number of points.")
         .getResponse();
     }
 
     try {
-      const response = await fetch('https://your-domain.com/api/voice/points', {
-        method: 'POST',
+      const response = await fetch("https://your-domain.com/api/voice/points", {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           profileName,
           points,
-          source: 'alexa',
+          source: "alexa",
         }),
       });
 
@@ -489,7 +498,7 @@ const GivePointsIntentHandler: Alexa.RequestHandler = {
         const error = await response.json();
         if (response.status === 403) {
           return handlerInput.responseBuilder
-            .speak('You need admin permissions to give points.')
+            .speak("You need admin permissions to give points.")
             .getResponse();
         }
         throw new Error(error.message);
@@ -498,13 +507,15 @@ const GivePointsIntentHandler: Alexa.RequestHandler = {
       const data = await response.json();
 
       return handlerInput.responseBuilder
-        .speak(`I've given ${profileName} ${points} bonus points. They now have ${data.newTotal} points.`)
+        .speak(
+          `I've given ${profileName} ${points} bonus points. They now have ${data.newTotal} points.`
+        )
         .getResponse();
     } catch (error) {
-      console.error('Error giving points:', error);
+      console.error("Error giving points:", error);
 
       return handlerInput.responseBuilder
-        .speak('Sorry, I had trouble awarding those points.')
+        .speak("Sorry, I had trouble awarding those points.")
         .getResponse();
     }
   },
@@ -516,7 +527,7 @@ export const handler = Alexa.SkillBuilders.custom()
     AddTaskIntentHandler,
     GetTasksIntentHandler,
     GetDinnerIntentHandler,
-    GivePointsIntentHandler,
+    GivePointsIntentHandler
     // ... other handlers
   )
   .lambda();
@@ -867,6 +878,7 @@ export async function POST(request: NextRequest) {
 ### 6. Account Linking Configuration
 
 #### OAuth 2.0 Settings (Alexa)
+
 ```
 Authorization URL: https://your-domain.com/api/auth/signin
 Access Token URL: https://your-domain.com/api/auth/token
@@ -876,6 +888,7 @@ Scopes: tasks, calendar, profiles
 ```
 
 #### Account Linking Flow
+
 1. User enables skill in Alexa app
 2. Alexa redirects to your OAuth login page
 3. User signs in with Google (existing NextAuth flow)
@@ -886,6 +899,7 @@ Scopes: tasks, calendar, profiles
 ## Implementation Steps
 
 ### Phase 1: Foundation
+
 1. **Set up Alexa developer account**
    - Create Alexa skill
    - Configure interaction model
@@ -901,6 +915,7 @@ Scopes: tasks, calendar, profiles
    - Test account linking flow
 
 ### Phase 2: Core Intents
+
 4. **Implement AddTaskIntent**
    - Create voice API endpoint
    - Handle task creation
@@ -916,6 +931,7 @@ Scopes: tasks, calendar, profiles
    - Test task completion
 
 ### Phase 3: Advanced Features
+
 7. **Implement meal planning intents**
    - GetDinnerIntent
    - AddMealIntent
@@ -932,6 +948,7 @@ Scopes: tasks, calendar, profiles
    - Test multi-profile scenarios
 
 ### Phase 4: Testing and Polish
+
 10. **Beta testing**
     - Test with real Alexa devices
     - Gather user feedback
@@ -950,22 +967,27 @@ Scopes: tasks, calendar, profiles
 ## Challenges and Considerations
 
 ### Challenge 1: Natural Language Understanding
+
 - **Problem**: Users phrase commands differently
 - **Solution**: Provide many sample utterances, use AMAZON.SearchQuery for flexibility
 
 ### Challenge 2: Profile Disambiguation
+
 - **Problem**: Multiple profiles with similar names
 - **Solution**: Use exact matching, ask for clarification if ambiguous
 
 ### Challenge 3: Privacy
+
 - **Problem**: Sensitive information spoken aloud
 - **Solution**: Make sensitive commands opt-in, use display cards instead of voice
 
 ### Challenge 4: Latency
+
 - **Problem**: Skill responses should be fast (<1 second)
 - **Solution**: Optimize API calls, cache data in Lambda, use DynamoDB for session state
 
 ### Challenge 5: Multi-Device Sync
+
 - **Problem**: Multiple Alexa devices in home
 - **Solution**: Use account linking (not device linking), state is shared
 
@@ -1000,6 +1022,7 @@ Scopes: tasks, calendar, profiles
 ## Monitoring and Analytics
 
 Track these metrics:
+
 - Intent usage frequency
 - Error rates per intent
 - Average response time
@@ -1007,16 +1030,16 @@ Track these metrics:
 - User retention
 
 ```typescript
-logger.event('VoiceIntentInvoked', {
-  intentName: 'AddTaskIntent',
+logger.event("VoiceIntentInvoked", {
+  intentName: "AddTaskIntent",
   userId: user.id,
-  source: 'alexa',
+  source: "alexa",
   responseTime: duration,
 });
 
-logger.event('VoiceError', {
-  intentName: 'GetTasksIntent',
-  errorType: 'api_failure',
+logger.event("VoiceError", {
+  intentName: "GetTasksIntent",
+  errorType: "api_failure",
   userId: user.id,
 });
 ```
@@ -1038,18 +1061,21 @@ logger.event('VoiceError', {
 ## Future Enhancements
 
 ### Phase 2 Features
+
 - **Google Assistant support**: Expand to Actions on Google
 - **Advanced NLU**: Better understanding of complex requests
 - **Routines**: "Alexa, good morning" triggers custom routine
 - **Voice shopping**: "Add milk to grocery list and order from Amazon"
 
 ### Phase 3 Features
+
 - **Voice authentication**: Security using voice biometrics
 - **Multi-language support**: Spanish, French, etc.
 - **Custom wake word**: "Hey Family Calendar" instead of "Alexa"
 - **Voice notifications**: Proactive reminders via Alexa
 
 ### Advanced Ideas
+
 - **Family announcements**: "Alexa, tell everyone dinner is ready"
 - **Voice games**: "Alexa, start family chore challenge"
 - **Voice journaling**: "Alexa, add note to family journal"
@@ -1064,6 +1090,7 @@ logger.event('VoiceError', {
 ## User Onboarding
 
 ### Setup Guide
+
 1. Install Alexa app on phone
 2. Search for "Family Calendar" skill
 3. Enable skill
@@ -1071,6 +1098,7 @@ logger.event('VoiceError', {
 5. Test: "Alexa, open family calendar"
 
 ### Quick Start Commands
+
 - "Alexa, ask family calendar what tasks I have today"
 - "Alexa, tell family calendar to add milk to my grocery list"
 - "Alexa, ask family calendar what's for dinner"

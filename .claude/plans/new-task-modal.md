@@ -1,6 +1,7 @@
 # New Task Entry Modal
 
 ## Overview
+
 Create a modal dialog for adding new tasks to Google Tasks, with smart defaults when launched from a task list component and a dropdown for selecting the destination list.
 
 ## Requirements
@@ -8,27 +9,32 @@ Create a modal dialog for adding new tasks to Google Tasks, with smart defaults 
 ### Core Features
 
 #### 1. Launch Mechanism
+
 - **Trigger**: "+" button at bottom of TaskList component
 - **Multiple Instances**: Each TaskList component can have its own "+" button
 - **Context-Aware**: Modal knows which TaskList launched it
 
 #### 2. Form Fields
+
 - **Task Title** (required): Text input for task name
 - **Due Date** (optional): Date picker
 - **Notes** (optional): Textarea for additional details
 - **List Selection** (required): Dropdown to choose destination list
 
 #### 3. Smart Defaults
+
 - **Single-List Context**: If TaskList shows only one list, dropdown defaults to that list
 - **Multi-List Context**: If TaskList shows multiple lists, dropdown has no default (user must choose)
 - **Recent List**: Remember last-used list and suggest it
 
 #### 4. Validation
+
 - **Required Fields**: Task title must not be empty
 - **List Selection**: Must select a list before submitting
 - **Error Messages**: Clear feedback for validation errors
 
 #### 5. Submission
+
 - **API Call**: POST to Google Tasks API to create task
 - **Optimistic Update**: Add task to UI immediately, remove on failure
 - **Success Feedback**: Close modal, show brief success message
@@ -89,7 +95,7 @@ src/app/api/tasks/
 interface NewTaskFormData {
   title: string;
   listId: string;
-  due?: string;              // ISO 8601 date string
+  due?: string; // ISO 8601 date string
   notes?: string;
 }
 
@@ -97,8 +103,8 @@ interface NewTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (task: GoogleTask) => void;
-  defaultListId?: string;    // Pre-select this list
-  availableLists: TaskListSelection[];  // Lists to show in dropdown
+  defaultListId?: string; // Pre-select this list
+  availableLists: TaskListSelection[]; // Lists to show in dropdown
 }
 
 interface CreateTaskRequest {
@@ -131,10 +137,10 @@ export function NewTaskModal({
   availableLists,
 }: NewTaskModalProps) {
   const [formData, setFormData] = useState<NewTaskFormData>({
-    title: '',
-    listId: defaultListId || '',
+    title: "",
+    listId: defaultListId || "",
     due: undefined,
-    notes: '',
+    notes: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { createTask, loading, error } = useCreateTask();
@@ -146,11 +152,11 @@ export function NewTaskModal({
     const newErrors: Record<string, string> = {};
 
     if (!formData.title.trim()) {
-      newErrors.title = 'Task title is required';
+      newErrors.title = "Task title is required";
     }
 
     if (!formData.listId) {
-      newErrors.listId = 'Please select a list';
+      newErrors.listId = "Please select a list";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -168,7 +174,7 @@ export function NewTaskModal({
         },
       });
 
-      logger.event('TaskCreated', {
+      logger.event("TaskCreated", {
         listId: formData.listId,
         hasDueDate: !!formData.due,
         hasNotes: !!formData.notes,
@@ -179,16 +185,16 @@ export function NewTaskModal({
 
       // Reset form and close
       setFormData({
-        title: '',
-        listId: defaultListId || '',
+        title: "",
+        listId: defaultListId || "",
         due: undefined,
-        notes: '',
+        notes: "",
       });
       setErrors({});
       onClose();
     } catch (err) {
       logger.error(err as Error, {
-        context: 'CreateTaskFailed',
+        context: "CreateTaskFailed",
         listId: formData.listId,
       });
       // Error is handled by useCreateTask hook
@@ -198,10 +204,10 @@ export function NewTaskModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full">
+    <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
+      <div className="w-full max-w-md rounded-lg bg-white p-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <h3 className="text-xl font-semibold text-gray-900">Add New Task</h3>
           <button
             onClick={onClose}
@@ -216,7 +222,7 @@ export function NewTaskModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Task Title */}
           <div>
-            <label htmlFor="task-title" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="task-title" className="mb-1 block text-sm font-medium text-gray-700">
               Task Title *
             </label>
             <input
@@ -224,28 +230,26 @@ export function NewTaskModal({
               type="text"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className={`w-full border rounded px-3 py-2 ${
-                errors.title ? 'border-red-500' : 'border-gray-300'
+              className={`w-full rounded border px-3 py-2 ${
+                errors.title ? "border-red-500" : "border-gray-300"
               }`}
               placeholder="e.g., Buy milk"
               autoFocus
             />
-            {errors.title && (
-              <p className="text-red-600 text-sm mt-1">{errors.title}</p>
-            )}
+            {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title}</p>}
           </div>
 
           {/* List Selection */}
           <div>
-            <label htmlFor="task-list" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="task-list" className="mb-1 block text-sm font-medium text-gray-700">
               List *
             </label>
             <select
               id="task-list"
               value={formData.listId}
               onChange={(e) => setFormData({ ...formData, listId: e.target.value })}
-              className={`w-full border rounded px-3 py-2 ${
-                errors.listId ? 'border-red-500' : 'border-gray-300'
+              className={`w-full rounded border px-3 py-2 ${
+                errors.listId ? "border-red-500" : "border-gray-300"
               }`}
             >
               <option value="">Select a list...</option>
@@ -255,19 +259,16 @@ export function NewTaskModal({
                 </option>
               ))}
             </select>
-            {errors.listId && (
-              <p className="text-red-600 text-sm mt-1">{errors.listId}</p>
-            )}
+            {errors.listId && <p className="mt-1 text-sm text-red-600">{errors.listId}</p>}
 
             {/* Show color indicator for selected list */}
             {formData.listId && (
-              <div className="flex items-center gap-2 mt-2">
+              <div className="mt-2 flex items-center gap-2">
                 <div
-                  className="w-3 h-3 rounded-full"
+                  className="h-3 w-3 rounded-full"
                   style={{
                     backgroundColor:
-                      availableLists.find((l) => l.listId === formData.listId)?.color ||
-                      '#gray',
+                      availableLists.find((l) => l.listId === formData.listId)?.color || "#gray",
                   }}
                 />
                 <span className="text-sm text-gray-600">
@@ -279,28 +280,28 @@ export function NewTaskModal({
 
           {/* Due Date */}
           <div>
-            <label htmlFor="task-due" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="task-due" className="mb-1 block text-sm font-medium text-gray-700">
               Due Date (optional)
             </label>
             <input
               id="task-due"
               type="date"
-              value={formData.due || ''}
+              value={formData.due || ""}
               onChange={(e) => setFormData({ ...formData, due: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
+              className="w-full rounded border border-gray-300 px-3 py-2"
             />
           </div>
 
           {/* Notes */}
           <div>
-            <label htmlFor="task-notes" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="task-notes" className="mb-1 block text-sm font-medium text-gray-700">
               Notes (optional)
             </label>
             <textarea
               id="task-notes"
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
+              className="w-full rounded border border-gray-300 px-3 py-2"
               rows={3}
               placeholder="Additional details..."
             />
@@ -308,8 +309,8 @@ export function NewTaskModal({
 
           {/* Error Message */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded p-3">
-              <p className="text-red-700 text-sm">{error.message}</p>
+            <div className="rounded border border-red-200 bg-red-50 p-3">
+              <p className="text-sm text-red-700">{error.message}</p>
             </div>
           )}
 
@@ -318,16 +319,16 @@ export function NewTaskModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded"
+              className="rounded px-4 py-2 text-gray-700 hover:bg-gray-100"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? 'Adding...' : 'Add Task'}
+              {loading ? "Adding..." : "Add Task"}
             </button>
           </div>
         </form>
@@ -350,17 +351,17 @@ function useCreateTask() {
     setError(null);
 
     try {
-      const response = await fetch('/api/tasks/create', {
-        method: 'POST',
+      const response = await fetch("/api/tasks/create", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(request),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create task');
+        throw new Error(errorData.error || "Failed to create task");
       }
 
       const newTask = await response.json();
@@ -386,8 +387,8 @@ function useCreateTask() {
 
 ```typescript
 // src/app/api/tasks/create/route.ts
-import { logger } from '@/lib/logger';
-import { NextRequest, NextResponse } from 'next/server';
+import { logger } from "@/lib/logger";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -395,10 +396,7 @@ export async function POST(request: NextRequest) {
 
     // Validate request
     if (!body.listId || !body.task?.title) {
-      return NextResponse.json(
-        { error: 'listId and task.title are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "listId and task.title are required" }, { status: 400 });
     }
 
     // Get access token
@@ -422,10 +420,10 @@ export async function POST(request: NextRequest) {
     const response = await fetch(
       `https://tasks.googleapis.com/tasks/v1/lists/${body.listId}/tasks`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(taskData),
       }
@@ -433,14 +431,12 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(
-        `Google Tasks API error: ${errorData.error?.message || response.statusText}`
-      );
+      throw new Error(`Google Tasks API error: ${errorData.error?.message || response.statusText}`);
     }
 
     const newTask = await response.json();
 
-    logger.event('TaskCreated', {
+    logger.event("TaskCreated", {
       listId: body.listId,
       taskId: newTask.id,
       hasDueDate: !!body.task.due,
@@ -450,14 +446,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(newTask);
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/tasks/create',
-      errorType: 'create_task',
+      endpoint: "/api/tasks/create",
+      errorType: "create_task",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to create task' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
   }
 }
 ```
@@ -486,13 +479,13 @@ export function TaskList({ configId, className }: TaskListProps) {
   };
 
   return (
-    <div className={`bg-white rounded-lg shadow-md ${className}`}>
+    <div className={`rounded-lg bg-white shadow-md ${className}`}>
       {/* ... existing header and task list ... */}
 
       {/* Add Task Button */}
       <button
         onClick={() => setShowNewTaskModal(true)}
-        className="w-full p-4 text-blue-600 hover:bg-blue-50 transition flex items-center justify-center gap-2 border-t"
+        className="flex w-full items-center justify-center gap-2 border-t p-4 text-blue-600 transition hover:bg-blue-50"
       >
         <span className="text-xl">+</span>
         <span>Add Task</span>
@@ -553,6 +546,7 @@ export function TaskList({ configId, className }: TaskListProps) {
 ## Challenges and Considerations
 
 ### Challenge 1: Form Validation
+
 - **Problem**: Need robust validation for required fields
 - **Solution**:
   - Use controlled inputs with real-time validation
@@ -560,6 +554,7 @@ export function TaskList({ configId, className }: TaskListProps) {
   - Clear errors when user corrects input
 
 ### Challenge 2: Date Handling
+
 - **Problem**: Need to convert date input to Google Tasks format
 - **Solution**:
   - HTML5 date input returns YYYY-MM-DD
@@ -567,6 +562,7 @@ export function TaskList({ configId, className }: TaskListProps) {
   - Handle timezone considerations
 
 ### Challenge 3: Modal Accessibility
+
 - **Problem**: Modal must be accessible to keyboard and screen reader users
 - **Solution**:
   - Trap focus within modal when open
@@ -576,6 +572,7 @@ export function TaskList({ configId, className }: TaskListProps) {
   - ARIA attributes for modal role
 
 ### Challenge 4: Optimistic Updates
+
 - **Problem**: Should task appear in list immediately or wait for API?
 - **Solution**:
   - Option A: Wait for API response (simpler, but slower UX)
@@ -583,6 +580,7 @@ export function TaskList({ configId, className }: TaskListProps) {
   - Recommendation: Option A for simplicity, Option B for v2
 
 ### Challenge 5: Multiple List Colors in Dropdown
+
 - **Problem**: Showing list colors in dropdown is tricky with native select
 - **Solution**:
   - Option A: Use native select, show color after selection

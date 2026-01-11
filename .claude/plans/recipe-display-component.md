@@ -1,6 +1,7 @@
 # Recipe Display Component with Zoom-Based Pagination
 
 ## Overview
+
 Create a recipe display component that shows ingredients and cooking steps with dynamic pagination controlled by zoom level. As users zoom in/out, the number of items displayed per page adjusts automatically based on what fits in the viewable area.
 
 ## Requirements
@@ -8,21 +9,25 @@ Create a recipe display component that shows ingredients and cooking steps with 
 ### Core Features
 
 #### 1. Recipe Data Structure
+
 - **Ingredients List**: Array of ingredient items with quantities
 - **Steps**: Numbered cooking instructions
 - **Metadata**: Recipe name, servings, prep/cook time (optional)
 
 #### 2. Display Modes
+
 - **Ingredients Mode**: Show ingredient list
 - **Steps Mode**: Show cooking steps
 - **Combined Mode**: Option to show both (TBD)
 
 #### 3. Pagination
+
 - **Navigation Controls**: Forward/back arrow buttons at bottom
 - **Page Indicator**: Show current page and total pages (e.g., "Step 2 of 5")
 - **Dynamic Page Breaks**: Pages adjust based on zoom level
 
 #### 4. Zoom Interaction
+
 - **Zoom Methods**:
   - Pinch-to-zoom on touch devices
   - Ctrl + scroll wheel on desktop
@@ -35,6 +40,7 @@ Create a recipe display component that shows ingredients and cooking steps with 
 - **Item Integrity**: Only show complete items (never cut off mid-item)
 
 #### 5. Memory Management
+
 - **All Content Loaded**: Keep all steps/ingredients in memory
 - **Render Visible Only**: Only render current page in DOM
 - **Fast Transitions**: Instant page switching when zooming
@@ -87,18 +93,21 @@ After zooming in (fewer items per page):
 ### Zoom Behavior Example
 
 **Zoom Level 1 (Default - 100%)**
+
 - Text size: 18px
 - Ingredients per page: ~9 items
 - Steps per page: ~3 steps
 - Total pages: 2 (ingredients) + 5 (steps) = 7 pages
 
 **Zoom Level 2 (150%)**
+
 - Text size: 27px
 - Ingredients per page: ~6 items
 - Steps per page: ~2 steps
 - Total pages: 2 (ingredients) + 7 (steps) = 9 pages
 
 **Zoom Level 3 (200%)**
+
 - Text size: 36px
 - Ingredients per page: ~3 items
 - Steps per page: ~1 step
@@ -131,31 +140,31 @@ interface Recipe {
   name: string;
   description?: string;
   servings?: number;
-  prepTime?: number;        // minutes
-  cookTime?: number;        // minutes
+  prepTime?: number; // minutes
+  cookTime?: number; // minutes
   ingredients: Ingredient[];
   steps: RecipeStep[];
 }
 
 interface Ingredient {
   id: string;
-  quantity?: string;        // "2 cups", "1 tsp", etc.
-  item: string;            // "all-purpose flour"
-  notes?: string;          // "sifted", "room temperature"
+  quantity?: string; // "2 cups", "1 tsp", etc.
+  item: string; // "all-purpose flour"
+  notes?: string; // "sifted", "room temperature"
 }
 
 interface RecipeStep {
   id: string;
   stepNumber: number;
   instruction: string;
-  duration?: number;       // minutes (optional)
-  image?: string;          // optional step image
+  duration?: number; // minutes (optional)
+  image?: string; // optional step image
 }
 
 interface ZoomLevel {
-  scale: number;           // 1.0 = 100%, 1.5 = 150%, etc.
-  fontSize: number;        // px
-  lineHeight: number;      // multiplier
+  scale: number; // 1.0 = 100%, 1.5 = 150%, etc.
+  fontSize: number; // px
+  lineHeight: number; // multiplier
 }
 
 interface PaginationState {
@@ -167,7 +176,7 @@ interface PaginationState {
 
 interface Page {
   pageNumber: number;
-  type: 'ingredients' | 'steps';
+  type: "ingredients" | "steps";
   items: (Ingredient | RecipeStep)[];
   startIndex: number;
   endIndex: number;
@@ -184,25 +193,15 @@ interface RecipeDisplayProps {
   className?: string;
 }
 
-export function RecipeDisplay({
-  recipe,
-  initialZoom = 1.0,
-  className,
-}: RecipeDisplayProps) {
+export function RecipeDisplay({ recipe, initialZoom = 1.0, className }: RecipeDisplayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { zoomLevel, zoomIn, zoomOut, setZoom } = useZoom(initialZoom);
-  const {
-    currentPage,
-    totalPages,
-    currentPageItems,
-    nextPage,
-    previousPage,
-    goToPage,
-  } = useRecipePagination({
-    recipe,
-    zoomLevel,
-    containerHeight: containerRef.current?.clientHeight || 600,
-  });
+  const { currentPage, totalPages, currentPageItems, nextPage, previousPage, goToPage } =
+    useRecipePagination({
+      recipe,
+      zoomLevel,
+      containerHeight: containerRef.current?.clientHeight || 600,
+    });
 
   // Handle pinch-to-zoom
   useEffect(() => {
@@ -231,12 +230,12 @@ export function RecipeDisplay({
       }
     };
 
-    element.addEventListener('touchstart', handleTouchStart);
-    element.addEventListener('touchmove', handleTouchMove, { passive: false });
+    element.addEventListener("touchstart", handleTouchStart);
+    element.addEventListener("touchmove", handleTouchMove, { passive: false });
 
     return () => {
-      element.removeEventListener('touchstart', handleTouchStart);
-      element.removeEventListener('touchmove', handleTouchMove);
+      element.removeEventListener("touchstart", handleTouchStart);
+      element.removeEventListener("touchmove", handleTouchMove);
     };
   }, [zoomLevel.scale, setZoom]);
 
@@ -253,32 +252,32 @@ export function RecipeDisplay({
       }
     };
 
-    element.addEventListener('wheel', handleWheel, { passive: false });
+    element.addEventListener("wheel", handleWheel, { passive: false });
 
     return () => {
-      element.removeEventListener('wheel', handleWheel);
+      element.removeEventListener("wheel", handleWheel);
     };
   }, [zoomLevel.scale, setZoom]);
 
   // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') previousPage();
-      if (e.key === 'ArrowRight') nextPage();
+      if (e.key === "ArrowLeft") previousPage();
+      if (e.key === "ArrowRight") nextPage();
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [nextPage, previousPage]);
 
   return (
     <div
       ref={containerRef}
-      className={`bg-white rounded-lg shadow-md flex flex-col ${className}`}
-      style={{ height: '100%' }}
+      className={`flex flex-col rounded-lg bg-white shadow-md ${className}`}
+      style={{ height: "100%" }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex items-center justify-between border-b p-4">
         <div>
           <h2 className="text-2xl font-semibold text-gray-900">{recipe.name}</h2>
           {recipe.servings && (
@@ -286,19 +285,12 @@ export function RecipeDisplay({
           )}
         </div>
 
-        <ZoomControls
-          zoomLevel={zoomLevel.scale}
-          onZoomIn={zoomIn}
-          onZoomOut={zoomOut}
-        />
+        <ZoomControls zoomLevel={zoomLevel.scale} onZoomIn={zoomIn} onZoomOut={zoomOut} />
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        <RecipeContent
-          page={currentPageItems}
-          zoomLevel={zoomLevel}
-        />
+        <RecipeContent page={currentPageItems} zoomLevel={zoomLevel} />
       </div>
 
       {/* Navigation */}
@@ -329,11 +321,7 @@ interface UseRecipePaginationProps {
   containerHeight: number;
 }
 
-function useRecipePagination({
-  recipe,
-  zoomLevel,
-  containerHeight,
-}: UseRecipePaginationProps) {
+function useRecipePagination({ recipe, zoomLevel, containerHeight }: UseRecipePaginationProps) {
   const [currentPage, setCurrentPage] = useState(0);
 
   // Calculate pagination based on zoom and container height
@@ -385,15 +373,11 @@ function calculatePagination(
 
   // Calculate item heights at current zoom
   const ingredientHeight = calculateItemHeight(
-    'ingredient',
+    "ingredient",
     zoomLevel.fontSize,
     zoomLevel.lineHeight
   );
-  const stepHeight = calculateItemHeight(
-    'step',
-    zoomLevel.fontSize,
-    zoomLevel.lineHeight
-  );
+  const stepHeight = calculateItemHeight("step", zoomLevel.fontSize, zoomLevel.lineHeight);
 
   // Calculate items per page
   const ingredientsPerPage = Math.floor(availableHeight / ingredientHeight);
@@ -403,7 +387,7 @@ function calculatePagination(
   for (let i = 0; i < recipe.ingredients.length; i += ingredientsPerPage) {
     pages.push({
       pageNumber: pages.length,
-      type: 'ingredients',
+      type: "ingredients",
       items: recipe.ingredients.slice(i, i + ingredientsPerPage),
       startIndex: i,
       endIndex: Math.min(i + ingredientsPerPage, recipe.ingredients.length),
@@ -414,7 +398,7 @@ function calculatePagination(
   for (let i = 0; i < recipe.steps.length; i += stepsPerPage) {
     pages.push({
       pageNumber: pages.length,
-      type: 'steps',
+      type: "steps",
       items: recipe.steps.slice(i, i + stepsPerPage),
       startIndex: i,
       endIndex: Math.min(i + stepsPerPage, recipe.steps.length),
@@ -430,12 +414,12 @@ function calculatePagination(
 }
 
 function calculateItemHeight(
-  type: 'ingredient' | 'step',
+  type: "ingredient" | "step",
   fontSize: number,
   lineHeight: number
 ): number {
   // Estimate based on average content length
-  if (type === 'ingredient') {
+  if (type === "ingredient") {
     // Ingredients are typically 1-2 lines
     const averageLines = 1.5;
     return fontSize * lineHeight * averageLines + 16; // +16 for padding
@@ -511,13 +495,10 @@ export function RecipeContent({ page, zoomLevel }: RecipeContentProps) {
   if (!page) return null;
 
   return (
-    <div
-      className="p-6 h-full overflow-hidden"
-      style={contentStyle}
-    >
-      {page.type === 'ingredients' ? (
+    <div className="h-full overflow-hidden p-6" style={contentStyle}>
+      {page.type === "ingredients" ? (
         <div>
-          <h3 className="font-semibold mb-4 text-gray-900">Ingredients:</h3>
+          <h3 className="mb-4 font-semibold text-gray-900">Ingredients:</h3>
           <ul className="space-y-2">
             {(page.items as Ingredient[]).map((ingredient) => (
               <li key={ingredient.id} className="flex gap-2">
@@ -527,9 +508,7 @@ export function RecipeContent({ page, zoomLevel }: RecipeContentProps) {
                     <span className="font-medium">{ingredient.quantity} </span>
                   )}
                   {ingredient.item}
-                  {ingredient.notes && (
-                    <span className="text-gray-600"> ({ingredient.notes})</span>
-                  )}
+                  {ingredient.notes && <span className="text-gray-600"> ({ingredient.notes})</span>}
                 </span>
               </li>
             ))}
@@ -537,19 +516,17 @@ export function RecipeContent({ page, zoomLevel }: RecipeContentProps) {
         </div>
       ) : (
         <div>
-          <h3 className="font-semibold mb-4 text-gray-900">Steps:</h3>
+          <h3 className="mb-4 font-semibold text-gray-900">Steps:</h3>
           <div className="space-y-4">
             {(page.items as RecipeStep[]).map((step) => (
               <div key={step.id} className="flex gap-3">
-                <span className="font-semibold text-blue-600 flex-shrink-0">
+                <span className="flex-shrink-0 font-semibold text-blue-600">
                   {step.stepNumber}.
                 </span>
                 <div>
                   <p className="text-gray-900">{step.instruction}</p>
                   {step.duration && (
-                    <p className="text-sm text-gray-600 mt-1">
-                      ~{step.duration} minutes
-                    </p>
+                    <p className="mt-1 text-sm text-gray-600">~{step.duration} minutes</p>
                   )}
                 </div>
               </div>
@@ -580,11 +557,11 @@ export function RecipeNavigation({
   onNext,
 }: RecipeNavigationProps) {
   return (
-    <div className="flex items-center justify-center gap-4 p-4 border-t">
+    <div className="flex items-center justify-center gap-4 border-t p-4">
       <button
         onClick={onPrevious}
         disabled={currentPage === 0}
-        className="p-2 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="rounded p-2 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
         aria-label="Previous page"
       >
         ←
@@ -597,7 +574,7 @@ export function RecipeNavigation({
       <button
         onClick={onNext}
         disabled={currentPage === totalPages - 1}
-        className="p-2 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="rounded p-2 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
         aria-label="Next page"
       >
         →
@@ -613,30 +590,16 @@ interface ZoomControlsProps {
   onZoomOut: () => void;
 }
 
-export function ZoomControls({
-  zoomLevel,
-  onZoomIn,
-  onZoomOut,
-}: ZoomControlsProps) {
+export function ZoomControls({ zoomLevel, onZoomIn, onZoomOut }: ZoomControlsProps) {
   return (
     <div className="flex items-center gap-2">
-      <button
-        onClick={onZoomOut}
-        className="p-2 rounded hover:bg-gray-100"
-        aria-label="Zoom out"
-      >
+      <button onClick={onZoomOut} className="rounded p-2 hover:bg-gray-100" aria-label="Zoom out">
         −
       </button>
 
-      <span className="text-sm text-gray-600 w-12 text-center">
-        {Math.round(zoomLevel * 100)}%
-      </span>
+      <span className="w-12 text-center text-sm text-gray-600">{Math.round(zoomLevel * 100)}%</span>
 
-      <button
-        onClick={onZoomIn}
-        className="p-2 rounded hover:bg-gray-100"
-        aria-label="Zoom in"
-      >
+      <button onClick={onZoomIn} className="rounded p-2 hover:bg-gray-100" aria-label="Zoom in">
         +
       </button>
     </div>
@@ -701,6 +664,7 @@ export function ZoomControls({
 ## Challenges and Considerations
 
 ### Challenge 1: Dynamic Height Calculation
+
 - **Problem**: Need to accurately calculate how many items fit per page
 - **Solution**:
   - Use estimated heights based on average content
@@ -708,6 +672,7 @@ export function ZoomControls({
   - Allow some margin for error
 
 ### Challenge 2: Zoom Transition Smoothness
+
 - **Problem**: Pagination recalculation may cause jarring page jumps
 - **Solution**:
   - Try to maintain current item in view after zoom
@@ -715,6 +680,7 @@ export function ZoomControls({
   - Debounce rapid zoom changes
 
 ### Challenge 3: Touch vs Mouse Interactions
+
 - **Problem**: Different zoom mechanisms for touch and mouse
 - **Solution**:
   - Detect input type
@@ -723,6 +689,7 @@ export function ZoomControls({
   - Zoom buttons work for both
 
 ### Challenge 4: Variable Content Length
+
 - **Problem**: Steps vary greatly in length (1 line vs 5 lines)
 - **Solution**:
   - Use average height for calculations
@@ -730,6 +697,7 @@ export function ZoomControls({
   - Ensure no item is cut off mid-content
 
 ### Challenge 5: Memory with Large Recipes
+
 - **Problem**: Very long recipes (50+ steps) may use too much memory
 - **Solution**:
   - For phase 1: Load all in memory (most recipes are <20 steps)
@@ -789,6 +757,7 @@ export function ZoomControls({
 ## Recipe Data Source
 
 For this implementation plan, recipe data can come from:
+
 - **Hardcoded recipes**: JSON files in repository
 - **API**: Fetch from recipe API (future)
 - **User input**: Allow users to create/edit recipes (future)

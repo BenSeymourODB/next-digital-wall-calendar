@@ -43,6 +43,7 @@ pnpm bump-ui          # Update shadcn components
 ## Key Technologies
 
 ### Current
+
 - **Next.js 16** with Turbopack and App Router
 - **React 19** with React Compiler enabled
 - **TypeScript 5** with strict mode
@@ -50,6 +51,7 @@ pnpm bump-ui          # Update shadcn components
 - **shadcn/ui** components (copied, not installed)
 
 ### Planned - Core Features
+
 - **PostgreSQL** - Primary database via Prisma ORM
 - **NextAuth.js v5** - Authentication with Google OAuth 2.0
 - **Google Calendar API** - Calendar integration (server-side)
@@ -59,6 +61,7 @@ pnpm bump-ui          # Update shadcn components
 - **bcrypt** - PIN hashing for profile security
 
 ### Planned - Deployment & Monitoring (Future)
+
 - **Coolify** - Self-hosted deployment platform
 - **Docker** - Containerized deployment
 - **Application Insights** - Logging and telemetry (optional, Azure-based)
@@ -360,7 +363,7 @@ async function getTasks(profileId: string) {
 
 // ❌ Bad: Client-side storage as source of truth
 async function updateTask(task: Task) {
-  await indexedDB.put('tasks', task); // Wrong! Backend not updated
+  await indexedDB.put("tasks", task); // Wrong! Backend not updated
 }
 ```
 
@@ -394,6 +397,7 @@ scripts/             # Build and deployment scripts
 ```
 
 **⚠️ Important:** Before implementing any planned feature, ALWAYS read the corresponding plan in `.claude/plans/` first. These plans contain:
+
 - Complete technical specifications
 - Database schemas and API routes
 - Visual mockups and component hierarchies
@@ -582,6 +586,7 @@ export function MyComponent() {
 9. **Consult docs/** - For detailed information on specific topics
 
 **⚠️ Critical:** Do not consider any task complete until:
+
 - All tests are passing (`pnpm test`)
 - All code quality checks pass (ESLint, Prettier, TypeScript)
 - Feature matches the plan specification (if implementing from `.claude/plans/`)
@@ -589,15 +594,18 @@ export function MyComponent() {
 ## Need More Information?
 
 ### Documentation
+
 - **React Compiler:** See [docs/react-compiler.md](./docs/react-compiler.md)
 - **Styling:** See [docs/styling.md](./docs/styling.md)
 - **MCP Servers:** See [docs/mcp-servers.md](./docs/mcp-servers.md)
 
 ### Future Documentation (Optional)
+
 - **Application Insights:** See [docs/application-insights.md](./docs/application-insights.md) - Optional telemetry (Azure-based)
 - **Cloud Deployment:** See [docs/deployment.md](./docs/deployment.md) - Azure deployment (alternative to self-hosting)
 
 ### Feature Plans
+
 - **All Features:** See [`.claude/plans/`](./.claude/plans/) for comprehensive implementation plans
   - Server-Side Authentication
   - Modular Sync Architecture (Privacy-first data storage)
