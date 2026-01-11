@@ -8,11 +8,10 @@ This is a Next.js 16 Digital Wall Calendar application with full backend server 
 
 1. **Full-stack application** - Backend server with PostgreSQL database, NextAuth.js authentication, and API routes
 2. **Privacy-first family hub** - Self-hosted, multi-profile support, local face recognition integration
-3. **Windows + pnpm compatibility** - Uses hoisted node_modules (`node-linker=hoisted` in `.npmrc`)
-4. **Secretless Azure authentication** - OIDC-based GitHub Actions deployment
-5. **Application Insights integration** - Comprehensive logging and telemetry
-6. **React Compiler** - Automatic memoization for performance
-7. **Test-Driven Development** - All new features require tests before implementation
+3. **Self-hosted deployment** - Designed for Coolify and Docker-based home server deployment
+4. **Windows + pnpm compatibility** - Uses hoisted node_modules (`node-linker=hoisted` in `.npmrc`)
+5. **React Compiler** - Automatic memoization for performance
+6. **Test-Driven Development** - All new features require tests before implementation
 
 ## Quick Reference
 
@@ -49,10 +48,8 @@ pnpm bump-ui          # Update shadcn components
 - **TypeScript 5** with strict mode
 - **Tailwind CSS 4** with default color palette
 - **shadcn/ui** components (copied, not installed)
-- **Application Insights** for logging and telemetry
-- **Azure Web Apps** for hosting
 
-### Planned
+### Planned - Core Features
 - **PostgreSQL** - Primary database via Prisma ORM
 - **NextAuth.js v5** - Authentication with Google OAuth 2.0
 - **Google Calendar API** - Calendar integration (server-side)
@@ -60,6 +57,12 @@ pnpm bump-ui          # Update shadcn components
 - **Frigate NVR** - Local face recognition for profile switching
 - **Amazon Alexa Skills Kit** - Voice integration
 - **bcrypt** - PIN hashing for profile security
+
+### Planned - Deployment & Monitoring (Future)
+- **Coolify** - Self-hosted deployment platform
+- **Docker** - Containerized deployment
+- **Application Insights** - Logging and telemetry (optional, Azure-based)
+- **Azure Web Apps** - Cloud hosting option (alternative to self-hosting)
 
 ## Important AI Agent Instructions
 
@@ -77,13 +80,13 @@ This project uses **standard Tailwind CSS colors**. Use the default Tailwind col
 
 **See:** [docs/styling.md](./docs/styling.md) for complete styling documentation.
 
-### 2. Application Insights Logging
+### 2. Logging (Optional - Application Insights)
 
-**Critical:** Use the correct logging method based on where your code runs.
+**Note:** Application Insights integration is optional and planned for future. The logger abstraction is in place for when telemetry is added.
 
-**⚠️ Note:** Custom ESLint rules automatically enforce this - you'll get errors if you try to use `trackException` on the server.
+**For now:** Logger calls can be added for future telemetry, but logging infrastructure is not yet implemented.
 
-**See:** [`logger` API documentation](src/lib/logger.ts) for comprehensive developer docs.
+**See:** [`logger` API documentation](src/lib/logger.ts) for comprehensive developer docs (when implemented).
 
 **Server-Side (API Routes, Server Components, Middleware):**
 
@@ -135,7 +138,7 @@ logger.event("ButtonClick", { buttonId: "submit" });
 
 **✅ Use `logger` everywhere** - it automatically detects server vs client context.
 
-**See:** [docs/application-insights.md](./docs/application-insights.md) for detailed guidance on each telemetry type.
+**See:** [docs/application-insights.md](./docs/application-insights.md) for detailed guidance on each telemetry type (when implemented).
 
 ### 3. React Compiler
 
@@ -586,11 +589,13 @@ export function MyComponent() {
 ## Need More Information?
 
 ### Documentation
-- **Application Insights:** See [docs/application-insights.md](./docs/application-insights.md)
 - **React Compiler:** See [docs/react-compiler.md](./docs/react-compiler.md)
-- **Deployment:** See [docs/deployment.md](./docs/deployment.md)
 - **Styling:** See [docs/styling.md](./docs/styling.md)
 - **MCP Servers:** See [docs/mcp-servers.md](./docs/mcp-servers.md)
+
+### Future Documentation (Optional)
+- **Application Insights:** See [docs/application-insights.md](./docs/application-insights.md) - Optional telemetry (Azure-based)
+- **Cloud Deployment:** See [docs/deployment.md](./docs/deployment.md) - Azure deployment (alternative to self-hosting)
 
 ### Feature Plans
 - **All Features:** See [`.claude/plans/`](./.claude/plans/) for comprehensive implementation plans

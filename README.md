@@ -24,8 +24,7 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
 - **TypeScript** with strict mode for type safety
 - **Tailwind CSS 4** for modern, responsive styling
 - **shadcn/ui** components with customizable themes
-- **Application Insights** for logging and telemetry
-- **Azure deployment ready** with standalone output
+- **Self-hosting ready** - Docker standalone output for Coolify deployment
 - **Client-side Google Calendar** integration with offline caching
 - **Dark mode support** with next-themes
 
@@ -150,9 +149,10 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
 - **Google Assistant** - Voice commands (Actions on Google - future)
 
 ### Deployment
-- **Azure Web Apps** - Production hosting
-- **Azure PostgreSQL** - Database hosting
-- **Standalone Docker** - Self-hosting option
+- **Coolify** - Self-hosted deployment platform (primary target)
+- **Docker** - Standalone containerized deployment
+- **PostgreSQL** - Self-hosted database (or managed service)
+- **Azure Web Apps** - Cloud hosting option (future alternative)
 
 ## 🚀 Quick Start
 
@@ -188,11 +188,13 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
 
 ### Development
 - **[CLAUDE.md](./CLAUDE.md)** - Development guide for AI agents (architecture, TDD, best practices)
-- **[Application Insights](./docs/application-insights.md)** - Logging and monitoring
 - **[Styling Guide](./docs/styling.md)** - Tailwind CSS usage and component patterns
 - **[React Compiler](./docs/react-compiler.md)** - How React Compiler works
-- **[Deployment](./docs/deployment.md)** - Azure deployment guide
 - **[MCP Servers](./docs/mcp-servers.md)** - Next.js DevTools, Context7, Shadcn
+
+### Future Documentation
+- **[Application Insights](./docs/application-insights.md)** - Logging and monitoring (optional, future)
+- **[Deployment](./docs/deployment.md)** - Cloud deployment guide (Azure, future alternative)
 
 ### Feature Plans
 All feature implementation plans are in [`.claude/plans/`](/.claude/plans/):
@@ -217,16 +219,21 @@ All feature implementation plans are in [`.claude/plans/`](/.claude/plans/):
 - **Frontend**: Next.js 16, React 19, TypeScript 5, Tailwind CSS 4
 - **Components**: shadcn/ui, Framer Motion
 - **Tooling**: pnpm, ESLint, Prettier, Turbopack
-- **Deployment**: Azure Web Apps, Standalone Docker
-- **Monitoring**: Azure Application Insights
+- **Deployment**: Docker standalone output
 
-### Planned
+### Planned - Core Features
 - **Database**: PostgreSQL (via Prisma ORM)
 - **Authentication**: NextAuth.js v5 (Google OAuth)
 - **APIs**: Google Calendar API, Google Tasks API
 - **Smart Home**: Frigate NVR (face recognition), Amazon Alexa (voice)
 - **Caching**: IndexedDB (client-side)
 - **Security**: bcrypt (PIN hashing), HTTPS/TLS
+
+### Planned - Deployment & Infrastructure (Future)
+- **Self-Hosting**: Coolify deployment, Docker Compose
+- **Cloud Option**: Azure Web Apps (alternative to self-hosting)
+- **Monitoring**: Application Insights (optional, Azure-based)
+- **Reverse Proxy**: Traefik or nginx for HTTPS
 
 ## 🎨 Design Philosophy
 
@@ -316,8 +323,7 @@ A comprehensive plan for feature development. All features will be implemented u
 **Current Status**
 - [x] Next.js 16 setup with TypeScript
 - [x] Google Calendar integration (client-side, temporary)
-- [x] Application Insights logging
-- [x] Azure deployment pipeline
+- [x] Docker standalone build configuration
 
 ### Core Family Features
 
@@ -346,6 +352,21 @@ A comprehensive plan for feature development. All features will be implemented u
 - [ ] [Face Recognition Profile Switching](/.claude/plans/face-recognition-profile-switching.md) - Frigate NVR integration, on-demand camera activation, PIN fallback
 - [ ] [Voice Integration](/.claude/plans/voice-integration.md) - Amazon Alexa Skills Kit, hands-free task management
 
+### Deployment & Infrastructure
+
+**Self-Hosting**
+- [ ] Coolify deployment guide and configuration
+- [ ] Docker Compose for local development
+- [ ] PostgreSQL setup and migrations
+- [ ] HTTPS/TLS with reverse proxy (Traefik/nginx)
+- [ ] Backup and restore procedures
+
+**Monitoring & Observability (Future)**
+- [ ] Application Insights integration (optional, Azure-based)
+- [ ] Health check endpoints
+- [ ] Error tracking and alerting
+- [ ] Performance monitoring
+
 ### Polish & Scale
 
 **Performance & Accessibility**
@@ -362,7 +383,7 @@ A comprehensive plan for feature development. All features will be implemented u
 
 **Documentation**
 - [ ] User guide for families
-- [ ] Self-hosting deployment guide
+- [ ] Coolify deployment guide
 - [ ] Developer contribution guide
 - [ ] API documentation for custom integrations
 
