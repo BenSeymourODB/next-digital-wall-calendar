@@ -13,7 +13,7 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
 3. **Family-Focused**: Multi-profile support, parental controls, kid-friendly gamification
 4. **Smart Home Integration**: Works with existing home automation (Frigate NVR, Alexa, Google Assistant)
 5. **Customizable**: Open source, extensible, configurable for your family's needs
-6. **Google Ecosystem**: Leverage existing Google Calendar and Google Tasks data
+6. **Data Sovereignty**: PostgreSQL as primary data store, optional sync with Google Calendar and Tasks
 
 ## ✨ Features
 
@@ -31,6 +31,20 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
 
 ### Planned Features (See `.claude/plans/` for details)
 
+#### Core Infrastructure
+- **Server-Side Authentication** ([plan](/.claude/plans/server-side-auth.md))
+  - Google OAuth 2.0 with refresh tokens
+  - Secure session management (NextAuth.js)
+  - Database-backed user accounts (PostgreSQL + Prisma)
+  - Multi-user support
+
+- **Modular Sync Architecture** ([plan](/.claude/plans/modular-sync-architecture.md)) ⭐ **Privacy-First**
+  - PostgreSQL as primary data store for events and tasks
+  - Optional Google Calendar sync module (enable/disable per profile)
+  - Optional Google Tasks sync module (enable/disable per profile)
+  - Full offline functionality without external services
+  - Future support for Outlook, iCloud, CalDAV
+
 #### Core Family Features
 - **Multi-Profile Family Support** ([plan](/.claude/plans/multi-profile-family-support.md))
   - Individual profiles for each family member (parents + kids)
@@ -40,14 +54,8 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
   - Profile-specific views and family view
   - Per-profile reward points and streaks
 
-- **Server-Side Authentication** ([plan](/.claude/plans/server-side-auth.md))
-  - Google OAuth 2.0 with refresh tokens
-  - Secure session management (NextAuth.js)
-  - Database-backed user accounts (PostgreSQL + Prisma)
-  - Multi-user support
-
 - **Task Management** ([plan](/.claude/plans/google-tasks-todo-list.md))
-  - Google Tasks API integration
+  - Local task storage with optional Google Tasks sync
   - Profile-based task assignment
   - Color-coded task lists
   - Due date tracking and priorities
@@ -188,14 +196,20 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
 
 ### Feature Plans
 All feature implementation plans are in [`.claude/plans/`](/.claude/plans/):
-- [Multi-Profile Family Support](/.claude/plans/multi-profile-family-support.md)
 - [Server-Side Authentication](/.claude/plans/server-side-auth.md)
+- [Modular Sync Architecture](/.claude/plans/modular-sync-architecture.md) ⭐ Privacy-First
+- [Multi-Profile Family Support](/.claude/plans/multi-profile-family-support.md)
 - [Google Tasks Integration](/.claude/plans/google-tasks-todo-list.md)
 - [Reward Point System](/.claude/plans/reward-point-system.md)
+- [New Task Modal](/.claude/plans/new-task-modal.md)
+- [Analog Clock Calendar](/.claude/plans/analog-clock-calendar.md)
+- [Screen Rotation Scheduler](/.claude/plans/screen-rotation-scheduler.md)
 - [Meal Planning](/.claude/plans/meal-planning.md)
+- [Recipe Display Component](/.claude/plans/recipe-display-component.md)
 - [Face Recognition Profile Switching](/.claude/plans/face-recognition-profile-switching.md)
 - [Voice Integration](/.claude/plans/voice-integration.md)
-- [And more...](/.claude/plans/)
+- [User Settings Page](/.claude/plans/user-settings-page.md)
+- [View all plans →](/.claude/plans/)
 
 ## 🛠️ Technology Stack
 
@@ -289,39 +303,102 @@ Inspired by commercial products like Skylight Calendar, but built to be:
 - **Open** (customizable)
 - **Integrated** (works with your smart home)
 
-## 🗺️ Roadmap
+## 🗺️ Project Roadmap
 
-### Phase 1: Foundation (In Progress)
+A comprehensive plan for feature development. All features will be implemented using **Test-Driven Development (TDD)**. Implementation order is flexible based on priorities and dependencies.
+
+### Foundation & Infrastructure
+
+**Authentication & Data Storage**
+- [ ] [Server-Side Authentication](/.claude/plans/server-side-auth.md) - NextAuth.js with Google OAuth, PostgreSQL user accounts
+- [ ] [Modular Sync Architecture](/.claude/plans/modular-sync-architecture.md) ⭐ - PostgreSQL as primary data store, optional Google Calendar/Tasks sync modules
+
+**Current Status**
 - [x] Next.js 16 setup with TypeScript
-- [x] Google Calendar integration (client-side)
+- [x] Google Calendar integration (client-side, temporary)
 - [x] Application Insights logging
-- [ ] Server-side authentication (NextAuth.js)
-- [ ] Database setup (PostgreSQL + Prisma)
+- [x] Azure deployment pipeline
 
-### Phase 2: Family Features
-- [ ] Multi-profile support
-- [ ] PIN security
-- [ ] Google Tasks integration
-- [ ] Reward point system
-- [ ] Profile-based task assignment
+### Core Family Features
 
-### Phase 3: Enhanced Calendar
-- [ ] Analog clock visualization
-- [ ] Screen rotation scheduler
-- [ ] Meal planning
-- [ ] Recipe display
+**Multi-User & Profiles**
+- [ ] [Multi-Profile Family Support](/.claude/plans/multi-profile-family-support.md) - Individual profiles, multiple admins, PIN security, profile switcher
+- [ ] [User Settings Page](/.claude/plans/user-settings-page.md) - Profile management, display preferences, system configuration
 
-### Phase 4: Smart Home Integration
-- [ ] Face recognition profile switching (Frigate NVR)
-- [ ] Voice integration (Alexa)
-- [ ] Home Assistant integration
+**Task Management & Gamification**
+- [ ] [Google Tasks Integration](/.claude/plans/google-tasks-todo-list.md) - Local task storage with optional Google Tasks sync
+- [ ] [New Task Modal](/.claude/plans/new-task-modal.md) - Quick task creation with profile assignment and point values
+- [ ] [Reward Point System](/.claude/plans/reward-point-system.md) - Gamification, leaderboards, streaks, configurable rewards
 
-### Phase 5: Polish & Scale
-- [ ] Comprehensive test suite
-- [ ] Mobile responsive design
-- [ ] Accessibility improvements
-- [ ] Performance optimization
-- [ ] Multi-language support
+### Enhanced Calendar Features
+
+**Visualization & Rotation**
+- [ ] [Analog Clock Calendar](/.claude/plans/analog-clock-calendar.md) - Circular time visualization with event arcs
+- [ ] [Screen Rotation Scheduler](/.claude/plans/screen-rotation-scheduler.md) - Auto-rotate between calendar, tasks, photos, recipes
+
+**Meal Planning**
+- [ ] [Meal Planning System](/.claude/plans/meal-planning.md) - Weekly meal grid, meal library, grocery list generation
+- [ ] [Recipe Display Component](/.claude/plans/recipe-display-component.md) - Zoom pagination for wall display, cooking timer integration
+
+### Smart Home Integration
+
+**Local & Privacy-First**
+- [ ] [Face Recognition Profile Switching](/.claude/plans/face-recognition-profile-switching.md) - Frigate NVR integration, on-demand camera activation, PIN fallback
+- [ ] [Voice Integration](/.claude/plans/voice-integration.md) - Amazon Alexa Skills Kit, hands-free task management
+
+### Polish & Scale
+
+**Performance & Accessibility**
+- [ ] Comprehensive test suite (unit, integration, E2E)
+- [ ] Mobile responsive design optimization
+- [ ] Accessibility improvements (WCAG 2.1 AA compliance)
+- [ ] Performance optimization (Core Web Vitals)
+
+**Extensibility**
+- [ ] Multi-language support (i18n)
+- [ ] Additional sync providers (Outlook, iCloud, CalDAV)
+- [ ] Import/export tools (ICS, CSV, Google Takeout)
+- [ ] Plugin system for custom integrations
+
+**Documentation**
+- [ ] User guide for families
+- [ ] Self-hosting deployment guide
+- [ ] Developer contribution guide
+- [ ] API documentation for custom integrations
+
+### Implementation Notes
+
+**Privacy-First Migration Strategy:**
+
+The project will follow this migration path to achieve privacy-first architecture:
+
+1. **Current (Phase 1)**: Google Calendar/Tasks as primary data source with client-side caching
+2. **Transition (Phase 2)**: Add PostgreSQL database, dual-write to both Google and PostgreSQL
+3. **Migration (Phase 3)**: Switch to PostgreSQL as primary, Google becomes sync module
+4. **Final (Phase 4)**: Make Google sync optional, full offline functionality
+
+This gradual approach ensures we deliver value quickly while building toward data sovereignty.
+
+**Feature Dependencies:**
+
+Some features have dependencies that affect implementation order:
+
+- **Multi-Profile Support** should be implemented before Profile Switching and Reward Points
+- **Server-Side Auth** is required before Profile Support and Modular Sync
+- **Task Management** should be implemented before Reward Point System
+- **Meal Planning** can be developed in parallel with other features
+- **Voice Integration** depends on Multi-Profile and Task Management
+
+**Testing Requirements:**
+
+All features must follow TDD methodology:
+
+- Write tests before implementation (red-green-refactor)
+- Unit tests for business logic
+- Integration tests for API routes and database
+- Component tests for UI
+- E2E tests for critical user flows
+- No feature is complete until all tests pass
 
 ---
 

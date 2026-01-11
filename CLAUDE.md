@@ -375,8 +375,9 @@ src/
 
 .claude/
 └── plans/           # Feature implementation plans (MUST READ before implementing)
-                     # - multi-profile-family-support.md
                      # - server-side-auth.md
+                     # - modular-sync-architecture.md (Privacy-first data storage)
+                     # - multi-profile-family-support.md
                      # - google-tasks-todo-list.md
                      # - reward-point-system.md
                      # - meal-planning.md
@@ -593,8 +594,9 @@ export function MyComponent() {
 
 ### Feature Plans
 - **All Features:** See [`.claude/plans/`](./.claude/plans/) for comprehensive implementation plans
-  - Multi-Profile Family Support
   - Server-Side Authentication
+  - Modular Sync Architecture (Privacy-first data storage)
+  - Multi-Profile Family Support
   - Task Management (Google Tasks)
   - Reward Point System
   - Meal Planning
