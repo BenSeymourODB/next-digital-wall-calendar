@@ -1,6 +1,6 @@
 # Calendar Event Database (Local-First)
 
-## Priority: TOP
+## Priority: TOP (Foundational)
 
 > **This is a foundational feature.** A local calendar event database is required for UI development, testing, and privacy-first operation. This must be implemented before other calendar-dependent features can be fully developed and tested.
 
@@ -8,9 +8,58 @@
 
 Implement a PostgreSQL-backed calendar event database that stores events independently of Google Calendar. This provides the foundation for all calendar functionality, enabling UI development and testing without external dependencies, and serving as the source of truth for the privacy-first architecture.
 
+## Related Plans
+
+This plan is part of a larger architecture. See these related documents:
+
+| Plan | Relationship |
+|------|-------------|
+| [modular-sync-architecture.md](./modular-sync-architecture.md) | **Depends on this plan.** Sync modules sync TO/FROM this database. The `EventSyncRecord` model referenced here is defined in that plan. |
+| [analog-clock-calendar.md](./analog-clock-calendar.md) | **Depends on this plan.** The analog clock component consumes events from this database via the `useClockEvents` hook. |
+| [server-side-auth.md](./server-side-auth.md) | **This plan depends on.** User authentication is required for event ownership. |
+| [multi-profile-family-support.md](./multi-profile-family-support.md) | **This plan depends on.** Profile system is required for event assignments. |
+
+## Schema Relationship with Modular Sync Architecture
+
+This plan defines `CalendarEvent` which is the **concrete implementation** of the `Event` model conceptually described in `modular-sync-architecture.md`. Key differences:
+
+| Field | This Plan (`CalendarEvent`) | modular-sync-architecture.md (`Event`) | Rationale |
+|-------|------------------------------|----------------------------------------|-----------|
+| Owner field | `userId` | `profileId` | We use `userId` (account owner) + `EventProfileAssignment` junction table for multi-profile assignment. This is more flexible than single `profileId`. |
+| Emoji support | `emoji` field | Not specified | Added for analog clock visual integration |
+| Soft delete | `isDeleted`, `deletedAt` | Not specified | Explicit soft delete for recovery |
+| Sync records | References `EventSyncRecord` | Defines `EventSyncRecord` | Sync tracking is defined in modular-sync-architecture.md |
+
+**When implementing:** Use the schema from THIS plan for the actual Prisma migration. The `EventSyncRecord` model should be added from `modular-sync-architecture.md` when implementing sync features.
+
+## Implementation Timeline Clarification
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 1: THIS PLAN (Calendar Event Database)                                │
+│ ─────────────────────────────────────────────                               │
+│ • PostgreSQL database with CalendarEvent model                              │
+│ • Full CRUD API routes                                                      │
+│ • React hooks for data access                                               │
+│ • IndexedDB caching for offline/performance                                 │
+│ • Enables UI development and testing                                        │
+│                                                                             │
+│ ↓ (Prerequisite for)                                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Phase 2: Modular Sync Architecture                                          │
+│ ─────────────────────────────────────                                       │
+│ • EventSyncRecord model for tracking                                        │
+│ • Google Calendar sync module                                               │
+│ • Optional two-way sync                                                     │
+│ • Conflict resolution                                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+The `modular-sync-architecture.md` states it will be implemented "after Google Calendar and Tasks integration is working fully." This plan provides the **database foundation** that sync will build upon. There is no conflict—this is the prerequisite layer.
+
 ## Why This Feature is Top Priority
 
-1. **Enables UI Testing**: Calendar components (analog clock, agenda view, etc.) cannot be properly tested without a reliable data source
+1. **Enables UI Testing**: Calendar components (analog clock per [analog-clock-calendar.md](./analog-clock-calendar.md), agenda view, etc.) cannot be properly tested without a reliable data source
 2. **Privacy-First Foundation**: Establishes local database as the source of truth per the modular sync architecture
 3. **Offline Capability**: Full calendar functionality without internet connection
 4. **Profile Integration**: Events can be assigned to family members immediately
@@ -43,9 +92,10 @@ Implement a PostgreSQL-backed calendar event database that stores events indepen
 - **Profile Color Coding**: Events display profile colors in family view
 
 #### 4. Time Zone Support
-- **Event Timezone**: Store event's original timezone
+- **Event Timezone**: Store event's original timezone (IANA format, e.g., "America/New_York")
 - **Display Timezone**: Convert to user's local timezone for display
-- **All-Day Handling**: All-day events don't shift with timezone
+- **All-Day Handling**: All-day events don't shift with timezone (stored as "floating" dates)
+- **Future-Proofing**: Consider `Temporal` API (Stage 3) when stable for more robust timezone handling
 
 #### 5. CRUD Operations
 - **Create**: Create new events with all properties
@@ -260,7 +310,7 @@ src/lib/calendar/
 ├── event-utils.ts                  # Event utility functions
 ├── date-utils.ts                   # Date manipulation utilities
 ├── recurrence.ts                   # Recurrence rule parsing (Phase 2)
-└── timezone.ts                     # Timezone handling
+└── timezone.ts                     # Timezone handling (see Timezone Utilities below)
 ```
 
 ### 3. Data Models (TypeScript)
@@ -473,10 +523,28 @@ export function parseEventTitle(title: string): {
 }
 
 /**
+ * Supported color emojis for event categorization
+ * This is the canonical list - used for validation and UI pickers
+ */
+export const SUPPORTED_COLOR_EMOJIS = [
+  '🔴', // red
+  '🟠', // orange
+  '🟡', // yellow
+  '🟢', // green
+  '🔵', // blue
+  '🟣', // purple
+  '⚫', // black
+  '⚪', // white
+  '🟤', // brown
+] as const;
+
+export type ColorEmoji = typeof SUPPORTED_COLOR_EMOJIS[number];
+
+/**
  * Get hex color from color emoji
  */
 export function colorEmojiToHex(emoji?: string): string | undefined {
-  const colorMap: Record<string, string> = {
+  const colorMap: Record<ColorEmoji, string> = {
     '🔴': '#EF4444', // red-500
     '🟠': '#F97316', // orange-500
     '🟡': '#EAB308', // yellow-500
@@ -488,7 +556,36 @@ export function colorEmojiToHex(emoji?: string): string | undefined {
     '🟤': '#92400E', // amber-800
   };
 
-  return emoji ? colorMap[emoji] : undefined;
+  return emoji && isColorEmoji(emoji) ? colorMap[emoji] : undefined;
+}
+
+/**
+ * Validate if a string is a supported color emoji
+ */
+export function isColorEmoji(emoji: string): emoji is ColorEmoji {
+  return SUPPORTED_COLOR_EMOJIS.includes(emoji as ColorEmoji);
+}
+
+/**
+ * Validate emoji for event display
+ * Returns true if emoji is safe for display (single grapheme, not ZWJ sequence with skin tone)
+ */
+export function isValidEventEmoji(emoji: string): boolean {
+  // Use Intl.Segmenter for proper grapheme counting
+  const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
+  const segments = [...segmenter.segment(emoji)];
+
+  // Must be exactly one grapheme
+  if (segments.length !== 1) return false;
+
+  // Reject if it contains variation selectors or skin tone modifiers
+  // that might cause rendering issues
+  const codePoints = [...emoji].map(c => c.codePointAt(0) || 0);
+  const hasProblematicModifiers = codePoints.some(
+    cp => (cp >= 0x1F3FB && cp <= 0x1F3FF) // Skin tone modifiers
+  );
+
+  return !hasProblematicModifiers;
 }
 
 /**
@@ -549,7 +646,107 @@ export function groupEventsByDate(
 }
 ```
 
-### 5. API Routes
+### 5. Timezone Utilities
+
+Timezone handling uses `Intl.DateTimeFormat` for current browser support, with a path to `Temporal` API when it stabilizes.
+
+```typescript
+// src/lib/calendar/timezone.ts
+
+/**
+ * Get the user's local timezone (IANA format)
+ */
+export function getLocalTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+/**
+ * Convert a date from one timezone to another
+ * Uses Intl.DateTimeFormat for current browser support
+ *
+ * Note: When Temporal API (currently Stage 3) becomes stable,
+ * replace with Temporal.ZonedDateTime for more robust handling:
+ *
+ * ```typescript
+ * // Future Temporal API usage:
+ * const zdt = Temporal.ZonedDateTime.from({
+ *   timeZone: fromTimezone,
+ *   year, month, day, hour, minute, second
+ * });
+ * return zdt.withTimeZone(toTimezone);
+ * ```
+ */
+export function convertTimezone(
+  date: Date,
+  fromTimezone: string,
+  toTimezone: string
+): Date {
+  // Get the date parts in the target timezone
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: toTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(date);
+  const getPart = (type: string) =>
+    parts.find(p => p.type === type)?.value || '0';
+
+  return new Date(
+    parseInt(getPart('year')),
+    parseInt(getPart('month')) - 1,
+    parseInt(getPart('day')),
+    parseInt(getPart('hour')),
+    parseInt(getPart('minute')),
+    parseInt(getPart('second'))
+  );
+}
+
+/**
+ * Format a date for display in a specific timezone
+ */
+export function formatInTimezone(
+  date: Date,
+  timezone: string,
+  options: Intl.DateTimeFormatOptions = {}
+): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    ...options,
+  }).format(date);
+}
+
+/**
+ * Check if a timezone string is valid IANA timezone
+ */
+export function isValidTimezone(timezone: string): boolean {
+  try {
+    Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * For all-day events, treat dates as "floating" (no timezone conversion)
+ * This ensures "January 15th" stays January 15th regardless of timezone
+ */
+export function getFloatingDate(date: Date): { year: number; month: number; day: number } {
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth(),
+    day: date.getUTCDate(),
+  };
+}
+```
+
+### 6. API Routes
 
 ```typescript
 // src/app/api/events/route.ts
@@ -1205,9 +1402,268 @@ export function useEventMutations() {
 }
 ```
 
-### 8. Integration with Analog Clock Component
+### 8. Client-Side Caching Strategy (IndexedDB)
 
-The analog clock component can fetch events from the local database:
+Per CLAUDE.md guidelines, the backend server is the source of truth, but IndexedDB is used for offline performance and fast access.
+
+```typescript
+// src/lib/cache/event-cache.ts
+import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import { CalendarEvent } from '@/components/calendar/types';
+
+interface EventCacheDB extends DBSchema {
+  events: {
+    key: string;
+    value: CachedEvent;
+    indexes: {
+      'by-date': string;
+      'by-profile': string;
+      'by-updated': number;
+    };
+  };
+  metadata: {
+    key: string;
+    value: CacheMetadata;
+  };
+}
+
+interface CachedEvent extends CalendarEvent {
+  _cachedAt: number;
+  _cacheVersion: number;
+}
+
+interface CacheMetadata {
+  lastSyncAt: number;
+  version: number;
+}
+
+const CACHE_VERSION = 1;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_DB_NAME = 'calendar-events-cache';
+
+class EventCache {
+  private db: IDBPDatabase<EventCacheDB> | null = null;
+
+  async init(): Promise<void> {
+    this.db = await openDB<EventCacheDB>(CACHE_DB_NAME, CACHE_VERSION, {
+      upgrade(db) {
+        // Events store
+        const eventStore = db.createObjectStore('events', { keyPath: 'id' });
+        eventStore.createIndex('by-date', 'startTime');
+        eventStore.createIndex('by-profile', 'assignments');
+        eventStore.createIndex('by-updated', '_cachedAt');
+
+        // Metadata store
+        db.createObjectStore('metadata', { keyPath: 'key' });
+      },
+    });
+  }
+
+  /**
+   * Get events from cache, returns null if stale or missing
+   */
+  async getEvents(
+    startDate: Date,
+    endDate: Date
+  ): Promise<CalendarEvent[] | null> {
+    if (!this.db) await this.init();
+
+    const metadata = await this.db!.get('metadata', 'events');
+    if (!metadata || Date.now() - metadata.lastSyncAt > CACHE_TTL_MS) {
+      return null; // Cache miss or stale
+    }
+
+    // Query by date range using index
+    const events = await this.db!.getAllFromIndex(
+      'events',
+      'by-date',
+      IDBKeyRange.bound(
+        startDate.toISOString(),
+        endDate.toISOString()
+      )
+    );
+
+    return events;
+  }
+
+  /**
+   * Store events in cache
+   */
+  async setEvents(events: CalendarEvent[]): Promise<void> {
+    if (!this.db) await this.init();
+
+    const tx = this.db!.transaction(['events', 'metadata'], 'readwrite');
+    const eventStore = tx.objectStore('events');
+    const metaStore = tx.objectStore('metadata');
+
+    // Store each event with cache metadata
+    for (const event of events) {
+      await eventStore.put({
+        ...event,
+        _cachedAt: Date.now(),
+        _cacheVersion: CACHE_VERSION,
+      });
+    }
+
+    // Update sync timestamp
+    await metaStore.put({
+      key: 'events',
+      lastSyncAt: Date.now(),
+      version: CACHE_VERSION,
+    });
+
+    await tx.done;
+  }
+
+  /**
+   * Invalidate cache (after mutations)
+   */
+  async invalidate(): Promise<void> {
+    if (!this.db) await this.init();
+    await this.db!.delete('metadata', 'events');
+  }
+
+  /**
+   * Clear all cached data (on logout)
+   */
+  async clear(): Promise<void> {
+    if (!this.db) await this.init();
+    await this.db!.clear('events');
+    await this.db!.clear('metadata');
+  }
+}
+
+export const eventCache = new EventCache();
+```
+
+**Cache Usage in useEvents Hook:**
+
+```typescript
+// Updated useEvents hook with caching
+export function useEvents(options: UseEventsOptions = {}) {
+  const { filters, refreshInterval = 0 } = options;
+
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [fromCache, setFromCache] = useState(false);
+
+  const fetchEvents = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Try cache first for instant response
+      if (filters?.startDate && filters?.endDate) {
+        const cached = await eventCache.getEvents(
+          filters.startDate,
+          filters.endDate
+        );
+
+        if (cached) {
+          setEvents(cached);
+          setFromCache(true);
+          setLoading(false);
+          // Continue to fetch fresh data in background
+        }
+      }
+
+      // Fetch from server (source of truth)
+      const params = new URLSearchParams();
+      // ... build params ...
+
+      const response = await fetch(`/api/events?${params.toString()}`);
+      if (!response.ok) throw new Error('Failed to fetch events');
+
+      const data: EventsResponse = await response.json();
+      setEvents(data.events);
+      setFromCache(false);
+
+      // Update cache
+      await eventCache.setEvents(data.events);
+
+    } catch (err) {
+      // If we have cached data, use it despite error
+      if (fromCache && events.length > 0) {
+        logger.log('Using cached events due to fetch error', LogLevel.Warn);
+        return;
+      }
+      setError(err as Error);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
+
+  // ... rest of hook
+}
+```
+
+**Cache Invalidation Strategy:**
+
+| Action | Cache Behavior |
+|--------|---------------|
+| Create event | Invalidate cache, refetch |
+| Update event | Invalidate cache, refetch |
+| Delete event | Invalidate cache, refetch |
+| Logout | Clear all cached data |
+| Tab focus | Check TTL, refetch if stale |
+| Background sync | Update cache silently |
+
+### 9. Next.js Cache Tags and Revalidation
+
+Use Next.js cache tags for server-side caching and on-demand revalidation:
+
+```typescript
+// src/app/api/events/route.ts
+import { revalidateTag, unstable_cache } from 'next/cache';
+
+// Cache event queries with tags
+const getCachedEvents = unstable_cache(
+  async (userId: string, startDate: string, endDate: string) => {
+    return prisma.calendarEvent.findMany({
+      where: {
+        userId,
+        isDeleted: false,
+        endTime: { gte: new Date(startDate) },
+        startTime: { lte: new Date(endDate) },
+      },
+      include: {
+        assignments: { include: { profile: true } }
+      },
+      orderBy: { startTime: 'asc' }
+    });
+  },
+  ['events'],
+  {
+    tags: ['events'],
+    revalidate: 60, // Revalidate every 60 seconds
+  }
+);
+
+// In mutation handlers, invalidate cache:
+export async function POST(request: NextRequest) {
+  // ... create event ...
+
+  // Invalidate cache for this user's events
+  revalidateTag('events');
+  revalidateTag(`events:${user.id}`);
+
+  return NextResponse.json(event, { status: 201 });
+}
+```
+
+**Cache Tag Strategy:**
+
+| Tag | Scope | Invalidated By |
+|-----|-------|----------------|
+| `events` | All events | Any event mutation |
+| `events:${userId}` | User's events | User's event mutations |
+| `events:${profileId}` | Profile's events | Profile assignment changes |
+| `events:date:${YYYY-MM}` | Month's events | Events in that month |
+
+### 10. Integration with Analog Clock Component
+
+The analog clock component (see [analog-clock-calendar.md](./analog-clock-calendar.md)) can fetch events from the local database:
 
 ```typescript
 // src/components/calendar/use-calendar-events.ts
@@ -1592,11 +2048,81 @@ test('user can create timed event with profile assignment', async ({ page }) => 
 
 ## Security Considerations
 
-- Validate userId ownership on all operations
-- Sanitize event titles and descriptions (prevent XSS)
-- Rate limit event creation
-- Audit log for event modifications
-- Soft delete with recovery period before permanent deletion
+### Data Ownership
+- Validate `userId` ownership on all operations
+- Sanitize event titles and descriptions (prevent XSS via DOMPurify)
+- Escape special characters in database queries
+
+### Rate Limiting
+
+| Endpoint | Limit | Window | Rationale |
+|----------|-------|--------|-----------|
+| `POST /api/events` | 60 requests | 1 minute | Prevent spam event creation |
+| `PATCH /api/events/[id]` | 120 requests | 1 minute | Allow rapid edits |
+| `DELETE /api/events/[id]` | 30 requests | 1 minute | Prevent mass deletion |
+| `GET /api/events` | 300 requests | 1 minute | Higher for reads |
+
+Implementation using `@upstash/ratelimit` or similar:
+
+```typescript
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
+
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(60, '1 m'),
+  analytics: true,
+});
+
+// In API route:
+const { success, limit, remaining } = await ratelimit.limit(
+  `events:${user.id}:create`
+);
+
+if (!success) {
+  return NextResponse.json(
+    { error: 'Rate limit exceeded. Try again later.' },
+    { status: 429, headers: { 'X-RateLimit-Remaining': remaining.toString() } }
+  );
+}
+```
+
+### Soft Delete Retention Policy
+
+| Stage | Duration | Action |
+|-------|----------|--------|
+| Soft deleted | 0-30 days | Event hidden but recoverable via `?includeDeleted=true` |
+| Retention period | 30 days | User can restore event from "Trash" UI |
+| Permanent deletion | After 30 days | Scheduled job permanently deletes (`isDeleted=true` AND `deletedAt < 30 days ago`) |
+
+**Cleanup Job (run daily):**
+
+```typescript
+// src/lib/jobs/cleanup-deleted-events.ts
+const RETENTION_DAYS = 30;
+
+export async function cleanupDeletedEvents() {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - RETENTION_DAYS);
+
+  const result = await prisma.calendarEvent.deleteMany({
+    where: {
+      isDeleted: true,
+      deletedAt: { lt: cutoffDate }
+    }
+  });
+
+  logger.event('DeletedEventsCleanup', {
+    deletedCount: result.count,
+    cutoffDate: cutoffDate.toISOString()
+  });
+}
+```
+
+### Audit Logging
+- Log all create, update, delete operations
+- Include `userId`, `profileId`, `eventId`, timestamp
+- Store audit logs separately for compliance
 
 ## Dependencies
 
