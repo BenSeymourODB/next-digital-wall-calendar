@@ -31,6 +31,7 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
 ### Planned Features (See `.claude/plans/` for details)
 
 #### Core Infrastructure
+
 - **Server-Side Authentication** ([plan](/.claude/plans/server-side-auth.md))
   - Google OAuth 2.0 with refresh tokens
   - Secure session management (NextAuth.js)
@@ -45,6 +46,7 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
   - Future support for Outlook, iCloud, CalDAV
 
 #### Core Family Features
+
 - **Multi-Profile Family Support** ([plan](/.claude/plans/multi-profile-family-support.md))
   - Individual profiles for each family member (parents + kids)
   - Profile avatars (initials, photos, or emojis)
@@ -76,6 +78,7 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
   - List selection
 
 #### Enhanced Calendar Features
+
 - **Analog Clock Calendar** ([plan](/.claude/plans/analog-clock-calendar.md))
   - Unique circular time visualization
   - Event arcs showing duration
@@ -89,6 +92,7 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
   - Configurable intervals
 
 #### Meal Planning & Lists
+
 - **Meal Planning** ([plan](/.claude/plans/meal-planning.md))
   - Weekly meal grid (Breakfast/Lunch/Dinner/Snack)
   - Meal library for reusable meals
@@ -102,6 +106,7 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
   - Cooking timer integration
 
 #### Smart Home Integration
+
 - **Face Recognition Profile Switching** ([plan](/.claude/plans/face-recognition-profile-switching.md))
   - Privacy-first: camera only active on-demand
   - Frigate NVR integration (local processing)
@@ -117,6 +122,7 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
   - Point awarding via voice
 
 #### User Experience
+
 - **User Settings Page** ([plan](/.claude/plans/user-settings-page.md))
   - Display preferences
   - Reward system configuration
@@ -127,28 +133,33 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
 ## 🏗️ Architecture
 
 ### Frontend
+
 - **Next.js 16** - App Router with Server Components
 - **React 19** - With React Compiler for automatic optimization
 - **Tailwind CSS 4** - Utility-first styling
 - **shadcn/ui** - Composable component library
 
 ### Backend
+
 - **Next.js API Routes** - Server-side API endpoints
 - **PostgreSQL** - Primary database (via Prisma ORM)
 - **NextAuth.js** - Authentication and session management
 - **Google APIs** - Calendar and Tasks integration
 
 ### Local Storage & Caching
+
 - **IndexedDB** - Client-side caching for responsiveness
 - **LocalStorage** - Settings and preferences
 - Used for **performance optimization only** - backend is source of truth
 
 ### Smart Home Integration
+
 - **Frigate NVR** - Face recognition (self-hosted, local network)
 - **Amazon Alexa** - Voice commands (Skills Kit)
 - **Google Assistant** - Voice commands (Actions on Google - future)
 
 ### Deployment
+
 - **Coolify** - Self-hosted deployment platform (primary target)
 - **Docker** - Standalone containerized deployment
 - **PostgreSQL** - Self-hosted database (or managed service)
@@ -157,23 +168,27 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
 ## 🚀 Quick Start
 
 1. **Clone the repository**
+
    ```bash
    git clone <repo-url>
    cd next-digital-wall-calendar
    ```
 
 2. **Install dependencies**
+
    ```bash
    pnpm install
    ```
 
 3. **Set up environment variables**
+
    ```bash
    cp .env.local.example .env.local
    # Edit .env.local with your credentials
    ```
 
 4. **Start development server**
+
    ```bash
    pnpm dev
    ```
@@ -183,21 +198,26 @@ This project aims to be a **comprehensive family hub** that goes beyond simple c
 ## 📖 Documentation
 
 ### Getting Started
+
 - **[Wall Calendar Guide](./docs/wall-calendar.md)** - Complete guide for the digital wall calendar
 - **[Google Calendar Setup](./docs/google-calendar-setup.md)** - Step-by-step API setup
 
 ### Development
+
 - **[CLAUDE.md](./CLAUDE.md)** - Development guide for AI agents (architecture, TDD, best practices)
 - **[Styling Guide](./docs/styling.md)** - Tailwind CSS usage and component patterns
 - **[React Compiler](./docs/react-compiler.md)** - How React Compiler works
 - **[MCP Servers](./docs/mcp-servers.md)** - Next.js DevTools, Context7, Shadcn
 
 ### Future Documentation
+
 - **[Application Insights](./docs/application-insights.md)** - Logging and monitoring (optional, future)
 - **[Deployment](./docs/deployment.md)** - Cloud deployment guide (Azure, future alternative)
 
 ### Feature Plans
+
 All feature implementation plans are in [`.claude/plans/`](/.claude/plans/):
+
 - [Server-Side Authentication](/.claude/plans/server-side-auth.md)
 - [Modular Sync Architecture](/.claude/plans/modular-sync-architecture.md) ⭐ Privacy-First
 - [Multi-Profile Family Support](/.claude/plans/multi-profile-family-support.md)
@@ -216,12 +236,14 @@ All feature implementation plans are in [`.claude/plans/`](/.claude/plans/):
 ## 🛠️ Technology Stack
 
 ### Current
+
 - **Frontend**: Next.js 16, React 19, TypeScript 5, Tailwind CSS 4
 - **Components**: shadcn/ui, Framer Motion
 - **Tooling**: pnpm, ESLint, Prettier, Turbopack
 - **Deployment**: Docker standalone output
 
 ### Planned - Core Features
+
 - **Database**: PostgreSQL (via Prisma ORM)
 - **Authentication**: NextAuth.js v5 (Google OAuth)
 - **APIs**: Google Calendar API, Google Tasks API
@@ -230,6 +252,7 @@ All feature implementation plans are in [`.claude/plans/`](/.claude/plans/):
 - **Security**: bcrypt (PIN hashing), HTTPS/TLS
 
 ### Planned - Deployment & Infrastructure (Future)
+
 - **Self-Hosting**: Coolify deployment, Docker Compose
 - **Cloud Option**: Azure Web Apps (alternative to self-hosting)
 - **Monitoring**: Application Insights (optional, Azure-based)
@@ -254,6 +277,7 @@ This project uses **Test-Driven Development (TDD)**:
 4. **Never** remove tests or modify test conditions without explicit authorization
 
 **Code Quality Requirements:**
+
 ```bash
 pnpm lint:fix      # ESLint auto-fix
 pnpm format:fix    # Prettier formatting
@@ -293,6 +317,7 @@ pnpm bump-ui          # Update shadcn components
 This is a personal project, but suggestions and bug reports are welcome via GitHub Issues.
 
 **Development Principles:**
+
 - All new features require tests (TDD)
 - Follow existing code style (ESLint + Prettier)
 - Update documentation for new features
@@ -305,6 +330,7 @@ This is a personal project, but suggestions and bug reports are welcome via GitH
 ## 🙏 Acknowledgments
 
 Inspired by commercial products like Skylight Calendar, but built to be:
+
 - **Free** (no subscriptions)
 - **Private** (self-hosted)
 - **Open** (customizable)
@@ -317,10 +343,12 @@ A comprehensive plan for feature development. All features will be implemented u
 ### Foundation & Infrastructure
 
 **Authentication & Data Storage**
+
 - [ ] [Server-Side Authentication](/.claude/plans/server-side-auth.md) - NextAuth.js with Google OAuth, PostgreSQL user accounts
 - [ ] [Modular Sync Architecture](/.claude/plans/modular-sync-architecture.md) ⭐ - PostgreSQL as primary data store, optional Google Calendar/Tasks sync modules
 
 **Current Status**
+
 - [x] Next.js 16 setup with TypeScript
 - [x] Google Calendar integration (client-side, temporary)
 - [x] Docker standalone build configuration
@@ -328,10 +356,12 @@ A comprehensive plan for feature development. All features will be implemented u
 ### Core Family Features
 
 **Multi-User & Profiles**
+
 - [ ] [Multi-Profile Family Support](/.claude/plans/multi-profile-family-support.md) - Individual profiles, multiple admins, PIN security, profile switcher
 - [ ] [User Settings Page](/.claude/plans/user-settings-page.md) - Profile management, display preferences, system configuration
 
 **Task Management & Gamification**
+
 - [ ] [Google Tasks Integration](/.claude/plans/google-tasks-todo-list.md) - Local task storage with optional Google Tasks sync
 - [ ] [New Task Modal](/.claude/plans/new-task-modal.md) - Quick task creation with profile assignment and point values
 - [ ] [Reward Point System](/.claude/plans/reward-point-system.md) - Gamification, leaderboards, streaks, configurable rewards
@@ -339,22 +369,26 @@ A comprehensive plan for feature development. All features will be implemented u
 ### Enhanced Calendar Features
 
 **Visualization & Rotation**
+
 - [ ] [Analog Clock Calendar](/.claude/plans/analog-clock-calendar.md) - Circular time visualization with event arcs
 - [ ] [Screen Rotation Scheduler](/.claude/plans/screen-rotation-scheduler.md) - Auto-rotate between calendar, tasks, photos, recipes
 
 **Meal Planning**
+
 - [ ] [Meal Planning System](/.claude/plans/meal-planning.md) - Weekly meal grid, meal library, grocery list generation
 - [ ] [Recipe Display Component](/.claude/plans/recipe-display-component.md) - Zoom pagination for wall display, cooking timer integration
 
 ### Smart Home Integration
 
 **Local & Privacy-First**
+
 - [ ] [Face Recognition Profile Switching](/.claude/plans/face-recognition-profile-switching.md) - Frigate NVR integration, on-demand camera activation, PIN fallback
 - [ ] [Voice Integration](/.claude/plans/voice-integration.md) - Amazon Alexa Skills Kit, hands-free task management
 
 ### Deployment & Infrastructure
 
 **Self-Hosting**
+
 - [ ] Coolify deployment guide and configuration
 - [ ] Docker Compose for local development
 - [ ] PostgreSQL setup and migrations
@@ -362,6 +396,7 @@ A comprehensive plan for feature development. All features will be implemented u
 - [ ] Backup and restore procedures
 
 **Monitoring & Observability (Future)**
+
 - [ ] Application Insights integration (optional, Azure-based)
 - [ ] Health check endpoints
 - [ ] Error tracking and alerting
@@ -370,18 +405,21 @@ A comprehensive plan for feature development. All features will be implemented u
 ### Polish & Scale
 
 **Performance & Accessibility**
+
 - [ ] Comprehensive test suite (unit, integration, E2E)
 - [ ] Mobile responsive design optimization
 - [ ] Accessibility improvements (WCAG 2.1 AA compliance)
 - [ ] Performance optimization (Core Web Vitals)
 
 **Extensibility**
+
 - [ ] Multi-language support (i18n)
 - [ ] Additional sync providers (Outlook, iCloud, CalDAV)
 - [ ] Import/export tools (ICS, CSV, Google Takeout)
 - [ ] Plugin system for custom integrations
 
 **Documentation**
+
 - [ ] User guide for families
 - [ ] Coolify deployment guide
 - [ ] Developer contribution guide

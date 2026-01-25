@@ -1,4 +1,5 @@
 import { AppInsightsProvider } from "@/components/providers/AppInsightsProvider";
+import { SessionProvider } from "@/components/providers/SessionProvider";
 import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
@@ -22,19 +23,22 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="font-sans antialiased">
-        {/* Google Identity Services - Load globally for OAuth */}
+        {/* TODO: Remove after full migration to server-side auth */}
+        {/* Google Identity Services - Legacy client-side OAuth */}
         <Script
           src="https://accounts.google.com/gsi/client"
           strategy="afterInteractive"
           async
         />
-        {/* Google API Client - Load globally for Calendar API */}
+        {/* Google API Client - May still be needed for client-side API calls */}
         <Script
           src="https://apis.google.com/js/api.js"
           strategy="afterInteractive"
           async
         />
-        <AppInsightsProvider>{children}</AppInsightsProvider>
+        <SessionProvider>
+          <AppInsightsProvider>{children}</AppInsightsProvider>
+        </SessionProvider>
       </body>
     </html>
   );

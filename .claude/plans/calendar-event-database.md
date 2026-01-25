@@ -12,23 +12,23 @@ Implement a PostgreSQL-backed calendar event database that stores events indepen
 
 This plan is part of a larger architecture. See these related documents:
 
-| Plan | Relationship |
-|------|-------------|
-| [modular-sync-architecture.md](./modular-sync-architecture.md) | **Depends on this plan.** Sync modules sync TO/FROM this database. The `EventSyncRecord` model referenced here is defined in that plan. |
-| [analog-clock-calendar.md](./analog-clock-calendar.md) | **Depends on this plan.** The analog clock component consumes events from this database via the `useClockEvents` hook. |
-| [server-side-auth.md](./server-side-auth.md) | **This plan depends on.** User authentication is required for event ownership. |
-| [multi-profile-family-support.md](./multi-profile-family-support.md) | **This plan depends on.** Profile system is required for event assignments. |
+| Plan                                                                 | Relationship                                                                                                                            |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| [modular-sync-architecture.md](./modular-sync-architecture.md)       | **Depends on this plan.** Sync modules sync TO/FROM this database. The `EventSyncRecord` model referenced here is defined in that plan. |
+| [analog-clock-calendar.md](./analog-clock-calendar.md)               | **Depends on this plan.** The analog clock component consumes events from this database via the `useClockEvents` hook.                  |
+| [server-side-auth.md](./server-side-auth.md)                         | **This plan depends on.** User authentication is required for event ownership.                                                          |
+| [multi-profile-family-support.md](./multi-profile-family-support.md) | **This plan depends on.** Profile system is required for event assignments.                                                             |
 
 ## Schema Relationship with Modular Sync Architecture
 
 This plan defines `CalendarEvent` which is the **concrete implementation** of the `Event` model conceptually described in `modular-sync-architecture.md`. Key differences:
 
-| Field | This Plan (`CalendarEvent`) | modular-sync-architecture.md (`Event`) | Rationale |
-|-------|------------------------------|----------------------------------------|-----------|
-| Owner field | `userId` | `profileId` | We use `userId` (account owner) + `EventProfileAssignment` junction table for multi-profile assignment. This is more flexible than single `profileId`. |
-| Emoji support | `emoji` field | Not specified | Added for analog clock visual integration |
-| Soft delete | `isDeleted`, `deletedAt` | Not specified | Explicit soft delete for recovery |
-| Sync records | References `EventSyncRecord` | Defines `EventSyncRecord` | Sync tracking is defined in modular-sync-architecture.md |
+| Field         | This Plan (`CalendarEvent`)  | modular-sync-architecture.md (`Event`) | Rationale                                                                                                                                              |
+| ------------- | ---------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Owner field   | `userId`                     | `profileId`                            | We use `userId` (account owner) + `EventProfileAssignment` junction table for multi-profile assignment. This is more flexible than single `profileId`. |
+| Emoji support | `emoji` field                | Not specified                          | Added for analog clock visual integration                                                                                                              |
+| Soft delete   | `isDeleted`, `deletedAt`     | Not specified                          | Explicit soft delete for recovery                                                                                                                      |
+| Sync records  | References `EventSyncRecord` | Defines `EventSyncRecord`              | Sync tracking is defined in modular-sync-architecture.md                                                                                               |
 
 **When implementing:** Use the schema from THIS plan for the actual Prisma migration. The `EventSyncRecord` model should be added from `modular-sync-architecture.md` when implementing sync features.
 
@@ -70,6 +70,7 @@ The `modular-sync-architecture.md` states it will be implemented "after Google C
 ### Core Features
 
 #### 1. Event Types
+
 - **All-Day Events**: Events without specific times (e.g., "Birthday", "Holiday")
 - **Timed Events**: Events with specific start and end times (e.g., "Meeting 2pm-3pm")
 - **Multi-Day Events**: Events spanning multiple days (e.g., "Vacation" from Mon-Fri)
@@ -77,6 +78,7 @@ The `modular-sync-architecture.md` states it will be implemented "after Google C
 - **Recurring Events**: Events that repeat on a schedule (Phase 2)
 
 #### 2. Event Properties
+
 - **Title**: Required, event name/summary
 - **Description**: Optional, detailed event notes
 - **Location**: Optional, physical or virtual location
@@ -86,18 +88,21 @@ The `modular-sync-architecture.md` states it will be implemented "after Google C
 - **Attachments**: Optional file attachments (Phase 2)
 
 #### 3. Profile Assignment
+
 - **Single Profile**: Assign event to one family member
 - **Multiple Profiles**: Assign event to multiple family members
 - **Unassigned**: Family-wide events visible to all
 - **Profile Color Coding**: Events display profile colors in family view
 
 #### 4. Time Zone Support
+
 - **Event Timezone**: Store event's original timezone (IANA format, e.g., "America/New_York")
 - **Display Timezone**: Convert to user's local timezone for display
 - **All-Day Handling**: All-day events don't shift with timezone (stored as "floating" dates)
 - **Future-Proofing**: Consider `Temporal` API (Stage 3) when stable for more robust timezone handling
 
 #### 5. CRUD Operations
+
 - **Create**: Create new events with all properties
 - **Read**: Fetch events by date range, profile, or search
 - **Update**: Modify existing events
@@ -106,6 +111,7 @@ The `modular-sync-architecture.md` states it will be implemented "after Google C
 ### Visual Design
 
 #### Event Display (Agenda View)
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Monday, January 27, 2025                                   │
@@ -138,6 +144,7 @@ The `modular-sync-architecture.md` states it will be implemented "after Google C
 ```
 
 #### Create/Edit Event Modal
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Create Event                                    [×]         │
@@ -182,6 +189,7 @@ The `modular-sync-architecture.md` states it will be implemented "after Google C
 ```
 
 #### Multi-Day Event Indicator
+
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
 │         Mon         Tue         Wed         Thu         Fri              │
@@ -360,17 +368,17 @@ export interface CalendarEvent {
 }
 
 export interface EventReminder {
-  minutes: number;        // Minutes before event
-  method: 'popup' | 'email' | 'push';
+  minutes: number; // Minutes before event
+  method: "popup" | "email" | "push";
 }
 
 export interface EventProfileAssignment {
   id: string;
   eventId: string;
   profileId: string;
-  status: 'accepted' | 'declined' | 'tentative' | 'pending';
+  status: "accepted" | "declined" | "tentative" | "pending";
   createdAt: Date;
-  profile?: Profile;      // When included
+  profile?: Profile; // When included
 }
 
 export interface CreateEventInput {
@@ -384,7 +392,7 @@ export interface CreateEventInput {
   color?: string;
   emoji?: string;
   reminders?: EventReminder[];
-  profileIds?: string[];  // Profiles to assign
+  profileIds?: string[]; // Profiles to assign
 }
 
 export interface UpdateEventInput extends Partial<CreateEventInput> {
@@ -410,19 +418,18 @@ export interface EventsResponse {
 export interface EventWithProfiles extends CalendarEvent {
   assignedProfiles: Profile[];
   isMultiDay: boolean;
-  dayIndex?: number;      // For multi-day: which day (1, 2, 3...)
-  totalDays?: number;     // For multi-day: total days
+  dayIndex?: number; // For multi-day: which day (1, 2, 3...)
+  totalDays?: number; // For multi-day: total days
 }
 
-export type EventDisplayMode = 'compact' | 'full' | 'minimal';
+export type EventDisplayMode = "compact" | "full" | "minimal";
 ```
 
 ### 4. Event Utilities
 
 ```typescript
 // src/lib/calendar/event-utils.ts
-
-import { CalendarEvent, EventWithProfiles } from '@/components/calendar/types';
+import { CalendarEvent, EventWithProfiles } from "@/components/calendar/types";
 
 /**
  * Check if an event is an all-day event
@@ -464,11 +471,7 @@ export function getEventDayCount(event: CalendarEvent): number {
 /**
  * Check if an event falls within a date range
  */
-export function eventInRange(
-  event: CalendarEvent,
-  rangeStart: Date,
-  rangeEnd: Date
-): boolean {
+export function eventInRange(event: CalendarEvent, rangeStart: Date, rangeEnd: Date): boolean {
   const eventStart = new Date(event.startTime);
   const eventEnd = new Date(event.endTime);
 
@@ -505,14 +508,14 @@ export function parseEventTitle(title: string): {
   const colorMatch = cleanTitle.match(colorEmojiRegex);
   if (colorMatch) {
     colorEmoji = colorMatch[1];
-    cleanTitle = cleanTitle.replace(colorEmojiRegex, '');
+    cleanTitle = cleanTitle.replace(colorEmojiRegex, "");
   }
 
   // Extract event emoji if present (after color emoji)
   const emojiMatch = cleanTitle.match(emojiRegex);
   if (emojiMatch && emojiMatch[1] !== colorEmoji) {
     eventEmoji = emojiMatch[1];
-    cleanTitle = cleanTitle.replace(emojiRegex, '');
+    cleanTitle = cleanTitle.replace(emojiRegex, "");
   }
 
   return {
@@ -527,33 +530,33 @@ export function parseEventTitle(title: string): {
  * This is the canonical list - used for validation and UI pickers
  */
 export const SUPPORTED_COLOR_EMOJIS = [
-  '🔴', // red
-  '🟠', // orange
-  '🟡', // yellow
-  '🟢', // green
-  '🔵', // blue
-  '🟣', // purple
-  '⚫', // black
-  '⚪', // white
-  '🟤', // brown
+  "🔴", // red
+  "🟠", // orange
+  "🟡", // yellow
+  "🟢", // green
+  "🔵", // blue
+  "🟣", // purple
+  "⚫", // black
+  "⚪", // white
+  "🟤", // brown
 ] as const;
 
-export type ColorEmoji = typeof SUPPORTED_COLOR_EMOJIS[number];
+export type ColorEmoji = (typeof SUPPORTED_COLOR_EMOJIS)[number];
 
 /**
  * Get hex color from color emoji
  */
 export function colorEmojiToHex(emoji?: string): string | undefined {
   const colorMap: Record<ColorEmoji, string> = {
-    '🔴': '#EF4444', // red-500
-    '🟠': '#F97316', // orange-500
-    '🟡': '#EAB308', // yellow-500
-    '🟢': '#22C55E', // green-500
-    '🔵': '#3B82F6', // blue-500
-    '🟣': '#A855F7', // purple-500
-    '⚫': '#1F2937', // gray-800
-    '⚪': '#F3F4F6', // gray-100
-    '🟤': '#92400E', // amber-800
+    "🔴": "#EF4444", // red-500
+    "🟠": "#F97316", // orange-500
+    "🟡": "#EAB308", // yellow-500
+    "🟢": "#22C55E", // green-500
+    "🔵": "#3B82F6", // blue-500
+    "🟣": "#A855F7", // purple-500
+    "⚫": "#1F2937", // gray-800
+    "⚪": "#F3F4F6", // gray-100
+    "🟤": "#92400E", // amber-800
   };
 
   return emoji && isColorEmoji(emoji) ? colorMap[emoji] : undefined;
@@ -572,7 +575,7 @@ export function isColorEmoji(emoji: string): emoji is ColorEmoji {
  */
 export function isValidEventEmoji(emoji: string): boolean {
   // Use Intl.Segmenter for proper grapheme counting
-  const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
+  const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
   const segments = [...segmenter.segment(emoji)];
 
   // Must be exactly one grapheme
@@ -580,9 +583,9 @@ export function isValidEventEmoji(emoji: string): boolean {
 
   // Reject if it contains variation selectors or skin tone modifiers
   // that might cause rendering issues
-  const codePoints = [...emoji].map(c => c.codePointAt(0) || 0);
+  const codePoints = [...emoji].map((c) => c.codePointAt(0) || 0);
   const hasProblematicModifiers = codePoints.some(
-    cp => (cp >= 0x1F3FB && cp <= 0x1F3FF) // Skin tone modifiers
+    (cp) => cp >= 0x1f3fb && cp <= 0x1f3ff // Skin tone modifiers
   );
 
   return !hasProblematicModifiers;
@@ -612,9 +615,7 @@ export function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 /**
  * Group events by date for agenda view
  */
-export function groupEventsByDate(
-  events: CalendarEvent[]
-): Map<string, CalendarEvent[]> {
+export function groupEventsByDate(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
   const groups = new Map<string, CalendarEvent[]>();
 
   for (const event of events) {
@@ -627,7 +628,7 @@ export function groupEventsByDate(
       const currentDate = new Date(startDate);
       currentDate.setDate(currentDate.getDate() + i);
 
-      const dateKey = currentDate.toISOString().split('T')[0];
+      const dateKey = currentDate.toISOString().split("T")[0];
 
       if (!groups.has(dateKey)) {
         groups.set(dateKey, []);
@@ -650,7 +651,7 @@ export function groupEventsByDate(
 
 Timezone handling uses `Intl.DateTimeFormat` for current browser support, with a path to `Temporal` API when it stabilizes.
 
-```typescript
+````typescript
 // src/lib/calendar/timezone.ts
 
 /**
@@ -676,34 +677,29 @@ export function getLocalTimezone(): string {
  * return zdt.withTimeZone(toTimezone);
  * ```
  */
-export function convertTimezone(
-  date: Date,
-  fromTimezone: string,
-  toTimezone: string
-): Date {
+export function convertTimezone(date: Date, fromTimezone: string, toTimezone: string): Date {
   // Get the date parts in the target timezone
-  const formatter = new Intl.DateTimeFormat('en-US', {
+  const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: toTimezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
     hour12: false,
   });
 
   const parts = formatter.formatToParts(date);
-  const getPart = (type: string) =>
-    parts.find(p => p.type === type)?.value || '0';
+  const getPart = (type: string) => parts.find((p) => p.type === type)?.value || "0";
 
   return new Date(
-    parseInt(getPart('year')),
-    parseInt(getPart('month')) - 1,
-    parseInt(getPart('day')),
-    parseInt(getPart('hour')),
-    parseInt(getPart('minute')),
-    parseInt(getPart('second'))
+    parseInt(getPart("year")),
+    parseInt(getPart("month")) - 1,
+    parseInt(getPart("day")),
+    parseInt(getPart("hour")),
+    parseInt(getPart("minute")),
+    parseInt(getPart("second"))
   );
 }
 
@@ -715,7 +711,7 @@ export function formatInTimezone(
   timezone: string,
   options: Intl.DateTimeFormatOptions = {}
 ): string {
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     ...options,
   }).format(date);
@@ -726,7 +722,7 @@ export function formatInTimezone(
  */
 export function isValidTimezone(timezone: string): boolean {
   try {
-    Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    Intl.DateTimeFormat("en-US", { timeZone: timezone });
     return true;
   } catch {
     return false;
@@ -744,7 +740,7 @@ export function getFloatingDate(date: Date): { year: number; month: number; day:
     day: date.getUTCDate(),
   };
 }
-```
+````
 
 ### 6. API Routes
 
@@ -1182,11 +1178,11 @@ export async function DELETE(
 
 ```typescript
 // src/components/calendar/hooks/use-events.ts
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { CalendarEvent, EventFilters, EventsResponse } from '../types';
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
+import { useCallback, useEffect, useState } from "react";
+import { CalendarEvent, EventFilters, EventsResponse } from "../types";
 
 interface UseEventsOptions {
   filters?: EventFilters;
@@ -1208,31 +1204,30 @@ export function useEvents(options: UseEventsOptions = {}) {
       const params = new URLSearchParams();
 
       if (filters?.startDate) {
-        params.set('startDate', filters.startDate.toISOString());
+        params.set("startDate", filters.startDate.toISOString());
       }
       if (filters?.endDate) {
-        params.set('endDate', filters.endDate.toISOString());
+        params.set("endDate", filters.endDate.toISOString());
       }
       if (filters?.profileIds && filters.profileIds.length > 0) {
-        params.set('profileIds', filters.profileIds.join(','));
+        params.set("profileIds", filters.profileIds.join(","));
       }
       if (filters?.includeDeleted) {
-        params.set('includeDeleted', 'true');
+        params.set("includeDeleted", "true");
       }
 
       const response = await fetch(`/api/events?${params.toString()}`);
 
       if (!response.ok) {
-        throw new Error('Failed to fetch events');
+        throw new Error("Failed to fetch events");
       }
 
       const data: EventsResponse = await response.json();
       setEvents(data.events);
-
     } catch (err) {
       setError(err as Error);
       logger.error(err as Error, {
-        context: 'useEvents.fetchEvents'
+        context: "useEvents.fetchEvents",
       });
     } finally {
       setLoading(false);
@@ -1256,7 +1251,7 @@ export function useEvents(options: UseEventsOptions = {}) {
     events,
     loading,
     error,
-    refresh: fetchEvents
+    refresh: fetchEvents,
   };
 }
 ```
@@ -1265,126 +1260,117 @@ export function useEvents(options: UseEventsOptions = {}) {
 
 ```typescript
 // src/components/calendar/hooks/use-event-mutations.ts
-'use client';
+"use client";
 
-import { useState, useCallback } from 'react';
-import {
-  CalendarEvent,
-  CreateEventInput,
-  UpdateEventInput
-} from '../types';
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
+import { useCallback, useState } from "react";
+import { CalendarEvent, CreateEventInput, UpdateEventInput } from "../types";
 
 export function useEventMutations() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const createEvent = useCallback(async (
-    input: CreateEventInput
-  ): Promise<CalendarEvent | null> => {
-    setLoading(true);
-    setError(null);
+  const createEvent = useCallback(
+    async (input: CreateEventInput): Promise<CalendarEvent | null> => {
+      setLoading(true);
+      setError(null);
 
-    try {
-      const response = await fetch('/api/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input)
-      });
+      try {
+        const response = await fetch("/api/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create event');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to create event");
+        }
+
+        const event = await response.json();
+
+        logger.event("EventCreated_Client", {
+          eventId: event.id,
+          title: event.title,
+        });
+
+        return event;
+      } catch (err) {
+        setError(err as Error);
+        logger.error(err as Error, {
+          context: "useEventMutations.createEvent",
+        });
+        return null;
+      } finally {
+        setLoading(false);
       }
+    },
+    []
+  );
 
-      const event = await response.json();
+  const updateEvent = useCallback(
+    async (eventId: string, input: UpdateEventInput): Promise<CalendarEvent | null> => {
+      setLoading(true);
+      setError(null);
 
-      logger.event('EventCreated_Client', {
-        eventId: event.id,
-        title: event.title
-      });
+      try {
+        const response = await fetch(`/api/events/${eventId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        });
 
-      return event;
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to update event");
+        }
 
-    } catch (err) {
-      setError(err as Error);
-      logger.error(err as Error, {
-        context: 'useEventMutations.createEvent'
-      });
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        const event = await response.json();
 
-  const updateEvent = useCallback(async (
-    eventId: string,
-    input: UpdateEventInput
-  ): Promise<CalendarEvent | null> => {
-    setLoading(true);
-    setError(null);
+        logger.event("EventUpdated_Client", {
+          eventId: event.id,
+          updatedFields: Object.keys(input),
+        });
 
-    try {
-      const response = await fetch(`/api/events/${eventId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update event');
+        return event;
+      } catch (err) {
+        setError(err as Error);
+        logger.error(err as Error, {
+          context: "useEventMutations.updateEvent",
+        });
+        return null;
+      } finally {
+        setLoading(false);
       }
+    },
+    []
+  );
 
-      const event = await response.json();
-
-      logger.event('EventUpdated_Client', {
-        eventId: event.id,
-        updatedFields: Object.keys(input)
-      });
-
-      return event;
-
-    } catch (err) {
-      setError(err as Error);
-      logger.error(err as Error, {
-        context: 'useEventMutations.updateEvent'
-      });
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const deleteEvent = useCallback(async (
-    eventId: string,
-    permanent = false
-  ): Promise<boolean> => {
+  const deleteEvent = useCallback(async (eventId: string, permanent = false): Promise<boolean> => {
     setLoading(true);
     setError(null);
 
     try {
-      const params = permanent ? '?permanent=true' : '';
+      const params = permanent ? "?permanent=true" : "";
       const response = await fetch(`/api/events/${eventId}${params}`, {
-        method: 'DELETE'
+        method: "DELETE",
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete event');
+        throw new Error(errorData.error || "Failed to delete event");
       }
 
-      logger.event('EventDeleted_Client', {
+      logger.event("EventDeleted_Client", {
         eventId,
-        permanent
+        permanent,
       });
 
       return true;
-
     } catch (err) {
       setError(err as Error);
       logger.error(err as Error, {
-        context: 'useEventMutations.deleteEvent'
+        context: "useEventMutations.deleteEvent",
       });
       return false;
     } finally {
@@ -1397,7 +1383,7 @@ export function useEventMutations() {
     updateEvent,
     deleteEvent,
     loading,
-    error
+    error,
   };
 }
 ```
@@ -1408,17 +1394,17 @@ Per CLAUDE.md guidelines, the backend server is the source of truth, but Indexed
 
 ```typescript
 // src/lib/cache/event-cache.ts
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { CalendarEvent } from '@/components/calendar/types';
+import { CalendarEvent } from "@/components/calendar/types";
+import { DBSchema, IDBPDatabase, openDB } from "idb";
 
 interface EventCacheDB extends DBSchema {
   events: {
     key: string;
     value: CachedEvent;
     indexes: {
-      'by-date': string;
-      'by-profile': string;
-      'by-updated': number;
+      "by-date": string;
+      "by-profile": string;
+      "by-updated": number;
     };
   };
   metadata: {
@@ -1439,7 +1425,7 @@ interface CacheMetadata {
 
 const CACHE_VERSION = 1;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const CACHE_DB_NAME = 'calendar-events-cache';
+const CACHE_DB_NAME = "calendar-events-cache";
 
 class EventCache {
   private db: IDBPDatabase<EventCacheDB> | null = null;
@@ -1448,13 +1434,13 @@ class EventCache {
     this.db = await openDB<EventCacheDB>(CACHE_DB_NAME, CACHE_VERSION, {
       upgrade(db) {
         // Events store
-        const eventStore = db.createObjectStore('events', { keyPath: 'id' });
-        eventStore.createIndex('by-date', 'startTime');
-        eventStore.createIndex('by-profile', 'assignments');
-        eventStore.createIndex('by-updated', '_cachedAt');
+        const eventStore = db.createObjectStore("events", { keyPath: "id" });
+        eventStore.createIndex("by-date", "startTime");
+        eventStore.createIndex("by-profile", "assignments");
+        eventStore.createIndex("by-updated", "_cachedAt");
 
         // Metadata store
-        db.createObjectStore('metadata', { keyPath: 'key' });
+        db.createObjectStore("metadata", { keyPath: "key" });
       },
     });
   }
@@ -1462,25 +1448,19 @@ class EventCache {
   /**
    * Get events from cache, returns null if stale or missing
    */
-  async getEvents(
-    startDate: Date,
-    endDate: Date
-  ): Promise<CalendarEvent[] | null> {
+  async getEvents(startDate: Date, endDate: Date): Promise<CalendarEvent[] | null> {
     if (!this.db) await this.init();
 
-    const metadata = await this.db!.get('metadata', 'events');
+    const metadata = await this.db!.get("metadata", "events");
     if (!metadata || Date.now() - metadata.lastSyncAt > CACHE_TTL_MS) {
       return null; // Cache miss or stale
     }
 
     // Query by date range using index
     const events = await this.db!.getAllFromIndex(
-      'events',
-      'by-date',
-      IDBKeyRange.bound(
-        startDate.toISOString(),
-        endDate.toISOString()
-      )
+      "events",
+      "by-date",
+      IDBKeyRange.bound(startDate.toISOString(), endDate.toISOString())
     );
 
     return events;
@@ -1492,9 +1472,9 @@ class EventCache {
   async setEvents(events: CalendarEvent[]): Promise<void> {
     if (!this.db) await this.init();
 
-    const tx = this.db!.transaction(['events', 'metadata'], 'readwrite');
-    const eventStore = tx.objectStore('events');
-    const metaStore = tx.objectStore('metadata');
+    const tx = this.db!.transaction(["events", "metadata"], "readwrite");
+    const eventStore = tx.objectStore("events");
+    const metaStore = tx.objectStore("metadata");
 
     // Store each event with cache metadata
     for (const event of events) {
@@ -1507,7 +1487,7 @@ class EventCache {
 
     // Update sync timestamp
     await metaStore.put({
-      key: 'events',
+      key: "events",
       lastSyncAt: Date.now(),
       version: CACHE_VERSION,
     });
@@ -1520,7 +1500,7 @@ class EventCache {
    */
   async invalidate(): Promise<void> {
     if (!this.db) await this.init();
-    await this.db!.delete('metadata', 'events');
+    await this.db!.delete("metadata", "events");
   }
 
   /**
@@ -1528,8 +1508,8 @@ class EventCache {
    */
   async clear(): Promise<void> {
     if (!this.db) await this.init();
-    await this.db!.clear('events');
-    await this.db!.clear('metadata');
+    await this.db!.clear("events");
+    await this.db!.clear("metadata");
   }
 }
 
@@ -1555,10 +1535,7 @@ export function useEvents(options: UseEventsOptions = {}) {
     try {
       // Try cache first for instant response
       if (filters?.startDate && filters?.endDate) {
-        const cached = await eventCache.getEvents(
-          filters.startDate,
-          filters.endDate
-        );
+        const cached = await eventCache.getEvents(filters.startDate, filters.endDate);
 
         if (cached) {
           setEvents(cached);
@@ -1573,7 +1550,7 @@ export function useEvents(options: UseEventsOptions = {}) {
       // ... build params ...
 
       const response = await fetch(`/api/events?${params.toString()}`);
-      if (!response.ok) throw new Error('Failed to fetch events');
+      if (!response.ok) throw new Error("Failed to fetch events");
 
       const data: EventsResponse = await response.json();
       setEvents(data.events);
@@ -1581,11 +1558,10 @@ export function useEvents(options: UseEventsOptions = {}) {
 
       // Update cache
       await eventCache.setEvents(data.events);
-
     } catch (err) {
       // If we have cached data, use it despite error
       if (fromCache && events.length > 0) {
-        logger.log('Using cached events due to fetch error', LogLevel.Warn);
+        logger.log("Using cached events due to fetch error", LogLevel.Warn);
         return;
       }
       setError(err as Error);
@@ -1600,14 +1576,14 @@ export function useEvents(options: UseEventsOptions = {}) {
 
 **Cache Invalidation Strategy:**
 
-| Action | Cache Behavior |
-|--------|---------------|
-| Create event | Invalidate cache, refetch |
-| Update event | Invalidate cache, refetch |
-| Delete event | Invalidate cache, refetch |
-| Logout | Clear all cached data |
-| Tab focus | Check TTL, refetch if stale |
-| Background sync | Update cache silently |
+| Action          | Cache Behavior              |
+| --------------- | --------------------------- |
+| Create event    | Invalidate cache, refetch   |
+| Update event    | Invalidate cache, refetch   |
+| Delete event    | Invalidate cache, refetch   |
+| Logout          | Clear all cached data       |
+| Tab focus       | Check TTL, refetch if stale |
+| Background sync | Update cache silently       |
 
 ### 9. Next.js Cache Tags and Revalidation
 
@@ -1615,7 +1591,7 @@ Use Next.js cache tags for server-side caching and on-demand revalidation:
 
 ```typescript
 // src/app/api/events/route.ts
-import { revalidateTag, unstable_cache } from 'next/cache';
+import { revalidateTag, unstable_cache } from "next/cache";
 
 // Cache event queries with tags
 const getCachedEvents = unstable_cache(
@@ -1628,14 +1604,14 @@ const getCachedEvents = unstable_cache(
         startTime: { lte: new Date(endDate) },
       },
       include: {
-        assignments: { include: { profile: true } }
+        assignments: { include: { profile: true } },
       },
-      orderBy: { startTime: 'asc' }
+      orderBy: { startTime: "asc" },
     });
   },
-  ['events'],
+  ["events"],
   {
-    tags: ['events'],
+    tags: ["events"],
     revalidate: 60, // Revalidate every 60 seconds
   }
 );
@@ -1645,7 +1621,7 @@ export async function POST(request: NextRequest) {
   // ... create event ...
 
   // Invalidate cache for this user's events
-  revalidateTag('events');
+  revalidateTag("events");
   revalidateTag(`events:${user.id}`);
 
   return NextResponse.json(event, { status: 201 });
@@ -1654,12 +1630,12 @@ export async function POST(request: NextRequest) {
 
 **Cache Tag Strategy:**
 
-| Tag | Scope | Invalidated By |
-|-----|-------|----------------|
-| `events` | All events | Any event mutation |
-| `events:${userId}` | User's events | User's event mutations |
-| `events:${profileId}` | Profile's events | Profile assignment changes |
-| `events:date:${YYYY-MM}` | Month's events | Events in that month |
+| Tag                      | Scope            | Invalidated By             |
+| ------------------------ | ---------------- | -------------------------- |
+| `events`                 | All events       | Any event mutation         |
+| `events:${userId}`       | User's events    | User's event mutations     |
+| `events:${profileId}`    | Profile's events | Profile assignment changes |
+| `events:date:${YYYY-MM}` | Month's events   | Events in that month       |
 
 ### 10. Integration with Analog Clock Component
 
@@ -1667,10 +1643,10 @@ The analog clock component (see [analog-clock-calendar.md](./analog-clock-calend
 
 ```typescript
 // src/components/calendar/use-calendar-events.ts
-'use client';
+"use client";
 
-import { useEvents } from './hooks/use-events';
-import { eventInRange } from '@/lib/calendar/event-utils';
+import { eventInRange } from "@/lib/calendar/event-utils";
+import { useEvents } from "./hooks/use-events";
 
 /**
  * Hook for fetching events for the analog clock display
@@ -1690,15 +1666,13 @@ export function useClockEvents() {
   const { events, loading, error, refresh } = useEvents({
     filters: {
       startDate: periodStart,
-      endDate: periodEnd
+      endDate: periodEnd,
     },
-    refreshInterval: 5 * 60 * 1000 // 5 minutes
+    refreshInterval: 5 * 60 * 1000, // 5 minutes
   });
 
   // Filter events that actually fall within the display period
-  const displayEvents = events.filter(event =>
-    eventInRange(event, periodStart, periodEnd)
-  );
+  const displayEvents = events.filter((event) => eventInRange(event, periodStart, periodEnd));
 
   return {
     events: displayEvents,
@@ -1707,7 +1681,7 @@ export function useClockEvents() {
     refresh,
     periodStart,
     periodEnd,
-    isAM
+    isAM,
   };
 }
 ```
@@ -1830,72 +1804,72 @@ export function useClockEvents() {
 
 ```typescript
 // Tests for event utilities
-describe('event-utils', () => {
-  describe('isMultiDayEvent', () => {
-    it('should return false for single-day timed event', () => {
+describe("event-utils", () => {
+  describe("isMultiDayEvent", () => {
+    it("should return false for single-day timed event", () => {
       const event = createEvent({
-        startTime: new Date('2025-01-27T09:00:00'),
-        endTime: new Date('2025-01-27T10:00:00'),
+        startTime: new Date("2025-01-27T09:00:00"),
+        endTime: new Date("2025-01-27T10:00:00"),
       });
       expect(isMultiDayEvent(event)).toBe(false);
     });
 
-    it('should return true for event spanning two days', () => {
+    it("should return true for event spanning two days", () => {
       const event = createEvent({
-        startTime: new Date('2025-01-27T20:00:00'),
-        endTime: new Date('2025-01-28T02:00:00'),
+        startTime: new Date("2025-01-27T20:00:00"),
+        endTime: new Date("2025-01-28T02:00:00"),
       });
       expect(isMultiDayEvent(event)).toBe(true);
     });
 
-    it('should return true for multi-day all-day event', () => {
+    it("should return true for multi-day all-day event", () => {
       const event = createEvent({
-        startTime: new Date('2025-01-27T00:00:00'),
-        endTime: new Date('2025-01-31T23:59:59'),
+        startTime: new Date("2025-01-27T00:00:00"),
+        endTime: new Date("2025-01-31T23:59:59"),
         allDay: true,
       });
       expect(isMultiDayEvent(event)).toBe(true);
     });
   });
 
-  describe('getEventDayCount', () => {
-    it('should return 1 for single-day event', () => {
+  describe("getEventDayCount", () => {
+    it("should return 1 for single-day event", () => {
       const event = createEvent({
-        startTime: new Date('2025-01-27T09:00:00'),
-        endTime: new Date('2025-01-27T17:00:00'),
+        startTime: new Date("2025-01-27T09:00:00"),
+        endTime: new Date("2025-01-27T17:00:00"),
       });
       expect(getEventDayCount(event)).toBe(1);
     });
 
-    it('should return 5 for 5-day vacation', () => {
+    it("should return 5 for 5-day vacation", () => {
       const event = createEvent({
-        startTime: new Date('2025-01-27T00:00:00'),
-        endTime: new Date('2025-01-31T23:59:59'),
+        startTime: new Date("2025-01-27T00:00:00"),
+        endTime: new Date("2025-01-31T23:59:59"),
         allDay: true,
       });
       expect(getEventDayCount(event)).toBe(5);
     });
   });
 
-  describe('parseEventTitle', () => {
-    it('should extract color emoji', () => {
-      const result = parseEventTitle('🔴 Important Meeting');
-      expect(result.colorEmoji).toBe('🔴');
-      expect(result.cleanTitle).toBe('Important Meeting');
+  describe("parseEventTitle", () => {
+    it("should extract color emoji", () => {
+      const result = parseEventTitle("🔴 Important Meeting");
+      expect(result.colorEmoji).toBe("🔴");
+      expect(result.cleanTitle).toBe("Important Meeting");
     });
 
-    it('should extract event emoji after color', () => {
-      const result = parseEventTitle('🟢 🎮 Game Night');
-      expect(result.colorEmoji).toBe('🟢');
-      expect(result.eventEmoji).toBe('🎮');
-      expect(result.cleanTitle).toBe('Game Night');
+    it("should extract event emoji after color", () => {
+      const result = parseEventTitle("🟢 🎮 Game Night");
+      expect(result.colorEmoji).toBe("🟢");
+      expect(result.eventEmoji).toBe("🎮");
+      expect(result.cleanTitle).toBe("Game Night");
     });
 
-    it('should extract event emoji without color', () => {
-      const result = parseEventTitle('🏋️ Gym Session');
+    it("should extract event emoji without color", () => {
+      const result = parseEventTitle("🏋️ Gym Session");
       expect(result.colorEmoji).toBeUndefined();
-      expect(result.eventEmoji).toBe('🏋️');
-      expect(result.cleanTitle).toBe('Gym Session');
+      expect(result.eventEmoji).toBe("🏋️");
+      expect(result.cleanTitle).toBe("Gym Session");
     });
   });
 });
@@ -1905,29 +1879,29 @@ describe('event-utils', () => {
 
 ```typescript
 // Tests for API routes
-describe('/api/events', () => {
-  describe('POST', () => {
-    it('should create a new event', async () => {
+describe("/api/events", () => {
+  describe("POST", () => {
+    it("should create a new event", async () => {
       const input = {
-        title: 'Team Meeting',
-        startTime: '2025-01-27T14:00:00Z',
-        endTime: '2025-01-27T15:00:00Z',
-        profileIds: ['profile-1']
+        title: "Team Meeting",
+        startTime: "2025-01-27T14:00:00Z",
+        endTime: "2025-01-27T15:00:00Z",
+        profileIds: ["profile-1"],
       };
 
       const response = await POST(createRequest(input));
       expect(response.status).toBe(201);
 
       const event = await response.json();
-      expect(event.title).toBe('Team Meeting');
+      expect(event.title).toBe("Team Meeting");
       expect(event.assignments).toHaveLength(1);
     });
 
-    it('should reject event with end before start', async () => {
+    it("should reject event with end before start", async () => {
       const input = {
-        title: 'Invalid Event',
-        startTime: '2025-01-27T15:00:00Z',
-        endTime: '2025-01-27T14:00:00Z',
+        title: "Invalid Event",
+        startTime: "2025-01-27T15:00:00Z",
+        endTime: "2025-01-27T14:00:00Z",
       };
 
       const response = await POST(createRequest(input));
@@ -1935,33 +1909,37 @@ describe('/api/events', () => {
     });
   });
 
-  describe('GET', () => {
-    it('should filter events by date range', async () => {
+  describe("GET", () => {
+    it("should filter events by date range", async () => {
       // Create events for different dates
-      await createTestEvent({ startTime: '2025-01-25' });
-      await createTestEvent({ startTime: '2025-01-27' });
-      await createTestEvent({ startTime: '2025-01-29' });
+      await createTestEvent({ startTime: "2025-01-25" });
+      await createTestEvent({ startTime: "2025-01-27" });
+      await createTestEvent({ startTime: "2025-01-29" });
 
-      const response = await GET(createRequest({
-        searchParams: {
-          startDate: '2025-01-26',
-          endDate: '2025-01-28'
-        }
-      }));
+      const response = await GET(
+        createRequest({
+          searchParams: {
+            startDate: "2025-01-26",
+            endDate: "2025-01-28",
+          },
+        })
+      );
 
       const data = await response.json();
       expect(data.events).toHaveLength(1);
     });
 
-    it('should filter events by profile', async () => {
-      await createTestEvent({ profileIds: ['profile-1'] });
-      await createTestEvent({ profileIds: ['profile-2'] });
+    it("should filter events by profile", async () => {
+      await createTestEvent({ profileIds: ["profile-1"] });
+      await createTestEvent({ profileIds: ["profile-2"] });
 
-      const response = await GET(createRequest({
-        searchParams: {
-          profileIds: 'profile-1'
-        }
-      }));
+      const response = await GET(
+        createRequest({
+          searchParams: {
+            profileIds: "profile-1",
+          },
+        })
+      );
 
       const data = await response.json();
       expect(data.events).toHaveLength(1);
@@ -1974,19 +1952,19 @@ describe('/api/events', () => {
 
 ```typescript
 // E2E tests for event management
-test('user can create and view an all-day event', async ({ page }) => {
-  await page.goto('/calendar');
+test("user can create and view an all-day event", async ({ page }) => {
+  await page.goto("/calendar");
 
   // Click add event button
   await page.click('[data-testid="add-event-button"]');
 
   // Fill event form
-  await page.fill('[data-testid="event-title"]', 'Family Vacation');
+  await page.fill('[data-testid="event-title"]', "Family Vacation");
   await page.check('[data-testid="all-day-checkbox"]');
   await page.click('[data-testid="start-date-picker"]');
-  await page.click('text=27'); // Select day 27
+  await page.click("text=27"); // Select day 27
   await page.click('[data-testid="end-date-picker"]');
-  await page.click('text=31'); // Select day 31
+  await page.click("text=31"); // Select day 31
 
   // Assign to all profiles
   await page.check('[data-testid="assign-all"]');
@@ -1995,46 +1973,51 @@ test('user can create and view an all-day event', async ({ page }) => {
   await page.click('[data-testid="create-event-button"]');
 
   // Verify event appears
-  await expect(page.locator('[data-testid="event-card"]')).toContainText('Family Vacation');
-  await expect(page.locator('[data-testid="event-card"]')).toContainText('5 days');
+  await expect(page.locator('[data-testid="event-card"]')).toContainText("Family Vacation");
+  await expect(page.locator('[data-testid="event-card"]')).toContainText("5 days");
 });
 
-test('user can create timed event with profile assignment', async ({ page }) => {
-  await page.goto('/calendar');
+test("user can create timed event with profile assignment", async ({ page }) => {
+  await page.goto("/calendar");
 
   await page.click('[data-testid="add-event-button"]');
 
-  await page.fill('[data-testid="event-title"]', 'Team Meeting');
-  await page.selectOption('[data-testid="start-time"]', '14:00');
-  await page.selectOption('[data-testid="end-time"]', '15:00');
+  await page.fill('[data-testid="event-title"]', "Team Meeting");
+  await page.selectOption('[data-testid="start-time"]', "14:00");
+  await page.selectOption('[data-testid="end-time"]', "15:00");
   await page.click('[data-testid="profile-select-ben"]');
 
   await page.click('[data-testid="create-event-button"]');
 
-  await expect(page.locator('[data-testid="event-card"]')).toContainText('Team Meeting');
-  await expect(page.locator('[data-testid="event-card"]')).toContainText('2:00 PM');
+  await expect(page.locator('[data-testid="event-card"]')).toContainText("Team Meeting");
+  await expect(page.locator('[data-testid="event-card"]')).toContainText("2:00 PM");
 });
 ```
 
 ## Challenges and Considerations
 
 ### Challenge 1: Multi-Day Event Display
+
 - **Problem**: Multi-day events need to appear on each day they span
 - **Solution**: Group events by date, include event on each day with day index indicator
 
 ### Challenge 2: Timezone Handling
+
 - **Problem**: All-day events should not shift with timezone
 - **Solution**: Store timezone with event, treat all-day events as "floating" dates
 
 ### Challenge 3: Recurring Events
+
 - **Problem**: Complex recurrence rules, exception handling
 - **Solution**: Phase 2 feature - use RRULE format, generate instances on-demand
 
 ### Challenge 4: Profile Assignment Permissions
+
 - **Problem**: Who can assign events to whom?
 - **Solution**: Admin profiles can assign to anyone, standard profiles can only assign to self
 
 ### Challenge 5: Event Overlap Display
+
 - **Problem**: Multiple events at same time need visual distinction
 - **Solution**: Stack events, use color coding, show count indicator
 
@@ -2049,18 +2032,19 @@ test('user can create timed event with profile assignment', async ({ page }) => 
 ## Security Considerations
 
 ### Data Ownership
+
 - Validate `userId` ownership on all operations
 - Sanitize event titles and descriptions (prevent XSS via DOMPurify)
 - Escape special characters in database queries
 
 ### Rate Limiting
 
-| Endpoint | Limit | Window | Rationale |
-|----------|-------|--------|-----------|
-| `POST /api/events` | 60 requests | 1 minute | Prevent spam event creation |
-| `PATCH /api/events/[id]` | 120 requests | 1 minute | Allow rapid edits |
-| `DELETE /api/events/[id]` | 30 requests | 1 minute | Prevent mass deletion |
-| `GET /api/events` | 300 requests | 1 minute | Higher for reads |
+| Endpoint                  | Limit        | Window   | Rationale                   |
+| ------------------------- | ------------ | -------- | --------------------------- |
+| `POST /api/events`        | 60 requests  | 1 minute | Prevent spam event creation |
+| `PATCH /api/events/[id]`  | 120 requests | 1 minute | Allow rapid edits           |
+| `DELETE /api/events/[id]` | 30 requests  | 1 minute | Prevent mass deletion       |
+| `GET /api/events`         | 300 requests | 1 minute | Higher for reads            |
 
 Implementation using `@upstash/ratelimit` or similar:
 
@@ -2089,10 +2073,10 @@ if (!success) {
 
 ### Soft Delete Retention Policy
 
-| Stage | Duration | Action |
-|-------|----------|--------|
-| Soft deleted | 0-30 days | Event hidden but recoverable via `?includeDeleted=true` |
-| Retention period | 30 days | User can restore event from "Trash" UI |
+| Stage              | Duration      | Action                                                                             |
+| ------------------ | ------------- | ---------------------------------------------------------------------------------- |
+| Soft deleted       | 0-30 days     | Event hidden but recoverable via `?includeDeleted=true`                            |
+| Retention period   | 30 days       | User can restore event from "Trash" UI                                             |
 | Permanent deletion | After 30 days | Scheduled job permanently deletes (`isDeleted=true` AND `deletedAt < 30 days ago`) |
 
 **Cleanup Job (run daily):**
@@ -2108,18 +2092,19 @@ export async function cleanupDeletedEvents() {
   const result = await prisma.calendarEvent.deleteMany({
     where: {
       isDeleted: true,
-      deletedAt: { lt: cutoffDate }
-    }
+      deletedAt: { lt: cutoffDate },
+    },
   });
 
-  logger.event('DeletedEventsCleanup', {
+  logger.event("DeletedEventsCleanup", {
     deletedCount: result.count,
-    cutoffDate: cutoffDate.toISOString()
+    cutoffDate: cutoffDate.toISOString(),
   });
 }
 ```
 
 ### Audit Logging
+
 - Log all create, update, delete operations
 - Include `userId`, `profileId`, `eventId`, timestamp
 - Store audit logs separately for compliance
@@ -2133,10 +2118,12 @@ export async function cleanupDeletedEvents() {
 ## Integration with Other Features
 
 **Required Dependencies:**
+
 - Server-Side Auth (for user identification)
 - Multi-Profile System (for profile assignments)
 
 **Features That Depend on This:**
+
 - Analog Clock Calendar Component (display events)
 - Agenda View (list events)
 - Google Calendar Sync Module (optional sync)
@@ -2146,6 +2133,7 @@ export async function cleanupDeletedEvents() {
 ## Future Enhancements
 
 ### Phase 2
+
 - **Recurring Events**: RRULE support for repeating events
 - **Event Templates**: Quick-create from templates
 - **Bulk Operations**: Create/edit multiple events
@@ -2153,6 +2141,7 @@ export async function cleanupDeletedEvents() {
 - **Event Import**: Import from ICS files
 
 ### Phase 3
+
 - **Calendar Sharing**: Share calendars between users
 - **Event Comments**: Add comments to events
 - **Event History**: Track event modifications

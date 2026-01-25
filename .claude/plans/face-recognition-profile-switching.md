@@ -1,6 +1,7 @@
 # Face Recognition Profile Switching
 
 ## Overview
+
 Implement privacy-conscious face recognition for quick profile switching using Frigate NVR. When users press the Profile Quick Switcher button, the webcam activates briefly to detect and recognize faces, enabling seamless profile switching without typing or searching. This feature is **completely optional** and camera-on-demand (not always-on) to address privacy concerns common among tech-savvy users.
 
 This positions the app as a customizable, privacy-first alternative to Skylight that integrates with existing smart home infrastructure (Frigate NVR), appealing to users who already run home automation systems.
@@ -10,6 +11,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 ### Core Features
 
 #### 1. Privacy-First Design
+
 - **Opt-In Only**: Disabled by default, requires explicit setup
 - **On-Demand Camera**: Camera only activates when user triggers it
 - **Trigger Button**: Camera activates ONLY when Profile Quick Switcher is pressed
@@ -19,6 +21,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 - **No Always-On**: Camera never runs continuously in background
 
 #### 2. Face Recognition Flow
+
 1. User presses **Profile Quick Switcher** button
 2. Camera activates with visual indicator (camera icon)
 3. Frigate NVR detects and recognizes faces in frame
@@ -29,6 +32,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 5. Camera deactivates after profile switch or timeout
 
 #### 3. Face Enrollment
+
 - **Admin-Only**: Only admin profiles can enroll faces
 - **Multi-Photo Training**: Capture 5-10 photos from different angles
 - **Privacy Consent**: Clear explanation of how face data is used
@@ -36,6 +40,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 - **Delete Anytime**: Users can remove face data from profile settings
 
 #### 4. Recognition Quality Handling
+
 - **Low Resolution Support**: Work with 480p or 720p webcams
 - **Low FPS Support**: Work with 10-15 FPS webcams
 - **Confidence Threshold**: Only switch if confidence > 85%
@@ -44,6 +49,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 - **Lighting Tolerance**: Handle varying lighting conditions
 
 #### 5. Multi-Face Handling
+
 - **All Recognized Faces**: Show prompt with all detected profile names
 - **Quick Select**: Tap name or use keyboard (1, 2, 3, etc.)
 - **Family Mode Option**: Always include "Family Mode" button
@@ -51,6 +57,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 - **Auto-Select**: If only one known face for 2+ seconds, auto-switch
 
 #### 6. Settings and Configuration
+
 - **Enable/Disable**: Toggle face recognition on/off
 - **Frigate Integration**: Configure Frigate NVR endpoint and credentials
 - **Camera Selection**: Choose which camera/stream to use
@@ -61,6 +68,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 ### Visual Design
 
 #### Profile Switcher with Camera Trigger
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │  📅 Calendar    [👤 Ben 🎥]    🏆 1,250 pts        │
@@ -88,6 +96,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 ```
 
 #### Single Face Recognized
+
 ```
 ┌─────────────────────────────────────┐
 │  👤 Switch Profile      [🎥] [×]    │
@@ -110,6 +119,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 ```
 
 #### Multiple Faces Recognized
+
 ```
 ┌─────────────────────────────────────┐
 │  👤 Switch Profile      [🎥] [×]    │
@@ -136,6 +146,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 ```
 
 #### Face Enrollment Flow
+
 ```
 ┌─────────────────────────────────────┐
 │  Enroll Face for Evelyn             │
@@ -166,6 +177,7 @@ This positions the app as a customizable, privacy-first alternative to Skylight 
 ```
 
 #### Settings - Face Recognition
+
 ```
 ┌─────────────────────────────────────┐
 │  Settings > Face Recognition        │
@@ -232,6 +244,7 @@ Frigate is an open-source NVR with built-in object detection and facial recognit
 - WebRTC/RTSP streams
 
 **Why Frigate:**
+
 - Already used by smart home enthusiasts (target audience)
 - Local processing (privacy-first)
 - Free and open-source
@@ -265,19 +278,19 @@ Switch Profile
 
 ```typescript
 // Face recognition types
-export type RecognitionStatus = 'idle' | 'active' | 'recognized' | 'timeout';
+export type RecognitionStatus = "idle" | "active" | "recognized" | "timeout";
 
 interface FaceRecognitionSettings {
   id: string;
   userId: string;
   enabled: boolean;
-  frigateUrl: string;         // e.g., http://192.168.1.100:5000
-  frigateApiKey: string;      // Encrypted
-  cameraName: string;         // Which Frigate camera to use
+  frigateUrl: string; // e.g., http://192.168.1.100:5000
+  frigateApiKey: string; // Encrypted
+  cameraName: string; // Which Frigate camera to use
   confidenceThreshold: number; // 0-100, default 85
-  autoSwitchDelay: number;    // Seconds before auto-switch (default 2)
-  cameraTimeout: number;      // Seconds before camera deactivates (default 10)
-  gracePeriod: number;        // Seconds to wait before switching away (default 5)
+  autoSwitchDelay: number; // Seconds before auto-switch (default 2)
+  cameraTimeout: number; // Seconds before camera deactivates (default 10)
+  gracePeriod: number; // Seconds to wait before switching away (default 5)
   autoSwitchEnabled: boolean; // Auto-switch for single face (default true)
   createdAt: Date;
   updatedAt: Date;
@@ -288,9 +301,9 @@ interface FaceRecognitionSettings {
 interface ProfileFaceData {
   id: string;
   profileId: string;
-  frigatePersonId: string;    // ID in Frigate/CompreFace
+  frigatePersonId: string; // ID in Frigate/CompreFace
   enrolledAt: Date;
-  photoCount: number;         // How many photos used for training
+  photoCount: number; // How many photos used for training
   lastRecognizedAt?: Date;
   isActive: boolean;
 
@@ -305,20 +318,20 @@ interface RecognitionSession {
   status: RecognitionStatus;
   detectedFaces: DetectedFace[];
   selectedProfileId?: string;
-  source: 'manual' | 'auto';  // Manual selection vs auto-switch
+  source: "manual" | "auto"; // Manual selection vs auto-switch
 
   user: User;
 }
 
 interface DetectedFace {
   frigatePersonId: string;
-  profileId?: string;         // Null if unknown
-  confidence: number;         // 0-100
+  profileId?: string; // Null if unknown
+  confidence: number; // 0-100
   detectedAt: Date;
 }
 
 interface RecognitionResult {
-  status: 'single' | 'multiple' | 'none';
+  status: "single" | "multiple" | "none";
   faces: Array<{
     profileId?: string;
     profile?: Profile;
@@ -390,7 +403,7 @@ model Profile {
 
 ```typescript
 // src/lib/frigate/client.ts
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
 
 export interface FrigateConfig {
   url: string;
@@ -400,14 +413,14 @@ export interface FrigateConfig {
 
 export interface FrigateDetection {
   id: string;
-  label: string;        // "person"
+  label: string; // "person"
   confidence: number;
   box: [number, number, number, number]; // x1, y1, x2, y2
   region: [number, number, number, number];
   attributes: {
     face?: {
-      id: string;     // Person ID from CompreFace
-      name?: string;  // Name if recognized
+      id: string; // Person ID from CompreFace
+      name?: string; // Name if recognized
       confidence: number;
     };
   };
@@ -427,14 +440,14 @@ export class FrigateClient {
     try {
       const response = await fetch(`${this.config.url}/api/stats`, {
         headers: {
-          'X-Frigate-API-Key': this.config.apiKey,
+          "X-Frigate-API-Key": this.config.apiKey,
         },
       });
 
       return response.ok;
     } catch (error) {
       logger.error(error as Error, {
-        context: 'FrigateConnectionTest',
+        context: "FrigateConnectionTest",
       });
       return false;
     }
@@ -445,14 +458,11 @@ export class FrigateClient {
    */
   async getSnapshot(): Promise<Blob | null> {
     try {
-      const response = await fetch(
-        `${this.config.url}/api/${this.config.cameraName}/latest.jpg`,
-        {
-          headers: {
-            'X-Frigate-API-Key': this.config.apiKey,
-          },
-        }
-      );
+      const response = await fetch(`${this.config.url}/api/${this.config.cameraName}/latest.jpg`, {
+        headers: {
+          "X-Frigate-API-Key": this.config.apiKey,
+        },
+      });
 
       if (!response.ok) {
         throw new Error(`Frigate snapshot error: ${response.statusText}`);
@@ -461,7 +471,7 @@ export class FrigateClient {
       return await response.blob();
     } catch (error) {
       logger.error(error as Error, {
-        context: 'FrigateGetSnapshot',
+        context: "FrigateGetSnapshot",
       });
       return null;
     }
@@ -476,7 +486,7 @@ export class FrigateClient {
         `${this.config.url}/api/events?camera=${this.config.cameraName}&limit=10`,
         {
           headers: {
-            'X-Frigate-API-Key': this.config.apiKey,
+            "X-Frigate-API-Key": this.config.apiKey,
           },
         }
       );
@@ -489,7 +499,7 @@ export class FrigateClient {
 
       // Filter to only person detections with faces
       return events
-        .filter((e: any) => e.label === 'person' && e.data?.face)
+        .filter((e: any) => e.label === "person" && e.data?.face)
         .map((e: any) => ({
           id: e.id,
           label: e.label,
@@ -502,7 +512,7 @@ export class FrigateClient {
         }));
     } catch (error) {
       logger.error(error as Error, {
-        context: 'FrigateGetDetections',
+        context: "FrigateGetDetections",
       });
       return [];
     }
@@ -529,15 +539,15 @@ export class FrigateClient {
   async enrollFace(personId: string, name: string, imageBlob: Blob): Promise<boolean> {
     try {
       const formData = new FormData();
-      formData.append('file', imageBlob);
+      formData.append("file", imageBlob);
 
       // CompreFace API (integrated with Frigate)
       const response = await fetch(
         `${this.config.url}/api/compreface/api/v1/recognition/faces?subject=${name}`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'X-Frigate-API-Key': this.config.apiKey,
+            "X-Frigate-API-Key": this.config.apiKey,
           },
           body: formData,
         }
@@ -547,7 +557,7 @@ export class FrigateClient {
         throw new Error(`Face enrollment error: ${response.statusText}`);
       }
 
-      logger.event('FaceEnrolled', {
+      logger.event("FaceEnrolled", {
         personId,
         name,
       });
@@ -555,7 +565,7 @@ export class FrigateClient {
       return true;
     } catch (error) {
       logger.error(error as Error, {
-        context: 'FrigateEnrollFace',
+        context: "FrigateEnrollFace",
         personId,
       });
       return false;
@@ -570,9 +580,9 @@ export class FrigateClient {
       const response = await fetch(
         `${this.config.url}/api/compreface/api/v1/recognition/faces?subject=${name}`,
         {
-          method: 'DELETE',
+          method: "DELETE",
           headers: {
-            'X-Frigate-API-Key': this.config.apiKey,
+            "X-Frigate-API-Key": this.config.apiKey,
           },
         }
       );
@@ -580,7 +590,7 @@ export class FrigateClient {
       return response.ok;
     } catch (error) {
       logger.error(error as Error, {
-        context: 'FrigateDeleteFace',
+        context: "FrigateDeleteFace",
       });
       return false;
     }
@@ -592,9 +602,9 @@ export class FrigateClient {
 
 ```typescript
 // src/lib/face-recognition/session-manager.ts
-import { FrigateClient } from '@/lib/frigate/client';
-import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
+import { prisma } from "@/lib/db";
+import { FrigateClient } from "@/lib/frigate/client";
+import { logger } from "@/lib/logger";
 
 export class RecognitionSessionManager {
   private sessionId: string;
@@ -626,7 +636,7 @@ export class RecognitionSessionManager {
     // Update session status
     await prisma.recognitionSession.update({
       where: { id: this.sessionId },
-      data: { status: 'active' },
+      data: { status: "active" },
     });
 
     // Start polling for faces every 500ms
@@ -636,10 +646,10 @@ export class RecognitionSessionManager {
 
     // Auto-timeout after configured duration
     setTimeout(() => {
-      this.stop('timeout');
+      this.stop("timeout");
     }, this.settings.cameraTimeout * 1000);
 
-    logger.event('RecognitionSessionStarted', {
+    logger.event("RecognitionSessionStarted", {
       sessionId: this.sessionId,
       userId: this.userId,
     });
@@ -700,18 +710,18 @@ export class RecognitionSessionManager {
 
       // Emit recognition event
       this.emitRecognitionResult({
-        status: detectedProfiles.length === 1 ? 'single' : 'multiple',
+        status: detectedProfiles.length === 1 ? "single" : "multiple",
         faces: detectedProfiles,
       });
 
-      logger.event('FacesRecognized', {
+      logger.event("FacesRecognized", {
         sessionId: this.sessionId,
         faceCount: detectedProfiles.length,
         profiles: detectedProfiles.map((dp) => dp.profile.name),
       });
     } catch (error) {
       logger.error(error as Error, {
-        context: 'PollForFacesFailed',
+        context: "PollForFacesFailed",
         sessionId: this.sessionId,
       });
     }
@@ -720,7 +730,7 @@ export class RecognitionSessionManager {
   /**
    * Stop recognition session
    */
-  async stop(reason: 'completed' | 'timeout' | 'cancelled'): Promise<void> {
+  async stop(reason: "completed" | "timeout" | "cancelled"): Promise<void> {
     if (this.recognitionInterval) {
       clearInterval(this.recognitionInterval);
       this.recognitionInterval = undefined;
@@ -729,12 +739,12 @@ export class RecognitionSessionManager {
     await prisma.recognitionSession.update({
       where: { id: this.sessionId },
       data: {
-        status: reason === 'completed' ? 'recognized' : reason,
+        status: reason === "completed" ? "recognized" : reason,
         endedAt: new Date(),
       },
     });
 
-    logger.event('RecognitionSessionStopped', {
+    logger.event("RecognitionSessionStopped", {
       sessionId: this.sessionId,
       reason,
       duration: Date.now() - this.recognitionStartTime,
@@ -1173,14 +1183,14 @@ export async function POST(request: NextRequest) {
 
 ```tsx
 // src/components/face-recognition/face-recognition-switcher.tsx
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useProfile } from '@/components/profiles/profile-context';
-import { ProfileAvatar } from '@/components/profiles/profile-avatar';
+import { ProfileAvatar } from "@/components/profiles/profile-avatar";
+import { useProfile } from "@/components/profiles/profile-context";
+import { useEffect, useState } from "react";
 
 interface RecognitionResult {
-  status: 'single' | 'multiple' | 'none';
+  status: "single" | "multiple" | "none";
   faces: Array<{
     profileId?: string;
     profile?: Profile;
@@ -1203,12 +1213,12 @@ export function FaceRecognitionSwitcher() {
     setCountdown(10);
 
     try {
-      const response = await fetch('/api/face-recognition/session', {
-        method: 'POST',
+      const response = await fetch("/api/face-recognition/session", {
+        method: "POST",
       });
 
       if (!response.ok) {
-        throw new Error('Failed to start recognition');
+        throw new Error("Failed to start recognition");
       }
 
       const data = await response.json();
@@ -1218,7 +1228,7 @@ export function FaceRecognitionSwitcher() {
       // Start polling for results
       pollSession(data.sessionId);
     } catch (error) {
-      console.error('Recognition error:', error);
+      console.error("Recognition error:", error);
       setIsActive(false);
     }
   };
@@ -1236,13 +1246,13 @@ export function FaceRecognitionSwitcher() {
 
         const data = await response.json();
 
-        if (data.status === 'active') {
+        if (data.status === "active") {
           // Update result
           if (data.result && data.result.faces.length > 0) {
             setResult(data.result);
 
             // Start auto-switch countdown for single face
-            if (data.result.status === 'single') {
+            if (data.result.status === "single") {
               setAutoSwitchCountdown(2);
             }
           }
@@ -1252,7 +1262,7 @@ export function FaceRecognitionSwitcher() {
           setIsActive(false);
         }
       } catch (error) {
-        console.error('Poll error:', error);
+        console.error("Poll error:", error);
         clearInterval(pollInterval);
         setIsActive(false);
       }
@@ -1280,7 +1290,7 @@ export function FaceRecognitionSwitcher() {
   useEffect(() => {
     if (autoSwitchCountdown === null) return;
 
-    if (autoSwitchCountdown === 0 && result?.status === 'single') {
+    if (autoSwitchCountdown === 0 && result?.status === "single") {
       // Auto-switch
       const profile = result.faces[0].profile;
       if (profile) {
@@ -1301,7 +1311,7 @@ export function FaceRecognitionSwitcher() {
   const cancelRecognition = async () => {
     if (sessionId) {
       await fetch(`/api/face-recognition/session/${sessionId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
     }
     setIsActive(false);
@@ -1320,7 +1330,7 @@ export function FaceRecognitionSwitcher() {
     return (
       <button
         onClick={startRecognition}
-        className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-white hover:bg-blue-700"
       >
         <span className="text-xl">🎥</span>
         <span>Switch with Face</span>
@@ -1329,9 +1339,9 @@ export function FaceRecognitionSwitcher() {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full">
-        <div className="flex items-center justify-between mb-4">
+    <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
+      <div className="w-full max-w-md rounded-lg bg-white p-6">
+        <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-bold text-gray-900">Switch Profile</h3>
           <div className="flex items-center gap-2">
             <span className="text-xl">🎥</span>
@@ -1351,9 +1361,9 @@ export function FaceRecognitionSwitcher() {
               </div>
             </div>
             <p className="text-center text-gray-600">Looking for faces...</p>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="h-2 w-full rounded-full bg-gray-200">
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all"
+                className="h-2 rounded-full bg-blue-600 transition-all"
                 style={{ width: `${((10 - countdown) / 10) * 100}%` }}
               />
             </div>
@@ -1361,11 +1371,11 @@ export function FaceRecognitionSwitcher() {
         )}
 
         {/* Single face recognized */}
-        {result?.status === 'single' && (
+        {result?.status === "single" && (
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-3">
               <span className="text-2xl">✅</span>
-              <p className="text-gray-900 font-medium">Face Recognized!</p>
+              <p className="font-medium text-gray-900">Face Recognized!</p>
 
               {result.faces[0].profile && (
                 <>
@@ -1374,19 +1384,19 @@ export function FaceRecognitionSwitcher() {
                   <p className="text-sm text-gray-600">
                     {autoSwitchCountdown !== null
                       ? `Switching in ${autoSwitchCountdown} seconds...`
-                      : 'Ready to switch'}
+                      : "Ready to switch"}
                   </p>
 
                   <div className="flex gap-2">
                     <button
                       onClick={() => selectProfile(result.faces[0].profile!.id)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
                     >
                       Switch Now
                     </button>
                     <button
                       onClick={cancelRecognition}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                      className="rounded-lg bg-gray-200 px-4 py-2 text-gray-700 hover:bg-gray-300"
                     >
                       Cancel
                     </button>
@@ -1398,11 +1408,11 @@ export function FaceRecognitionSwitcher() {
         )}
 
         {/* Multiple faces recognized */}
-        {result?.status === 'multiple' && (
+        {result?.status === "multiple" && (
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-2">
               <span className="text-2xl">👀</span>
-              <p className="text-gray-900 font-medium">Multiple people detected!</p>
+              <p className="font-medium text-gray-900">Multiple people detected!</p>
               <p className="text-sm text-gray-600">Who is using the calendar?</p>
             </div>
 
@@ -1412,7 +1422,7 @@ export function FaceRecognitionSwitcher() {
                   <button
                     key={face.profile.id}
                     onClick={() => selectProfile(face.profile!.id)}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100"
+                    className="flex w-full items-center gap-3 rounded-lg bg-gray-50 p-3 hover:bg-gray-100"
                   >
                     <ProfileAvatar profile={face.profile} size="md" />
                     <div className="flex-1 text-left">
@@ -1424,8 +1434,8 @@ export function FaceRecognitionSwitcher() {
               )}
 
               <button
-                onClick={() => setViewMode('family')}
-                className="w-full flex items-center gap-3 p-3 rounded-lg bg-blue-50 hover:bg-blue-100"
+                onClick={() => setViewMode("family")}
+                className="flex w-full items-center gap-3 rounded-lg bg-blue-50 p-3 hover:bg-blue-100"
               >
                 <span className="text-2xl">👨‍👩‍👧‍👦</span>
                 <div className="flex-1 text-left">
@@ -1438,19 +1448,17 @@ export function FaceRecognitionSwitcher() {
         )}
 
         {/* No faces recognized */}
-        {result?.status === 'none' && (
+        {result?.status === "none" && (
           <div className="space-y-4">
             <p className="text-center text-gray-600">No recognized faces detected.</p>
-            <p className="text-sm text-center text-gray-500">
-              Select profile manually below:
-            </p>
+            <p className="text-center text-sm text-gray-500">Select profile manually below:</p>
 
             <div className="space-y-2">
               {allProfiles.map((profile) => (
                 <button
                   key={profile.id}
                   onClick={() => selectProfile(profile.id)}
-                  className="w-full flex items-center gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100"
+                  className="flex w-full items-center gap-3 rounded-lg bg-gray-50 p-3 hover:bg-gray-100"
                 >
                   <ProfileAvatar profile={profile} size="md" />
                   <p className="font-medium text-gray-900">{profile.name}</p>
@@ -1469,35 +1477,35 @@ export function FaceRecognitionSwitcher() {
 
 ```typescript
 // src/lib/encryption.ts
-import crypto from 'crypto';
+import crypto from "crypto";
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-key-change-in-production';
-const ALGORITHM = 'aes-256-gcm';
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "default-key-change-in-production";
+const ALGORITHM = "aes-256-gcm";
 
 export function encrypt(text: string): string {
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
+  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, "hex"), iv);
 
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
+  let encrypted = cipher.update(text, "utf8", "hex");
+  encrypted += cipher.final("hex");
 
   const authTag = cipher.getAuthTag();
 
-  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+  return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
 }
 
 export function decrypt(encryptedData: string): string {
-  const [ivHex, authTagHex, encryptedHex] = encryptedData.split(':');
+  const [ivHex, authTagHex, encryptedHex] = encryptedData.split(":");
 
-  const iv = Buffer.from(ivHex, 'hex');
-  const authTag = Buffer.from(authTagHex, 'hex');
-  const encrypted = Buffer.from(encryptedHex, 'hex');
+  const iv = Buffer.from(ivHex, "hex");
+  const authTag = Buffer.from(authTagHex, "hex");
+  const encrypted = Buffer.from(encryptedHex, "hex");
 
-  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
+  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, "hex"), iv);
   decipher.setAuthTag(authTag);
 
-  let decrypted = decipher.update(encrypted, undefined, 'utf8');
-  decrypted += decipher.final('utf8');
+  let decrypted = decipher.update(encrypted, undefined, "utf8");
+  decrypted += decipher.final("utf8");
 
   return decrypted;
 }
@@ -1506,6 +1514,7 @@ export function decrypt(encryptedData: string): string {
 ## Implementation Steps
 
 ### Phase 1: Foundation (Frigate Integration)
+
 1. **Install dependencies** (none needed - use fetch API)
 2. **Create FrigateClient service**
 3. **Implement settings API routes**
@@ -1513,6 +1522,7 @@ export function decrypt(encryptedData: string): string {
 5. **Test Frigate connection**
 
 ### Phase 2: Face Enrollment
+
 6. **Build face enrollment UI** (camera preview, capture flow)
 7. **Implement enrollment API endpoint**
 8. **Test enrollment with CompreFace**
@@ -1520,6 +1530,7 @@ export function decrypt(encryptedData: string): string {
 10. **Test with multiple profiles**
 
 ### Phase 3: Recognition Sessions
+
 11. **Create RecognitionSessionManager**
 12. **Implement session API routes** (start, poll, cancel)
 13. **Build FaceRecognitionSwitcher component**
@@ -1527,6 +1538,7 @@ export function decrypt(encryptedData: string): string {
 15. **Test multiple face recognition**
 
 ### Phase 4: Integration
+
 16. **Integrate with ProfileSwitcher** (add camera icon)
 17. **Implement auto-switch logic with countdown**
 18. **Add debouncing for poor quality cameras**
@@ -1534,6 +1546,7 @@ export function decrypt(encryptedData: string): string {
 20. **Test camera timeout**
 
 ### Phase 5: Polish and Testing
+
 21. **Add visual indicators** (camera active, countdown)
 22. **Improve error handling**
 23. **Add loading states**
@@ -1543,26 +1556,32 @@ export function decrypt(encryptedData: string): string {
 ## Challenges and Considerations
 
 ### Challenge 1: Frigate Setup Complexity
+
 - **Problem**: Users need to set up Frigate NVR first
 - **Solution**: Provide clear documentation, wizard-style setup, test connection before saving
 
 ### Challenge 2: Camera Quality Variability
+
 - **Problem**: Low resolution/FPS webcams may not work well
 - **Solution**: Adjustable confidence threshold, grace period, clear requirements documentation
 
 ### Challenge 3: Privacy Concerns
+
 - **Problem**: Users worried about always-on camera
 - **Solution**: On-demand only, visual indicators, clear privacy policy, local processing
 
 ### Challenge 4: Network Latency
+
 - **Problem**: Frigate may be on local network, API calls have latency
 - **Solution**: Debouncing, polling interval optimization, timeout handling
 
 ### Challenge 5: Multi-Face Ambiguity
+
 - **Problem**: If multiple people always in frame, can't auto-switch
 - **Solution**: Always prompt user to select, include "Family Mode" option
 
 ### Challenge 6: Face Data Management
+
 - **Problem**: Face embeddings stored in Frigate, need to link to profiles
 - **Solution**: Use profile ID as Frigate person ID, store mapping in database
 
@@ -1623,6 +1642,7 @@ export function decrypt(encryptedData: string): string {
 ## Monitoring and Analytics
 
 Track these metrics:
+
 - Face recognition success rate
 - Average recognition time
 - Single vs multiple face scenarios
@@ -1631,22 +1651,22 @@ Track these metrics:
 - Session timeout rate
 
 ```typescript
-logger.event('FaceRecognitionUsed', {
+logger.event("FaceRecognitionUsed", {
   userId: user.id,
-  result: 'single' | 'multiple' | 'none',
+  result: "single" | "multiple" | "none",
   autoSwitched: boolean,
   confidenceScore: number,
   recognitionTime: number,
 });
 
-logger.event('FaceEnrollmentCompleted', {
+logger.event("FaceEnrollmentCompleted", {
   userId: user.id,
   profileId: profile.id,
   photoCount: number,
 });
 
 logger.error(error, {
-  context: 'FrigateConnectionFailed',
+  context: "FrigateConnectionFailed",
   frigateUrl: settings.frigateUrl,
 });
 ```
@@ -1661,10 +1681,12 @@ logger.error(error, {
 ## Integration with Other Features
 
 **Required Integration:**
+
 - **Multi-Profile Support**: Profiles need face data field
 - **Profile Switcher**: Add camera trigger button
 
 **Optional Integration:**
+
 - **Settings Page**: Face recognition settings section
 - **User Onboarding**: Guided setup wizard
 - **Dashboard**: Show enrolled face count per profile
@@ -1672,18 +1694,21 @@ logger.error(error, {
 ## Future Enhancements
 
 ### Phase 2 Features
+
 - **Continuous Recognition**: Optional always-on mode for kiosks
 - **Face Detection Zones**: Only recognize faces in certain areas of frame
 - **Multiple Camera Support**: Use different cameras for different scenarios
 - **Voice Confirmation**: "Switch to Ben's profile?" for accessibility
 
 ### Phase 3 Features
+
 - **Emotion Detection**: Detect mood and adjust UI (future AI feature)
 - **Age Estimation**: Automatically categorize profiles by age
 - **Gesture Recognition**: Switch profiles with hand gestures
 - **Activity Tracking**: Log when each family member uses the calendar
 
 ### Advanced Ideas
+
 - **Smart Reminders**: Show reminders when specific person detected
 - **Context-Aware UI**: Adjust shown tasks based on who's looking
 - **Presence Detection**: Log family member presence for automation
@@ -1692,6 +1717,7 @@ logger.error(error, {
 ## User Onboarding
 
 ### Setup Wizard
+
 1. **Prerequisites Check**: "Do you have Frigate NVR running?"
 2. **Frigate Connection**: Enter URL, API key, camera name
 3. **Test Connection**: Verify Frigate is accessible
@@ -1700,6 +1726,7 @@ logger.error(error, {
 6. **Test Recognition**: Test switching with enrolled face
 
 ### Documentation
+
 - **Frigate Setup Guide**: Link to Frigate documentation
 - **Camera Requirements**: Minimum resolution, FPS, lighting
 - **Troubleshooting**: Common issues and solutions

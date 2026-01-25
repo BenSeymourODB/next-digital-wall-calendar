@@ -1,6 +1,7 @@
 # Weekly Meal Planning
 
 ## Overview
+
 Implement a weekly meal planning feature that enables families to plan and organize meals (Breakfast, Lunch, Dinner, Snacks) for each day of the week. This helps with grocery shopping, reduces decision fatigue, and brings structure to family meal routines, similar to Skylight's meal planning feature.
 
 ## Requirements
@@ -8,6 +9,7 @@ Implement a weekly meal planning feature that enables families to plan and organ
 ### Core Features
 
 #### 1. Weekly Meal Grid
+
 - **7-Day View**: Monday through Sunday meal grid
 - **Meal Slots**: Breakfast, Lunch, Dinner, Snack per day
 - **Drag and Drop**: Drag meals between slots or days
@@ -16,6 +18,7 @@ Implement a weekly meal planning feature that enables families to plan and organ
 - **Week Navigation**: Navigate to previous/next weeks
 
 #### 2. Meal Management
+
 - **Quick Add**: Simple text input for meal names
 - **Meal Library**: Save frequently used meals for reuse
 - **Meal Templates**: Pre-filled week templates (e.g., "Meatless Monday")
@@ -24,6 +27,7 @@ Implement a weekly meal planning feature that enables families to plan and organ
 - **Notes**: Add notes to meals (e.g., "defrost chicken")
 
 #### 3. Meal Categories
+
 - **Meal Types**:
   - 🌅 Breakfast (e.g., Pancakes, Oatmeal, Eggs)
   - 🌞 Lunch (e.g., Sandwiches, Salad, Leftovers)
@@ -31,24 +35,28 @@ Implement a weekly meal planning feature that enables families to plan and organ
   - 🍎 Snack (e.g., Fruit, Crackers, Yogurt)
 
 #### 4. Recipe Integration
+
 - **Link to Recipe**: Attach recipe (from recipe display component)
 - **View Recipe**: Quick access from meal plan
 - **Recipe Preview**: Hover/tap to preview ingredients
 - **Add to Grocery List**: Auto-generate ingredients list (future)
 
 #### 5. Grocery List Integration
+
 - **Generate List**: Create grocery list from week's meals
 - **Manual Items**: Add non-meal items to list
 - **Check Off**: Mark items as purchased
 - **Share List**: Export/share via text or email (future)
 
 #### 6. Multi-Profile Support
+
 - **Assign Meals**: Tag meals with who's eating (profiles)
 - **Dietary Preferences**: Per-profile dietary tags (vegetarian, allergic to nuts)
 - **Portions**: Indicate serving sizes
 - **Special Meals**: Mark meals for specific family members
 
 #### 7. Notifications & Reminders
+
 - **Prep Reminders**: Remind to prep meal (e.g., "Defrost chicken for tomorrow")
 - **Meal Time Alerts**: Notify at configured meal times
 - **Shopping Reminder**: Alert when grocery list is ready
@@ -57,6 +65,7 @@ Implement a weekly meal planning feature that enables families to plan and organ
 ### Visual Design
 
 #### Weekly Meal Grid
+
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  Week of Jan 13-19, 2026          [◀ Prev]  [Next ▶]        │
@@ -81,6 +90,7 @@ Tap [+] to add meal  •  Drag to move  •  Tap card to edit
 ```
 
 #### Meal Card (Expanded)
+
 ```
 ┌─────────────────────────────────────┐
 │  Spaghetti Bolognese       [✏️] [🗑️] │
@@ -98,6 +108,7 @@ Tap [+] to add meal  •  Drag to move  •  Tap card to edit
 ```
 
 #### Add Meal Modal
+
 ```
 ┌─────────────────────────────────────┐
 │  Add Meal                           │
@@ -136,6 +147,7 @@ Tap [+] to add meal  •  Drag to move  •  Tap card to edit
 ```
 
 #### Grocery List (Generated from Meal Plan)
+
 ```
 ┌─────────────────────────────────────┐
 │  Grocery List - Week of Jan 13     │
@@ -167,6 +179,7 @@ Tap [+] to add meal  •  Drag to move  •  Tap card to edit
 ```
 
 #### Meal Library
+
 ```
 ┌─────────────────────────────────────┐
 │  Meal Library               [+ New] │
@@ -243,18 +256,25 @@ src/app/api/meals/
 
 ```typescript
 // Meal planning types
-export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
-export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
+export type DayOfWeek =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday";
 
 interface Meal {
   id: string;
-  userId: string;           // Account owner
-  profileId?: string;       // Optional: assigned to profile
+  userId: string; // Account owner
+  profileId?: string; // Optional: assigned to profile
   name: string;
   type: MealType;
   servings: number;
   notes?: string;
-  recipeId?: string;        // Link to recipe (if available)
+  recipeId?: string; // Link to recipe (if available)
   createdAt: Date;
   updatedAt: Date;
 
@@ -268,7 +288,7 @@ interface PlannedMeal {
   id: string;
   userId: string;
   mealId: string;
-  weekStart: Date;          // Monday of the week
+  weekStart: Date; // Monday of the week
   dayOfWeek: DayOfWeek;
   mealType: MealType;
   createdAt: Date;
@@ -280,8 +300,8 @@ interface MealIngredient {
   id: string;
   mealId: string;
   name: string;
-  quantity: string;         // e.g., "1 lb", "2 cups"
-  category: string;         // e.g., "produce", "dairy", "protein"
+  quantity: string; // e.g., "1 lb", "2 cups"
+  category: string; // e.g., "produce", "dairy", "protein"
   order: number;
 
   meal: Meal;
@@ -290,7 +310,7 @@ interface MealIngredient {
 interface GroceryList {
   id: string;
   userId: string;
-  weekStart: Date;          // Week this list is for
+  weekStart: Date; // Week this list is for
   name: string;
   createdAt: Date;
   updatedAt: Date;
@@ -305,7 +325,7 @@ interface GroceryListItem {
   quantity: string;
   category: string;
   isChecked: boolean;
-  mealId?: string;          // Link back to meal (if auto-generated)
+  mealId?: string; // Link back to meal (if auto-generated)
   order: number;
   createdAt: Date;
 
@@ -320,7 +340,7 @@ interface SavedMeal {
   servings: number;
   recipeId?: string;
   isFavorite: boolean;
-  useCount: number;         // Track popularity
+  useCount: number; // Track popularity
   lastUsed: Date;
   createdAt: Date;
 
@@ -329,11 +349,11 @@ interface SavedMeal {
 
 interface MealTemplate {
   id: string;
-  name: string;             // e.g., "Meatless Monday", "Quick Weeknight Dinners"
+  name: string; // e.g., "Meatless Monday", "Quick Weeknight Dinners"
   description: string;
-  meals: TemplateMeal[];    // 28 meals (7 days x 4 meal types)
-  isPublic: boolean;        // System templates vs user-created
-  createdBy?: string;       // userId if user-created
+  meals: TemplateMeal[]; // 28 meals (7 days x 4 meal types)
+  isPublic: boolean; // System templates vs user-created
+  createdBy?: string; // userId if user-created
   createdAt: Date;
 }
 
@@ -492,10 +512,10 @@ model MealTemplate {
 
 ```tsx
 // src/components/meals/contexts/meal-context.tsx
-'use client';
+"use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
+import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 
 interface MealContextValue {
   currentWeek: Date;
@@ -526,16 +546,16 @@ export function MealProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       logger.error(error as Error, {
-        context: 'RefreshWeekPlanFailed',
+        context: "RefreshWeekPlanFailed",
       });
     }
   };
 
   const addMeal = async (meal: Partial<Meal>, day: DayOfWeek, type: MealType) => {
     try {
-      const response = await fetch('/api/meals/plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/meals/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           meal,
           weekStart: formatDateISO(currentWeek),
@@ -546,7 +566,7 @@ export function MealProvider({ children }: { children: ReactNode }) {
 
       if (response.ok) {
         await refreshWeekPlan();
-        logger.event('MealAdded', {
+        logger.event("MealAdded", {
           dayOfWeek: day,
           mealType: type,
           mealName: meal.name,
@@ -554,7 +574,7 @@ export function MealProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       logger.error(error as Error, {
-        context: 'AddMealFailed',
+        context: "AddMealFailed",
       });
       throw error;
     }
@@ -563,16 +583,16 @@ export function MealProvider({ children }: { children: ReactNode }) {
   const removeMeal = async (plannedMealId: string) => {
     try {
       const response = await fetch(`/api/meals/plan/${plannedMealId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       if (response.ok) {
         await refreshWeekPlan();
-        logger.event('MealRemoved', { plannedMealId });
+        logger.event("MealRemoved", { plannedMealId });
       }
     } catch (error) {
       logger.error(error as Error, {
-        context: 'RemoveMealFailed',
+        context: "RemoveMealFailed",
       });
       throw error;
     }
@@ -581,18 +601,18 @@ export function MealProvider({ children }: { children: ReactNode }) {
   const updateMeal = async (mealId: string, updates: Partial<Meal>) => {
     try {
       const response = await fetch(`/api/meals/${mealId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
 
       if (response.ok) {
         await refreshWeekPlan();
-        logger.event('MealUpdated', { mealId });
+        logger.event("MealUpdated", { mealId });
       }
     } catch (error) {
       logger.error(error as Error, {
-        context: 'UpdateMealFailed',
+        context: "UpdateMealFailed",
       });
       throw error;
     }
@@ -600,9 +620,9 @@ export function MealProvider({ children }: { children: ReactNode }) {
 
   const generateGroceryList = async () => {
     try {
-      const response = await fetch('/api/meals/grocery-list', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/meals/grocery-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           weekStart: formatDateISO(currentWeek),
         }),
@@ -611,14 +631,14 @@ export function MealProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const list = await response.json();
         setGroceryList(list);
-        logger.event('GroceryListGenerated', {
+        logger.event("GroceryListGenerated", {
           weekStart: formatDateISO(currentWeek),
           itemCount: list.items.length,
         });
       }
     } catch (error) {
       logger.error(error as Error, {
-        context: 'GenerateGroceryListFailed',
+        context: "GenerateGroceryListFailed",
       });
       throw error;
     }
@@ -655,7 +675,7 @@ export function MealProvider({ children }: { children: ReactNode }) {
 export function useMeals() {
   const context = useContext(MealContext);
   if (!context) {
-    throw new Error('useMeals must be used within MealProvider');
+    throw new Error("useMeals must be used within MealProvider");
   }
   return context;
 }
@@ -669,7 +689,7 @@ function getMonday(date: Date): Date {
 }
 
 function formatDateISO(date: Date): string {
-  return date.toISOString().split('T')[0];
+  return date.toISOString().split("T")[0];
 }
 ```
 
@@ -677,9 +697,9 @@ function formatDateISO(date: Date): string {
 
 ```tsx
 // src/components/meals/meal-card.tsx
-'use client';
+"use client";
 
-import { useState } from 'react';
+import { useState } from "react";
 
 interface MealCardProps {
   plannedMeal: PlannedMeal;
@@ -688,10 +708,10 @@ interface MealCardProps {
 }
 
 const MEAL_TYPE_ICONS = {
-  breakfast: '🌅',
-  lunch: '🌞',
-  dinner: '🌙',
-  snack: '🍎',
+  breakfast: "🌅",
+  lunch: "🌞",
+  dinner: "🌙",
+  snack: "🍎",
 };
 
 export function MealCard({ plannedMeal, onEdit, onDelete }: MealCardProps) {
@@ -700,20 +720,18 @@ export function MealCard({ plannedMeal, onEdit, onDelete }: MealCardProps) {
 
   return (
     <div
-      className="bg-white rounded-lg p-3 shadow-sm border border-gray-200 hover:shadow-md transition cursor-pointer"
+      className="cursor-pointer rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition hover:shadow-md"
       onClick={() => setShowDetails(!showDetails)}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <span className="text-xl">{MEAL_TYPE_ICONS[meal.type]}</span>
-            <span className="font-medium text-gray-900 text-sm">{meal.name}</span>
+            <span className="text-sm font-medium text-gray-900">{meal.name}</span>
           </div>
 
           {meal.servings && (
-            <div className="text-xs text-gray-500 mt-1">
-              {meal.servings} servings
-            </div>
+            <div className="mt-1 text-xs text-gray-500">{meal.servings} servings</div>
           )}
         </div>
 
@@ -723,7 +741,7 @@ export function MealCard({ plannedMeal, onEdit, onDelete }: MealCardProps) {
               e.stopPropagation();
               onEdit();
             }}
-            className="p-1 hover:bg-gray-100 rounded"
+            className="rounded p-1 hover:bg-gray-100"
           >
             ✏️
           </button>
@@ -732,7 +750,7 @@ export function MealCard({ plannedMeal, onEdit, onDelete }: MealCardProps) {
               e.stopPropagation();
               onDelete();
             }}
-            className="p-1 hover:bg-gray-100 rounded"
+            className="rounded p-1 hover:bg-gray-100"
           >
             🗑️
           </button>
@@ -740,17 +758,13 @@ export function MealCard({ plannedMeal, onEdit, onDelete }: MealCardProps) {
       </div>
 
       {showDetails && (
-        <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
-          {meal.notes && (
-            <div className="text-xs text-gray-600">
-              📝 {meal.notes}
-            </div>
-          )}
+        <div className="mt-3 space-y-2 border-t border-gray-200 pt-3">
+          {meal.notes && <div className="text-xs text-gray-600">📝 {meal.notes}</div>}
 
           {meal.recipeId && (
             <a
               href={`/recipes/${meal.recipeId}`}
-              className="text-xs text-blue-600 hover:underline block"
+              className="block text-xs text-blue-600 hover:underline"
               onClick={(e) => e.stopPropagation()}
             >
               📖 View Recipe
@@ -767,15 +781,23 @@ export function MealCard({ plannedMeal, onEdit, onDelete }: MealCardProps) {
 
 ```tsx
 // src/components/meals/meal-planner.tsx
-'use client';
+"use client";
 
-import { useMeals } from './contexts/meal-context';
-import { MealCard } from './meal-card';
-import { MealSlot } from './meal-slot';
-import { useState } from 'react';
+import { useState } from "react";
+import { useMeals } from "./contexts/meal-context";
+import { MealCard } from "./meal-card";
+import { MealSlot } from "./meal-slot";
 
-const DAYS: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+const DAYS: DayOfWeek[] = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+];
+const MEAL_TYPES: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
 
 export function MealPlanner() {
   const { currentWeek, weekPlan, setWeek, removeMeal } = useMeals();
@@ -795,28 +817,24 @@ export function MealPlanner() {
 
   const getMealForSlot = (day: DayOfWeek, type: MealType): PlannedMeal | null => {
     if (!weekPlan) return null;
-    return weekPlan.meals.find(
-      (m) => m.dayOfWeek === day && m.mealType === type
-    ) || null;
+    return weekPlan.meals.find((m) => m.dayOfWeek === day && m.mealType === type) || null;
   };
 
   return (
     <div className="space-y-4">
       {/* Week navigation */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">
-          Week of {formatWeekRange(currentWeek)}
-        </h2>
+        <h2 className="text-xl font-bold text-gray-900">Week of {formatWeekRange(currentWeek)}</h2>
         <div className="flex gap-2">
           <button
             onClick={goToPreviousWeek}
-            className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded"
+            className="rounded bg-gray-100 px-3 py-1 hover:bg-gray-200"
           >
             ◀ Prev
           </button>
           <button
             onClick={goToNextWeek}
-            className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded"
+            className="rounded bg-gray-100 px-3 py-1 hover:bg-gray-200"
           >
             Next ▶
           </button>
@@ -828,9 +846,9 @@ export function MealPlanner() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              <th className="border border-gray-300 p-2 bg-gray-50 w-20"></th>
+              <th className="w-20 border border-gray-300 bg-gray-50 p-2"></th>
               {DAYS.map((day) => (
-                <th key={day} className="border border-gray-300 p-2 bg-gray-50">
+                <th key={day} className="border border-gray-300 bg-gray-50 p-2">
                   {capitalize(day)}
                 </th>
               ))}
@@ -839,7 +857,7 @@ export function MealPlanner() {
           <tbody>
             {MEAL_TYPES.map((type) => (
               <tr key={type}>
-                <td className="border border-gray-300 p-2 bg-gray-50 font-medium">
+                <td className="border border-gray-300 bg-gray-50 p-2 font-medium">
                   {getMealTypeIcon(type)}
                 </td>
                 {DAYS.map((day) => {
@@ -882,10 +900,10 @@ export function MealPlanner() {
 
 function getMealTypeIcon(type: MealType): string {
   const icons = {
-    breakfast: '🌅 Breakfast',
-    lunch: '🌞 Lunch',
-    dinner: '🌙 Dinner',
-    snack: '🍎 Snack',
+    breakfast: "🌅 Breakfast",
+    lunch: "🌞 Lunch",
+    dinner: "🌙 Dinner",
+    snack: "🍎 Snack",
   };
   return icons[type];
 }
@@ -905,15 +923,12 @@ function formatWeekRange(weekStart: Date): string {
 
 ```typescript
 // src/app/api/meals/plan/[week]/route.ts
-import { requireAuth, getCurrentUser } from '@/lib/auth/helpers';
-import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
-import { NextRequest, NextResponse } from 'next/server';
+import { getCurrentUser, requireAuth } from "@/lib/auth/helpers";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { week: string } }
-) {
+export async function GET(request: NextRequest, { params }: { params: { week: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -933,10 +948,7 @@ export async function GET(
           },
         },
       },
-      orderBy: [
-        { dayOfWeek: 'asc' },
-        { mealType: 'asc' },
-      ],
+      orderBy: [{ dayOfWeek: "asc" }, { mealType: "asc" }],
     });
 
     const groceryList = await prisma.groceryList.findFirst({
@@ -946,10 +958,7 @@ export async function GET(
       },
       include: {
         items: {
-          orderBy: [
-            { category: 'asc' },
-            { order: 'asc' },
-          ],
+          orderBy: [{ category: "asc" }, { order: "asc" }],
         },
       },
     });
@@ -962,13 +971,10 @@ export async function GET(
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/meals/plan/${params.week}`,
-      method: 'GET',
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch meal plan' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch meal plan" }, { status: 500 });
   }
 }
 
@@ -1036,7 +1042,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    logger.event('GroceryListGenerated', {
+    logger.event("GroceryListGenerated", {
       userId: user.id,
       weekStart,
       itemCount: groceryList.items.length,
@@ -1045,14 +1051,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(groceryList, { status: 201 });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/meals/grocery-list',
-      method: 'POST',
+      endpoint: "/api/meals/grocery-list",
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to generate grocery list' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to generate grocery list" }, { status: 500 });
   }
 }
 ```
@@ -1060,36 +1063,42 @@ export async function POST(request: NextRequest) {
 ## Implementation Steps
 
 ### Phase 1: Foundation
+
 1. Update database schema (Meal, PlannedMeal, GroceryList models)
 2. Create API routes for basic CRUD operations
 3. Build MealContext for state management
 4. Test API routes
 
 ### Phase 2: Core UI
+
 5. Build MealPlanner grid component
 6. Create MealCard and MealSlot components
 7. Implement AddMealModal
 8. Test meal creation and deletion
 
 ### Phase 3: Grocery List
+
 9. Build GroceryList component
 10. Implement ingredient aggregation logic
 11. Add check/uncheck functionality
 12. Test grocery list generation
 
 ### Phase 4: Meal Library
+
 13. Create SavedMeal functionality
 14. Build MealLibrary component
 15. Implement quick-add from library
 16. Track meal usage count
 
 ### Phase 5: Advanced Features
+
 17. Add meal templates
 18. Implement drag-and-drop (react-beautiful-dnd)
 19. Add recipe integration
 20. Implement copy week functionality
 
 ### Phase 6: Polish
+
 21. Add loading states and error handling
 22. Improve mobile responsiveness
 23. Add accessibility features
@@ -1098,18 +1107,22 @@ export async function POST(request: NextRequest) {
 ## Challenges and Considerations
 
 ### Challenge 1: Ingredient Aggregation
+
 - **Problem**: Combining ingredients from multiple meals
 - **Solution**: Use Map to aggregate by ingredient name, combine quantities
 
 ### Challenge 2: Drag and Drop
+
 - **Problem**: Moving meals between slots
 - **Solution**: Use react-beautiful-dnd or @dnd-kit for drag-and-drop
 
 ### Challenge 3: Mobile Layout
+
 - **Problem**: Grid doesn't fit on mobile screens
 - **Solution**: Responsive design - stack days vertically on mobile
 
 ### Challenge 4: Recipe Integration
+
 - **Problem**: Linking recipes to meals
 - **Solution**: Use existing Recipe model, add foreign key
 
