@@ -1022,9 +1022,63 @@ A: Yes. Data is encrypted in transit (HTTPS) and at rest (database encryption).
 
 1. **Microsoft Outlook Calendar** - Support Microsoft 365 and Outlook.com
 2. **Apple iCloud Calendar** - Support iCloud calendars
-3. **CalDAV/CardDAV** - Support any CalDAV-compatible calendar server
+3. **CalDAV/CardDAV** - Support any CalDAV-compatible calendar server (see detailed section below)
 4. **Nextcloud** - Direct integration with Nextcloud calendar
 5. **Office 365 Tasks** - Sync with Microsoft To Do
+
+### CalDAV Interoperability (Priority for Self-Hosters)
+
+Since this application is designed for self-hosting, CalDAV compatibility is a high-priority future enhancement. Many self-hosters already run CalDAV servers and would benefit from integration.
+
+#### Why CalDAV Matters
+
+- **Standard Protocol**: CalDAV (RFC 4791) is the open standard for calendar access
+- **Client Compatibility**: Works with iOS Calendar, Thunderbird, Android DAVx5, etc.
+- **Self-Hosting Ecosystem**: Popular with privacy-conscious users running Nextcloud, Radicale, Baikal
+- **No Vendor Lock-in**: Any CalDAV server works, not tied to Google/Microsoft
+
+#### Compatible CalDAV Servers
+
+| Server | Language | Complexity | Notes |
+|--------|----------|------------|-------|
+| **Radicale** | Python | Very Low | File-based, no database needed, excellent Docker support |
+| **Baikal** | PHP | Low | SQLite/MySQL, includes web admin UI |
+| **Nextcloud** | PHP | Medium | Full suite with calendar component |
+| **Apple Calendar Server** | Python | High | Full-featured but complex setup |
+
+#### Implementation Approach
+
+Our architecture uses **PostgreSQL as the source of truth** (not CalDAV) because:
+1. CalDAV doesn't support our custom fields (profile assignments, emoji, colors)
+2. PostgreSQL provides better query flexibility for our UI needs
+3. Single database for all app data (auth, profiles, events, tasks)
+
+**Planned CalDAV features:**
+
+1. **CalDAV Read Export** (Phase 1)
+   - Expose `/api/caldav/...` endpoint serving events in iCalendar format
+   - External CalDAV clients can subscribe (read-only) to the calendar
+   - Uses standard iCalendar format for maximum compatibility
+
+2. **CalDAV Sync Module** (Phase 2)
+   - Two-way sync with external CalDAV servers (Nextcloud, Radicale, Baikal)
+   - Use [tsdav](https://github.com/natelindev/tsdav) TypeScript library for CalDAV protocol
+   - Supports OAuth and Basic authentication
+   - Sync events bidirectionally while preserving our custom metadata in PostgreSQL
+
+3. **CalDAV Server Mode** (Phase 3 - Optional)
+   - Run as a full CalDAV server for users who want external clients to have write access
+   - Would use [caldav-adapter](https://www.npmjs.com/package/caldav-adapter) or similar
+   - Custom fields stored in PostgreSQL, standard fields served via CalDAV
+
+#### Google Calendar CalDAV Note
+
+Google Calendar does support CalDAV (endpoint: `https://apidata.googleusercontent.com/caldav/v2/`), but with limitations:
+- OAuth 2.0 required (no Basic Auth)
+- Cannot create calendars via CalDAV (MKCALENDAR not supported)
+- Some advanced features missing
+
+For Google Calendar sync, we recommend using the Google Calendar REST API directly (our existing sync module approach) rather than CalDAV, as it provides better feature coverage.
 
 ### Advanced Features
 
