@@ -107,7 +107,58 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 ## Medium Priority
 
-### 1. Token Storage Security
+### 1. All-Day Event Detection Logic (PR #23 Feedback)
+
+**Issue:** The all-day event detection in `AgendaCalendar.tsx` uses duration-based logic (`>= 24 hours`) which is incorrect for multi-day events.
+
+**Impact:** Events spanning multiple days are incorrectly marked as all-day events.
+
+**Root Cause:** Google Calendar API provides an explicit all-day indicator via the `date` (vs `dateTime`) field, but the current implementation checks duration instead.
+
+**Fix Required:**
+
+- Check for the presence of `event.start.date` (vs `event.start.dateTime`) to determine all-day status
+- Or check for exactly 24 hours rather than "24 hours or more"
+
+**Location:** `src/components/calendar/AgendaCalendar.tsx` (lines 44-49)
+
+**Timeline:** Next iteration
+
+### 2. Color Mappings Race Condition (PR #23 Feedback)
+
+**Issue:** Color mappings load asynchronously after event transformation, creating a race condition on initial mount.
+
+**Impact:** Cached events are transformed with empty `colorMappings` on mount, causing event colors to be incorrect until the next refresh.
+
+**Root Cause:** The `useEffect` that fetches color mappings runs after the initial render, but events are transformed immediately from cache.
+
+**Fix Required:**
+
+- Load `colorMappings` from localStorage synchronously before first transformation
+- Or defer event transformation until `colorMappings` are loaded
+
+**Location:** `src/components/providers/CalendarProvider.tsx` (lines 307-322)
+
+**Timeline:** Next iteration
+
+### 3. All-Day Event Timezone Parsing (PR #23 Feedback)
+
+**Issue:** All-day event dates stored without timezone indicators get misinterpreted by JavaScript.
+
+**Impact:** Events may appear on the wrong day depending on user's local timezone (dates like "2026-01-05" parse as UTC midnight, which shifts to the previous day in many local timezones).
+
+**Root Cause:** JavaScript's `Date` constructor interprets date-only strings as UTC, not local time.
+
+**Fix Required:**
+
+- Parse all-day event dates explicitly with local timezone handling
+- Or append 'T00:00:00' to force local time interpretation
+
+**Location:** `src/components/providers/CalendarProvider.tsx` (lines 89-97)
+
+**Timeline:** Next iteration
+
+### 4. Token Storage Security
 
 **Issue:** OAuth tokens stored in unencrypted localStorage
 
@@ -123,22 +174,26 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 **Related:** See [Security Considerations](.claude/security-considerations.md)
 
-### 2. Limited Calendar Views
+### 5. Limited Calendar Views
 
-**Issue:** Only month view implemented
+**Issue:** Limited calendar views implemented
+
+**Implemented Views:**
+
+- ✅ Month view
+- ✅ Agenda view (PR #23)
 
 **Missing Views:**
 
 - Week view
 - Day view
-- Agenda view
 - Year view
 
-**Impact:** Users with busy schedules may find month view insufficient
+**Impact:** Users with busy schedules may find current views insufficient
 
 **Timeline:** See [Future Enhancements](.claude/future-enhancements.md)
 
-### 3. Hardcoded Configuration
+### 6. Hardcoded Configuration
 
 **Issue:** Some settings are hardcoded and not configurable via UI
 
@@ -158,7 +213,7 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 **Timeline:** Medium priority (near-term enhancement)
 
-### 4. Performance Optimization Opportunities
+### 7. Performance Optimization Opportunities
 
 **Issue:** Not optimized for very large event datasets
 
@@ -177,7 +232,7 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 **Timeline:** Low priority (wait for user feedback on performance)
 
-### 5. Accessibility Gaps
+### 8. Accessibility Gaps
 
 **Known Issues:**
 
@@ -253,7 +308,21 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 **Timeline:** Low priority (current types sufficient)
 
-### 4. Documentation Gaps
+### 4. ColorId Field Comment Clarity (PR #23 Feedback)
+
+**Issue:** The `colorId` field comment in `google-calendar.ts` is unclear about why it's set to an empty string.
+
+**Current Code:** Sets `colorId: ""` with a comment that could be clearer.
+
+**Fix Required:**
+
+- Clarify comment to explain "Intentionally empty: calendarList items do not include an event-level colorId"
+
+**Location:** `src/lib/google-calendar.ts`
+
+**Timeline:** When next editing the file
+
+### 5. Documentation Gaps
 
 **Known Gaps:**
 
@@ -271,7 +340,7 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 **Timeline:** Ongoing as code evolves
 
-### 5. Development Experience
+### 6. Development Experience
 
 **Issues:**
 
@@ -429,7 +498,7 @@ From the original PR review:
 
 **Not Yet Implemented:**
 
-- Week view, day view, agenda view (only month view)
+- Week view, day view (month and agenda views available)
 - Event creation/editing (read-only by design)
 - Recurring event special handling
 - Time zone selection

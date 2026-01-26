@@ -1,6 +1,7 @@
 # Reward Point System
 
 ## Overview
+
 Implement a gamification system that awards points to users for completing tasks from their Google Tasks lists. The system can be enabled/disabled per user, with configurable point values and visual feedback.
 
 ## Requirements
@@ -8,29 +9,34 @@ Implement a gamification system that awards points to users for completing tasks
 ### Core Features
 
 #### 1. Point Tracking
+
 - **Total Points**: Track cumulative points earned by each user
 - **Point History**: Record of all point-earning activities (optional for v1)
 - **Persistent Storage**: Store points in database per user
 - **Real-time Updates**: Update point total when tasks are completed
 
 #### 2. Point Awarding
+
 - **Task Completion**: Award points when user marks task as done
 - **Default Points**: User-configurable default points per task (in settings)
 - **Custom Points** (Future): Specific tasks can have custom point values
 - **Bonus Points** (Future): Streak bonuses, daily goals, etc.
 
 #### 3. User Configuration
+
 - **Enable/Disable**: Toggle reward system on/off per user
 - **Default Points**: Set default points per completed task (default: 10)
 - **Show Feedback**: Option to show points animation on task completion
 
 #### 4. Visual Feedback
+
 - **Point Display**: Show current total points in UI
 - **Completion Animation**: Celebratory animation when task completed
 - **Point Badge/Counter**: Persistent display of total points
 - **Milestone Notifications** (Future): Alert when reaching point milestones
 
 #### 5. Point Display Locations
+
 - **Header/Navigation**: Show total points in app header
 - **Task List Component**: Show points gained when task completed
 - **Settings Page**: Show total points and reward settings
@@ -39,6 +45,7 @@ Implement a gamification system that awards points to users for completing tasks
 ### Visual Design
 
 #### Point Counter (Header)
+
 ```
 ┌─────────────────────────────────────┐
 │  📅 Calendar  🏆 1,250 pts  👤 User │  ← Header with point badge
@@ -46,6 +53,7 @@ Implement a gamification system that awards points to users for completing tasks
 ```
 
 #### Task Completion with Points
+
 ```
 Before completion:
 ┌─────────────────────────────────────┐
@@ -60,6 +68,7 @@ After completion (with animation):
 ```
 
 #### Settings (Reward Section)
+
 ```
 ┌─────────────────────────────────────┐
 │  Reward System                      │
@@ -113,7 +122,7 @@ interface PointTransaction {
   id: string;
   userId: string;
   points: number;
-  reason: 'task_completed' | 'bonus' | 'manual' | 'streak';
+  reason: "task_completed" | "bonus" | "manual" | "streak";
   taskId?: string;
   taskTitle?: string;
   createdAt: Date;
@@ -161,10 +170,10 @@ model PointTransaction {
 
 ```tsx
 // src/components/rewards/points-context.tsx
-'use client';
+"use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
+import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 
 interface PointsContextValue {
   totalPoints: number;
@@ -181,7 +190,7 @@ export function PointsProvider({ children }: { children: ReactNode }) {
 
   const refreshPoints = async () => {
     try {
-      const response = await fetch('/api/points');
+      const response = await fetch("/api/points");
       if (response.ok) {
         const data = await response.json();
         setTotalPoints(data.totalPoints);
@@ -189,21 +198,17 @@ export function PointsProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       logger.error(error as Error, {
-        context: 'RefreshPointsFailed',
+        context: "RefreshPointsFailed",
       });
     }
   };
 
-  const awardPoints = async (
-    points: number,
-    reason: string,
-    metadata?: any
-  ) => {
+  const awardPoints = async (points: number, reason: string, metadata?: any) => {
     try {
-      const response = await fetch('/api/points/award', {
-        method: 'POST',
+      const response = await fetch("/api/points/award", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           points,
@@ -213,13 +218,13 @@ export function PointsProvider({ children }: { children: ReactNode }) {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to award points');
+        throw new Error("Failed to award points");
       }
 
       const data = await response.json();
       setTotalPoints(data.newTotal);
 
-      logger.event('PointsAwarded', {
+      logger.event("PointsAwarded", {
         points,
         reason,
         newTotal: data.newTotal,
@@ -227,7 +232,7 @@ export function PointsProvider({ children }: { children: ReactNode }) {
       });
     } catch (error) {
       logger.error(error as Error, {
-        context: 'AwardPointsFailed',
+        context: "AwardPointsFailed",
         points,
         reason,
       });
@@ -257,7 +262,7 @@ export function PointsProvider({ children }: { children: ReactNode }) {
 export function usePoints() {
   const context = useContext(PointsContext);
   if (!context) {
-    throw new Error('usePoints must be used within PointsProvider');
+    throw new Error("usePoints must be used within PointsProvider");
   }
   return context;
 }
@@ -267,9 +272,9 @@ export function usePoints() {
 
 ```tsx
 // src/components/rewards/points-badge.tsx
-'use client';
+"use client";
 
-import { usePoints } from './points-context';
+import { usePoints } from "./points-context";
 
 export function PointsBadge() {
   const { totalPoints, isEnabled } = usePoints();
@@ -277,7 +282,7 @@ export function PointsBadge() {
   if (!isEnabled) return null;
 
   return (
-    <div className="flex items-center gap-2 bg-yellow-100 text-yellow-900 px-3 py-1 rounded-full">
+    <div className="flex items-center gap-2 rounded-full bg-yellow-100 px-3 py-1 text-yellow-900">
       <span className="text-lg">🏆</span>
       <span className="font-semibold">{totalPoints.toLocaleString()}</span>
       <span className="text-sm">pts</span>
@@ -290,9 +295,9 @@ export function PointsBadge() {
 
 ```tsx
 // src/components/rewards/points-animation.tsx
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from "react";
 
 interface PointsAnimationProps {
   points: number;
@@ -300,11 +305,7 @@ interface PointsAnimationProps {
   onComplete?: () => void;
 }
 
-export function PointsAnimation({
-  points,
-  show,
-  onComplete,
-}: PointsAnimationProps) {
+export function PointsAnimation({ points, show, onComplete }: PointsAnimationProps) {
   const [visible, setVisible] = useState(show);
 
   useEffect(() => {
@@ -324,10 +325,8 @@ export function PointsAnimation({
   if (!visible) return null;
 
   return (
-    <div className="animate-fade-in-up text-center py-2">
-      <span className="text-green-600 font-semibold text-lg">
-        +{points} points! 🎉
-      </span>
+    <div className="animate-fade-in-up py-2 text-center">
+      <span className="text-lg font-semibold text-green-600">+{points} points! 🎉</span>
     </div>
   );
 }
@@ -355,12 +354,12 @@ export function PointsAnimation({
 
 ```tsx
 // src/components/tasks/task-item.tsx
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { usePoints } from '@/components/rewards/points-context';
-import { PointsAnimation } from '@/components/rewards/points-animation';
-import { logger } from '@/lib/logger';
+import { PointsAnimation } from "@/components/rewards/points-animation";
+import { usePoints } from "@/components/rewards/points-context";
+import { logger } from "@/lib/logger";
+import { useState } from "react";
 
 interface TaskItemProps {
   task: TaskWithMeta;
@@ -369,17 +368,12 @@ interface TaskItemProps {
   pointsPerTask?: number;
 }
 
-export function TaskItem({
-  task,
-  onToggle,
-  showPoints = true,
-  pointsPerTask = 10,
-}: TaskItemProps) {
+export function TaskItem({ task, onToggle, showPoints = true, pointsPerTask = 10 }: TaskItemProps) {
   const { awardPoints, isEnabled } = usePoints();
   const [showPointsAnimation, setShowPointsAnimation] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const isCompleted = task.status === 'completed';
+  const isCompleted = task.status === "completed";
 
   const handleToggle = async () => {
     const wasCompleted = isCompleted;
@@ -393,7 +387,7 @@ export function TaskItem({
 
       // Award points if task was just completed and rewards enabled
       if (willBeCompleted && !wasCompleted && isEnabled) {
-        await awardPoints(pointsPerTask, 'task_completed', {
+        await awardPoints(pointsPerTask, "task_completed", {
           taskId: task.id,
           taskTitle: task.title,
         });
@@ -404,7 +398,7 @@ export function TaskItem({
       }
     } catch (error) {
       logger.error(error as Error, {
-        context: 'TaskToggleFailed',
+        context: "TaskToggleFailed",
         taskId: task.id,
       });
     } finally {
@@ -413,11 +407,11 @@ export function TaskItem({
   };
 
   return (
-    <div className="p-4 hover:bg-gray-50 transition">
+    <div className="p-4 transition hover:bg-gray-50">
       <div className="flex items-start gap-3">
         {/* Color indicator */}
         <div
-          className="w-3 h-3 rounded-full mt-1 flex-shrink-0"
+          className="mt-1 h-3 w-3 flex-shrink-0 rounded-full"
           style={{ backgroundColor: task.listColor }}
           title={task.listTitle}
         />
@@ -433,18 +427,14 @@ export function TaskItem({
 
         {/* Task content */}
         <div className="flex-1">
-          <div
-            className={`text-gray-900 ${
-              isCompleted ? 'line-through text-gray-500' : ''
-            }`}
-          >
+          <div className={`text-gray-900 ${isCompleted ? "text-gray-500 line-through" : ""}`}>
             {task.title}
           </div>
 
           {task.due && (
             <div
-              className={`text-sm mt-1 ${
-                task.isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'
+              className={`mt-1 text-sm ${
+                task.isOverdue ? "font-medium text-red-600" : "text-gray-500"
               }`}
             >
               Due: {formatDueDate(task.due)}
@@ -470,10 +460,12 @@ export function TaskItem({
 
 ```typescript
 // src/app/api/points/route.ts
-import { requireAuth, getCurrentUser } from '@/lib/auth/helpers';
-import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
-import { NextResponse } from 'next/server';
+import { getCurrentUser, requireAuth } from "@/lib/auth/helpers";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { NextResponse } from "next/server";
+// src/app/api/points/award/route.ts
+import { NextRequest } from "next/server";
 
 export async function GET() {
   try {
@@ -512,19 +504,13 @@ export async function GET() {
     });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/points',
-      method: 'GET',
+      endpoint: "/api/points",
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch points' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch points" }, { status: 500 });
   }
 }
-
-// src/app/api/points/award/route.ts
-import { NextRequest } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -534,10 +520,7 @@ export async function POST(request: NextRequest) {
     const { points, reason, taskId, taskTitle } = await request.json();
 
     if (!points || points <= 0) {
-      return NextResponse.json(
-        { error: 'Invalid points value' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid points value" }, { status: 400 });
     }
 
     // Check if rewards enabled
@@ -546,10 +529,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!settings?.rewardSystemEnabled) {
-      return NextResponse.json(
-        { error: 'Reward system not enabled' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Reward system not enabled" }, { status: 403 });
     }
 
     // Use transaction to ensure atomicity
@@ -582,7 +562,7 @@ export async function POST(request: NextRequest) {
       return rewardPoints;
     });
 
-    logger.event('PointsAwarded', {
+    logger.event("PointsAwarded", {
       userId: user.id,
       points,
       reason,
@@ -596,14 +576,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/points/award',
-      method: 'POST',
+      endpoint: "/api/points/award",
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to award points' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to award points" }, { status: 500 });
   }
 }
 ```
@@ -612,8 +589,8 @@ export async function POST(request: NextRequest) {
 
 ```tsx
 // src/app/layout.tsx
-import { PointsProvider } from '@/components/rewards/points-context';
-import { PointsBadge } from '@/components/rewards/points-badge';
+import { PointsBadge } from "@/components/rewards/points-badge";
+import { PointsProvider } from "@/components/rewards/points-context";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -621,8 +598,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <SessionProvider>
           <PointsProvider>
-            <header className="bg-white border-b">
-              <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+            <header className="border-b bg-white">
+              <div className="container mx-auto flex items-center justify-between px-4 py-3">
                 <h1 className="text-xl font-bold">Digital Wall Calendar</h1>
                 <div className="flex items-center gap-4">
                   <PointsBadge />
@@ -691,10 +668,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ## Challenges and Considerations
 
 ### Challenge 1: Race Conditions
+
 - **Problem**: Multiple rapid task completions could cause race conditions
 - **Solution**: Use database transactions for point updates
 
 ### Challenge 2: Point Inflation
+
 - **Problem**: Users might game the system (complete/uncomplete repeatedly)
 - **Solution**:
   - Only award points on first completion
@@ -702,6 +681,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   - Add cooldown period (future)
 
 ### Challenge 3: Animation Performance
+
 - **Problem**: Animations could impact performance with many tasks
 - **Solution**:
   - Use CSS animations (GPU accelerated)
@@ -709,10 +689,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   - Debounce rapid completions
 
 ### Challenge 4: Points Display Update
+
 - **Problem**: Need to update points badge after awarding
 - **Solution**: Use React Context to share state globally
 
 ### Challenge 5: Offline Support
+
 - **Problem**: Can't award points without internet
 - **Solution**:
   - Queue point awards for later sync (future)
@@ -758,6 +740,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ## Future Enhancements
 
 ### Phase 2 Features
+
 - **Point History**: View all point-earning activities
 - **Achievements/Badges**: Unlock badges for milestones
 - **Leaderboards**: Compare with family members (multi-user)
@@ -767,6 +750,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 - **Point Redemption**: Exchange points for rewards (chores, privileges)
 
 ### Phase 3 Features
+
 - **Analytics Dashboard**: Charts showing point trends over time
 - **Point Notifications**: Email/push notifications for milestones
 - **Point Decay**: Points expire after certain time (optional)
@@ -774,6 +758,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 - **Task Difficulty**: Harder tasks worth more points
 
 ### Gamification Ideas
+
 - **Levels**: User levels based on total points
 - **Power-ups**: Temporary boosts (2x points for 1 hour)
 - **Quests**: Complete specific sets of tasks for bonus points
@@ -799,6 +784,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ## Monitoring and Analytics
 
 Track these metrics:
+
 - Average points per user
 - Point award frequency
 - Most common point reasons
@@ -807,7 +793,7 @@ Track these metrics:
 - User engagement after enabling rewards
 
 ```typescript
-logger.event('PointsAwarded', {
+logger.event("PointsAwarded", {
   userId: user.id,
   points,
   reason,
@@ -815,14 +801,14 @@ logger.event('PointsAwarded', {
   taskId,
 });
 
-logger.event('RewardSystemToggled', {
+logger.event("RewardSystemToggled", {
   userId: user.id,
   enabled: settings.rewardSystemEnabled,
 });
 
-logger.event('PointsMilestone', {
+logger.event("PointsMilestone", {
   userId: user.id,
-  milestone: 1000,  // Every 1000 points
+  milestone: 1000, // Every 1000 points
   totalPoints: result.totalPoints,
 });
 ```
