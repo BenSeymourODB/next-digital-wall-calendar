@@ -1,6 +1,7 @@
 import { AppInsightsProvider } from "@/components/providers/AppInsightsProvider";
 import type { Metadata } from "next";
 import Script from "next/script";
+import "./globals.css";
 
 // Note: Application Insights Server SDK auto-initializes when first imported
 // (typically by middleware in src/proxy.ts). No manual initialization needed here.
