@@ -1,6 +1,7 @@
 # Multi-Profile Family Support
 
 ## Overview
+
 Implement multi-profile family support that enables multiple family members to have individual profiles with personalized views, task assignments, reward tracking, and customizable settings. This is a core feature that transforms the calendar from a single-user tool into a family hub, similar to Skylight's multi-profile system.
 
 ## Requirements
@@ -8,6 +9,7 @@ Implement multi-profile family support that enables multiple family members to h
 ### Core Features
 
 #### 1. Profile Management
+
 - **Create Profiles**: Add family member profiles (name, avatar, age group)
 - **Profile Types**: Adult, Teen, Child (for age-appropriate features)
 - **Avatar Options**:
@@ -18,6 +20,7 @@ Implement multi-profile family support that enables multiple family members to h
 - **Profile Settings**: Individual preferences per profile
 
 #### 2. Profile Switching
+
 - **Quick Switcher**: Fast profile selection from header/menu
 - **Profile View**: Switch between "My View" and "Family View"
 - **Active Profile Indicator**: Clear visual indicator of current profile
@@ -25,6 +28,7 @@ Implement multi-profile family support that enables multiple family members to h
 - **Family View**: See all profiles' tasks/events together
 
 #### 3. Task Assignment
+
 - **Assign to Profile**: Assign tasks to specific family members
 - **Multiple Assignment**: Assign task to multiple profiles (shared tasks)
 - **Unassigned Tasks**: Tasks visible to all (family chores)
@@ -32,6 +36,7 @@ Implement multi-profile family support that enables multiple family members to h
 - **Color Coding**: Visual distinction per profile
 
 #### 4. Reward Points per Profile
+
 - **Individual Points**: Each profile has separate point total
 - **Point Leaderboard**: Optional family leaderboard
 - **Give Points**: Parents can manually award bonus points
@@ -39,12 +44,14 @@ Implement multi-profile family support that enables multiple family members to h
 - **Goals/Rewards**: Set redemption goals per profile
 
 #### 5. Calendar Integration
+
 - **Profile Calendars**: Filter calendar events by profile
 - **Shared Events**: Family events visible to all
 - **Color Coding**: Events colored by assigned profile
 - **Multiple Calendars**: Each profile can connect their own Google Calendar
 
 #### 6. Profile Permissions
+
 - **Admin Profiles**: Can manage other profiles (parents)
   - **Multiple Admins**: Support multiple admin profiles (both parents)
   - **Admin Actions**: Create/delete profiles, edit any task, give points, manage settings
@@ -57,6 +64,7 @@ Implement multi-profile family support that enables multiple family members to h
 - **Give Points**: Admin only
 
 #### 7. PIN Security
+
 - **PIN Protection**: Optional 4-6 digit PIN per profile
 - **Admin PIN Required**: Admin profiles must set PIN (cannot be skipped)
 - **Standard PIN Optional**: Standard profiles can choose to set PIN
@@ -69,6 +77,7 @@ Implement multi-profile family support that enables multiple family members to h
 - **No PIN Storage**: PINs hashed with bcrypt (never stored in plain text)
 
 #### 8. Profile Display
+
 - **Profile Avatar Grid**: Show all profiles on dashboard
 - **Profile Stats**: Quick stats (tasks today, points, streak)
 - **Profile Cards**: Tappable cards to switch profile or view details
@@ -77,6 +86,7 @@ Implement multi-profile family support that enables multiple family members to h
 ### Visual Design
 
 #### Profile Switcher (Header)
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │  📅 Calendar    [👤 Ben ▼]    🏆 1,250 pts         │
@@ -96,6 +106,7 @@ Implement multi-profile family support that enables multiple family members to h
 ```
 
 #### Profile Cards (Dashboard)
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Family Dashboard                                   │
@@ -121,6 +132,7 @@ Implement multi-profile family support that enables multiple family members to h
 ```
 
 #### Task List with Profile Assignment
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Tasks - Family View                    [Filter ▼] │
@@ -147,6 +159,7 @@ Implement multi-profile family support that enables multiple family members to h
 ```
 
 #### Profile Management Page
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Manage Profiles                      [+ Add New]   │
@@ -175,6 +188,7 @@ Implement multi-profile family support that enables multiple family members to h
 ```
 
 #### Give Points Modal (Admin Only)
+
 ```
 ┌─────────────────────────────────────┐
 │  Give Bonus Points                  │
@@ -199,6 +213,7 @@ Implement multi-profile family support that enables multiple family members to h
 ```
 
 #### PIN Entry Modal
+
 ```
 ┌─────────────────────────────────────┐
 │  Switch to Ben's Profile            │
@@ -226,6 +241,7 @@ Implement multi-profile family support that enables multiple family members to h
 ```
 
 #### Set PIN Flow (Admin Profile Creation)
+
 ```
 ┌─────────────────────────────────────┐
 │  Create Admin Profile               │
@@ -260,6 +276,7 @@ Implement multi-profile family support that enables multiple family members to h
 ```
 
 #### PIN Confirmation
+
 ```
 ┌─────────────────────────────────────┐
 │  Create Admin Profile               │
@@ -288,6 +305,7 @@ Implement multi-profile family support that enables multiple family members to h
 ```
 
 #### Failed PIN Attempts
+
 ```
 ┌─────────────────────────────────────┐
 │  Switch to Ben's Profile            │
@@ -319,6 +337,7 @@ Implement multi-profile family support that enables multiple family members to h
 ```
 
 #### Profile Switcher with PIN Indicators
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │  📅 Calendar    [👤 Ben ▼]    🏆 1,250 pts         │
@@ -388,24 +407,24 @@ src/app/api/profiles/
 
 ```typescript
 // Profile types
-export type ProfileType = 'admin' | 'standard';
-export type AgeGroup = 'adult' | 'teen' | 'child';
+export type ProfileType = "admin" | "standard";
+export type AgeGroup = "adult" | "teen" | "child";
 
 interface Profile {
   id: string;
-  userId: string;         // Account owner (from auth)
+  userId: string; // Account owner (from auth)
   name: string;
-  type: ProfileType;      // admin or standard
-  ageGroup: AgeGroup;     // for age-appropriate features
-  color: string;          // hex color for visual distinction
+  type: ProfileType; // admin or standard
+  ageGroup: AgeGroup; // for age-appropriate features
+  color: string; // hex color for visual distinction
   avatar: ProfileAvatar;
-  pinHash?: string;       // Hashed PIN (bcrypt), null if no PIN set
-  pinEnabled: boolean;    // Whether PIN is enabled for this profile
+  pinHash?: string; // Hashed PIN (bcrypt), null if no PIN set
+  pinEnabled: boolean; // Whether PIN is enabled for this profile
   failedPinAttempts: number; // Counter for failed PIN attempts
-  pinLockedUntil?: Date;  // Temporary lockout timestamp
+  pinLockedUntil?: Date; // Temporary lockout timestamp
   createdAt: Date;
   updatedAt: Date;
-  isActive: boolean;      // soft delete
+  isActive: boolean; // soft delete
 
   // Relations
   tasks: TaskAssignment[];
@@ -414,17 +433,17 @@ interface Profile {
 }
 
 interface ProfileAvatar {
-  type: 'initials' | 'photo' | 'emoji';
-  value: string;          // initials text, photo URL, or emoji
+  type: "initials" | "photo" | "emoji";
+  value: string; // initials text, photo URL, or emoji
   backgroundColor?: string; // for initials
 }
 
 interface TaskAssignment {
   id: string;
-  taskId: string;         // Google Tasks ID
+  taskId: string; // Google Tasks ID
   profileId: string;
   assignedAt: Date;
-  assignedBy: string;     // Profile ID of assigner
+  assignedBy: string; // Profile ID of assigner
 
   profile: Profile;
 }
@@ -433,7 +452,7 @@ interface ProfileRewardPoints {
   id: string;
   profileId: string;
   totalPoints: number;
-  currentStreak: number;  // consecutive days with completed tasks
+  currentStreak: number; // consecutive days with completed tasks
   longestStreak: number;
   lastActivityDate: Date;
   updatedAt: Date;
@@ -446,11 +465,11 @@ interface PointTransaction {
   id: string;
   profileId: string;
   points: number;
-  reason: 'task_completed' | 'bonus' | 'manual' | 'streak' | 'goal';
+  reason: "task_completed" | "bonus" | "manual" | "streak" | "goal";
   taskId?: string;
   taskTitle?: string;
-  awardedBy?: string;     // Profile ID if manually awarded
-  note?: string;          // reason for manual award
+  awardedBy?: string; // Profile ID if manually awarded
+  note?: string; // reason for manual award
   createdAt: Date;
 
   profile: Profile;
@@ -463,10 +482,10 @@ interface ProfileSettings {
   // Task settings
   defaultTaskListId?: string;
   showCompletedTasks: boolean;
-  taskSortOrder: 'dueDate' | 'priority' | 'manual';
+  taskSortOrder: "dueDate" | "priority" | "manual";
 
   // Display settings
-  theme: 'light' | 'dark' | 'auto';
+  theme: "light" | "dark" | "auto";
   language: string;
 
   // Notification settings (future)
@@ -483,8 +502,8 @@ interface ProfileStats {
   tasksToday: number;
   tasksCompleted: number;
   tasksTotal: number;
-  completionRate: number;  // percentage
-  rank: number;            // position in family leaderboard
+  completionRate: number; // percentage
+  rank: number; // position in family leaderboard
 }
 ```
 
@@ -603,12 +622,12 @@ model User {
 
 ```tsx
 // src/components/profiles/profile-context.tsx
-'use client';
+"use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
+import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 
-export type ViewMode = 'profile' | 'family';
+export type ViewMode = "profile" | "family";
 
 interface ProfileContextValue {
   activeProfile: Profile | null;
@@ -625,11 +644,11 @@ const ProfileContext = createContext<ProfileContextValue | null>(null);
 export function ProfileProvider({ children }: { children: ReactNode }) {
   const [activeProfile, setActiveProfileState] = useState<Profile | null>(null);
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
-  const [viewMode, setViewMode] = useState<ViewMode>('profile');
+  const [viewMode, setViewMode] = useState<ViewMode>("profile");
 
   const refreshProfiles = async () => {
     try {
-      const response = await fetch('/api/profiles');
+      const response = await fetch("/api/profiles");
       if (response.ok) {
         const profiles = await response.json();
         setAllProfiles(profiles);
@@ -638,13 +657,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         if (!activeProfile && profiles.length > 0) {
           // Use last active or first admin profile
           const lastActive = profiles.find((p: Profile) => p.id === getStoredProfileId());
-          const firstAdmin = profiles.find((p: Profile) => p.type === 'admin');
+          const firstAdmin = profiles.find((p: Profile) => p.type === "admin");
           setActiveProfileState(lastActive || firstAdmin || profiles[0]);
         }
       }
     } catch (error) {
       logger.error(error as Error, {
-        context: 'RefreshProfilesFailed',
+        context: "RefreshProfilesFailed",
       });
     }
   };
@@ -655,7 +674,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       setActiveProfileState(profile);
       storeProfileId(profileId);
 
-      logger.event('ProfileSwitched', {
+      logger.event("ProfileSwitched", {
         fromProfileId: activeProfile?.id,
         toProfileId: profileId,
       });
@@ -667,7 +686,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     refreshProfiles();
   }, []);
 
-  const isAdmin = activeProfile?.type === 'admin';
+  const isAdmin = activeProfile?.type === "admin";
 
   return (
     <ProfileContext.Provider
@@ -689,22 +708,22 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 export function useProfile() {
   const context = useContext(ProfileContext);
   if (!context) {
-    throw new Error('useProfile must be used within ProfileProvider');
+    throw new Error("useProfile must be used within ProfileProvider");
   }
   return context;
 }
 
 // Helper functions
 function getStoredProfileId(): string | null {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('activeProfileId');
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("activeProfileId");
   }
   return null;
 }
 
 function storeProfileId(profileId: string): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('activeProfileId', profileId);
+  if (typeof window !== "undefined") {
+    localStorage.setItem("activeProfileId", profileId);
   }
 }
 ```
@@ -713,11 +732,11 @@ function storeProfileId(profileId: string): void {
 
 ```tsx
 // src/components/profiles/profile-switcher.tsx
-'use client';
+"use client";
 
-import { useProfile } from './profile-context';
-import { ProfileAvatar } from './profile-avatar';
-import { useState } from 'react';
+import { useState } from "react";
+import { ProfileAvatar } from "./profile-avatar";
+import { useProfile } from "./profile-context";
 
 export function ProfileSwitcher() {
   const { activeProfile, allProfiles, setActiveProfile, setViewMode, viewMode } = useProfile();
@@ -729,12 +748,12 @@ export function ProfileSwitcher() {
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100"
+        className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-gray-100"
       >
         <ProfileAvatar profile={activeProfile} size="sm" />
         <span className="font-medium text-gray-900">{activeProfile.name}</span>
         <svg
-          className="w-4 h-4 text-gray-500"
+          className="h-4 w-4 text-gray-500"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -744,44 +763,41 @@ export function ProfileSwitcher() {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+        <div className="absolute top-full right-0 z-50 mt-2 w-56 rounded-lg border border-gray-200 bg-white py-2 shadow-lg">
           {allProfiles.map((profile) => (
             <button
               key={profile.id}
               onClick={() => {
                 setActiveProfile(profile.id);
-                setViewMode('profile');
+                setViewMode("profile");
                 setIsOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50 ${
-                profile.id === activeProfile.id ? 'bg-blue-50' : ''
+              className={`flex w-full items-center gap-3 px-4 py-2 hover:bg-gray-50 ${
+                profile.id === activeProfile.id ? "bg-blue-50" : ""
               }`}
             >
               <ProfileAvatar profile={profile} size="sm" />
               <span className="text-gray-900">{profile.name}</span>
-              {profile.type === 'admin' && (
+              {profile.type === "admin" && (
                 <span className="ml-auto text-xs text-gray-500">👑</span>
               )}
             </button>
           ))}
 
-          <div className="border-t border-gray-200 my-2" />
+          <div className="my-2 border-t border-gray-200" />
 
           <button
             onClick={() => {
-              setViewMode('family');
+              setViewMode("family");
               setIsOpen(false);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
+            className="flex w-full items-center gap-3 px-4 py-2 hover:bg-gray-50"
           >
             <span className="text-xl">👨‍👩‍👧‍👦</span>
             <span className="text-gray-900">Family View</span>
           </button>
 
-          <a
-            href="/profiles"
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
-          >
+          <a href="/profiles" className="flex w-full items-center gap-3 px-4 py-2 hover:bg-gray-50">
             <span className="text-xl">⚙️</span>
             <span className="text-gray-900">Manage Profiles</span>
           </a>
@@ -796,25 +812,25 @@ export function ProfileSwitcher() {
 
 ```tsx
 // src/components/profiles/profile-avatar.tsx
-'use client';
+"use client";
 
 interface ProfileAvatarProps {
   profile: Profile;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   showName?: boolean;
 }
 
-export function ProfileAvatar({ profile, size = 'md', showName = false }: ProfileAvatarProps) {
+export function ProfileAvatar({ profile, size = "md", showName = false }: ProfileAvatarProps) {
   const sizeClasses = {
-    sm: 'w-8 h-8 text-sm',
-    md: 'w-12 h-12 text-base',
-    lg: 'w-16 h-16 text-xl',
+    sm: "w-8 h-8 text-sm",
+    md: "w-12 h-12 text-base",
+    lg: "w-16 h-16 text-xl",
   };
 
   const avatar = profile.avatar as ProfileAvatar;
 
   const renderAvatar = () => {
-    if (avatar.type === 'photo') {
+    if (avatar.type === "photo") {
       return (
         <img
           src={avatar.value}
@@ -824,10 +840,10 @@ export function ProfileAvatar({ profile, size = 'md', showName = false }: Profil
       );
     }
 
-    if (avatar.type === 'emoji') {
+    if (avatar.type === "emoji") {
       return (
         <div
-          className={`${sizeClasses[size]} rounded-full flex items-center justify-center`}
+          className={`${sizeClasses[size]} flex items-center justify-center rounded-full`}
           style={{ backgroundColor: profile.color }}
         >
           <span className="text-2xl">{avatar.value}</span>
@@ -838,7 +854,7 @@ export function ProfileAvatar({ profile, size = 'md', showName = false }: Profil
     // Default: initials
     return (
       <div
-        className={`${sizeClasses[size]} rounded-full flex items-center justify-center font-semibold text-white`}
+        className={`${sizeClasses[size]} flex items-center justify-center rounded-full font-semibold text-white`}
         style={{ backgroundColor: avatar.backgroundColor || profile.color }}
       >
         {avatar.value}
@@ -850,7 +866,7 @@ export function ProfileAvatar({ profile, size = 'md', showName = false }: Profil
     return (
       <div className="flex items-center gap-2">
         {renderAvatar()}
-        <span className="text-gray-900 font-medium">{profile.name}</span>
+        <span className="font-medium text-gray-900">{profile.name}</span>
       </div>
     );
   }
@@ -863,11 +879,11 @@ export function ProfileAvatar({ profile, size = 'md', showName = false }: Profil
 
 ```tsx
 // src/components/profiles/profile-card.tsx
-'use client';
+"use client";
 
-import { ProfileAvatar } from './profile-avatar';
-import { useProfile } from './profile-context';
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
+import { ProfileAvatar } from "./profile-avatar";
+import { useProfile } from "./profile-context";
 
 interface ProfileCardProps {
   profile: Profile;
@@ -886,7 +902,7 @@ export function ProfileCard({ profile }: ProfileCardProps) {
 
   const handleClick = () => {
     setActiveProfile(profile.id);
-    setViewMode('profile');
+    setViewMode("profile");
   };
 
   if (!stats) return null;
@@ -894,16 +910,14 @@ export function ProfileCard({ profile }: ProfileCardProps) {
   return (
     <button
       onClick={handleClick}
-      className="bg-white rounded-lg p-6 shadow hover:shadow-lg transition border-2 border-transparent hover:border-blue-500 text-left w-full"
+      className="w-full rounded-lg border-2 border-transparent bg-white p-6 text-left shadow transition hover:border-blue-500 hover:shadow-lg"
     >
       <div className="flex flex-col items-center gap-3">
         <ProfileAvatar profile={profile} size="lg" />
 
         <div className="text-center">
-          <h3 className="font-bold text-gray-900 text-lg">{profile.name}</h3>
-          {profile.type === 'admin' && (
-            <span className="text-xs text-gray-500">Admin</span>
-          )}
+          <h3 className="text-lg font-bold text-gray-900">{profile.name}</h3>
+          {profile.type === "admin" && <span className="text-xs text-gray-500">Admin</span>}
         </div>
 
         <div className="w-full space-y-2">
@@ -916,7 +930,7 @@ export function ProfileCard({ profile }: ProfileCardProps) {
           </div>
 
           {/* Progress bar */}
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="h-2 w-full rounded-full bg-gray-200">
             <div
               className="h-2 rounded-full transition-all"
               style={{
@@ -937,9 +951,7 @@ export function ProfileCard({ profile }: ProfileCardProps) {
           {/* Streak */}
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">Streak</span>
-            <span className="font-medium text-gray-900">
-              {stats.currentStreak}🔥
-            </span>
+            <span className="font-medium text-gray-900">{stats.currentStreak}🔥</span>
           </div>
         </div>
       </div>
@@ -952,16 +964,16 @@ export function ProfileCard({ profile }: ProfileCardProps) {
 
 ```tsx
 // src/components/profiles/profile-grid.tsx
-'use client';
+"use client";
 
-import { useProfile } from './profile-context';
-import { ProfileCard } from './profile-card';
+import { ProfileCard } from "./profile-card";
+import { useProfile } from "./profile-context";
 
 export function ProfileGrid() {
   const { allProfiles } = useProfile();
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
       {allProfiles.map((profile) => (
         <ProfileCard key={profile.id} profile={profile} />
       ))}
@@ -1807,15 +1819,15 @@ export async function POST(
 
 ```tsx
 // Updated task-item.tsx with profile assignment
-'use client';
+"use client";
 
-import { useProfile } from '@/components/profiles/profile-context';
-import { ProfileAvatar } from '@/components/profiles/profile-avatar';
+import { ProfileAvatar } from "@/components/profiles/profile-avatar";
+import { useProfile } from "@/components/profiles/profile-context";
 
 interface TaskItemProps {
   task: TaskWithMeta;
   onToggle: () => Promise<void>;
-  assignments: TaskAssignment[];  // profiles assigned to this task
+  assignments: TaskAssignment[]; // profiles assigned to this task
 }
 
 export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
@@ -1825,14 +1837,11 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
   // Filter: in profile view, only show tasks assigned to active profile
   // In family view, show all tasks
   const isVisibleInCurrentView = () => {
-    if (viewMode === 'family') return true;
+    if (viewMode === "family") return true;
     if (!activeProfile) return false;
 
     // Show if assigned to active profile or unassigned (family tasks)
-    return (
-      assignments.length === 0 ||
-      assignments.some((a) => a.profileId === activeProfile.id)
-    );
+    return assignments.length === 0 || assignments.some((a) => a.profileId === activeProfile.id);
   };
 
   if (!isVisibleInCurrentView()) return null;
@@ -1840,18 +1849,18 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
   const assignedProfiles = assignments.map((a) => a.profile);
 
   return (
-    <div className="p-4 hover:bg-gray-50 transition">
+    <div className="p-4 transition hover:bg-gray-50">
       <div className="flex items-start gap-3">
         {/* Color indicator */}
         <div
-          className="w-3 h-3 rounded-full mt-1 flex-shrink-0"
+          className="mt-1 h-3 w-3 flex-shrink-0 rounded-full"
           style={{ backgroundColor: task.listColor }}
         />
 
         {/* Checkbox */}
         <input
           type="checkbox"
-          checked={task.status === 'completed'}
+          checked={task.status === "completed"}
           onChange={onToggle}
           className="mt-1"
         />
@@ -1859,13 +1868,17 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
         {/* Task content */}
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <span className={task.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-900'}>
+            <span
+              className={
+                task.status === "completed" ? "text-gray-500 line-through" : "text-gray-900"
+              }
+            >
               {task.title}
             </span>
 
             {/* Show assigned profile avatars */}
             {assignedProfiles.length > 0 && (
-              <div className="flex items-center gap-1 ml-auto">
+              <div className="ml-auto flex items-center gap-1">
                 {assignedProfiles.map((profile) => (
                   <ProfileAvatar key={profile.id} profile={profile} size="sm" />
                 ))}
@@ -2077,6 +2090,7 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
 ## Challenges and Considerations
 
 ### Challenge 1: Profile vs Account Confusion
+
 - **Problem**: Users might confuse profiles with user accounts
 - **Solution**:
   - Clear onboarding explaining one account = multiple profiles
@@ -2084,6 +2098,7 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
   - Visual distinction (avatars vs account settings)
 
 ### Challenge 2: Task Assignment Logic
+
 - **Problem**: Determining which tasks belong to which profile
 - **Solution**:
   - Explicit assignment via UI
@@ -2092,6 +2107,7 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
   - Show all in "Family View"
 
 ### Challenge 3: Point Isolation
+
 - **Problem**: Ensuring points don't mix between profiles
 - **Solution**:
   - Separate ProfileRewardPoints table
@@ -2100,6 +2116,7 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
   - Transaction-based updates
 
 ### Challenge 4: Admin Permissions
+
 - **Problem**: Preventing children from modifying other profiles
 - **Solution**:
   - Profile types (admin vs standard)
@@ -2108,6 +2125,7 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
   - Audit log for admin actions
 
 ### Challenge 5: Profile Limit
+
 - **Problem**: Need to limit number of profiles per account
 - **Solution**:
   - Configurable max (default 10)
@@ -2116,6 +2134,7 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
   - Soft delete for recovery
 
 ### Challenge 6: Google Calendar Integration
+
 - **Problem**: Each profile might have their own Google Calendar
 - **Solution**:
   - Phase 1: Share account owner's calendar
@@ -2123,6 +2142,7 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
   - Filter events by profile (color/tag based)
 
 ### Challenge 7: PIN Security and Usability
+
 - **Problem**: Balancing security (PIN required) with usability (not too annoying)
 - **Solution**:
   - Admin profiles require PIN (mandatory for security)
@@ -2133,6 +2153,7 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
   - Clear "Forgot PIN?" recovery flow
 
 ### Challenge 8: Multiple Admin Coordination
+
 - **Problem**: Two parents both admins, need to coordinate
 - **Solution**:
   - Both admins have equal permissions
@@ -2271,6 +2292,7 @@ export function TaskItem({ task, onToggle, assignments }: TaskItemProps) {
 ## Monitoring and Analytics
 
 Track these metrics:
+
 - Profiles per account (average, distribution)
 - Profile type distribution (admin vs standard)
 - Profile switching frequency
@@ -2283,49 +2305,49 @@ Track these metrics:
 - Admin count per account (single vs dual-admin households)
 
 ```typescript
-logger.event('ProfileCreated', {
+logger.event("ProfileCreated", {
   profileId: profile.id,
   userId: user.id,
   type: profile.type,
   ageGroup: profile.ageGroup,
 });
 
-logger.event('ProfileSwitched', {
+logger.event("ProfileSwitched", {
   fromProfileId: activeProfile?.id,
   toProfileId: profileId,
   userId: user.id,
 });
 
-logger.event('ViewModeChanged', {
-  viewMode: mode,  // 'profile' or 'family'
+logger.event("ViewModeChanged", {
+  viewMode: mode, // 'profile' or 'family'
   userId: user.id,
 });
 
-logger.event('BonusPointsAwarded', {
+logger.event("BonusPointsAwarded", {
   profileId: targetProfile.id,
   awardedBy: adminProfile.id,
   points: amount,
 });
 
-logger.event('ProfilePinSet', {
+logger.event("ProfilePinSet", {
   userId: user.id,
   profileId: profile.id,
-  isUpdate: boolean,  // true if changing existing PIN
+  isUpdate: boolean, // true if changing existing PIN
 });
 
-logger.event('ProfilePinVerified', {
+logger.event("ProfilePinVerified", {
   userId: user.id,
   profileId: profile.id,
 });
 
-logger.event('ProfilePinFailed', {
+logger.event("ProfilePinFailed", {
   userId: user.id,
   profileId: profile.id,
   failedAttempts: number,
-  locked: boolean,  // true if now locked
+  locked: boolean, // true if now locked
 });
 
-logger.event('ProfilePinReset', {
+logger.event("ProfilePinReset", {
   userId: user.id,
   profileId: profile.id,
   resetBy: adminProfile.id,
@@ -2342,11 +2364,13 @@ logger.event('ProfilePinReset', {
 ## Integration with Other Features
 
 **Required Integration:**
+
 - **Server-side Auth**: Profiles belong to authenticated users
 - **Reward Points System**: Per-profile point tracking
 - **Google Tasks**: Task assignment per profile
 
 **Optional Integration:**
+
 - **Calendar Component**: Filter events by profile
 - **Settings Page**: Per-profile settings
 - **Screen Rotation**: Different rotations per profile (future)
@@ -2355,6 +2379,7 @@ logger.event('ProfilePinReset', {
 ## Future Enhancements
 
 ### Phase 2 Features
+
 - **Profile Themes**: Custom color schemes per profile
 - **Profile Photos**: Upload and crop photo avatars
 - **Family Challenges**: Collaborative point goals
@@ -2362,6 +2387,7 @@ logger.event('ProfilePinReset', {
 - **Profile Groups**: Group profiles (kids, adults, etc.)
 
 ### Phase 3 Features
+
 - **Multi-Calendar**: Each profile connects own Google Calendar
 - **Profile Notifications**: Per-profile notification settings
 - **Guest Profiles**: Temporary profiles for visitors
@@ -2369,6 +2395,7 @@ logger.event('ProfilePinReset', {
 - **Profile Insights**: Analytics per profile (completion trends, peak productivity times)
 
 ### Gamification Ideas
+
 - **Family Leaderboard**: Competitive or collaborative
 - **Profile Badges**: Achievements per profile
 - **Profile Streaks**: Visualize streak in profile card
@@ -2378,6 +2405,7 @@ logger.event('ProfilePinReset', {
 ## Migration Plan
 
 ### For Existing Users (No Profiles)
+
 1. On first profile feature access, show onboarding
 2. Create default admin profile using user's name
 3. Migrate existing reward points to profile
@@ -2385,6 +2413,7 @@ logger.event('ProfilePinReset', {
 5. Prompt to create additional profiles
 
 ### For Multi-User Households
+
 1. Create profile for each family member
 2. Assign avatar and color
 3. Set one adult as admin
@@ -2394,6 +2423,7 @@ logger.event('ProfilePinReset', {
 ## User Onboarding
 
 ### First-Time Setup
+
 1. **Welcome Screen**: "Add your family members"
 2. **Create First Profile**: User creates profile for themselves (auto-admin)
 3. **Add Family**: Prompt to add additional profiles
@@ -2401,6 +2431,7 @@ logger.event('ProfilePinReset', {
 5. **Tour Complete**: Show family dashboard
 
 ### Quick Start Guide
+
 - "Create a profile for each family member"
 - "Assign tasks to specific people or leave unassigned for everyone"
 - "Switch profiles to see personalized views"

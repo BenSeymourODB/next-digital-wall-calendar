@@ -11,18 +11,21 @@ A privacy-first architecture that uses PostgreSQL as the primary data store for 
 ### Core Principles
 
 #### 1. Privacy First
+
 - **Local by Default**: All data stored in self-hosted PostgreSQL database
 - **Opt-in Sync**: Google Calendar and Tasks sync are optional modules
 - **User Control**: Users decide what data leaves their network
 - **No Vendor Lock-in**: Full functionality without any external services
 
 #### 2. Data Sovereignty
+
 - **PostgreSQL as Source of Truth**: All events and tasks stored locally first
 - **Sync as Enhancement**: External services are additional features, not requirements
 - **Offline First**: Full functionality without internet connection
 - **Data Portability**: Easy export of all user data
 
 #### 3. Modular Design
+
 - **Pluggable Sync Modules**: Enable/disable sync providers independently
 - **Future Extensibility**: Easy to add new providers (Outlook, iCloud, CalDAV)
 - **Graceful Degradation**: App works fully with all modules disabled
@@ -31,6 +34,7 @@ A privacy-first architecture that uses PostgreSQL as the primary data store for 
 ### Functional Requirements
 
 #### 1. Core Data Storage (Always Enabled)
+
 - **Events**: Stored in `events` table in PostgreSQL
 - **Tasks**: Stored in `tasks` table in PostgreSQL
 - **Full CRUD**: Create, read, update, delete without external dependencies
@@ -38,6 +42,7 @@ A privacy-first architecture that uses PostgreSQL as the primary data store for 
 - **Multi-Profile**: Isolated data per family member profile
 
 #### 2. Google Calendar Sync Module (Optional)
+
 - **Two-Way Sync**: Bidirectional synchronization with Google Calendar
 - **Conflict Resolution**: Last-write-wins with user override option
 - **Sync Schedule**: Configurable (default: every 5 minutes when enabled)
@@ -46,6 +51,7 @@ A privacy-first architecture that uses PostgreSQL as the primary data store for 
 - **Offline Queue**: Queue changes when offline, sync when reconnected
 
 #### 3. Google Tasks Sync Module (Optional)
+
 - **Two-Way Sync**: Bidirectional synchronization with Google Tasks
 - **Conflict Resolution**: Last-write-wins with user override option
 - **Sync Schedule**: Configurable (default: on change, with 30s debounce)
@@ -54,6 +60,7 @@ A privacy-first architecture that uses PostgreSQL as the primary data store for 
 - **Offline Queue**: Queue changes when offline, sync when reconnected
 
 #### 4. Module Configuration
+
 - **Per-User Settings**: Each profile controls their own sync modules
 - **Enable/Disable**: Toggle sync modules on/off at any time
 - **Initial Setup Wizard**: Guide users through optional sync configuration
@@ -230,7 +237,7 @@ export interface SyncModule {
 }
 
 export interface SyncOptions {
-  direction?: 'push' | 'pull' | 'bidirectional';
+  direction?: "push" | "pull" | "bidirectional";
   force?: boolean; // Force sync even if recently synced
   itemIds?: string[]; // Sync specific items only
 }
@@ -249,7 +256,7 @@ export interface SyncResult {
 export interface SyncStatus {
   enabled: boolean;
   lastSyncAt: Date | null;
-  lastSyncStatus: 'success' | 'error' | 'in_progress' | 'never';
+  lastSyncStatus: "success" | "error" | "in_progress" | "never";
   lastSyncError: string | null;
   pendingChanges: number;
   conflicts: number;
@@ -257,7 +264,7 @@ export interface SyncStatus {
 
 export interface SyncConflict {
   id: string;
-  itemType: 'event' | 'task';
+  itemType: "event" | "task";
   localId: string;
   externalId: string;
   localVersion: any;
@@ -266,13 +273,13 @@ export interface SyncConflict {
 }
 
 export interface ConflictResolution {
-  strategy: 'use-local' | 'use-external' | 'merge';
+  strategy: "use-local" | "use-external" | "merge";
   mergedData?: any; // For manual merge
 }
 
 export interface SyncError {
   itemId: string;
-  itemType: 'event' | 'task';
+  itemType: "event" | "task";
   errorCode: string;
   errorMessage: string;
   retryable: boolean;
@@ -283,10 +290,9 @@ export interface SyncError {
 
 ```typescript
 // src/lib/sync/registry.ts
-
-import { SyncModule } from './types';
-import { GoogleCalendarSync } from './providers/google-calendar';
-import { GoogleTasksSync } from './providers/google-tasks';
+import { GoogleCalendarSync } from "./providers/google-calendar";
+import { GoogleTasksSync } from "./providers/google-tasks";
+import { SyncModule } from "./types";
 
 class SyncModuleRegistry {
   private modules = new Map<string, SyncModule>();
@@ -329,21 +335,20 @@ export const syncRegistry = new SyncModuleRegistry();
 
 ```typescript
 // src/lib/sync/providers/google-calendar.ts
-
-import { SyncModule, SyncOptions, SyncResult, SyncStatus } from '../types';
-import { prisma } from '@/lib/prisma';
-import { google } from 'googleapis';
-import { getServerSession } from '@/lib/auth';
+import { getServerSession } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { google } from "googleapis";
+import { SyncModule, SyncOptions, SyncResult, SyncStatus } from "../types";
 
 export class GoogleCalendarSync implements SyncModule {
-  readonly provider = 'google-calendar';
-  readonly displayName = 'Google Calendar';
-  readonly description = 'Sync events with Google Calendar';
-  readonly icon = 'GoogleCalendarIcon';
+  readonly provider = "google-calendar";
+  readonly displayName = "Google Calendar";
+  readonly description = "Sync events with Google Calendar";
+  readonly icon = "GoogleCalendarIcon";
 
   async isConfigured(profileId: string): Promise<boolean> {
     const config = await prisma.syncModuleConfig.findUnique({
-      where: { profileId_provider: { profileId, provider: this.provider } }
+      where: { profileId_provider: { profileId, provider: this.provider } },
     });
     return config?.enabled ?? false;
   }
@@ -364,13 +369,13 @@ export class GoogleCalendarSync implements SyncModule {
         profileId,
         provider: this.provider,
         enabled: true,
-        config: { syncInterval: 300000, calendars: ['primary'] } // 5 min default
+        config: { syncInterval: 300000, calendars: ["primary"] }, // 5 min default
       },
-      update: { enabled: true }
+      update: { enabled: true },
     });
 
     // Perform initial sync
-    await this.sync(profileId, { direction: 'pull' });
+    await this.sync(profileId, { direction: "pull" });
 
     return { success: true };
   }
@@ -378,13 +383,13 @@ export class GoogleCalendarSync implements SyncModule {
   async disable(profileId: string): Promise<void> {
     await prisma.syncModuleConfig.update({
       where: { profileId_provider: { profileId, provider: this.provider } },
-      data: { enabled: false }
+      data: { enabled: false },
     });
   }
 
   async sync(profileId: string, options: SyncOptions = {}): Promise<SyncResult> {
     const startTime = Date.now();
-    const direction = options.direction ?? 'bidirectional';
+    const direction = options.direction ?? "bidirectional";
 
     const result: SyncResult = {
       success: true,
@@ -394,15 +399,15 @@ export class GoogleCalendarSync implements SyncModule {
       itemsDeleted: 0,
       conflicts: [],
       errors: [],
-      duration: 0
+      duration: 0,
     };
 
     try {
       // Get OAuth client for this profile
       const oauth2Client = await this.getOAuthClient(profileId);
-      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+      const calendar = google.calendar({ version: "v3", auth: oauth2Client });
 
-      if (direction === 'pull' || direction === 'bidirectional') {
+      if (direction === "pull" || direction === "bidirectional") {
         // Pull events from Google Calendar
         const pullResult = await this.pullEvents(profileId, calendar);
         result.itemsCreated += pullResult.created;
@@ -411,7 +416,7 @@ export class GoogleCalendarSync implements SyncModule {
         result.conflicts.push(...pullResult.conflicts);
       }
 
-      if (direction === 'push' || direction === 'bidirectional') {
+      if (direction === "push" || direction === "bidirectional") {
         // Push local events to Google Calendar
         const pushResult = await this.pushEvents(profileId, calendar);
         result.itemsSynced += pushResult.synced;
@@ -423,27 +428,26 @@ export class GoogleCalendarSync implements SyncModule {
         where: { profileId_provider: { profileId, provider: this.provider } },
         data: {
           lastSyncAt: new Date(),
-          lastSyncStatus: 'success'
-        }
+          lastSyncStatus: "success",
+        },
       });
-
     } catch (error) {
       result.success = false;
       result.errors.push({
-        itemId: 'sync',
-        itemType: 'event',
-        errorCode: 'SYNC_FAILED',
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        retryable: true
+        itemId: "sync",
+        itemType: "event",
+        errorCode: "SYNC_FAILED",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        retryable: true,
       });
 
       // Update error status
       await prisma.syncModuleConfig.update({
         where: { profileId_provider: { profileId, provider: this.provider } },
         data: {
-          lastSyncStatus: 'error',
-          lastSyncError: error instanceof Error ? error.message : 'Unknown error'
-        }
+          lastSyncStatus: "error",
+          lastSyncError: error instanceof Error ? error.message : "Unknown error",
+        },
       });
     }
 
@@ -453,17 +457,17 @@ export class GoogleCalendarSync implements SyncModule {
 
   async getSyncStatus(profileId: string): Promise<SyncStatus> {
     const config = await prisma.syncModuleConfig.findUnique({
-      where: { profileId_provider: { profileId, provider: this.provider } }
+      where: { profileId_provider: { profileId, provider: this.provider } },
     });
 
     if (!config) {
       return {
         enabled: false,
         lastSyncAt: null,
-        lastSyncStatus: 'never',
+        lastSyncStatus: "never",
         lastSyncError: null,
         pendingChanges: 0,
-        conflicts: 0
+        conflicts: 0,
       };
     }
 
@@ -471,26 +475,26 @@ export class GoogleCalendarSync implements SyncModule {
     const pendingChanges = await prisma.eventSyncRecord.count({
       where: {
         provider: this.provider,
-        syncStatus: 'pending',
-        event: { profileId }
-      }
+        syncStatus: "pending",
+        event: { profileId },
+      },
     });
 
     const conflicts = await prisma.eventSyncRecord.count({
       where: {
         provider: this.provider,
-        syncStatus: 'conflict',
-        event: { profileId }
-      }
+        syncStatus: "conflict",
+        event: { profileId },
+      },
     });
 
     return {
       enabled: config.enabled,
       lastSyncAt: config.lastSyncAt,
-      lastSyncStatus: (config.lastSyncStatus as any) ?? 'never',
+      lastSyncStatus: (config.lastSyncStatus as any) ?? "never",
       lastSyncError: config.lastSyncError,
       pendingChanges,
-      conflicts
+      conflicts,
     };
   }
 
@@ -526,9 +530,8 @@ export class GoogleCalendarSync implements SyncModule {
 
 ```typescript
 // src/lib/sync/service.ts
-
-import { syncRegistry } from './registry';
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
+import { syncRegistry } from "./registry";
 
 class SyncService {
   /**
@@ -537,26 +540,24 @@ class SyncService {
   async syncAll(profileId: string): Promise<void> {
     const enabled = await syncRegistry.getEnabled(profileId);
 
-    logger.event('SyncAll_Started', { profileId, moduleCount: enabled.length });
+    logger.event("SyncAll_Started", { profileId, moduleCount: enabled.length });
 
     // Sync modules in parallel
-    const results = await Promise.allSettled(
-      enabled.map(module => module.sync(profileId))
-    );
+    const results = await Promise.allSettled(enabled.map((module) => module.sync(profileId)));
 
     // Log results
     results.forEach((result, index) => {
       const module = enabled[index];
-      if (result.status === 'fulfilled') {
-        logger.event('SyncModule_Success', {
+      if (result.status === "fulfilled") {
+        logger.event("SyncModule_Success", {
           profileId,
           provider: module.provider,
-          ...result.value
+          ...result.value,
         });
       } else {
         logger.error(result.reason, {
           profileId,
-          provider: module.provider
+          provider: module.provider,
         });
       }
     });
@@ -584,7 +585,7 @@ class SyncService {
   async enableAutoSync(profileId: string): Promise<void> {
     // Set up periodic sync job (using cron or similar)
     // This would integrate with a job queue system
-    logger.event('AutoSync_Enabled', { profileId });
+    logger.event("AutoSync_Enabled", { profileId });
   }
 
   /**
@@ -592,7 +593,7 @@ class SyncService {
    */
   async disableAutoSync(profileId: string): Promise<void> {
     // Cancel periodic sync job
-    logger.event('AutoSync_Disabled', { profileId });
+    logger.event("AutoSync_Disabled", { profileId });
   }
 }
 
@@ -839,6 +840,7 @@ export function SyncModulesSettings({ profileId }: { profileId: string }) {
 ## Migration Strategy
 
 ### Phase 1: Current Implementation (Now - Q1)
+
 - **Google as Primary**: Use Google Calendar and Tasks as primary data source
 - **Client-Side Caching**: IndexedDB for offline access and performance
 - **No Local Database**: Events and tasks only in Google services and client cache
@@ -846,6 +848,7 @@ export function SyncModulesSettings({ profileId }: { profileId: string }) {
 **Why**: Get core functionality working quickly, validate UX and features.
 
 ### Phase 2: Database Setup (Q2)
+
 - **Add PostgreSQL**: Set up database with Prisma
 - **Dual Write**: Write to both Google and PostgreSQL
 - **PostgreSQL as Backup**: Google still primary, database is backup
@@ -853,6 +856,7 @@ export function SyncModulesSettings({ profileId }: { profileId: string }) {
 **Why**: Gradual migration, no breaking changes, users don't notice.
 
 ### Phase 3: Migrate to Local Primary (Q3)
+
 - **PostgreSQL as Primary**: All reads/writes go to local database first
 - **Automatic Sync**: Enable Google sync for all users by default
 - **Migration Tool**: One-time import of all Google data to PostgreSQL
@@ -860,6 +864,7 @@ export function SyncModulesSettings({ profileId }: { profileId: string }) {
 **Why**: Shift to privacy-first architecture while maintaining Google integration.
 
 ### Phase 4: Make Sync Optional (Q4)
+
 - **Modular Architecture**: Implement sync modules as described above
 - **Opt-In Sync**: Users can disable Google sync if desired
 - **Full Offline**: All features work without external services
@@ -867,6 +872,7 @@ export function SyncModulesSettings({ profileId }: { profileId: string }) {
 **Why**: Complete privacy-first implementation, user choice.
 
 ### Phase 5: Additional Providers (Future)
+
 - **More Modules**: Outlook Calendar, iCloud, CalDAV/CardDAV
 - **Import Tools**: Import from various calendar formats (ICS, CSV)
 - **Export Tools**: Export to various formats for portability
@@ -879,24 +885,24 @@ export function SyncModulesSettings({ profileId }: { profileId: string }) {
 
 ```typescript
 // Test sync module interface
-describe('GoogleCalendarSync', () => {
-  it('should enable module for profile', async () => {
+describe("GoogleCalendarSync", () => {
+  it("should enable module for profile", async () => {
     const module = new GoogleCalendarSync();
-    const result = await module.enable('profile-123');
+    const result = await module.enable("profile-123");
     expect(result.success).toBe(true);
   });
 
-  it('should sync events bidirectionally', async () => {
+  it("should sync events bidirectionally", async () => {
     const module = new GoogleCalendarSync();
-    const result = await module.sync('profile-123', { direction: 'bidirectional' });
+    const result = await module.sync("profile-123", { direction: "bidirectional" });
     expect(result.success).toBe(true);
     expect(result.itemsSynced).toBeGreaterThan(0);
   });
 
-  it('should detect conflicts', async () => {
+  it("should detect conflicts", async () => {
     // Create conflicting changes in local DB and Google
     // ...
-    const result = await module.sync('profile-123');
+    const result = await module.sync("profile-123");
     expect(result.conflicts.length).toBeGreaterThan(0);
   });
 });
@@ -906,15 +912,15 @@ describe('GoogleCalendarSync', () => {
 
 ```typescript
 // Test full sync flow
-describe('Sync Service', () => {
-  it('should sync all enabled modules', async () => {
-    await syncService.syncAll('profile-123');
+describe("Sync Service", () => {
+  it("should sync all enabled modules", async () => {
+    await syncService.syncAll("profile-123");
     // Verify all modules were called
   });
 
-  it('should handle module failures gracefully', async () => {
+  it("should handle module failures gracefully", async () => {
     // Mock one module to fail
-    await syncService.syncAll('profile-123');
+    await syncService.syncAll("profile-123");
     // Verify other modules still synced
   });
 });
@@ -924,31 +930,31 @@ describe('Sync Service', () => {
 
 ```typescript
 // Test user flow
-test('user can enable Google Calendar sync', async ({ page }) => {
-  await page.goto('/settings/sync');
+test("user can enable Google Calendar sync", async ({ page }) => {
+  await page.goto("/settings/sync");
   await page.click('[data-testid="google-calendar-toggle"]');
 
   // Should redirect to Google OAuth
   await expect(page).toHaveURL(/accounts\.google\.com/);
 
   // After OAuth, should be enabled
-  await page.goto('/settings/sync');
+  await page.goto("/settings/sync");
   await expect(page.locator('[data-testid="google-calendar-toggle"]')).toBeChecked();
 });
 
-test('events sync between local and Google', async ({ page }) => {
+test("events sync between local and Google", async ({ page }) => {
   // Create event in local calendar
-  await page.goto('/calendar');
+  await page.goto("/calendar");
   await page.click('[data-testid="new-event-button"]');
-  await page.fill('[data-testid="event-title"]', 'Test Event');
+  await page.fill('[data-testid="event-title"]', "Test Event");
   await page.click('[data-testid="save-event"]');
 
   // Trigger sync
-  await page.goto('/settings/sync');
+  await page.goto("/settings/sync");
   await page.click('[data-testid="google-calendar-sync-now"]');
 
   // Wait for sync to complete
-  await expect(page.locator('[data-testid="sync-status"]')).toHaveText('success');
+  await expect(page.locator('[data-testid="sync-status"]')).toHaveText("success");
 
   // Verify event exists in Google Calendar (via API check)
   // ... (implementation)
@@ -958,17 +964,20 @@ test('events sync between local and Google', async ({ page }) => {
 ## Security Considerations
 
 ### 1. OAuth Token Storage
+
 - **Encrypted at Rest**: Encrypt refresh tokens in database
 - **Secure Transmission**: HTTPS only
 - **Token Rotation**: Refresh tokens regularly
 - **Revocation**: Support immediate token revocation
 
 ### 2. Data Access Control
+
 - **Profile Isolation**: Users can only sync their own profile data
 - **Admin Override**: Family admins can manage sync for children's profiles
 - **Audit Logging**: Log all sync operations for security review
 
 ### 3. Sync Integrity
+
 - **Checksums**: Verify data integrity during sync
 - **Conflict Detection**: Use ETags/timestamps to detect conflicts
 - **Rollback**: Ability to rollback failed syncs
@@ -1010,6 +1019,7 @@ A: Yes. Data is encrypted in transit (HTTPS) and at rest (database encryption).
 ## Future Enhancements
 
 ### Additional Sync Providers
+
 1. **Microsoft Outlook Calendar** - Support Microsoft 365 and Outlook.com
 2. **Apple iCloud Calendar** - Support iCloud calendars
 3. **CalDAV/CardDAV** - Support any CalDAV-compatible calendar server
@@ -1017,6 +1027,7 @@ A: Yes. Data is encrypted in transit (HTTPS) and at rest (database encryption).
 5. **Office 365 Tasks** - Sync with Microsoft To Do
 
 ### Advanced Features
+
 1. **Selective Sync** - Choose specific calendars or task lists to sync
 2. **Sync Scheduling** - Custom sync intervals per module
 3. **Bandwidth Management** - Sync only over WiFi option
@@ -1025,6 +1036,7 @@ A: Yes. Data is encrypted in transit (HTTPS) and at rest (database encryption).
 6. **Sync Statistics** - Dashboard showing sync health and metrics
 
 ### Import/Export Tools
+
 1. **Google Takeout Import** - Import from Google Takeout archive
 2. **ICS Import** - Bulk import from ICS files
 3. **CSV Import** - Import from spreadsheets
