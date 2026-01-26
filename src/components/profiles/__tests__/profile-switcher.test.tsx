@@ -2,7 +2,7 @@
  * Tests for ProfileSwitcher component
  */
 import { type ReactNode } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileProvider } from "../profile-context";
 import { ProfileSwitcher } from "../profile-switcher";
@@ -261,6 +261,100 @@ describe("ProfileSwitcher", () => {
 
       const manageLink = screen.getByText("Manage Profiles").closest("a");
       expect(manageLink).toHaveAttribute("href", "/profiles");
+    });
+  });
+
+  describe("PIN integration", () => {
+    it("switches without modal to profiles without PIN", async () => {
+      renderWithProvider(<ProfileSwitcher />);
+
+      const button = await screen.findByRole("button", { name: /admin user/i });
+      fireEvent.click(button);
+
+      // Click on Child User (no PIN)
+      const childOption = screen.getByText("Child User");
+      fireEvent.click(childOption);
+
+      // Should switch immediately without showing PIN modal
+      await screen.findByRole("button", { name: /child user/i });
+
+      // PIN modal should not be visible
+      expect(screen.queryByText(/enter your pin/i)).not.toBeInTheDocument();
+    });
+
+    it("shows PinEntryModal for PIN-protected profiles", async () => {
+      renderWithProvider(<ProfileSwitcher />);
+
+      const button = await screen.findByRole("button", { name: /admin user/i });
+      fireEvent.click(button);
+
+      // Click on Teen User (has PIN)
+      const teenOption = screen.getByText("Teen User");
+      fireEvent.click(teenOption);
+
+      // PIN modal should appear
+      await waitFor(() => {
+        expect(screen.getByText(/enter your pin/i)).toBeInTheDocument();
+      });
+    });
+
+    it("switches after successful PIN entry", async () => {
+      // Mock verify-pin to succeed
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockProfiles),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true }),
+        });
+
+      renderWithProvider(<ProfileSwitcher />);
+
+      const button = await screen.findByRole("button", { name: /admin user/i });
+      fireEvent.click(button);
+
+      // Click on Teen User (has PIN)
+      const teenOption = screen.getByText("Teen User");
+      fireEvent.click(teenOption);
+
+      // Wait for PIN modal
+      await waitFor(() => {
+        expect(screen.getByText(/enter your pin/i)).toBeInTheDocument();
+      });
+
+      // Enter PIN
+      fireEvent.click(screen.getByRole("button", { name: "1" }));
+      fireEvent.click(screen.getByRole("button", { name: "2" }));
+      fireEvent.click(screen.getByRole("button", { name: "3" }));
+      fireEvent.click(screen.getByRole("button", { name: "4" }));
+      fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+      // Should switch to Teen User
+      await screen.findByRole("button", { name: /teen user/i });
+    });
+
+    it("stays on current profile after modal cancel", async () => {
+      renderWithProvider(<ProfileSwitcher />);
+
+      const button = await screen.findByRole("button", { name: /admin user/i });
+      fireEvent.click(button);
+
+      // Click on Teen User (has PIN)
+      const teenOption = screen.getByText("Teen User");
+      fireEvent.click(teenOption);
+
+      // Wait for PIN modal
+      await waitFor(() => {
+        expect(screen.getByText(/enter your pin/i)).toBeInTheDocument();
+      });
+
+      // Click Cancel
+      fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+      // Should still show Admin User (original profile)
+      await screen.findByRole("button", { name: /admin user/i });
     });
   });
 });
