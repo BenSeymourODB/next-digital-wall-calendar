@@ -647,9 +647,8 @@ class Logger {
    */
   async setUserContext(userId: string, accountId?: string): Promise<void> {
     if (!isServer) {
-      const { setAuthenticatedUserContext } = await import(
-        "./appinsights-client"
-      );
+      const { setAuthenticatedUserContext } =
+        await import("./appinsights-client");
       setAuthenticatedUserContext(userId, accountId);
     } else {
       console.warn(
@@ -670,9 +669,8 @@ class Logger {
    */
   async clearUserContext(): Promise<void> {
     if (!isServer) {
-      const { clearAuthenticatedUserContext } = await import(
-        "./appinsights-client"
-      );
+      const { clearAuthenticatedUserContext } =
+        await import("./appinsights-client");
       clearAuthenticatedUserContext();
     } else {
       console.warn(
