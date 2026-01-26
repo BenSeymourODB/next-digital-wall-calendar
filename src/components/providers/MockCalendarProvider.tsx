@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  CalendarContext,
+  type ICalendarContext,
+} from "@/components/providers/CalendarProvider";
 import type {
   IEvent,
   IUser,
@@ -7,43 +11,10 @@ import type {
   TEventColor,
 } from "@/types/calendar";
 import type React from "react";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-interface ICalendarContext {
-  selectedDate: Date;
-  view: TCalendarView;
-  setView: (view: TCalendarView) => void;
-  agendaModeGroupBy: "date" | "color";
-  setAgendaModeGroupBy: (groupBy: "date" | "color") => void;
-  use24HourFormat: boolean;
-  toggleTimeFormat: () => void;
-  setSelectedDate: (date: Date | undefined) => void;
-  selectedUserId: IUser["id"] | "all";
-  setSelectedUserId: (userId: IUser["id"] | "all") => void;
-  badgeVariant: "dot" | "colored";
-  setBadgeVariant: (variant: "dot" | "colored") => void;
-  selectedColors: TEventColor[];
-  filterEventsBySelectedColors: (colors: TEventColor) => void;
-  filterEventsBySelectedUser: (userId: IUser["id"] | "all") => void;
-  users: IUser[];
-  events: IEvent[];
-  addEvent: (event: IEvent) => void;
-  updateEvent: (event: IEvent) => void;
-  removeEvent: (eventId: string) => void;
-  clearFilter: () => void;
-  refreshEvents: () => Promise<void>;
-  isLoading: boolean;
-}
-
-const CalendarContext = createContext({} as ICalendarContext);
-
-export function useCalendar() {
-  const context = useContext(CalendarContext);
-  if (!context) {
-    throw new Error("useCalendar must be used within CalendarProvider");
-  }
-  return context;
-}
+// Re-export useCalendar from CalendarProvider for backward compatibility
+export { useCalendar } from "@/components/providers/CalendarProvider";
 
 interface MockCalendarProviderProps {
   children: React.ReactNode;

@@ -36,10 +36,7 @@ test.describe("Month Calendar (SimpleCalendar)", () => {
   });
 
   test("navigates to previous month", async ({ page }) => {
-    const prevButton = page
-      .locator("button")
-      .filter({ has: page.locator("svg") })
-      .first();
+    const prevButton = page.getByTestId("calendar-prev-month");
     const header = page.locator("h2").first();
 
     const initialMonth = await header.textContent();
@@ -50,10 +47,7 @@ test.describe("Month Calendar (SimpleCalendar)", () => {
   });
 
   test("navigates to next month", async ({ page }) => {
-    const nextButton = page
-      .locator("button")
-      .filter({ has: page.locator("svg") })
-      .last();
+    const nextButton = page.getByTestId("calendar-next-month");
     const header = page.locator("h2").first();
 
     const initialMonth = await header.textContent();
@@ -79,13 +73,14 @@ test.describe("Month Calendar - Color Variations", () => {
   });
 
   test("displays events with correct color styling", async ({ page }) => {
-    // Check that each color event is visible
+    // Calendar shows max 3 events per day cell with overflow indicator
+    // The colors events all happen on the same day, so only first 3 are visible
     await expect(page.getByText("Blue Event")).toBeVisible();
     await expect(page.getByText("Green Event")).toBeVisible();
     await expect(page.getByText("Red Event")).toBeVisible();
-    await expect(page.getByText("Yellow Event")).toBeVisible();
-    await expect(page.getByText("Purple Event")).toBeVisible();
-    await expect(page.getByText("Orange Event")).toBeVisible();
+
+    // Remaining 3 events (Yellow, Purple, Orange) shown as overflow
+    await expect(page.getByText("+3 more")).toBeVisible();
   });
 
   test("blue events have blue styling", async ({ page }) => {
@@ -108,9 +103,9 @@ test.describe("Month Calendar - Empty State", () => {
   test("displays empty calendar without events", async ({ page }) => {
     await page.goto("/test/calendar?events=empty&view=month");
 
-    // Calendar grid should still be visible
-    await expect(page.getByText("Sun")).toBeVisible();
-    await expect(page.getByText("Mon")).toBeVisible();
+    // Calendar grid should still be visible (use exact match to avoid "Month" button)
+    await expect(page.getByText("Sun", { exact: true })).toBeVisible();
+    await expect(page.getByText("Mon", { exact: true })).toBeVisible();
 
     // No events should be displayed
     await expect(page.getByText("Morning Standup")).not.toBeVisible();
@@ -136,15 +131,15 @@ test.describe("Agenda Calendar", () => {
   });
 
   test("shows event count per day", async ({ page }) => {
-    // Should show "X events" or "1 event"
-    await expect(page.getByText(/\d+ events?/)).toBeVisible();
+    // Should show "X events" or "1 event" (use first() since multiple days have counts)
+    await expect(page.getByText(/\d+ events?/).first()).toBeVisible();
   });
 
   test("displays event times in 24-hour format by default", async ({
     page,
   }) => {
-    // Should show times like "09:00" or "14:30"
-    await expect(page.getByText(/\d{2}:\d{2}/)).toBeVisible();
+    // Should show times like "09:00" or "14:30" (use first() since multiple times displayed)
+    await expect(page.getByText(/\d{2}:\d{2}/).first()).toBeVisible();
   });
 
   test("displays event descriptions when available", async ({ page }) => {
@@ -172,21 +167,21 @@ test.describe("Agenda Calendar - Time Format", () => {
   test("displays times in 12-hour format when configured", async ({ page }) => {
     await page.goto("/test/calendar?events=default&view=agenda&24hour=false");
 
-    // Should show times like "9:00 AM" or "2:30 PM"
-    await expect(page.getByText(/\d{1,2}:\d{2} (AM|PM)/)).toBeVisible();
+    // Should show times like "9:00 AM" or "2:30 PM" (use first() since multiple times displayed)
+    await expect(page.getByText(/\d{1,2}:\d{2} (AM|PM)/).first()).toBeVisible();
   });
 
   test("can toggle time format", async ({ page }) => {
     await page.goto("/test/calendar?events=default&view=agenda");
 
-    // Initially 24-hour format
-    await expect(page.getByText(/\d{2}:\d{2}/)).toBeVisible();
+    // Initially 24-hour format (use first() since multiple times displayed)
+    await expect(page.getByText(/\d{2}:\d{2}/).first()).toBeVisible();
 
     // Click toggle button
     await page.getByTestId("toggle-time-format").click();
 
-    // Should now show 12-hour format
-    await expect(page.getByText(/\d{1,2}:\d{2} (AM|PM)/)).toBeVisible();
+    // Should now show 12-hour format (use first() since multiple times displayed)
+    await expect(page.getByText(/\d{1,2}:\d{2} (AM|PM)/).first()).toBeVisible();
   });
 });
 
@@ -207,9 +202,9 @@ test.describe("View Switcher", () => {
     // Click Month tab
     await page.getByRole("tab", { name: "Month" }).click();
 
-    // Should now show month view with day headers
-    await expect(page.getByText("Sun")).toBeVisible();
-    await expect(page.getByText("Mon")).toBeVisible();
+    // Should now show month view with day headers (use exact match)
+    await expect(page.getByText("Sun", { exact: true })).toBeVisible();
+    await expect(page.getByText("Mon", { exact: true })).toBeVisible();
   });
 
   test("maintains events when switching views", async ({ page }) => {
@@ -322,14 +317,8 @@ test.describe("Accessibility", () => {
     await page.goto("/test/calendar?events=default&view=month");
 
     // Navigation buttons should be keyboard accessible
-    const prevButton = page
-      .locator("button")
-      .filter({ has: page.locator("svg") })
-      .first();
-    const nextButton = page
-      .locator("button")
-      .filter({ has: page.locator("svg") })
-      .last();
+    const prevButton = page.getByTestId("calendar-prev-month");
+    const nextButton = page.getByTestId("calendar-next-month");
 
     await expect(prevButton).toBeEnabled();
     await expect(nextButton).toBeEnabled();

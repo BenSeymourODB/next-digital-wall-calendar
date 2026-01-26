@@ -59,6 +59,8 @@ export function SimpleCalendar() {
             size="icon"
             onClick={previousMonth}
             className="border-gray-200 hover:bg-gray-50"
+            data-testid="calendar-prev-month"
+            aria-label="Previous month"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -67,6 +69,8 @@ export function SimpleCalendar() {
             size="icon"
             onClick={nextMonth}
             className="border-gray-200 hover:bg-gray-50"
+            data-testid="calendar-next-month"
+            aria-label="Next month"
           >
             <ChevronRight className="h-4 w-4" />
           </Button>

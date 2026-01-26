@@ -28,7 +28,7 @@ import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { startOfMonth } from "date-fns";
 
-interface ICalendarContext {
+export interface ICalendarContext {
   selectedDate: Date;
   view: TCalendarView;
   setView: (view: TCalendarView) => void;
@@ -68,7 +68,7 @@ const DEFAULT_SETTINGS: CalendarSettings = {
   agendaModeGroupBy: "date",
 };
 
-const CalendarContext = createContext({} as ICalendarContext);
+export const CalendarContext = createContext({} as ICalendarContext);
 
 export function useCalendar() {
   const context = useContext(CalendarContext);
