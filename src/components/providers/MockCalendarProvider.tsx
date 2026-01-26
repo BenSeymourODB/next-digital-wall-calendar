@@ -32,6 +32,8 @@ interface MockCalendarProviderProps {
   use24HourFormat?: boolean;
   /** Simulate loading delay in ms */
   loadingDelay?: number;
+  /** Whether user is authenticated (for testing) */
+  isAuthenticated?: boolean;
 }
 
 /**
@@ -56,6 +58,7 @@ export function MockCalendarProvider({
   isLoading: initialLoading = false,
   use24HourFormat: initial24Hour = true,
   loadingDelay = 0,
+  isAuthenticated = true,
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -195,6 +198,7 @@ export function MockCalendarProvider({
     clearFilter,
     refreshEvents,
     isLoading,
+    isAuthenticated,
   };
 
   return (

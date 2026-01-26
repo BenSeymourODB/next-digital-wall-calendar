@@ -4,19 +4,11 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import {
   type CalendarColorMapping,
   eventCache,
-  loadAccounts,
   loadColorMappings,
   loadSettings,
   saveColorMappings,
-  updateAccount,
 } from "@/lib/calendar-storage";
-import {
-  type GoogleCalendarAccount,
-  type GoogleCalendarEvent,
-  ensureValidToken,
-  fetchCalendarColorMappings,
-  fetchEventsFromMultipleCalendars,
-} from "@/lib/google-calendar";
+import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import type {
   IEvent,
@@ -26,6 +18,7 @@ import type {
 } from "@/types/calendar";
 import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { startOfMonth } from "date-fns";
 
 export interface ICalendarContext {
@@ -52,6 +45,7 @@ export interface ICalendarContext {
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
   isLoading: boolean;
+  isAuthenticated: boolean;
 }
 
 interface CalendarSettings {
@@ -171,6 +165,10 @@ export function CalendarProvider({
   view?: TCalendarView;
   badge?: "dot" | "colored";
 }) {
+  // Use NextAuth session for authentication
+  const { data: session, status } = useSession();
+  const isAuthenticated = status === "authenticated";
+
   const [settings, setSettings] = useLocalStorage<CalendarSettings>(
     "calendar-settings",
     {
@@ -260,98 +258,74 @@ export function CalendarProvider({
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
-  // Refresh events from Google Calendar
+  // Refresh events from server-side API
   const refreshEvents = async () => {
     try {
       setIsLoading(true);
-      const accounts = loadAccounts();
 
-      if (accounts.length === 0) {
-        logger.log("No calendar accounts configured");
+      // Check authentication via session
+      if (status !== "authenticated" || !session?.user) {
+        logger.log("Not authenticated, skipping event fetch");
         setAllEvents([]);
         setIsLoading(false);
         return;
       }
 
-      // Validate and refresh tokens for all accounts
-      const validatedAccounts: GoogleCalendarAccount[] = [];
-      for (const account of accounts) {
-        try {
-          const validatedAccount = await ensureValidToken(account);
-          validatedAccounts.push(validatedAccount);
-
-          // Update account in storage if token was refreshed
-          if (validatedAccount.accessToken !== account.accessToken) {
-            updateAccount(validatedAccount);
-            logger.log("Updated account with refreshed token", {
-              accountId: account.id,
-            });
-          }
-        } catch (error) {
-          logger.error(error as Error, {
-            context: "validateAccountToken",
-            accountId: account.id,
-          });
-          // Continue with other accounts even if one fails
-          // User will need to re-authenticate this specific account
-        }
-      }
-
-      if (validatedAccounts.length === 0) {
-        logger.log("No accounts have valid tokens");
+      // Check if session has a refresh token error
+      if (session.error === "RefreshTokenError") {
+        logger.log("Session has refresh token error, needs re-auth");
         setAllEvents([]);
         setIsLoading(false);
         return;
       }
 
-      // Fetch and cache calendar color mappings if not already loaded
-      if (colorMappings.length === 0) {
-        try {
-          const mappings = await fetchCalendarColorMappings();
-          saveColorMappings(mappings);
-          setColorMappings(mappings);
-          logger.log("Fetched and cached calendar color mappings", {
-            count: mappings.length,
-          });
-        } catch (error) {
-          logger.error(error as Error, {
-            context: "fetchCalendarColorMappings",
-          });
-          // Continue with event fetching even if color mapping fails
-        }
-      }
-
-      // Fetch events for the next 6 months starting from beginning of current month
+      // Calculate time range for events
       const timeMin = startOfMonth(new Date()); // Start of current month
       const timeMax = new Date();
       timeMax.setMonth(timeMax.getMonth() + 6);
 
-      const allCalendarIds = validatedAccounts.flatMap(
-        (account) => account.calendarIds
-      );
-      const googleEvents = await fetchEventsFromMultipleCalendars(
-        allCalendarIds,
-        timeMin,
-        timeMax
+      // Fetch events from server-side API
+      const url = new URL("/api/calendar/events", window.location.origin);
+      url.searchParams.set("calendarId", "primary");
+      url.searchParams.set("timeMin", timeMin.toISOString());
+      url.searchParams.set("timeMax", timeMax.toISOString());
+
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (errorData.requiresReauth) {
+          logger.log("API requires re-authentication");
+          // Session will be updated by NextAuth, which will trigger a re-render
+        }
+        throw new Error(errorData.error || "Failed to fetch events");
+      }
+
+      const data = await response.json();
+      const googleEvents: GoogleCalendarEvent[] = (data.events || []).map(
+        (event: GoogleCalendarEvent) => ({
+          ...event,
+          calendarId: "primary",
+        })
       );
 
-      // Transform events
+      // Transform events using color mappings
       const transformedEvents = googleEvents.map((event) =>
         transformGoogleEvent(event, colorMappings)
       );
 
       setAllEvents(transformedEvents);
 
-      // Cache events
+      // Cache events in IndexedDB for offline/fast access
       await eventCache.saveEvents(googleEvents);
 
-      logger.log("Refreshed calendar events", {
+      logger.log("Refreshed calendar events from API", {
         count: transformedEvents.length,
       });
     } catch (error) {
       logger.error(error as Error, { context: "refreshEvents" });
 
-      // Try to load from cache
+      // Try to load from cache on error
       try {
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
@@ -376,7 +350,33 @@ export function CalendarProvider({
     logger.log("Loaded color mappings on mount", { count: mappings.length });
   }, []);
 
-  // Load cached events on mount, then refresh from Google Calendar
+  // Fetch calendar color mappings from API when authenticated
+  useEffect(() => {
+    const fetchColorMappings = async () => {
+      if (status !== "authenticated") return;
+
+      try {
+        const response = await fetch("/api/calendar/colors");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.colorMappings && data.colorMappings.length > 0) {
+            saveColorMappings(data.colorMappings);
+            setColorMappings(data.colorMappings);
+            logger.log("Fetched and cached calendar color mappings from API", {
+              count: data.colorMappings.length,
+            });
+          }
+        }
+      } catch {
+        // Silently fail - we'll use cached mappings or defaults
+        logger.log("Could not fetch color mappings from API, using cached");
+      }
+    };
+
+    fetchColorMappings();
+  }, [status]);
+
+  // Load cached events on mount, then refresh from API when authenticated
   useEffect(() => {
     const initializeEvents = async () => {
       try {
@@ -395,19 +395,26 @@ export function CalendarProvider({
         setIsLoading(false);
       }
 
-      // Then, refresh from Google Calendar if accounts are connected
-      const accounts = loadAccounts();
-      if (accounts.length > 0) {
+      // Then, refresh from API if authenticated
+      if (status === "authenticated") {
         await refreshEvents();
       }
     };
 
-    initializeEvents();
+    // Only initialize once session status is known
+    if (status !== "loading") {
+      initializeEvents();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [status]);
 
   // Auto-refresh events based on settings
   useEffect(() => {
+    // Only set up refresh interval if authenticated
+    if (status !== "authenticated") {
+      return;
+    }
+
     const settings = loadSettings();
     const intervalMs = settings.refreshInterval * 60 * 1000;
 
@@ -417,7 +424,7 @@ export function CalendarProvider({
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [status]);
 
   // Filter events
   useEffect(() => {
@@ -474,6 +481,7 @@ export function CalendarProvider({
     clearFilter,
     refreshEvents,
     isLoading,
+    isAuthenticated,
   };
 
   return (

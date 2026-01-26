@@ -264,6 +264,58 @@ export async function disconnectDatabase(): Promise<void> {
 }
 
 /**
+ * Get existing user session from database by email
+ * Useful for integration tests with real authenticated users
+ */
+export async function getExistingUserSession(
+  email: string
+): Promise<AuthenticatedUser | null> {
+  try {
+    // Find user by email
+    const userResult = await pool.query(
+      `SELECT id, email FROM "User" WHERE email = $1`,
+      [email]
+    );
+
+    if (userResult.rows.length === 0) {
+      return null;
+    }
+
+    const userId = userResult.rows[0].id;
+    const userEmail = userResult.rows[0].email;
+
+    // Get active session
+    const sessionResult = await pool.query(
+      `SELECT "sessionToken" FROM "Session" WHERE "userId" = $1 AND expires > NOW() ORDER BY expires DESC LIMIT 1`,
+      [userId]
+    );
+
+    if (sessionResult.rows.length === 0) {
+      return null;
+    }
+
+    const sessionToken = sessionResult.rows[0].sessionToken;
+
+    // Get access token from account
+    const accountResult = await pool.query(
+      `SELECT access_token FROM "Account" WHERE "userId" = $1 AND provider = 'google' LIMIT 1`,
+      [userId]
+    );
+
+    const accessToken = accountResult.rows[0]?.access_token ?? "";
+
+    return {
+      userId,
+      email: userEmail,
+      sessionToken,
+      accessToken,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Export pool for direct database operations in tests if needed
  */
 export { pool };

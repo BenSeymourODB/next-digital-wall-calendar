@@ -21,7 +21,8 @@
       "Bash(source .env.local)",
       "Bash(pnpm prisma db push:*)",
       "Bash(pnpm prisma generate*)",
-      "Bash(pnpm test:e2e:*)"
+      "Bash(pnpm test:e2e:*)",
+      "Bash(pnpm test:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
