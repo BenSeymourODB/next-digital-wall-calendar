@@ -45,6 +45,12 @@ export default function Home() {
               Typography
             </Link>
             <Link
+              className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/8 px-6 shadow-sm transition-all hover:scale-105 hover:border-transparent hover:bg-black/4 hover:shadow-md sm:w-auto"
+              href="/recipe"
+            >
+              Recipe Display
+            </Link>
+            <Link
               className="flex h-12 w-full items-center justify-center gap-2 rounded-full border border-solid border-black/8 px-6 shadow-sm transition-all hover:scale-105 hover:border-transparent hover:bg-black/4 hover:shadow-md sm:w-auto"
               href="/demo-logging"
             >
