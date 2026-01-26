@@ -12,7 +12,9 @@
       "Bash(pnpm check-types:*)",
       "Bash(pnpm build:*)",
       "Bash(pnpm exec playwright test:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
     ]
   },
   "enableAllProjectMcpServers": true,
