@@ -14,7 +14,14 @@
       "Bash(pnpm exec playwright test:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(pnpm test:run:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(echo:*)",
+      "Bash(source .env.local)",
+      "Bash(pnpm prisma db push:*)",
+      "Bash(pnpm prisma generate*)",
+      "Bash(pnpm test:e2e:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
