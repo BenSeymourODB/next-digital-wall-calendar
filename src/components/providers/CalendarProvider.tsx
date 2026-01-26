@@ -17,9 +17,24 @@ import type {
   TEventColor,
 } from "@/types/calendar";
 import type React from "react";
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useSession } from "next-auth/react";
-import { startOfMonth } from "date-fns";
+import { endOfMonth, isAfter, isBefore, startOfMonth } from "date-fns";
+
+/**
+ * Track the loaded date range to enable lazy-loading
+ */
+interface LoadedRange {
+  start: Date;
+  end: Date;
+}
 
 export interface ICalendarContext {
   selectedDate: Date;
@@ -203,6 +218,9 @@ export function CalendarProvider({
   const [colorMappings, setColorMappings] = useState<CalendarColorMapping[]>(
     []
   );
+  const [calendarIds, setCalendarIds] = useState<string[]>([]);
+  const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
+  const isLoadingRangeRef = useRef(false);
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
     setSettings({
@@ -258,8 +276,68 @@ export function CalendarProvider({
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
+  /**
+   * Fetch events for a specific date range and merge with existing events
+   */
+  const fetchEventsForRange = useCallback(
+    async (
+      timeMin: Date,
+      timeMax: Date,
+      calIds: string[],
+      mappings: CalendarColorMapping[]
+    ): Promise<IEvent[]> => {
+      const url = new URL("/api/calendar/events", window.location.origin);
+      url.searchParams.set("calendarIds", calIds.join(","));
+      url.searchParams.set("timeMin", timeMin.toISOString());
+      url.searchParams.set("timeMax", timeMax.toISOString());
+
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (errorData.requiresReauth) {
+          logger.log("API requires re-authentication");
+        }
+        throw new Error(errorData.error || "Failed to fetch events");
+      }
+
+      const data = await response.json();
+      const googleEvents: GoogleCalendarEvent[] = data.events || [];
+
+      // Transform events using color mappings
+      return googleEvents.map((event) => transformGoogleEvent(event, mappings));
+    },
+    []
+  );
+
+  /**
+   * Fetch calendar list and return calendar IDs
+   */
+  const fetchCalendarList = useCallback(async (): Promise<string[]> => {
+    try {
+      const response = await fetch("/api/calendar/calendars");
+      if (!response.ok) {
+        logger.log("Failed to fetch calendar list, using primary only");
+        return ["primary"];
+      }
+
+      const data = await response.json();
+      if (data.calendars && data.calendars.length > 0) {
+        // Return IDs of all calendars (user can filter later)
+        const ids = data.calendars.map(
+          (cal: { id: string; selected?: boolean }) => cal.id
+        );
+        logger.log("Fetched calendar list", { count: ids.length });
+        return ids;
+      }
+    } catch {
+      logger.log("Could not fetch calendar list, using primary only");
+    }
+    return ["primary"];
+  }, []);
+
   // Refresh events from server-side API
-  const refreshEvents = async () => {
+  const refreshEvents = useCallback(async () => {
     try {
       setIsLoading(true);
 
@@ -279,48 +357,66 @@ export function CalendarProvider({
         return;
       }
 
-      // Calculate time range for events
-      const timeMin = startOfMonth(new Date()); // Start of current month
-      const timeMax = new Date();
-      timeMax.setMonth(timeMax.getMonth() + 6);
-
-      // Fetch events from server-side API
-      const url = new URL("/api/calendar/events", window.location.origin);
-      url.searchParams.set("calendarId", "primary");
-      url.searchParams.set("timeMin", timeMin.toISOString());
-      url.searchParams.set("timeMax", timeMax.toISOString());
-
-      const response = await fetch(url.toString());
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (errorData.requiresReauth) {
-          logger.log("API requires re-authentication");
-          // Session will be updated by NextAuth, which will trigger a re-render
-        }
-        throw new Error(errorData.error || "Failed to fetch events");
+      // Fetch calendar list first (if not already fetched)
+      let calIds = calendarIds;
+      if (calIds.length === 0) {
+        calIds = await fetchCalendarList();
+        setCalendarIds(calIds);
       }
 
-      const data = await response.json();
-      const googleEvents: GoogleCalendarEvent[] = (data.events || []).map(
-        (event: GoogleCalendarEvent) => ({
-          ...event,
-          calendarId: "primary",
-        })
-      );
+      // Fetch current color mappings
+      let currentMappings = colorMappings;
+      if (currentMappings.length === 0) {
+        try {
+          const colorResponse = await fetch("/api/calendar/colors");
+          if (colorResponse.ok) {
+            const colorData = await colorResponse.json();
+            if (colorData.colorMappings && colorData.colorMappings.length > 0) {
+              currentMappings = colorData.colorMappings;
+              saveColorMappings(currentMappings);
+              setColorMappings(currentMappings);
+              logger.log("Fetched color mappings during refresh", {
+                count: currentMappings.length,
+              });
+            }
+          }
+        } catch {
+          logger.log("Could not fetch colors during refresh");
+        }
+      }
 
-      // Transform events using color mappings
-      const transformedEvents = googleEvents.map((event) =>
-        transformGoogleEvent(event, colorMappings)
+      // Calculate time range: 1 month ago to 6 months ahead
+      const now = new Date();
+      const timeMin = new Date(now.getFullYear(), now.getMonth() - 1, 1); // 1 month ago
+      const timeMax = new Date(now.getFullYear(), now.getMonth() + 7, 0); // End of 6 months ahead
+
+      // Fetch events from all calendars
+      const transformedEvents = await fetchEventsForRange(
+        timeMin,
+        timeMax,
+        calIds,
+        currentMappings
       );
 
       setAllEvents(transformedEvents);
+      setLoadedRange({ start: timeMin, end: timeMax });
 
       // Cache events in IndexedDB for offline/fast access
+      const googleEvents: GoogleCalendarEvent[] = transformedEvents.map(
+        (event) => ({
+          id: event.id,
+          summary: event.title,
+          description: event.description,
+          start: { dateTime: event.startDate },
+          end: { dateTime: event.endDate },
+          calendarId: "primary", // Simplified for cache
+        })
+      );
       await eventCache.saveEvents(googleEvents);
 
       logger.log("Refreshed calendar events from API", {
         count: transformedEvents.length,
+        calendarCount: calIds.length,
       });
     } catch (error) {
       logger.error(error as Error, { context: "refreshEvents" });
@@ -341,7 +437,113 @@ export function CalendarProvider({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [
+    status,
+    session,
+    calendarIds,
+    colorMappings,
+    fetchCalendarList,
+    fetchEventsForRange,
+  ]);
+
+  /**
+   * Load additional events when navigating outside loaded range
+   */
+  const loadEventsForDate = useCallback(
+    async (date: Date) => {
+      // Skip if not authenticated or already loading
+      if (
+        status !== "authenticated" ||
+        !loadedRange ||
+        isLoadingRangeRef.current
+      ) {
+        return;
+      }
+
+      const targetMonth = startOfMonth(date);
+      const targetMonthEnd = endOfMonth(date);
+
+      // Check if target month is within loaded range
+      if (
+        !isBefore(targetMonth, loadedRange.start) &&
+        !isAfter(targetMonthEnd, loadedRange.end)
+      ) {
+        return; // Already loaded
+      }
+
+      isLoadingRangeRef.current = true;
+      logger.log("Loading events for date outside loaded range", {
+        date: date.toISOString(),
+      });
+
+      try {
+        let newStart = loadedRange.start;
+        let newEnd = loadedRange.end;
+
+        // Fetch earlier events
+        if (isBefore(targetMonth, loadedRange.start)) {
+          const fetchEnd = loadedRange.start;
+          const fetchStart = new Date(
+            targetMonth.getFullYear(),
+            targetMonth.getMonth() - 1,
+            1
+          );
+
+          const newEvents = await fetchEventsForRange(
+            fetchStart,
+            fetchEnd,
+            calendarIds.length > 0 ? calendarIds : ["primary"],
+            colorMappings
+          );
+
+          setAllEvents((prev) => {
+            // Merge and dedupe events
+            const existingIds = new Set(prev.map((e) => e.id));
+            const uniqueNewEvents = newEvents.filter(
+              (e) => !existingIds.has(e.id)
+            );
+            return [...uniqueNewEvents, ...prev];
+          });
+
+          newStart = fetchStart;
+        }
+
+        // Fetch later events
+        if (isAfter(targetMonthEnd, loadedRange.end)) {
+          const fetchStart = loadedRange.end;
+          const fetchEnd = new Date(
+            targetMonthEnd.getFullYear(),
+            targetMonthEnd.getMonth() + 2,
+            0
+          );
+
+          const newEvents = await fetchEventsForRange(
+            fetchStart,
+            fetchEnd,
+            calendarIds.length > 0 ? calendarIds : ["primary"],
+            colorMappings
+          );
+
+          setAllEvents((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const uniqueNewEvents = newEvents.filter(
+              (e) => !existingIds.has(e.id)
+            );
+            return [...prev, ...uniqueNewEvents];
+          });
+
+          newEnd = fetchEnd;
+        }
+
+        setLoadedRange({ start: newStart, end: newEnd });
+      } catch (error) {
+        logger.error(error as Error, { context: "loadEventsForDate" });
+      } finally {
+        isLoadingRangeRef.current = false;
+      }
+    },
+    [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
+  );
 
   // Load color mappings from localStorage on mount
   useEffect(() => {
@@ -350,31 +552,8 @@ export function CalendarProvider({
     logger.log("Loaded color mappings on mount", { count: mappings.length });
   }, []);
 
-  // Fetch calendar color mappings from API when authenticated
-  useEffect(() => {
-    const fetchColorMappings = async () => {
-      if (status !== "authenticated") return;
-
-      try {
-        const response = await fetch("/api/calendar/colors");
-        if (response.ok) {
-          const data = await response.json();
-          if (data.colorMappings && data.colorMappings.length > 0) {
-            saveColorMappings(data.colorMappings);
-            setColorMappings(data.colorMappings);
-            logger.log("Fetched and cached calendar color mappings from API", {
-              count: data.colorMappings.length,
-            });
-          }
-        }
-      } catch {
-        // Silently fail - we'll use cached mappings or defaults
-        logger.log("Could not fetch color mappings from API, using cached");
-      }
-    };
-
-    fetchColorMappings();
-  }, [status]);
+  // Color mappings are now fetched as part of refreshEvents
+  // This effect handles initial load from localStorage only
 
   // Load cached events on mount, then refresh from API when authenticated
   useEffect(() => {
@@ -454,6 +633,8 @@ export function CalendarProvider({
   const handleSetSelectedDate = (date: Date | undefined) => {
     if (date) {
       setSelectedDate(date);
+      // Trigger lazy loading for dates outside the loaded range
+      loadEventsForDate(date);
     }
   };
 

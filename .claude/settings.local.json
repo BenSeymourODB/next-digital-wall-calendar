@@ -22,7 +22,8 @@
       "Bash(pnpm prisma db push:*)",
       "Bash(pnpm prisma generate*)",
       "Bash(pnpm test:e2e:*)",
-      "Bash(pnpm test:*)"
+      "Bash(pnpm test:*)",
+      "Bash(pnpm format:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

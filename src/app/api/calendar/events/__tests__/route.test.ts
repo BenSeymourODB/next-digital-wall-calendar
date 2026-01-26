@@ -105,13 +105,19 @@ describe("/api/calendar/events", () => {
       const request = createMockRequest("/api/calendar/events");
       const response = await GET(request);
       const { status, data } = await parseResponse<{
-        events: typeof mockEvents;
+        events: Array<(typeof mockEvents)[0] & { calendarId: string }>;
         summary?: string;
         timeZone?: string;
       }>(response);
 
       expect(status).toBe(200);
-      expect(data.events).toEqual(mockEvents);
+      // Events now include calendarId
+      expect(data.events).toHaveLength(2);
+      expect(data.events[0].id).toBe("event-1");
+      expect(data.events[0].summary).toBe("Meeting");
+      expect(data.events[0].calendarId).toBe("primary");
+      expect(data.events[1].id).toBe("event-2");
+      expect(data.events[1].calendarId).toBe("primary");
       expect(data.summary).toBe("Primary Calendar");
       expect(data.timeZone).toBe("America/New_York");
       expect(mockFetch).toHaveBeenCalledWith(
@@ -308,6 +314,224 @@ describe("/api/calendar/events", () => {
         expect.stringContaining("singleEvents=false"),
         expect.any(Object)
       );
+    });
+
+    // Multi-calendar support tests
+    describe("multiple calendars support", () => {
+      it("fetches from multiple calendars when calendarIds is provided", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        const primaryEvents = [
+          {
+            id: "event-1",
+            summary: "Primary Meeting",
+            start: { dateTime: "2024-03-15T10:00:00Z" },
+            end: { dateTime: "2024-03-15T11:00:00Z" },
+          },
+        ];
+
+        const familyEvents = [
+          {
+            id: "event-2",
+            summary: "Family Dinner",
+            start: { dateTime: "2024-03-15T18:00:00Z" },
+            end: { dateTime: "2024-03-15T20:00:00Z" },
+          },
+        ];
+
+        // Mock responses for each calendar
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: primaryEvents,
+                summary: "Primary Calendar",
+              }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: familyEvents,
+                summary: "Family Calendar",
+              }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=primary,family%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: Array<{ id: string; calendarId: string }>;
+        }>(response);
+
+        expect(status).toBe(200);
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(data.events).toHaveLength(2);
+        // Events should include calendarId
+        expect(data.events[0].calendarId).toBe("primary");
+        expect(data.events[1].calendarId).toBe(
+          "family@group.calendar.google.com"
+        );
+      });
+
+      it("includes calendarId in each event when using calendarIds", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        const workEvents = [
+          {
+            id: "work-1",
+            summary: "Work Meeting",
+            start: { dateTime: "2024-03-15T09:00:00Z" },
+            end: { dateTime: "2024-03-15T10:00:00Z" },
+          },
+          {
+            id: "work-2",
+            summary: "Sprint Planning",
+            start: { dateTime: "2024-03-15T14:00:00Z" },
+            end: { dateTime: "2024-03-15T15:00:00Z" },
+          },
+        ];
+
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              items: workEvents,
+              summary: "Work Calendar",
+            }),
+        });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=work%40example.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: Array<{ id: string; calendarId: string }>;
+        }>(response);
+
+        expect(status).toBe(200);
+        expect(data.events).toHaveLength(2);
+        expect(data.events[0].calendarId).toBe("work@example.com");
+        expect(data.events[1].calendarId).toBe("work@example.com");
+      });
+
+      it("handles partial failure when one calendar fails", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        const primaryEvents = [
+          {
+            id: "event-1",
+            summary: "Primary Meeting",
+            start: { dateTime: "2024-03-15T10:00:00Z" },
+            end: { dateTime: "2024-03-15T11:00:00Z" },
+          },
+        ];
+
+        // Primary succeeds, family fails with 404
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: primaryEvents,
+                summary: "Primary Calendar",
+              }),
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            json: () => Promise.resolve({ error: "Calendar not found" }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=primary,nonexistent%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: Array<{ id: string; calendarId: string }>;
+          errors?: Array<{ calendarId: string; error: string }>;
+        }>(response);
+
+        // Should still return 200 with partial results
+        expect(status).toBe(200);
+        expect(data.events).toHaveLength(1);
+        expect(data.events[0].calendarId).toBe("primary");
+        // Should include error info for failed calendar
+        expect(data.errors).toBeDefined();
+        expect(data.errors).toHaveLength(1);
+        expect(data.errors![0].calendarId).toBe(
+          "nonexistent@group.calendar.google.com"
+        );
+      });
+
+      it("falls back to single calendarId when calendarIds not provided", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: () => Promise.resolve({ items: [] }),
+        });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarId=work%40example.com"
+        );
+        await GET(request);
+
+        // Should only call once for the single calendar
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/calendars/work%40example.com/events"),
+          expect.any(Object)
+        );
+      });
+
+      it("includes calendarId in single calendar response", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        const mockEvents = [
+          {
+            id: "event-1",
+            summary: "Meeting",
+            start: { dateTime: "2024-03-15T10:00:00Z" },
+            end: { dateTime: "2024-03-15T11:00:00Z" },
+          },
+        ];
+
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              items: mockEvents,
+              summary: "Primary Calendar",
+            }),
+        });
+
+        const request = createMockRequest("/api/calendar/events");
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: Array<{ id: string; calendarId: string }>;
+        }>(response);
+
+        expect(status).toBe(200);
+        expect(data.events[0].calendarId).toBe("primary");
+      });
     });
   });
 });
