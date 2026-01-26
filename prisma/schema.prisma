@@ -20,11 +20,14 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts     Account[]
-  sessions     Session[]
-  settings     UserSettings?
-  taskConfigs  TaskListConfig[]
-  rewardPoints RewardPoints?
+  accounts        Account[]
+  sessions        Session[]
+  settings        UserSettings?
+  taskConfigs     TaskListConfig[]
+  rewardPoints    RewardPoints?
+  profiles        Profile[]
+  maxProfiles     Int       @default(10) // Maximum profiles allowed per account
+  activeProfileId String?   // Last active profile
 }
 
 model Account {
@@ -92,4 +95,87 @@ model RewardPoints {
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Multi-Profile Family Support
+enum ProfileType {
+  admin
+  standard
+}
+
+enum AgeGroup {
+  adult
+  teen
+  child
+}
+
+model Profile {
+  id                String      @id @default(cuid())
+  userId            String      // Account owner
+  name              String
+  type              ProfileType @default(standard)
+  ageGroup          AgeGroup    @default(adult)
+  color             String      @default("#3b82f6") // Tailwind blue-500
+  avatar            Json        // ProfileAvatar as JSON: { type: 'initials' | 'photo' | 'emoji', value: string, backgroundColor?: string }
+  pinHash           String?     // Bcrypt hashed PIN (null if no PIN set)
+  pinEnabled        Boolean     @default(false)
+  failedPinAttempts Int         @default(0)
+  pinLockedUntil    DateTime?   // Temporary lockout timestamp
+  isActive          Boolean     @default(true) // Soft delete flag
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewardPoints     ProfileRewardPoints?
+  settings         ProfileSettings?
+  pointsAwarded    PointTransaction[]    @relation("AwardedBy")
+  pointsReceived   PointTransaction[]    @relation("ReceivedBy")
+
+  @@index([userId, isActive])
+}
+
+model ProfileRewardPoints {
+  id               String   @id @default(cuid())
+  profileId        String   @unique
+  totalPoints      Int      @default(0)
+  currentStreak    Int      @default(0)
+  longestStreak    Int      @default(0)
+  lastActivityDate DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  profile      Profile            @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions PointTransaction[]
+}
+
+model PointTransaction {
+  id               String   @id @default(cuid())
+  profileId        String
+  rewardPointsId   String?  // Reference to ProfileRewardPoints
+  points           Int
+  reason           String   // task_completed, bonus, manual, streak, goal
+  taskId           String?
+  taskTitle        String?
+  awardedBy        String?  // Profile ID if manually awarded (admin)
+  note             String?  // Reason for manual award
+  createdAt        DateTime @default(now())
+
+  profile          Profile              @relation("ReceivedBy", fields: [profileId], references: [id], onDelete: Cascade, map: "PointTransaction_profile_fkey")
+  awardedByProfile Profile?             @relation("AwardedBy", fields: [awardedBy], references: [id], map: "PointTransaction_awardedBy_fkey")
+  rewardPoints     ProfileRewardPoints? @relation(fields: [rewardPointsId], references: [id], onDelete: Cascade, map: "PointTransaction_rewardPoints_fkey")
+
+  @@index([profileId, createdAt])
+}
+
+model ProfileSettings {
+  id                  String  @id @default(cuid())
+  profileId           String  @unique
+  defaultTaskListId   String?
+  showCompletedTasks  Boolean @default(false)
+  taskSortOrder       String  @default("dueDate")
+  theme               String  @default("light")
+  language            String  @default("en")
+  enableNotifications Boolean @default(false)
+  notificationTime    String? // HH:MM format
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 }
