@@ -15,7 +15,14 @@ export default defineConfig({
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    // Use test database if available
+    extraHTTPHeaders: {
+      "x-test-mode": "true",
+    },
   },
+  // Load environment variables for tests
+  // TEST_DATABASE_URL should be set in .env.test or CI environment
+  // to use a separate test database
 
   projects: [
     {

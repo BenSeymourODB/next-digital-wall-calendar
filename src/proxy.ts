@@ -1,3 +1,4 @@
+import { auth } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
@@ -6,16 +7,36 @@ import type { NextRequest } from "next/server";
  * Represents the decision made by a middleware handler
  */
 interface MiddlewareDecision {
-  action: "redirect" | "rewrite" | "next";
+  action: "redirect" | "rewrite" | "next" | "unauthorized";
   url?: URL;
   redirectUrl?: string;
   rewriteUrl?: string;
   status?: number;
 }
 
-// This middleware demonstrates several capabilities for Azure Web App testing
-export function proxy(request: NextRequest) {
+/**
+ * Routes that require authentication (redirect to sign-in if not authenticated)
+ */
+const PROTECTED_PAGE_ROUTES = ["/dashboard", "/settings", "/calendar"];
+
+/**
+ * API routes that require authentication (return 401 if not authenticated)
+ */
+const PROTECTED_API_ROUTES = ["/api/calendar", "/api/tasks"];
+
+/**
+ * Check if a path matches any of the given routes
+ */
+function matchesRoute(pathname: string, routes: string[]): boolean {
+  return routes.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
+}
+
+// This middleware handles authentication and CSP headers
+export const proxy = auth((request) => {
   const { pathname, search } = request.nextUrl;
+  const isAuthenticated = !!request.auth;
 
   try {
     // Skip logging for browser-specific requests (DevTools, manifest, etc.)
@@ -31,12 +52,28 @@ export function proxy(request: NextRequest) {
         pathname,
         search,
         userAgent: request.headers.get("user-agent") || "unknown",
+        authenticated: isAuthenticated,
       });
     }
 
     const decision: MiddlewareDecision = {
       action: "next",
     };
+
+    // Check authentication for protected routes
+    if (!isAuthenticated) {
+      // Protect API routes - return 401 Unauthorized
+      if (matchesRoute(pathname, PROTECTED_API_ROUTES)) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      // Protect page routes - redirect to sign-in
+      if (matchesRoute(pathname, PROTECTED_PAGE_ROUTES)) {
+        const signInUrl = new URL("/auth/signin", request.url);
+        signInUrl.searchParams.set("callbackUrl", pathname);
+        return NextResponse.redirect(signInUrl);
+      }
+    }
 
     // Example: Conditional redirect based on query parameter
     if (request.nextUrl.searchParams.get("redirect") === "home") {
@@ -81,7 +118,7 @@ export function proxy(request: NextRequest) {
     // Return a safe fallback response to prevent middleware from crashing
     return createFallbackResponse(request, pathname, error);
   }
-}
+});
 
 /**
  * Creates a fallback response when middleware encounters an error
@@ -299,31 +336,12 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - api (API routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico, sitemap.xml, robots.txt (metadata files)
-     * - auth (Signin/Signout/Transfer)
+     * - public files (images, etc.)
      * - Ignore matching prefetches (from next/link) that don't need the CSP header.
      */
-    {
-      source:
-        "/((?!api|_next/static|_next/image|public|favicon.ico|sitemap.xml|robots.txt|auth).*)",
-      missing: [
-        {
-          type: "header",
-          key: "next-router-prefetch",
-        },
-        {
-          type: "header",
-          key: "purpose",
-          value: "prefetch",
-        },
-        {
-          type: "query",
-          key: "_rsc",
-        },
-      ],
-    },
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
