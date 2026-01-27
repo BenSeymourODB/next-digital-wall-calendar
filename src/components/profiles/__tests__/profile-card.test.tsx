@@ -171,6 +171,38 @@ describe("ProfileCard", () => {
       });
     });
 
+    it("displays rank", async () => {
+      render(
+        <ProfileCard
+          profile={mockProfile}
+          setActiveProfile={mockSetActiveProfile}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("#2")).toBeInTheDocument();
+      });
+    });
+
+    it("displays rank 1 with trophy icon", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ ...mockStats, rank: 1 }),
+      });
+
+      render(
+        <ProfileCard
+          profile={mockProfile}
+          setActiveProfile={mockSetActiveProfile}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("#1")).toBeInTheDocument();
+        expect(screen.getByTestId("rank-trophy")).toBeInTheDocument();
+      });
+    });
+
     it("renders progress bar", async () => {
       render(
         <ProfileCard

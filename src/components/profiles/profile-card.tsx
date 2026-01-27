@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { Trophy } from "lucide-react";
 import { ProfileAvatar } from "./profile-avatar";
 import type { Profile } from "./profile-context";
 
@@ -155,8 +156,20 @@ export function ProfileCard({
               }
             />
 
-            {/* Points and Streak */}
+            {/* Rank, Points and Streak */}
             <div className="flex justify-between text-xs text-gray-500">
+              <div className="flex flex-col items-center">
+                <span className="flex items-center gap-1 font-semibold text-gray-900">
+                  {stats?.rank === 1 && (
+                    <Trophy
+                      data-testid="rank-trophy"
+                      className="h-3 w-3 text-yellow-500"
+                    />
+                  )}
+                  #{stats?.rank ?? 1}
+                </span>
+                <span>rank</span>
+              </div>
               <div className="flex flex-col items-center">
                 <span className="font-semibold text-gray-900">
                   {stats?.totalPoints ?? 0}
