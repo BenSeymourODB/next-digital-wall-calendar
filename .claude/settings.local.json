@@ -23,7 +23,21 @@
       "Bash(pnpm prisma generate*)",
       "Bash(pnpm test:e2e:*)",
       "Bash(pnpm test:*)",
-      "Bash(pnpm format:*)"
+      "Bash(pnpm format:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr edit:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh api:*)",
+      "Bash(lsof:*)",
+      "Bash(ss:*)",
+      "Bash(node -e:*)",
+      "Bash(psql:*)",
+      "Bash(pkill:*)",
+      "Bash(curl:*)",
+      "Bash(jobs:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -4,6 +4,10 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 ## High Priority
 
+### ~~1. OAuth Refresh Token Issue~~ ✅ RESOLVED
+
+> **Resolved in PR #27** - Server-side authentication with NextAuth.js now handles refresh tokens automatically. The application uses Authorization Code Flow with PKCE and stores refresh tokens in the PostgreSQL database.
+
 ### 2. Manual Testing Gap
 
 **Issue:** Calendar feature not manually tested with real Google Calendar accounts
@@ -55,23 +59,15 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 **Timeline:** Medium priority (add as issues are discovered)
 
-### 4. Google Auth Missing Refresh Token
+### ~~4. Google Auth Missing Refresh Token~~ ✅ RESOLVED
 
-**Issue:** After being away for a few hours, users get the error: "No refresh token available. Please re-authenticate your account."
-
-**Root Cause:** Current auth implementation follows the client-side implicit flow instead of the server-side authorization code flow, and thus does not receive a refresh token from Google.
-
-**Impact:** Users must re-authenticate frequently after token expiration, leading to poor user experience.
-
-**References:**
-
-- Stack Overflow explanation of OAuth flows: https://stackoverflow.com/a/74607003/5403341
-
-**Action Required:** Migrate from implicit flow to server-side authorization code flow to receive and store refresh tokens.
-
-**Timeline:** High priority (severely impacts user experience)
-
-**Dependencies:** May require backend implementation for secure token storage
+> **Resolved in PR #27** - Migrated from client-side implicit flow to server-side Authorization Code Flow with PKCE. NextAuth.js now handles:
+>
+> - Automatic refresh token storage in PostgreSQL database
+> - Automatic token refresh when access tokens expire
+> - Secure server-side token management
+>
+> The application no longer requires frequent re-authentication.
 
 ### 5. Calendar Event Colors Not Persisting After Refresh
 
@@ -273,26 +269,26 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 **Timeline:** Ongoing refactoring as code evolves
 
-### 2. Component Testing
+### 2. Component Testing (Partially Addressed)
 
-**Issue:** No unit tests for components or utilities
+**Issue:** Limited unit tests for components and utilities
 
-**Missing Coverage:**
+**Current Test Coverage:**
 
-- Calendar rendering logic
-- Event transformation functions
-- Storage utilities
-- OAuth flow handling
-- Date calculation helpers
+- ✅ API route tests (calendar, tasks, auth endpoints)
+- ✅ Auth helper function tests
+- ✅ Calendar helper tests
+- ❌ Calendar UI component tests
+- ❌ Event transformation function tests (some covered)
+- ❌ Full E2E test coverage
 
 **Improvement:**
 
-- Add Jest + React Testing Library
-- Write unit tests for utilities
-- Write component tests
-- Add integration tests
+- Add component tests with React Testing Library
+- Expand utility test coverage
+- Add E2E tests for critical user flows
 
-**Timeline:** Low priority (add when code stabilizes)
+**Timeline:** Medium priority (expand as features stabilize)
 
 ### 3. Type Definitions
 
@@ -360,23 +356,17 @@ This document tracks known issues, limitations, technical debt, and improvements
 
 ## Technical Decisions to Revisit
 
-### 1. Client-Side Only Architecture
+### ~~1. Client-Side Only Architecture~~ ✅ MIGRATED TO FULL-STACK
 
-**Current Decision:** Client-side only for privacy and simplicity
-
-**Trade-offs:**
-
-- ✅ Privacy: No data sent to servers
-- ✅ Simplicity: Easy deployment
-- ✅ Cost: No server costs
-- ⚠️ Features: Limited to client-side capabilities
-- ⚠️ Security: Tokens stored in browser
-
-**Revisit If:**
-
-- Users request server-side features (webhooks, push notifications)
-- Security requirements change
-- Multi-user/enterprise use cases emerge
+> **Updated in PR #27** - The application now has a full backend server architecture:
+>
+> - **PostgreSQL database** via Prisma ORM
+> - **NextAuth.js v5** for server-side authentication
+> - **OAuth tokens** stored securely in database (not localStorage)
+> - **API routes** for all Google Calendar/Tasks operations
+> - **Server-side session management** with automatic token refresh
+>
+> This enables multi-user support, secure token storage, and future features like profile management.
 
 ### 2. IndexedDB for Event Cache
 
@@ -411,21 +401,14 @@ This document tracks known issues, limitations, technical debt, and improvements
 - Users hit API quota limits
 - Configurable interval added to UI
 
-### 4. OAuth Token Storage in localStorage
+### ~~4. OAuth Token Storage in localStorage~~ ✅ MIGRATED
 
-**Current Decision:** Store tokens in browser localStorage
-
-**Rationale:**
-
-- Simple implementation
-- Browser-encrypted at rest
-- Acceptable for home/family use
-
-**Revisit If:**
-
-- Security requirements change
-- Multi-device sync needed
-- Server-side session management added
+> **Updated in PR #27** - OAuth tokens are now stored securely in PostgreSQL database:
+>
+> - **Refresh tokens** stored encrypted in Account table
+> - **Access tokens** managed by NextAuth.js JWT session
+> - **HttpOnly cookies** used for session management
+> - No sensitive tokens exposed to client-side JavaScript
 
 ## Monitoring & Metrics
 

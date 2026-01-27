@@ -1,5 +1,14 @@
 # Server-Side Authentication with Refresh Token Storage
 
+> **Status: ✅ IMPLEMENTED** (Merged in PR #27 - January 2025)
+>
+> This feature has been fully implemented. See:
+>
+> - Auth configuration: `src/lib/auth/auth.ts`
+> - Helper functions: `src/lib/auth/helpers.ts`
+> - API route protection: `src/middleware.ts`
+> - Database models: `prisma/schema.prisma` (User, Account, Session)
+
 ## Overview
 
 Transition from client-side Google Identity Services (GIS) to server-side OAuth 2.0 authentication with refresh tokens stored in a database. This enables secure, persistent access to Google APIs (Calendar, Tasks) without requiring users to re-authenticate frequently.

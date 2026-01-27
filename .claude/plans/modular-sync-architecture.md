@@ -1039,16 +1039,17 @@ Since this application is designed for self-hosting, CalDAV compatibility is a h
 
 #### Compatible CalDAV Servers
 
-| Server | Language | Complexity | Notes |
-|--------|----------|------------|-------|
-| **Radicale** | Python | Very Low | File-based, no database needed, excellent Docker support |
-| **Baikal** | PHP | Low | SQLite/MySQL, includes web admin UI |
-| **Nextcloud** | PHP | Medium | Full suite with calendar component |
-| **Apple Calendar Server** | Python | High | Full-featured but complex setup |
+| Server                    | Language | Complexity | Notes                                                    |
+| ------------------------- | -------- | ---------- | -------------------------------------------------------- |
+| **Radicale**              | Python   | Very Low   | File-based, no database needed, excellent Docker support |
+| **Baikal**                | PHP      | Low        | SQLite/MySQL, includes web admin UI                      |
+| **Nextcloud**             | PHP      | Medium     | Full suite with calendar component                       |
+| **Apple Calendar Server** | Python   | High       | Full-featured but complex setup                          |
 
 #### Implementation Approach
 
 Our architecture uses **PostgreSQL as the source of truth** (not CalDAV) because:
+
 1. CalDAV doesn't support our custom fields (profile assignments, emoji, colors)
 2. PostgreSQL provides better query flexibility for our UI needs
 3. Single database for all app data (auth, profiles, events, tasks)
@@ -1074,6 +1075,7 @@ Our architecture uses **PostgreSQL as the source of truth** (not CalDAV) because
 #### Google Calendar CalDAV Note
 
 Google Calendar does support CalDAV (endpoint: `https://apidata.googleusercontent.com/caldav/v2/`), but with limitations:
+
 - OAuth 2.0 required (no Basic Auth)
 - Cannot create calendars via CalDAV (MKCALENDAR not supported)
 - Some advanced features missing
