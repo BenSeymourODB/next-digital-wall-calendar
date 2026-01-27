@@ -75,7 +75,35 @@ If the Prisma adapter can't connect to PostgreSQL, authentication will fail.
    DATABASE_URL="postgresql://postgres:postgres@localhost:5432/calendar_db"
    ```
 
-### Cause 4: Missing or Invalid OAuth Credentials
+### Cause 4: Stale Cache or Dev Server State
+
+Sometimes the Configuration error is caused by stale cached state in the dev server or Prisma client.
+
+**Solution:**
+
+1. Stop the dev server (Ctrl+C)
+
+2. Clear the Next.js cache and lock file:
+
+   ```bash
+   rm -rf .next/dev/lock
+   rm -rf .next/cache
+   ```
+
+3. Regenerate the Prisma client:
+
+   ```bash
+   pnpm prisma generate
+   ```
+
+4. Restart the dev server:
+   ```bash
+   pnpm dev
+   ```
+
+This is often the fix when the error appears suddenly after the app was working previously.
+
+### Cause 5: Missing or Invalid OAuth Credentials
 
 **Solution:**
 
