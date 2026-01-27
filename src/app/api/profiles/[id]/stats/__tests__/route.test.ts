@@ -35,6 +35,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     profile: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -43,6 +44,7 @@ vi.mock("@/lib/db", () => ({
 const mockPrisma = prisma as unknown as {
   profile: {
     findFirst: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
   };
 };
 
@@ -118,6 +120,9 @@ describe("/api/profiles/[id]/stats", () => {
         ...mockAdminProfile,
         rewardPoints: mockProfileRewardPoints,
       });
+      mockPrisma.profile.findMany.mockResolvedValue([
+        { ...mockAdminProfile, rewardPoints: mockProfileRewardPoints },
+      ]);
 
       const request = createMockRequest(
         `/api/profiles/${mockAdminProfile.id}/stats`
@@ -139,6 +144,9 @@ describe("/api/profiles/[id]/stats", () => {
         ...mockAdminProfile,
         rewardPoints: null,
       });
+      mockPrisma.profile.findMany.mockResolvedValue([
+        { ...mockAdminProfile, rewardPoints: null },
+      ]);
 
       const request = createMockRequest(
         `/api/profiles/${mockAdminProfile.id}/stats`
@@ -159,6 +167,9 @@ describe("/api/profiles/[id]/stats", () => {
         ...mockAdminProfile,
         rewardPoints: mockProfileRewardPoints,
       });
+      mockPrisma.profile.findMany.mockResolvedValue([
+        { ...mockAdminProfile, rewardPoints: mockProfileRewardPoints },
+      ]);
 
       const request = createMockRequest(
         `/api/profiles/${mockAdminProfile.id}/stats`
@@ -183,6 +194,7 @@ describe("/api/profiles/[id]/stats", () => {
         ...mockAdminProfile,
         rewardPoints: mockProfileRewardPoints,
       });
+      mockPrisma.profile.findMany.mockResolvedValue([]);
 
       const request = createMockRequest(
         `/api/profiles/${mockAdminProfile.id}/stats`
@@ -201,6 +213,127 @@ describe("/api/profiles/[id]/stats", () => {
           rewardPoints: true,
         },
       });
+    });
+  });
+
+  describe("rank calculation", () => {
+    it("returns rank 1 when profile has highest points", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst.mockResolvedValue({
+        ...mockAdminProfile,
+        rewardPoints: { ...mockProfileRewardPoints, totalPoints: 150 },
+      });
+      mockPrisma.profile.findMany.mockResolvedValue([
+        { id: "profile-1", rewardPoints: { totalPoints: 150 } },
+        { id: "profile-2", rewardPoints: { totalPoints: 100 } },
+        { id: "profile-3", rewardPoints: { totalPoints: 50 } },
+      ]);
+
+      const request = createMockRequest(
+        `/api/profiles/${mockAdminProfile.id}/stats`
+      );
+      const response = await GET(request, {
+        params: createParams(mockAdminProfile.id),
+      });
+      const { status, data } = await parseResponse<ProfileStats>(response);
+
+      expect(status).toBe(200);
+      expect(data.rank).toBe(1);
+    });
+
+    it("returns rank 2 when profile has second highest points", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst.mockResolvedValue({
+        ...mockAdminProfile,
+        rewardPoints: { ...mockProfileRewardPoints, totalPoints: 100 },
+      });
+      mockPrisma.profile.findMany.mockResolvedValue([
+        { id: "profile-1", rewardPoints: { totalPoints: 150 } },
+        { id: mockAdminProfile.id, rewardPoints: { totalPoints: 100 } },
+        { id: "profile-3", rewardPoints: { totalPoints: 50 } },
+      ]);
+
+      const request = createMockRequest(
+        `/api/profiles/${mockAdminProfile.id}/stats`
+      );
+      const response = await GET(request, {
+        params: createParams(mockAdminProfile.id),
+      });
+      const { status, data } = await parseResponse<ProfileStats>(response);
+
+      expect(status).toBe(200);
+      expect(data.rank).toBe(2);
+    });
+
+    it("returns rank 1 when only profile in family", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst.mockResolvedValue({
+        ...mockAdminProfile,
+        rewardPoints: mockProfileRewardPoints,
+      });
+      mockPrisma.profile.findMany.mockResolvedValue([
+        { id: mockAdminProfile.id, rewardPoints: mockProfileRewardPoints },
+      ]);
+
+      const request = createMockRequest(
+        `/api/profiles/${mockAdminProfile.id}/stats`
+      );
+      const response = await GET(request, {
+        params: createParams(mockAdminProfile.id),
+      });
+      const { status, data } = await parseResponse<ProfileStats>(response);
+
+      expect(status).toBe(200);
+      expect(data.rank).toBe(1);
+    });
+
+    it("handles profiles with no reward points in ranking", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst.mockResolvedValue({
+        ...mockAdminProfile,
+        rewardPoints: { ...mockProfileRewardPoints, totalPoints: 50 },
+      });
+      mockPrisma.profile.findMany.mockResolvedValue([
+        { id: "profile-1", rewardPoints: { totalPoints: 100 } },
+        { id: mockAdminProfile.id, rewardPoints: { totalPoints: 50 } },
+        { id: "profile-3", rewardPoints: null }, // No reward points record
+      ]);
+
+      const request = createMockRequest(
+        `/api/profiles/${mockAdminProfile.id}/stats`
+      );
+      const response = await GET(request, {
+        params: createParams(mockAdminProfile.id),
+      });
+      const { status, data } = await parseResponse<ProfileStats>(response);
+
+      expect(status).toBe(200);
+      expect(data.rank).toBe(2); // Second because profile-1 has more points
+    });
+
+    it("handles tied points by giving same rank", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst.mockResolvedValue({
+        ...mockAdminProfile,
+        rewardPoints: { ...mockProfileRewardPoints, totalPoints: 100 },
+      });
+      mockPrisma.profile.findMany.mockResolvedValue([
+        { id: "profile-1", rewardPoints: { totalPoints: 100 } },
+        { id: mockAdminProfile.id, rewardPoints: { totalPoints: 100 } },
+        { id: "profile-3", rewardPoints: { totalPoints: 50 } },
+      ]);
+
+      const request = createMockRequest(
+        `/api/profiles/${mockAdminProfile.id}/stats`
+      );
+      const response = await GET(request, {
+        params: createParams(mockAdminProfile.id),
+      });
+      const { status, data } = await parseResponse<ProfileStats>(response);
+
+      expect(status).toBe(200);
+      // When tied, both profiles get rank 1
+      expect(data.rank).toBe(1);
     });
   });
 });

@@ -25,3 +25,7 @@ export { NumericKeypad } from "./numeric-keypad";
 export type { NumericKeypadProps } from "./numeric-keypad";
 export { PinDisplay } from "./pin-display";
 export type { PinDisplayProps } from "./pin-display";
+
+// Reward points components
+export { GivePointsModal } from "./give-points-modal";
+export type { GivePointsModalProps } from "./give-points-modal";

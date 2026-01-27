@@ -56,18 +56,39 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
+    // Calculate rank among all family profiles
+    const allProfiles = await prisma.profile.findMany({
+      where: {
+        userId: session.user.id,
+        isActive: true,
+      },
+      include: {
+        rewardPoints: true,
+      },
+    });
+
+    // Sort profiles by total points (descending) to calculate rank
+    const profilePoints = profile.rewardPoints?.totalPoints ?? 0;
+    const sortedPoints = allProfiles
+      .map((p) => p.rewardPoints?.totalPoints ?? 0)
+      .sort((a, b) => b - a);
+
+    // Find rank (1-based, handles ties by giving same rank)
+    const rank =
+      sortedPoints.findIndex((points) => points <= profilePoints) + 1;
+
     // Build stats response
-    // Note: tasksToday, tasksCompleted, tasksTotal, completionRate, and rank
+    // Note: tasksToday, tasksCompleted, tasksTotal, completionRate
     // are placeholders until Google Tasks integration is implemented
     const stats: ProfileStats = {
       profileId: profile.id,
-      totalPoints: profile.rewardPoints?.totalPoints ?? 0,
+      totalPoints: profilePoints,
       currentStreak: profile.rewardPoints?.currentStreak ?? 0,
       tasksToday: 0,
       tasksCompleted: 0,
       tasksTotal: 0,
       completionRate: 0,
-      rank: 1,
+      rank,
     };
 
     return NextResponse.json(stats);
