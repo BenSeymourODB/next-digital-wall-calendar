@@ -29,3 +29,9 @@ export type { PinDisplayProps } from "./pin-display";
 // Reward points components
 export { GivePointsModal } from "./give-points-modal";
 export type { GivePointsModalProps } from "./give-points-modal";
+
+// Profile creation components
+export { ColorPicker, PROFILE_COLORS } from "./color-picker";
+export type { ColorPickerProps } from "./color-picker";
+export { ProfileForm } from "./profile-form";
+export type { ProfileFormProps } from "./profile-form";
