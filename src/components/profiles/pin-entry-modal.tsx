@@ -178,18 +178,25 @@ export function PinEntryModal({
           {/* PIN Display */}
           <PinDisplay value={pin} length={pinLength} hasError={hasError} />
 
-          {/* Error message */}
-          {error && (
-            <div className="text-center">
-              <p className="text-sm text-red-600">{error}</p>
-              {attemptsRemaining !== null && attemptsRemaining > 0 && (
-                <p className="mt-1 text-xs text-gray-500">
-                  {attemptsRemaining} attempt
-                  {attemptsRemaining !== 1 ? "s" : ""} remaining
-                </p>
-              )}
-            </div>
-          )}
+          {/* Error message - ARIA live region for screen readers */}
+          <div
+            role="alert"
+            aria-live="polite"
+            aria-atomic="true"
+            className="min-h-[2rem] text-center"
+          >
+            {error && (
+              <>
+                <p className="text-sm text-red-600">{error}</p>
+                {attemptsRemaining !== null && attemptsRemaining > 0 && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    {attemptsRemaining} attempt
+                    {attemptsRemaining !== 1 ? "s" : ""} remaining
+                  </p>
+                )}
+              </>
+            )}
+          </div>
 
           {/* Lockout timer */}
           {isLocked && (

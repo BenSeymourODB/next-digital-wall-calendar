@@ -24,7 +24,7 @@ export function ProfileSwitcher() {
   const [pinModalProfile, setPinModalProfile] = useState<Profile | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click or Escape key
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -35,9 +35,19 @@ export function ProfileSwitcher() {
       }
     };
 
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isOpen) {
+        setIsOpen(false);
+      }
+    };
+
     document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("click", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
 
   if (!activeProfile) {
     return null;
@@ -110,7 +120,11 @@ export function ProfileSwitcher() {
 
         {/* Dropdown Menu */}
         {isOpen && (
-          <div className="absolute right-0 z-50 mt-2 w-64 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+          <div
+            role="menu"
+            aria-label="Profile selection"
+            className="absolute right-0 z-50 mt-2 w-64 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          >
             {/* Profile List */}
             <div className="px-2 py-1">
               <p className="px-2 py-1 text-xs font-medium tracking-wider text-gray-500 uppercase">
@@ -119,6 +133,10 @@ export function ProfileSwitcher() {
               {allProfiles.map((profile) => (
                 <button
                   key={profile.id}
+                  role="menuitem"
+                  aria-current={
+                    profile.id === activeProfile.id ? "true" : undefined
+                  }
                   onClick={() => handleProfileSelect(profile)}
                   className={`flex w-full items-center gap-3 rounded-md px-2 py-2 hover:bg-gray-50 ${
                     profile.id === activeProfile.id ? "bg-blue-50" : ""
@@ -131,10 +149,14 @@ export function ProfileSwitcher() {
                         {profile.name}
                       </span>
                       {profile.type === "admin" && (
-                        <span title="Admin">👑</span>
+                        <span title="Admin" aria-label="Admin profile">
+                          👑
+                        </span>
                       )}
                       {profile.pinEnabled && (
-                        <span title="PIN Protected">🔒</span>
+                        <span title="PIN Protected" aria-label="PIN protected">
+                          🔒
+                        </span>
                       )}
                     </div>
                   </div>
@@ -147,19 +169,23 @@ export function ProfileSwitcher() {
 
             {/* Family View Option */}
             <button
+              role="menuitem"
               onClick={handleFamilyView}
               className="flex w-full items-center gap-3 px-4 py-2 hover:bg-gray-50"
             >
-              <span className="text-xl">👨‍👩‍👧‍👦</span>
+              <span className="text-xl" aria-hidden="true">
+                👨‍👩‍👧‍👦
+              </span>
               <span className="font-medium text-gray-900">Family View</span>
             </button>
 
             {/* Divider */}
-            <div className="my-1 border-t border-gray-200" />
+            <div className="my-1 border-t border-gray-200" role="separator" />
 
             {/* Manage Profiles Link */}
             <Link
               href="/profiles"
+              role="menuitem"
               className="flex w-full items-center gap-3 px-4 py-2 hover:bg-gray-50"
               onClick={() => setIsOpen(false)}
             >
