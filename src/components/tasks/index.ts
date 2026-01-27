@@ -1,6 +1,12 @@
 /**
  * Tasks components barrel export
  */
+export { TaskAssignmentPicker } from "./task-assignment-picker";
+export type {
+  ProfileInfo,
+  TaskAssignmentPickerProps,
+} from "./task-assignment-picker";
+
 export { TaskItem } from "./task-item";
 export type { TaskItemProps } from "./task-item";
 
