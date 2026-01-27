@@ -454,4 +454,99 @@ describe("/api/profiles/[id]/give-points", () => {
       });
     });
   });
+
+  describe("multiple admin support", () => {
+    const mockSecondAdmin = {
+      id: "profile-admin-2",
+      userId: mockUserId,
+      name: "Second Admin",
+      type: "admin" as const,
+      ageGroup: "adult" as const,
+      color: "#ef4444",
+      avatar: { type: "initials", value: "SA", backgroundColor: "#ef4444" },
+      pinHash: "$2b$10$mockHashedPin2",
+      pinEnabled: true,
+      failedPinAttempts: 0,
+      pinLockedUntil: null,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it("allows second admin to award points", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      // Second admin awarding points
+      mockPrisma.profile.findFirst.mockResolvedValueOnce(mockSecondAdmin);
+      mockPrisma.profile.findFirst.mockResolvedValueOnce(mockStandardProfile);
+
+      mockPrisma.$transaction.mockImplementation(async (callback) => {
+        const tx = {
+          profileRewardPoints: {
+            upsert: vi.fn().mockResolvedValue({ totalPoints: 50 }),
+          },
+          pointTransaction: {
+            create: vi.fn().mockResolvedValue({}),
+          },
+        };
+        return callback(tx);
+      });
+
+      const request = createMockRequest(
+        `/api/profiles/${mockStandardProfile.id}/give-points`,
+        {
+          method: "POST",
+          body: {
+            points: 50,
+            awardedByProfileId: mockSecondAdmin.id,
+          },
+        }
+      );
+      const response = await POST(request, {
+        params: createParams(mockStandardProfile.id),
+      });
+      const { status, data } =
+        await parseResponse<GivePointsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.success).toBe(true);
+    });
+
+    it("allows one admin to award points to another admin", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      // First admin awarding to second admin
+      mockPrisma.profile.findFirst.mockResolvedValueOnce(mockAdminProfile);
+      mockPrisma.profile.findFirst.mockResolvedValueOnce(mockSecondAdmin);
+
+      mockPrisma.$transaction.mockImplementation(async (callback) => {
+        const tx = {
+          profileRewardPoints: {
+            upsert: vi.fn().mockResolvedValue({ totalPoints: 100 }),
+          },
+          pointTransaction: {
+            create: vi.fn().mockResolvedValue({}),
+          },
+        };
+        return callback(tx);
+      });
+
+      const request = createMockRequest(
+        `/api/profiles/${mockSecondAdmin.id}/give-points`,
+        {
+          method: "POST",
+          body: {
+            points: 100,
+            awardedByProfileId: mockAdminProfile.id,
+          },
+        }
+      );
+      const response = await POST(request, {
+        params: createParams(mockSecondAdmin.id),
+      });
+      const { status, data } =
+        await parseResponse<GivePointsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.success).toBe(true);
+    });
+  });
 });

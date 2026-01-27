@@ -189,9 +189,9 @@ describe("/api/profiles", () => {
       expect(data.error).toBe("Profile limit reached");
     });
 
-    it("creates profile with default values", async () => {
+    it("creates profile with default values when admin exists", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      mockPrisma.profile.count.mockResolvedValue(0);
+      mockPrisma.profile.count.mockResolvedValue(1); // Admin already exists
       mockPrisma.user.findUnique.mockResolvedValue({ maxProfiles: 10 });
 
       const createdProfile = {
@@ -229,9 +229,9 @@ describe("/api/profiles", () => {
       expect(data.type).toBe("standard"); // Default type
     });
 
-    it("creates profile with custom values", async () => {
+    it("creates profile with custom values when admin exists", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      mockPrisma.profile.count.mockResolvedValue(0);
+      mockPrisma.profile.count.mockResolvedValue(1); // Admin already exists
       mockPrisma.user.findUnique.mockResolvedValue({ maxProfiles: 10 });
 
       const createdProfile = {
@@ -267,7 +267,7 @@ describe("/api/profiles", () => {
 
       const request = createMockRequest("/api/profiles", {
         method: "POST",
-        body: mockCreateProfileInput,
+        body: { name: "Admin Profile", type: "admin" }, // Must be admin for first profile
       });
 
       const response = await POST(request);
@@ -275,6 +275,204 @@ describe("/api/profiles", () => {
 
       expect(status).toBe(500);
       expect(data.error).toBe("Failed to create profile");
+    });
+  });
+
+  describe("first profile admin validation", () => {
+    it("returns 400 when first profile is not admin type", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.count.mockResolvedValue(0); // No existing profiles
+      mockPrisma.user.findUnique.mockResolvedValue({ maxProfiles: 10 });
+
+      const request = createMockRequest("/api/profiles", {
+        method: "POST",
+        body: { name: "Child User", type: "standard" },
+      });
+
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toBe("First profile must be an admin");
+    });
+
+    it("returns 400 when first profile uses default type (standard)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.count.mockResolvedValue(0); // No existing profiles
+      mockPrisma.user.findUnique.mockResolvedValue({ maxProfiles: 10 });
+
+      const request = createMockRequest("/api/profiles", {
+        method: "POST",
+        body: { name: "New User" }, // No type specified, defaults to standard
+      });
+
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toBe("First profile must be an admin");
+    });
+
+    it("creates first profile successfully when type is admin", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.count.mockResolvedValue(0); // No existing profiles
+      mockPrisma.user.findUnique.mockResolvedValue({ maxProfiles: 10 });
+
+      const createdProfile = {
+        id: "first-admin-id",
+        userId: mockSession.user.id,
+        name: "Admin User",
+        type: "admin",
+        ageGroup: "adult",
+        color: "#3b82f6",
+        avatar: { type: "initials", value: "AD", backgroundColor: "#3b82f6" },
+        pinHash: null,
+        pinEnabled: false,
+        failedPinAttempts: 0,
+        pinLockedUntil: null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        rewardPoints: mockProfileRewardPoints,
+        settings: mockProfileSettings,
+      };
+
+      mockPrisma.profile.create.mockResolvedValue(createdProfile);
+
+      const request = createMockRequest("/api/profiles", {
+        method: "POST",
+        body: { name: "Admin User", type: "admin" },
+      });
+
+      const response = await POST(request);
+      const { status, data } =
+        await parseResponse<typeof createdProfile>(response);
+
+      expect(status).toBe(201);
+      expect(data.name).toBe("Admin User");
+      expect(data.type).toBe("admin");
+    });
+
+    it("allows creating standard profile after admin exists", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.count.mockResolvedValue(1); // One profile already exists
+      mockPrisma.user.findUnique.mockResolvedValue({ maxProfiles: 10 });
+
+      const createdProfile = {
+        id: "standard-profile-id",
+        userId: mockSession.user.id,
+        name: "Child User",
+        type: "standard",
+        ageGroup: "child",
+        color: "#22c55e",
+        avatar: { type: "initials", value: "CH", backgroundColor: "#22c55e" },
+        pinHash: null,
+        pinEnabled: false,
+        failedPinAttempts: 0,
+        pinLockedUntil: null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        rewardPoints: mockProfileRewardPoints,
+        settings: mockProfileSettings,
+      };
+
+      mockPrisma.profile.create.mockResolvedValue(createdProfile);
+
+      const request = createMockRequest("/api/profiles", {
+        method: "POST",
+        body: { name: "Child User", type: "standard" },
+      });
+
+      const response = await POST(request);
+      const { status, data } =
+        await parseResponse<typeof createdProfile>(response);
+
+      expect(status).toBe(201);
+      expect(data.name).toBe("Child User");
+      expect(data.type).toBe("standard");
+    });
+  });
+
+  describe("multiple admin profiles", () => {
+    it("allows creating second admin profile", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.count.mockResolvedValue(1); // One admin already exists
+      mockPrisma.user.findUnique.mockResolvedValue({ maxProfiles: 10 });
+
+      const createdProfile = {
+        id: "second-admin-id",
+        userId: mockSession.user.id,
+        name: "Second Admin",
+        type: "admin",
+        ageGroup: "adult",
+        color: "#ef4444",
+        avatar: { type: "initials", value: "SA", backgroundColor: "#ef4444" },
+        pinHash: null,
+        pinEnabled: false,
+        failedPinAttempts: 0,
+        pinLockedUntil: null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        rewardPoints: mockProfileRewardPoints,
+        settings: mockProfileSettings,
+      };
+
+      mockPrisma.profile.create.mockResolvedValue(createdProfile);
+
+      const request = createMockRequest("/api/profiles", {
+        method: "POST",
+        body: { name: "Second Admin", type: "admin" },
+      });
+
+      const response = await POST(request);
+      const { status, data } =
+        await parseResponse<typeof createdProfile>(response);
+
+      expect(status).toBe(201);
+      expect(data.name).toBe("Second Admin");
+      expect(data.type).toBe("admin");
+    });
+
+    it("allows creating third admin profile", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.count.mockResolvedValue(2); // Two profiles already exist
+      mockPrisma.user.findUnique.mockResolvedValue({ maxProfiles: 10 });
+
+      const createdProfile = {
+        id: "third-admin-id",
+        userId: mockSession.user.id,
+        name: "Third Admin",
+        type: "admin",
+        ageGroup: "adult",
+        color: "#8b5cf6",
+        avatar: { type: "initials", value: "TA", backgroundColor: "#8b5cf6" },
+        pinHash: null,
+        pinEnabled: false,
+        failedPinAttempts: 0,
+        pinLockedUntil: null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        rewardPoints: mockProfileRewardPoints,
+        settings: mockProfileSettings,
+      };
+
+      mockPrisma.profile.create.mockResolvedValue(createdProfile);
+
+      const request = createMockRequest("/api/profiles", {
+        method: "POST",
+        body: { name: "Third Admin", type: "admin" },
+      });
+
+      const response = await POST(request);
+      const { status, data } =
+        await parseResponse<typeof createdProfile>(response);
+
+      expect(status).toBe(201);
+      expect(data.name).toBe("Third Admin");
+      expect(data.type).toBe("admin");
     });
   });
 });

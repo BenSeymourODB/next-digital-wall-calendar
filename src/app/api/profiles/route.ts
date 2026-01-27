@@ -92,13 +92,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    // Check profile limit
+    // Check profile limit and first profile validation
     const existingCount = await prisma.profile.count({
       where: {
         userId: session.user.id,
         isActive: true,
       },
     });
+
+    // First profile must be admin
+    if (existingCount === 0 && type !== "admin") {
+      return NextResponse.json(
+        { error: "First profile must be an admin" },
+        { status: 400 }
+      );
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },

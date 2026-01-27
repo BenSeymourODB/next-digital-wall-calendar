@@ -482,4 +482,128 @@ describe("/api/profiles/[id]/reset-pin", () => {
       expect(data.error).toBe("Failed to reset PIN");
     });
   });
+
+  describe("multiple admin support", () => {
+    it("allows second admin to reset standard profile PIN", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst
+        .mockResolvedValueOnce({
+          ...mockSecondAdmin,
+          pinEnabled: true,
+          pinHash: "$2b$10$secondAdminHash",
+        })
+        .mockResolvedValueOnce({
+          ...mockStandardProfile,
+          pinEnabled: true,
+          pinHash: "$2b$10$oldHash",
+        });
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      vi.mocked(bcrypt.hash).mockResolvedValue("$2b$10$newHashedPin" as never);
+      mockPrisma.profile.update.mockResolvedValue({
+        ...mockStandardProfile,
+        pinHash: "$2b$10$newHashedPin",
+        pinEnabled: true,
+        failedPinAttempts: 0,
+        pinLockedUntil: null,
+      });
+
+      const request = createMockRequest(
+        `/api/profiles/${mockStandardProfile.id}/reset-pin`,
+        {
+          method: "POST",
+          body: {
+            adminProfileId: mockSecondAdmin.id,
+            adminPin: "4321",
+            newPin: "9876",
+          },
+        }
+      );
+      const response = await POST(request, {
+        params: createParams(mockStandardProfile.id),
+      });
+      const { status, data } = await parseResponse<{ success: boolean }>(
+        response
+      );
+
+      expect(status).toBe(200);
+      expect(data.success).toBe(true);
+    });
+
+    it("allows second admin to reset own PIN", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst
+        .mockResolvedValueOnce({
+          ...mockSecondAdmin,
+          pinEnabled: true,
+          pinHash: "$2b$10$secondAdminHash",
+        })
+        .mockResolvedValueOnce({
+          ...mockSecondAdmin,
+          pinEnabled: true,
+          pinHash: "$2b$10$secondAdminHash",
+        });
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      vi.mocked(bcrypt.hash).mockResolvedValue("$2b$10$newHashedPin" as never);
+      mockPrisma.profile.update.mockResolvedValue({
+        ...mockSecondAdmin,
+        pinHash: "$2b$10$newHashedPin",
+      });
+
+      const request = createMockRequest(
+        `/api/profiles/${mockSecondAdmin.id}/reset-pin`,
+        {
+          method: "POST",
+          body: {
+            adminProfileId: mockSecondAdmin.id,
+            adminPin: "4321",
+            newPin: "8765",
+          },
+        }
+      );
+      const response = await POST(request, {
+        params: createParams(mockSecondAdmin.id),
+      });
+      const { status, data } = await parseResponse<{ success: boolean }>(
+        response
+      );
+
+      expect(status).toBe(200);
+      expect(data.success).toBe(true);
+    });
+
+    it("prevents second admin from resetting first admin PIN", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst
+        .mockResolvedValueOnce({
+          ...mockSecondAdmin,
+          pinEnabled: true,
+          pinHash: "$2b$10$secondAdminHash",
+        })
+        .mockResolvedValueOnce({
+          ...mockAdminProfile,
+          pinEnabled: true,
+          pinHash: "$2b$10$adminHash",
+        });
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+      const request = createMockRequest(
+        `/api/profiles/${mockAdminProfile.id}/reset-pin`,
+        {
+          method: "POST",
+          body: {
+            adminProfileId: mockSecondAdmin.id,
+            adminPin: "4321",
+            newPin: "5678",
+          },
+        }
+      );
+      const response = await POST(request, {
+        params: createParams(mockAdminProfile.id),
+      });
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(403);
+      expect(data.error).toBe("Cannot reset another admin's PIN");
+    });
+  });
 });
