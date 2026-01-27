@@ -58,8 +58,11 @@ This guide will walk you through setting up Google Calendar API credentials for 
    - For local development: `http://localhost:3000`
    - For production: `https://your-domain.com`
 6. Add **Authorized redirect URIs**:
-   - For local development: `http://localhost:3000`
-   - For production: `https://your-domain.com`
+   - For NextAuth.js (server-side auth): `http://localhost:3000/api/auth/callback/google`
+   - For production: `https://your-domain.com/api/auth/callback/google`
+
+   **Important:** The redirect URI MUST include `/api/auth/callback/google` for NextAuth.js to work. Without this path, you'll get a "Configuration" error.
+
 7. Click **"Create"**
 8. A dialog will appear with your **Client ID** and **Client Secret**
    - **Copy both the Client ID and Client Secret** - you'll need these for your `.env.local` file
@@ -116,6 +119,13 @@ This guide will walk you through setting up Google Calendar API credentials for 
 7. Your calendar events should now appear in the application
 
 ## Troubleshooting
+
+> **Note:** For NextAuth.js-specific errors (like "Configuration" error), see [nextauth-troubleshooting.md](./nextauth-troubleshooting.md).
+
+### Error: "Configuration" (NextAuth.js)
+
+- **Cause**: Missing or incorrect redirect URI in Google Cloud Console
+- **Solution**: Add `http://localhost:3000/api/auth/callback/google` to your OAuth client's Authorized redirect URIs. See [NextAuth Troubleshooting](./nextauth-troubleshooting.md) for detailed steps.
 
 ### Error: "Access blocked: This app's request is invalid"
 
