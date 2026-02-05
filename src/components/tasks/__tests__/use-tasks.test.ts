@@ -51,6 +51,32 @@ describe("useTasks", () => {
       expect(result.current.error).toBeNull();
     });
 
+    it("returns empty tasks when all lists are disabled", async () => {
+      const config = createMockConfig({
+        lists: [
+          {
+            listId: "list-1",
+            listTitle: "Work",
+            color: "#3b82f6",
+            enabled: false,
+          },
+          {
+            listId: "list-2",
+            listTitle: "Personal",
+            color: "#ef4444",
+            enabled: false,
+          },
+        ],
+      });
+      const { result } = renderHook(() => useTasks(config));
+
+      // Should not make any fetch calls
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(result.current.tasks).toEqual([]);
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toBeNull();
+    });
+
     it("starts with loading true when config is provided", async () => {
       mockFetch.mockImplementation(
         () =>
@@ -306,6 +332,42 @@ describe("useTasks", () => {
         "task-1",
       ]);
     });
+
+    it("sorts by manual position order", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            tasks: [
+              createMockTask({
+                id: "task-1",
+                position: "00000000000000000002",
+              }),
+              createMockTask({
+                id: "task-2",
+                position: "00000000000000000000",
+              }),
+              createMockTask({
+                id: "task-3",
+                position: "00000000000000000001",
+              }),
+            ],
+          }),
+      });
+
+      const config = createMockConfig({ sortBy: "manual" });
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.tasks).toHaveLength(3);
+      });
+
+      expect(result.current.tasks.map((t) => t.id)).toEqual([
+        "task-2",
+        "task-3",
+        "task-1",
+      ]);
+    });
   });
 
   describe("error handling", () => {
@@ -337,6 +399,48 @@ describe("useTasks", () => {
         expect(result.current.loading).toBe(false);
       });
 
+      expect(result.current.error).toBeTruthy();
+      expect(result.current.tasks).toEqual([]);
+    });
+
+    it("fails all tasks when one list fetch fails (partial failure)", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              tasks: [createMockTask({ id: "task-1", title: "Work Task" })],
+            }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: "Server error" }),
+        });
+
+      const config = createMockConfig({
+        lists: [
+          {
+            listId: "list-1",
+            listTitle: "Work",
+            color: "#3b82f6",
+            enabled: true,
+          },
+          {
+            listId: "list-2",
+            listTitle: "Personal",
+            color: "#ef4444",
+            enabled: true,
+          },
+        ],
+      });
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      // When one list fails, all fail (Promise.all behavior)
       expect(result.current.error).toBeTruthy();
       expect(result.current.tasks).toEqual([]);
     });

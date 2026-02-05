@@ -241,4 +241,20 @@ describe("sortTasks", () => {
     expect(tasks[0].id).toBe("2"); // Original unchanged
     expect(sorted[0].id).toBe("1"); // Sorted version different
   });
+
+  it("returns unsorted copy for unknown sortBy value", () => {
+    const tasks: TaskWithMeta[] = [
+      createTask({ id: "3", due: "2024-06-20T00:00:00Z" }),
+      createTask({ id: "1", due: "2024-06-15T00:00:00Z" }),
+      createTask({ id: "2", due: "2024-06-18T00:00:00Z" }),
+    ];
+
+    // Cast to bypass TypeScript type checking for unknown sortBy value
+    const sorted = sortTasks(tasks, "unknown" as "dueDate");
+
+    // Should return a copy in original order (not sorted)
+    expect(sorted.map((t) => t.id)).toEqual(["3", "1", "2"]);
+    // Should still be a different array (copy, not reference)
+    expect(sorted).not.toBe(tasks);
+  });
 });
