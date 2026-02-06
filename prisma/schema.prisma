@@ -130,6 +130,7 @@ model Profile {
   settings         ProfileSettings?
   pointsAwarded    PointTransaction[]    @relation("AwardedBy")
   pointsReceived   PointTransaction[]    @relation("ReceivedBy")
+  taskAssignments  TaskAssignment[]
 
   @@index([userId, isActive])
 }
@@ -178,4 +179,17 @@ model ProfileSettings {
   notificationTime    String? // HH:MM format
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+// Task Assignment - Links Google Tasks to profiles
+model TaskAssignment {
+  id        String   @id @default(cuid())
+  taskId    String   // Google Tasks ID
+  profileId String
+  createdAt DateTime @default(now())
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, profileId])
+  @@index([profileId, taskId])
 }
