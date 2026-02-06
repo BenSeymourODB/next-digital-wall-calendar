@@ -93,8 +93,8 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
-    "@next/eslint-plugin-next": "^16.1.6",
-    "@playwright/test": "^1.57.0",
+    "@next/eslint-plugin-next": "^16.1.1",
+    "@playwright/test": "^1.58.1",
     "@tailwindcss/postcss": "^4.1.16",
     "@tailwindcss/typography": "^0.5.19",
     "@testing-library/jest-dom": "^6.9.1",
