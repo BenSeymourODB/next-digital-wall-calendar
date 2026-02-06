@@ -65,7 +65,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@types/gapi": "^0.0.47",
     "@types/gapi.auth2": "^0.0.61",
-    "applicationinsights": "^3.12.1",
+    "applicationinsights": "^3.13.0",
     "bcrypt": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
