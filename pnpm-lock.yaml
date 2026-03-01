@@ -139,10 +139,10 @@ importers:
         version: 0.552.0(react@19.2.4)
       next:
         specifier: 16.1.6
-        version: 16.1.6(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.4))(react@19.2.4)
+        version: 16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.4))(react@19.2.4)
       next-auth:
         specifier: 5.0.0-beta.30
-        version: 5.0.0-beta.30(next@16.1.6(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.4))(react@19.2.4))(react@19.2.4)
+        version: 5.0.0-beta.30(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.4))(react@19.2.4))(react@19.2.4)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.0(react@19.2.4))(react@19.2.4)
@@ -226,8 +226,8 @@ importers:
         specifier: ^19.2.2
         version: 19.2.2(@types/react@19.2.13)
       '@vitejs/plugin-react':
-        specifier: ^5.1.2
-        version: 5.1.2(vite@7.3.1(@types/node@25.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))
+        specifier: ^5.1.4
+        version: 5.1.4(vite@7.3.1(@types/node@25.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))
       babel-plugin-react-compiler:
         specifier: ^1.0.0
         version: 1.0.0
@@ -427,10 +427,6 @@ packages:
     resolution: {integrity: sha512-cjQ7ZlQ0Mv3b47hABuTevyTuYN4i+loJKGeV9flcCgIK37cCXRh+L1bd3iBHlynerhQ7BhCkn2BPbQUL+rGqFg==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/code-frame@7.28.6':
-    resolution: {integrity: sha512-JYgintcMjRiCvS8mMECzaEn+m3PfoQiyqukOMCCVQtoJGYJw8j/8LBJEiqkHLkfwCcs74E3pbAUFNg7d9VNJ+Q==}
-    engines: {node: '>=6.9.0'}
-
   '@babel/code-frame@7.29.0':
     resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
     engines: {node: '>=6.9.0'}
@@ -439,16 +435,16 @@ packages:
     resolution: {integrity: sha512-YsmSKC29MJwf0gF8Rjjrg5LQCmyh+j/nD8/eP7f+BeoQTKYqs9RoWbjGOdy0+1Ekr68RJZMUOPVQaQisnIo4Rw==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/compat-data@7.28.6':
-    resolution: {integrity: sha512-2lfu57JtzctfIrcGMz992hyLlByuzgIk58+hhGCxjKZ3rWI82NnVLjXcaTqkI2NvlcvOskZaiZ5kjUALo3Lpxg==}
+  '@babel/compat-data@7.29.0':
+    resolution: {integrity: sha512-T1NCJqT/j9+cn8fvkt7jtwbLBfLC/1y1c7NtCeXFRgzGTsafi68MRv8yzkYSapBnFA6L3U2VSc02ciDzoAJhJg==}
     engines: {node: '>=6.9.0'}
 
   '@babel/core@7.28.4':
     resolution: {integrity: sha512-2BCOP7TN8M+gVDj7/ht3hsaO/B/n5oDbiAyyvnRlNOs+u1o+JWNYTQrmpuNp1/Wq2gcFrI01JAW+paEKDMx/CA==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/core@7.28.6':
-    resolution: {integrity: sha512-H3mcG6ZDLTlYfaSNi0iOKkigqMFvkTKlGUYlD8GW7nNOYRrevuA46iTypPyv+06V3fEmvvazfntkBU34L0azAw==}
+  '@babel/core@7.29.0':
+    resolution: {integrity: sha512-CGOfOJqWjg2qW/Mb6zNsDm+u5vFQ8DxXfbM09z69p5Z6+mE1ikP2jUXw+j42Pf1XTYED2Rni5f95npYeuwMDQA==}
     engines: {node: '>=6.9.0'}
 
   '@babel/generator@7.29.1':
@@ -507,6 +503,10 @@ packages:
 
   '@babel/helper-plugin-utils@7.27.1':
     resolution: {integrity: sha512-1gn1Up5YXka3YYAHGKpbideQ5Yjf1tDa9qYcgysz+cNCXukyLl6DjPXhD3VRwSb8c0J9tA4b2+rHEZtc6R0tlw==}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/helper-plugin-utils@7.28.6':
+    resolution: {integrity: sha512-S9gzZ/bz83GRysI7gAD4wPT/AI3uCnY+9xn+Mx/KPs2JwHJIz1W8PZkg2cqyt3RNOBM8ejcXhV6y8Og7ly/Dug==}
     engines: {node: '>=6.9.0'}
 
   '@babel/helper-replace-supers@7.27.1':
@@ -2370,8 +2370,8 @@ packages:
   '@radix-ui/rect@1.1.1':
     resolution: {integrity: sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw==}
 
-  '@rolldown/pluginutils@1.0.0-beta.53':
-    resolution: {integrity: sha512-vENRlFU4YbrwVqNDZ7fLvy+JR1CRkyr01jhSiDpE1u6py3OMzQfztQU2jxykW3ALNxO4kSlqIDeYyD0Y9RcQeQ==}
+  '@rolldown/pluginutils@1.0.0-rc.3':
+    resolution: {integrity: sha512-eybk3TjzzzV97Dlj5c+XrBFW57eTNhzod66y9HrBlzJ6NsCrWCp/2kaPS3K9wJmurBC0Tdw4yPjXKZqlznim3Q==}
 
   '@rollup/rollup-android-arm-eabi@4.56.0':
     resolution: {integrity: sha512-LNKIPA5k8PF1+jAFomGe3qN3bbIgJe/IlpDBwuVjrDKrJhVWywgnJvflMt/zkbVNLFtF1+94SljYQS6e99klnw==}
@@ -2923,8 +2923,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@vitejs/plugin-react@5.1.2':
-    resolution: {integrity: sha512-EcA07pHJouywpzsoTUqNh5NwGayl2PPVEJKUSinGGSxFGYn+shYbqMGBg6FXDqgXum9Ou/ecb+411ssw8HImJQ==}
+  '@vitejs/plugin-react@5.1.4':
+    resolution: {integrity: sha512-VIcFLdRi/VYRU8OL/puL7QXMYafHmqOnwTZY50U1JPlCNj30PxCMx65c494b1K9be9hX83KVt0+gTEwTWLqToA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0
@@ -3099,6 +3099,11 @@ packages:
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
+  baseline-browser-mapping@2.10.0:
+    resolution: {integrity: sha512-lIyg0szRfYbiy67j9KN8IyeD7q7hcmqnJ1ddWmNt19ItGpNN64mnllmxUNFIOdOm6by97jlL6wfpTTJrmnjWAA==}
+    engines: {node: '>=6.0.0'}
+    hasBin: true
+
   baseline-browser-mapping@2.9.19:
     resolution: {integrity: sha512-ipDqC8FrAl/76p2SSWKSI+H9tFwm7vYqXQrItCuiVPt26Km0jS+NzSsBWAaBusvSbQcfJG+JitdMm+wZAgTYqg==}
     hasBin: true
@@ -3126,6 +3131,11 @@ packages:
 
   browserslist@4.26.3:
     resolution: {integrity: sha512-lAUU+02RFBuCKQPj/P6NgjlbCnLBMp4UtgTx7vNHd3XSIJF87s9a5rA3aH2yw3GS9DqZAUbOtZdCCiZeVRqt0w==}
+    engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
+    hasBin: true
+
+  browserslist@4.28.1:
+    resolution: {integrity: sha512-ZC5Bd0LgJXgwGqUknZY/vkUQ04r8NXnJZ3yYi4vDmSiZmC/pdSN0NbNRPxZpbtO4uAfDUAFffO8IZoM3Gj8IkA==}
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
 
@@ -3166,6 +3176,9 @@ packages:
 
   caniuse-lite@1.0.30001766:
     resolution: {integrity: sha512-4C0lfJ0/YPjJQHagaE9x2Elb69CIqEPZeG0anQt9SIvIoOH4a4uaRl73IavyO+0qZh6MDLH//DrXThEYKHkmYA==}
+
+  caniuse-lite@1.0.30001775:
+    resolution: {integrity: sha512-s3Qv7Lht9zbVKE9XoTyRG6wVDCKdtOFIjBGg3+Yhn6JaytuNKPIjBMTMIY1AnOH3seL5mvF+x33oGAyK3hVt3A==}
 
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
@@ -3540,6 +3553,9 @@ packages:
 
   electron-to-chromium@1.5.237:
     resolution: {integrity: sha512-icUt1NvfhGLar5lSWH3tHNzablaA5js3HVHacQimfP8ViEBOQv+L7DKEuHdbTZ0SKCO1ogTJTIL1Gwk9S6Qvcg==}
+
+  electron-to-chromium@1.5.302:
+    resolution: {integrity: sha512-sM6HAN2LyK82IyPBpznDRqlTQAtuSaO+ShzFiWTvoMJLHyZ+Y39r8VMfHzwbU8MVBzQ4Wdn85+wlZl2TLGIlwg==}
 
   embla-carousel-react@8.6.0:
     resolution: {integrity: sha512-0/PjqU7geVmo6F734pmPqpyHqiM99olvyecY7zdweCw+6tKEXnrE90pBiBbMMU8s5tICemzpQ3hi5EpxzGW+JA==}
@@ -4789,6 +4805,9 @@ packages:
   node-releases@2.0.25:
     resolution: {integrity: sha512-4auku8B/vw5psvTiiN9j1dAOsXvMoGqJuKJcR+dTdqiXEK20mMTk1UEo3HS16LeGQsVG6+qKTPM9u/qQ2LqATA==}
 
+  node-releases@2.0.27:
+    resolution: {integrity: sha512-nmh3lCkYZ3grZvqcCH+fjmQ7X+H0OeZgP40OierEaAptX4XofMh5kwNbWh7lBduUzCcV/8kZ+NDLCwm2iorIlA==}
+
   npm-check-updates@19.1.2:
     resolution: {integrity: sha512-FNeFCVgPOj0fz89hOpGtxP2rnnRHR7hD2E8qNU8SMWfkyDZXA/xpgjsL3UMLSo3F/K13QvJDnbxPngulNDDo/g==}
     engines: {node: '>=20.0.0', npm: '>=8.12.1'}
@@ -5836,6 +5855,12 @@ packages:
     peerDependencies:
       browserslist: '>= 4.21.0'
 
+  update-browserslist-db@1.2.3:
+    resolution: {integrity: sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==}
+    hasBin: true
+    peerDependencies:
+      browserslist: '>= 4.21.0'
+
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
 
@@ -6352,12 +6377,6 @@ snapshots:
       js-tokens: 4.0.0
       picocolors: 1.1.1
 
-  '@babel/code-frame@7.28.6':
-    dependencies:
-      '@babel/helper-validator-identifier': 7.28.5
-      js-tokens: 4.0.0
-      picocolors: 1.1.1
-
   '@babel/code-frame@7.29.0':
     dependencies:
       '@babel/helper-validator-identifier': 7.28.5
@@ -6366,7 +6385,7 @@ snapshots:
 
   '@babel/compat-data@7.28.4': {}
 
-  '@babel/compat-data@7.28.6': {}
+  '@babel/compat-data@7.29.0': {}
 
   '@babel/core@7.28.4':
     dependencies:
@@ -6388,12 +6407,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/core@7.28.6':
+  '@babel/core@7.29.0':
     dependencies:
-      '@babel/code-frame': 7.28.6
+      '@babel/code-frame': 7.29.0
       '@babel/generator': 7.29.1
       '@babel/helper-compilation-targets': 7.28.6
-      '@babel/helper-module-transforms': 7.28.6(@babel/core@7.28.6)
+      '@babel/helper-module-transforms': 7.28.6(@babel/core@7.29.0)
       '@babel/helpers': 7.28.6
       '@babel/parser': 7.29.0
       '@babel/template': 7.28.6
@@ -6430,9 +6449,9 @@ snapshots:
 
   '@babel/helper-compilation-targets@7.28.6':
     dependencies:
-      '@babel/compat-data': 7.28.6
+      '@babel/compat-data': 7.29.0
       '@babel/helper-validator-option': 7.27.1
-      browserslist: 4.26.3
+      browserslist: 4.28.1
       lru-cache: 5.1.1
       semver: 6.3.1
 
@@ -6481,9 +6500,18 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/helper-module-transforms@7.28.6(@babel/core@7.28.6)':
+  '@babel/helper-module-transforms@7.28.6(@babel/core@7.28.4)':
     dependencies:
-      '@babel/core': 7.28.6
+      '@babel/core': 7.28.4
+      '@babel/helper-module-imports': 7.28.6
+      '@babel/helper-validator-identifier': 7.28.5
+      '@babel/traverse': 7.29.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@babel/helper-module-transforms@7.28.6(@babel/core@7.29.0)':
+    dependencies:
+      '@babel/core': 7.29.0
       '@babel/helper-module-imports': 7.28.6
       '@babel/helper-validator-identifier': 7.28.5
       '@babel/traverse': 7.29.0
@@ -6495,6 +6523,8 @@ snapshots:
       '@babel/types': 7.29.0
 
   '@babel/helper-plugin-utils@7.27.1': {}
+
+  '@babel/helper-plugin-utils@7.28.6': {}
 
   '@babel/helper-replace-supers@7.27.1(@babel/core@7.28.4)':
     dependencies:
@@ -6541,30 +6571,30 @@ snapshots:
   '@babel/plugin-syntax-jsx@7.27.1(@babel/core@7.28.4)':
     dependencies:
       '@babel/core': 7.28.4
-      '@babel/helper-plugin-utils': 7.27.1
+      '@babel/helper-plugin-utils': 7.28.6
 
   '@babel/plugin-syntax-typescript@7.27.1(@babel/core@7.28.4)':
     dependencies:
       '@babel/core': 7.28.4
-      '@babel/helper-plugin-utils': 7.27.1
+      '@babel/helper-plugin-utils': 7.28.6
 
   '@babel/plugin-transform-modules-commonjs@7.27.1(@babel/core@7.28.4)':
     dependencies:
       '@babel/core': 7.28.4
-      '@babel/helper-module-transforms': 7.28.3(@babel/core@7.28.4)
-      '@babel/helper-plugin-utils': 7.27.1
+      '@babel/helper-module-transforms': 7.28.6(@babel/core@7.28.4)
+      '@babel/helper-plugin-utils': 7.28.6
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/plugin-transform-react-jsx-self@7.27.1(@babel/core@7.28.6)':
+  '@babel/plugin-transform-react-jsx-self@7.27.1(@babel/core@7.29.0)':
     dependencies:
-      '@babel/core': 7.28.6
-      '@babel/helper-plugin-utils': 7.27.1
+      '@babel/core': 7.29.0
+      '@babel/helper-plugin-utils': 7.28.6
 
-  '@babel/plugin-transform-react-jsx-source@7.27.1(@babel/core@7.28.6)':
+  '@babel/plugin-transform-react-jsx-source@7.27.1(@babel/core@7.29.0)':
     dependencies:
-      '@babel/core': 7.28.6
-      '@babel/helper-plugin-utils': 7.27.1
+      '@babel/core': 7.29.0
+      '@babel/helper-plugin-utils': 7.28.6
 
   '@babel/plugin-transform-typescript@7.28.0(@babel/core@7.28.4)':
     dependencies:
@@ -8421,7 +8451,7 @@ snapshots:
 
   '@radix-ui/rect@1.1.1': {}
 
-  '@rolldown/pluginutils@1.0.0-beta.53': {}
+  '@rolldown/pluginutils@1.0.0-rc.3': {}
 
   '@rollup/rollup-android-arm-eabi@4.56.0':
     optional: true
@@ -8915,12 +8945,12 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.11.1':
     optional: true
 
-  '@vitejs/plugin-react@5.1.2(vite@7.3.1(@types/node@25.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))':
+  '@vitejs/plugin-react@5.1.4(vite@7.3.1(@types/node@25.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))':
     dependencies:
-      '@babel/core': 7.28.6
-      '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.28.6)
-      '@babel/plugin-transform-react-jsx-source': 7.27.1(@babel/core@7.28.6)
-      '@rolldown/pluginutils': 1.0.0-beta.53
+      '@babel/core': 7.29.0
+      '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.29.0)
+      '@babel/plugin-transform-react-jsx-source': 7.27.1(@babel/core@7.29.0)
+      '@rolldown/pluginutils': 1.0.0-rc.3
       '@types/babel__core': 7.20.5
       react-refresh: 0.18.0
       vite: 7.3.1(@types/node@25.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
@@ -9142,6 +9172,8 @@ snapshots:
 
   balanced-match@1.0.2: {}
 
+  baseline-browser-mapping@2.10.0: {}
+
   baseline-browser-mapping@2.9.19: {}
 
   bcrypt@6.0.0:
@@ -9188,6 +9220,14 @@ snapshots:
       node-releases: 2.0.25
       update-browserslist-db: 1.1.3(browserslist@4.26.3)
 
+  browserslist@4.28.1:
+    dependencies:
+      baseline-browser-mapping: 2.10.0
+      caniuse-lite: 1.0.30001775
+      electron-to-chromium: 1.5.302
+      node-releases: 2.0.27
+      update-browserslist-db: 1.2.3(browserslist@4.28.1)
+
   buffer-equal-constant-time@1.0.1: {}
 
   bundle-name@4.1.0:
@@ -9231,6 +9271,8 @@ snapshots:
   callsites@3.1.0: {}
 
   caniuse-lite@1.0.30001766: {}
+
+  caniuse-lite@1.0.30001775: {}
 
   chai@6.2.2: {}
 
@@ -9556,6 +9598,8 @@ snapshots:
       fast-check: 3.23.2
 
   electron-to-chromium@1.5.237: {}
+
+  electron-to-chromium@1.5.302: {}
 
   embla-carousel-react@8.6.0(react@19.2.4):
     dependencies:
@@ -10892,10 +10936,10 @@ snapshots:
 
   negotiator@1.0.0: {}
 
-  next-auth@5.0.0-beta.30(next@16.1.6(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.4))(react@19.2.4))(react@19.2.4):
+  next-auth@5.0.0-beta.30(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.4))(react@19.2.4))(react@19.2.4):
     dependencies:
       '@auth/core': 0.41.0
-      next: 16.1.6(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.4))(react@19.2.4)
+      next: 16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.4))(react@19.2.4)
       react: 19.2.4
 
   next-themes@0.4.6(react-dom@19.2.0(react@19.2.4))(react@19.2.4):
@@ -10903,7 +10947,7 @@ snapshots:
       react: 19.2.4
       react-dom: 19.2.0(react@19.2.4)
 
-  next@16.1.6(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.4))(react@19.2.4):
+  next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.0(react@19.2.4))(react@19.2.4):
     dependencies:
       '@next/env': 16.1.6
       '@swc/helpers': 0.5.15
@@ -10912,7 +10956,7 @@ snapshots:
       postcss: 8.4.31
       react: 19.2.4
       react-dom: 19.2.0(react@19.2.4)
-      styled-jsx: 5.1.6(@babel/core@7.28.6)(react@19.2.4)
+      styled-jsx: 5.1.6(@babel/core@7.29.0)(react@19.2.4)
     optionalDependencies:
       '@next/swc-darwin-arm64': 16.1.6
       '@next/swc-darwin-x64': 16.1.6
@@ -10945,6 +10989,8 @@ snapshots:
   node-gyp-build@4.8.4: {}
 
   node-releases@2.0.25: {}
+
+  node-releases@2.0.27: {}
 
   npm-check-updates@19.1.2: {}
 
@@ -11919,12 +11965,12 @@ snapshots:
 
   strip-json-comments@3.1.1: {}
 
-  styled-jsx@5.1.6(@babel/core@7.28.6)(react@19.2.4):
+  styled-jsx@5.1.6(@babel/core@7.29.0)(react@19.2.4):
     dependencies:
       client-only: 0.0.1
       react: 19.2.4
     optionalDependencies:
-      '@babel/core': 7.28.6
+      '@babel/core': 7.29.0
 
   supports-color@7.2.0:
     dependencies:
@@ -12107,6 +12153,12 @@ snapshots:
   update-browserslist-db@1.1.3(browserslist@4.26.3):
     dependencies:
       browserslist: 4.26.3
+      escalade: 3.2.0
+      picocolors: 1.1.1
+
+  update-browserslist-db@1.2.3(browserslist@4.28.1):
+    dependencies:
+      browserslist: 4.28.1
       escalade: 3.2.0
       picocolors: 1.1.1
 
