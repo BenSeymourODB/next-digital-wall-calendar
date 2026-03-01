@@ -274,8 +274,8 @@ importers:
         specifier: ^3.8.1
         version: 3.8.1
       prettier-plugin-tailwindcss:
-        specifier: ^0.7.1
-        version: 0.7.1(@trivago/prettier-plugin-sort-imports@6.0.2(prettier@3.8.1))(prettier@3.8.1)
+        specifier: ^0.7.2
+        version: 0.7.2(@trivago/prettier-plugin-sort-imports@6.0.2(prettier@3.8.1))(prettier@3.8.1)
       prisma:
         specifier: ^7.3.0
         version: 7.3.0(@types/react@19.2.13)(react-dom@19.2.0(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
@@ -5086,8 +5086,8 @@ packages:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
 
-  prettier-plugin-tailwindcss@0.7.1:
-    resolution: {integrity: sha512-Bzv1LZcuiR1Sk02iJTS1QzlFNp/o5l2p3xkopwOrbPmtMeh3fK9rVW5M3neBQzHq+kGKj/4LGQMTNcTH4NGPtQ==}
+  prettier-plugin-tailwindcss@0.7.2:
+    resolution: {integrity: sha512-LkphyK3Fw+q2HdMOoiEHWf93fNtYJwfamoKPl7UwtjFQdei/iIBoX11G6j706FzN3ymX9mPVi97qIY8328vdnA==}
     engines: {node: '>=20.19'}
     peerDependencies:
       '@ianvs/prettier-plugin-sort-imports': '*'
@@ -11239,7 +11239,7 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
-  prettier-plugin-tailwindcss@0.7.1(@trivago/prettier-plugin-sort-imports@6.0.2(prettier@3.8.1))(prettier@3.8.1):
+  prettier-plugin-tailwindcss@0.7.2(@trivago/prettier-plugin-sort-imports@6.0.2(prettier@3.8.1))(prettier@3.8.1):
     dependencies:
       prettier: 3.8.1
     optionalDependencies:
