@@ -29,7 +29,8 @@
     "bump-deps-minor": "ncu --target minor -u && pnpm install",
     "bump-deps": "ncu -x recharts -u && pnpm install",
     "bump-ui": "npx shadcn@latest add --all --overwrite",
-    "prepare": "husky"
+    "prepare": "husky",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
