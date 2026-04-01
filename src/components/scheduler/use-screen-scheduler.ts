@@ -95,6 +95,12 @@ export function useScreenScheduler(
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVisibleRef = useRef(true);
+  const currentIndexRef = useRef(currentIndex);
+
+  // Keep index ref in sync for use in interval callbacks (via effect to satisfy React Compiler)
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
 
   // Get the currently active sequence
   const activeSequence = config.sequences.find(
@@ -183,14 +189,13 @@ export function useScreenScheduler(
       setTimeUntilNextNav(countdown);
     }, 1000);
 
-    // Navigation interval
+    // Navigation interval — router.push must be outside the state updater
+    // to avoid updating Router during React's render phase
     intervalRef.current = setInterval(() => {
       const screens = activeSequence.screens;
-      setCurrentIndex((prev) => {
-        const nextIndex = (prev + 1) % screens.length;
-        router.push(screens[nextIndex]);
-        return nextIndex;
-      });
+      const nextIndex = (currentIndexRef.current + 1) % screens.length;
+      setCurrentIndex(nextIndex);
+      router.push(screens[nextIndex]);
     }, activeSequence.intervalSeconds * 1000);
 
     return () => {
@@ -236,11 +241,12 @@ export function useScreenScheduler(
       }
     };
 
-    // Check immediately and then every 60 seconds
-    checkTimeSpecific();
+    // Check after the current render cycle completes, then every 60 seconds
+    const immediateCheck = setTimeout(checkTimeSpecific, 0);
     timeCheckRef.current = setInterval(checkTimeSpecific, 60000);
 
     return () => {
+      clearTimeout(immediateCheck);
       if (timeCheckRef.current) {
         clearInterval(timeCheckRef.current);
         timeCheckRef.current = null;
