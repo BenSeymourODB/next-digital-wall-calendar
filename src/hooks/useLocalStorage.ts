@@ -1,42 +1,61 @@
-import { useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
+
+function getServerSnapshot<T>(initialValue: T): () => T {
+  return () => initialValue;
+}
 
 export function useLocalStorage<T>(
   key: string,
   initialValue: T
 ): [T, (value: T) => void] {
-  // State to store our value
-  // Pass initial state function to useState so logic is only executed once
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    if (typeof window === "undefined") {
-      return initialValue;
-    }
+  // Subscribe to storage events so the hook re-renders when another tab writes
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      const handler = (e: StorageEvent) => {
+        if (e.key === key) onStoreChange();
+      };
+      window.addEventListener("storage", handler);
+      return () => window.removeEventListener("storage", handler);
+    },
+    [key]
+  );
+
+  const getSnapshot = useCallback(() => {
     try {
-      // Get from local storage by key
       const item = window.localStorage.getItem(key);
-      // Parse stored json or if none return initialValue
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-      // If error also return initialValue
-      console.error("Error loading from localStorage:", error);
-      return initialValue;
+      return item ?? null;
+    } catch {
+      return null;
     }
-  });
+  }, [key]);
 
-  // Return a wrapped version of useState's setter function that
-  // persists the new value to localStorage.
-  const setValue = (value: T) => {
-    try {
-      // Save state
-      setStoredValue(value);
-      // Save to local storage
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(key, JSON.stringify(value));
+  // useSyncExternalStore handles hydration: server returns null,
+  // client reads localStorage — React reconciles without mismatch.
+  const raw = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot(null)
+  );
+
+  const value: T = raw !== null ? JSON.parse(raw) : initialValue;
+
+  const setValue = useCallback(
+    (newValue: T) => {
+      try {
+        window.localStorage.setItem(key, JSON.stringify(newValue));
+        // Dispatch a storage event so useSyncExternalStore re-renders
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key,
+            newValue: JSON.stringify(newValue),
+          })
+        );
+      } catch (error) {
+        console.error("Error saving to localStorage:", error);
       }
-    } catch (error) {
-      // A more advanced implementation would handle the error case
-      console.error("Error saving to localStorage:", error);
-    }
-  };
+    },
+    [key]
+  );
 
-  return [storedValue, setValue];
+  return [value, setValue];
 }
