@@ -92,7 +92,6 @@ export function useScreenScheduler(
     useState<TimeSpecificNavigation | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVisibleRef = useRef(true);
   const currentIndexRef = useRef(currentIndex);
@@ -167,10 +166,6 @@ export function useScreenScheduler(
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
-      }
       return;
     }
 
@@ -181,31 +176,27 @@ export function useScreenScheduler(
 
     const intervalSecs = activeSequence.intervalSeconds;
 
-    // Countdown timer (every second) — starts at full interval
+    // Single 1-second tick drives both countdown and navigation,
+    // keeping the progress indicator perfectly in sync with rotation.
     let countdown = intervalSecs;
-    countdownRef.current = setInterval(() => {
+
+    intervalRef.current = setInterval(() => {
       countdown -= 1;
-      if (countdown < 0) countdown = intervalSecs;
+      if (countdown <= 0) {
+        // Navigate to next screen
+        const screens = activeSequence.screens;
+        const nextIndex = (currentIndexRef.current + 1) % screens.length;
+        setCurrentIndex(nextIndex);
+        router.push(screens[nextIndex]);
+        countdown = intervalSecs;
+      }
       setTimeUntilNextNav(countdown);
     }, 1000);
-
-    // Navigation interval — router.push must be outside the state updater
-    // to avoid updating Router during React's render phase
-    intervalRef.current = setInterval(() => {
-      const screens = activeSequence.screens;
-      const nextIndex = (currentIndexRef.current + 1) % screens.length;
-      setCurrentIndex(nextIndex);
-      router.push(screens[nextIndex]);
-    }, activeSequence.intervalSeconds * 1000);
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
-      }
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
       }
     };
   }, [
