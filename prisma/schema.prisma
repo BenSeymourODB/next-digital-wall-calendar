@@ -67,12 +67,15 @@ model VerificationToken {
 
 // Application-specific models
 model UserSettings {
-  id                  String  @id @default(cuid())
-  userId              String  @unique
-  defaultTaskPoints   Int     @default(10)
-  rewardSystemEnabled Boolean @default(false)
-  theme               String  @default("light")
-  defaultZoomLevel    Float   @default(1.0)
+  id                     String  @id @default(cuid())
+  userId                 String  @unique
+  defaultTaskPoints      Int     @default(10)
+  rewardSystemEnabled    Boolean @default(false)
+  theme                  String  @default("light")
+  defaultZoomLevel       Float   @default(1.0)
+  timeFormat             String  @default("12h")
+  dateFormat             String  @default("MM/DD/YYYY")
+  showPointsOnCompletion Boolean @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
