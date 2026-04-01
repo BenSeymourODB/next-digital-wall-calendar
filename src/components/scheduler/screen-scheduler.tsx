@@ -42,7 +42,6 @@ export function ScreenScheduler({
   children,
   autoStart = false,
 }: ScreenSchedulerProps) {
-  const { state, controls } = useScreenScheduler(config);
   const [controlsVisible, setControlsVisible] = useState(true);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -54,19 +53,13 @@ export function ScreenScheduler({
     ? enabledSequence.pauseOnInteractionSeconds * 1000
     : 120000;
 
+  // Interaction detector runs unconditionally; externalPaused is threaded into hook
   const { isPaused: isInteractionPaused } = useInteractionDetector({
     pauseDurationMs,
-    enabled: state.isActive,
+    enabled: true,
   });
 
-  // Pause scheduler when user interacts
-  useEffect(() => {
-    if (isInteractionPaused && state.isActive && !state.isPaused) {
-      controls.pause();
-    } else if (!isInteractionPaused && state.isActive && state.isPaused) {
-      controls.resume();
-    }
-  }, [isInteractionPaused, state.isActive, state.isPaused, controls]);
+  const { state, controls } = useScreenScheduler(config, isInteractionPaused);
 
   // Auto-start on mount if requested
   useEffect(() => {
@@ -120,7 +113,7 @@ export function ScreenScheduler({
           break;
         case " ":
           e.preventDefault();
-          if (state.isPaused) {
+          if (state.isPaused || isInteractionPaused) {
             controls.resume();
           } else {
             controls.pause();
@@ -134,7 +127,7 @@ export function ScreenScheduler({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [state.isActive, state.isPaused, controls]);
+  }, [state.isActive, state.isPaused, isInteractionPaused, controls]);
 
   const totalScreens = enabledSequence ? enabledSequence.screens.length : 0;
 
@@ -145,12 +138,12 @@ export function ScreenScheduler({
         <NavigationControls
           currentIndex={state.currentIndex}
           totalScreens={totalScreens}
-          isPaused={state.isPaused}
+          isPaused={state.isPaused || isInteractionPaused}
           isVisible={controlsVisible}
           onPrevious={controls.navigateToPrevious}
           onNext={controls.navigateToNext}
           onTogglePause={() => {
-            if (state.isPaused) {
+            if (state.isPaused || isInteractionPaused) {
               controls.resume();
             } else {
               controls.pause();

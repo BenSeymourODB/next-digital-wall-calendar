@@ -20,8 +20,9 @@ export function isTimeMatch(currentTime: Date, scheduledTime: string): boolean {
   const scheduledTotalMinutes = scheduledHour * 60 + scheduledMinute;
 
   const diff = Math.abs(currentTotalMinutes - scheduledTotalMinutes);
+  const wrappedDiff = Math.min(diff, 1440 - diff);
 
-  return diff <= 1;
+  return wrappedDiff <= 1;
 }
 
 /**

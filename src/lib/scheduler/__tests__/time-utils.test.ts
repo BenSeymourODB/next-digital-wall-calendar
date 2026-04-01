@@ -46,6 +46,21 @@ describe("isTimeMatch", () => {
     const current = new Date(2024, 2, 15, 9, 0, 0);
     expect(isTimeMatch(current, "09:00")).toBe(true);
   });
+
+  it("matches across midnight: scheduled 23:59, current 00:00", () => {
+    const current = new Date(2024, 2, 15, 0, 0, 0);
+    expect(isTimeMatch(current, "23:59")).toBe(true);
+  });
+
+  it("matches across midnight: scheduled 00:00, current 23:59", () => {
+    const current = new Date(2024, 2, 15, 23, 59, 0);
+    expect(isTimeMatch(current, "00:00")).toBe(true);
+  });
+
+  it("does not match across midnight with 2 minute gap: scheduled 23:58, current 00:00", () => {
+    const current = new Date(2024, 2, 15, 0, 0, 0);
+    expect(isTimeMatch(current, "23:58")).toBe(false);
+  });
 });
 
 describe("isActiveDay", () => {

@@ -281,5 +281,113 @@ describe("useScreenScheduler", () => {
 
       expect(mockPush).not.toHaveBeenCalled();
     });
+
+    it("does not auto-navigate when externalPaused is true", () => {
+      const { result } = renderHook(() =>
+        useScreenScheduler(defaultConfig, true)
+      );
+
+      act(() => {
+        result.current.controls.start();
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(60000);
+      });
+
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it("manual pause works independently of externalPaused", () => {
+      const { result, rerender } = renderHook(
+        ({ config, ext }) => useScreenScheduler(config, ext),
+        { initialProps: { config: defaultConfig, ext: false } }
+      );
+
+      act(() => {
+        result.current.controls.start();
+      });
+
+      // Manual pause
+      act(() => {
+        result.current.controls.pause();
+      });
+      expect(result.current.state.isPaused).toBe(true);
+
+      // Externally unpaused — manual pause should still hold
+      rerender({ config: defaultConfig, ext: false });
+      expect(result.current.state.isPaused).toBe(true);
+
+      // Manual resume
+      act(() => {
+        result.current.controls.resume();
+      });
+      expect(result.current.state.isPaused).toBe(false);
+    });
+  });
+
+  describe("edge cases", () => {
+    it("single-screen sequence wraps to same index on navigateToNext", () => {
+      const singleScreenConfig: ScheduleConfig = {
+        sequences: [
+          {
+            id: "seq-single",
+            name: "Single",
+            enabled: true,
+            screens: ["/calendar"],
+            intervalSeconds: 60,
+            pauseOnInteractionSeconds: 120,
+          },
+        ],
+        timeSpecific: [],
+      };
+      mockPathname.mockReturnValue("/calendar");
+      const { result } = renderHook(() =>
+        useScreenScheduler(singleScreenConfig)
+      );
+
+      act(() => {
+        result.current.controls.start();
+      });
+
+      act(() => {
+        result.current.controls.navigateToNext();
+      });
+
+      expect(result.current.state.currentIndex).toBe(0);
+      expect(mockPush).toHaveBeenCalledWith("/calendar");
+    });
+
+    it("pause when already paused is idempotent", () => {
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      act(() => {
+        result.current.controls.start();
+      });
+
+      act(() => {
+        result.current.controls.pause();
+      });
+      expect(result.current.state.isPaused).toBe(true);
+
+      act(() => {
+        result.current.controls.pause();
+      });
+      expect(result.current.state.isPaused).toBe(true);
+    });
+
+    it("resume when already resumed is idempotent", () => {
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      act(() => {
+        result.current.controls.start();
+      });
+      expect(result.current.state.isPaused).toBe(false);
+
+      act(() => {
+        result.current.controls.resume();
+      });
+      expect(result.current.state.isPaused).toBe(false);
+    });
   });
 });

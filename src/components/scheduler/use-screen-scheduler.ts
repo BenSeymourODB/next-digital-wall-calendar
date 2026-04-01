@@ -68,7 +68,8 @@ function findActiveTimeSpecific(
  * @returns Object with scheduler state and control functions
  */
 export function useScreenScheduler(
-  config: ScheduleConfig
+  config: ScheduleConfig,
+  externalPaused: boolean = false
 ): UseScreenSchedulerResult {
   const router = useRouter();
   const pathname = usePathname();
@@ -149,7 +150,13 @@ export function useScreenScheduler(
   // --- Auto-rotation interval ---
 
   useEffect(() => {
-    if (!isActive || isPaused || !activeSequence || !isVisibleRef.current) {
+    if (
+      !isActive ||
+      isPaused ||
+      externalPaused ||
+      !activeSequence ||
+      !isVisibleRef.current
+    ) {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -196,7 +203,14 @@ export function useScreenScheduler(
         countdownRef.current = null;
       }
     };
-  }, [isActive, isPaused, activeSequence, activeTimeSpecific, router]);
+  }, [
+    isActive,
+    isPaused,
+    externalPaused,
+    activeSequence,
+    activeTimeSpecific,
+    router,
+  ]);
 
   // --- Time-specific navigation check (every 60 seconds) ---
 
@@ -223,6 +237,7 @@ export function useScreenScheduler(
     };
 
     // Check immediately and then every 60 seconds
+    checkTimeSpecific();
     timeCheckRef.current = setInterval(checkTimeSpecific, 60000);
 
     return () => {

@@ -10,17 +10,6 @@ import type {
   TimeSpecificNavigation,
 } from "@/components/scheduler/types";
 
-let idCounter = 0;
-
-/**
- * Generate a unique ID for schedule items.
- * Uses a combination of timestamp and counter to ensure uniqueness.
- */
-function generateId(prefix: string): string {
-  idCounter += 1;
-  return `${prefix}-${Date.now()}-${idCounter}`;
-}
-
 /**
  * Create a new ScreenSequence with default values.
  *
@@ -28,7 +17,7 @@ function generateId(prefix: string): string {
  */
 export function createDefaultSequence(): ScreenSequence {
   return {
-    id: generateId("seq"),
+    id: `seq-${crypto.randomUUID()}`,
     name: "New Sequence",
     enabled: true,
     screens: ["/calendar"],
@@ -44,7 +33,7 @@ export function createDefaultSequence(): ScreenSequence {
  */
 export function createDefaultTimeSpecific(): TimeSpecificNavigation {
   return {
-    id: generateId("ts"),
+    id: `ts-${crypto.randomUUID()}`,
     enabled: true,
     screen: "/calendar",
     time: "12:00",
