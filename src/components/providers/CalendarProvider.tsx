@@ -8,6 +8,7 @@ import {
   loadSettings,
   saveColorMappings,
 } from "@/lib/calendar-storage";
+import { transformGoogleEvent } from "@/lib/calendar-transform";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import type {
@@ -87,90 +88,6 @@ export function useCalendar() {
   return context;
 }
 
-/**
- * Transform Google Calendar event to our IEvent format
- * Uses color mappings from Google Calendar API when available
- */
-function transformGoogleEvent(
-  googleEvent: GoogleCalendarEvent,
-  colorMappings: CalendarColorMapping[]
-): IEvent {
-  const startDate =
-    googleEvent.start.dateTime ||
-    googleEvent.start.date ||
-    new Date().toISOString();
-  const endDate =
-    googleEvent.end.dateTime ||
-    googleEvent.end.date ||
-    new Date().toISOString();
-
-  // Priority 1: Look up by calendarId in color mappings (from Google Calendar API)
-  const calendarMapping = colorMappings.find(
-    (m) => m.calendarId === googleEvent.calendarId
-  );
-  if (calendarMapping) {
-    return {
-      id: googleEvent.id,
-      startDate,
-      endDate,
-      title: googleEvent.summary || "Untitled Event",
-      description: googleEvent.description || "",
-      color: calendarMapping.tailwindColor,
-      user: {
-        id: googleEvent.creator?.email || "unknown",
-        name: googleEvent.creator?.displayName || "Unknown",
-        picturePath: null,
-      },
-    };
-  }
-
-  // Priority 2: Fall back to existing colorId mapping (legacy)
-  const colorMap: Record<string, TEventColor> = {
-    "1": "blue",
-    "2": "green",
-    "3": "purple",
-    "4": "red",
-    "5": "yellow",
-    "6": "orange",
-    "7": "blue",
-    "8": "blue",
-    "9": "blue",
-    "10": "green",
-    "11": "red",
-  };
-
-  if (googleEvent.colorId && colorMap[googleEvent.colorId]) {
-    return {
-      id: googleEvent.id,
-      startDate,
-      endDate,
-      title: googleEvent.summary || "Untitled Event",
-      description: googleEvent.description || "",
-      color: colorMap[googleEvent.colorId],
-      user: {
-        id: googleEvent.creator?.email || "unknown",
-        name: googleEvent.creator?.displayName || "Unknown",
-        picturePath: null,
-      },
-    };
-  }
-
-  // Priority 3: Default to blue
-  return {
-    id: googleEvent.id,
-    startDate,
-    endDate,
-    title: googleEvent.summary || "Untitled Event",
-    description: googleEvent.description || "",
-    color: "blue",
-    user: {
-      id: googleEvent.creator?.email || "unknown",
-      name: googleEvent.creator?.displayName || "Unknown",
-      picturePath: null,
-    },
-  };
-}
-
 export function CalendarProvider({
   children,
   badge = "colored",
@@ -216,7 +133,10 @@ export function CalendarProvider({
   const [filteredEvents, setFilteredEvents] = useState<IEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [colorMappings, setColorMappings] = useState<CalendarColorMapping[]>(
-    []
+    () => {
+      if (typeof window === "undefined") return [];
+      return loadColorMappings();
+    }
   );
   const [calendarIds, setCalendarIds] = useState<string[]>([]);
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
@@ -409,7 +329,7 @@ export function CalendarProvider({
           description: event.description,
           start: { dateTime: event.startDate },
           end: { dateTime: event.endDate },
-          calendarId: "primary", // Simplified for cache
+          calendarId: event.calendarId || "primary",
         })
       );
       await eventCache.saveEvents(googleEvents);
@@ -545,15 +465,8 @@ export function CalendarProvider({
     [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
   );
 
-  // Load color mappings from localStorage on mount
-  useEffect(() => {
-    const mappings = loadColorMappings();
-    setColorMappings(mappings);
-    logger.log("Loaded color mappings on mount", { count: mappings.length });
-  }, []);
-
-  // Color mappings are now fetched as part of refreshEvents
-  // This effect handles initial load from localStorage only
+  // Color mappings are initialized synchronously from localStorage in useState.
+  // They are also refreshed from the API as part of refreshEvents.
 
   // Load cached events on mount, then refresh from API when authenticated
   useEffect(() => {

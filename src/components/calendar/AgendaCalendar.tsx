@@ -35,18 +35,13 @@ function sortEventsByStartTime(events: IEvent[]): IEvent[] {
 }
 
 /**
- * Check if event is all-day
+ * Check if event is all-day.
+ * Uses the isAllDay flag from Google Calendar API rather than duration calculation.
+ * Google marks all-day events with start.date (not start.dateTime), which is
+ * captured during transformation.
  */
 function isAllDayEvent(event: IEvent): boolean {
-  const start = new Date(event.startDate);
-  const end = new Date(event.endDate);
-
-  // Check if event starts at midnight and spans 24 hours or more
-  const isStartMidnight = start.getHours() === 0 && start.getMinutes() === 0;
-  const duration = end.getTime() - start.getTime();
-  const is24HoursOrMore = duration >= 24 * 60 * 60 * 1000;
-
-  return isStartMidnight && is24HoursOrMore;
+  return event.isAllDay;
 }
 
 /**
