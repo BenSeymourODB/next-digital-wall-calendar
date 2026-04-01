@@ -36,6 +36,8 @@ function createMockEvent(overrides: Partial<IEvent> & { id: string }): IEvent {
     endDate: getRelativeDate(0, 11, 0),
     color: "blue",
     description: "",
+    isAllDay: false,
+    calendarId: "primary",
     user: {
       id: "user-1",
       name: "Test User",

@@ -26,6 +26,8 @@ export interface IEvent {
   color: TEventColor;
   description: string;
   user: IUser;
+  isAllDay: boolean;
+  calendarId: string;
 }
 
 export interface ICalendarCell {

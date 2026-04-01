@@ -30,6 +30,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Get the Google account for this user
       const [googleAccount] = await prisma.account.findMany({
         where: { userId: user.id, provider: "google" },
+        orderBy: { expires_at: "desc" },
       });
 
       if (!googleAccount) {
