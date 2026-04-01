@@ -26,6 +26,8 @@ const createMockEvent = (overrides: Partial<IEvent> = {}): IEvent => ({
   endDate: "2024-03-15T11:00:00",
   color: "blue",
   description: "Test description",
+  isAllDay: false,
+  calendarId: "primary",
   user: {
     id: "user-1",
     name: "Test User",

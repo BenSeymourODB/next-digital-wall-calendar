@@ -69,90 +69,27 @@ This document tracks known issues, limitations, technical debt, and improvements
 >
 > The application no longer requires frequent re-authentication.
 
-### 5. Calendar Event Colors Not Persisting After Refresh
+### ~~5. Calendar Event Colors Not Persisting After Refresh~~ ✅ RESOLVED
 
-**Issue:** When a user authenticates with Google and loads Google calendar events, events from different connected calendars initially load in their distinct colors. However, after refreshing the page or switching tabs and returning a few minutes later, all events display in only blue.
+> **Resolved in PR #48** (#62) — Color mappings now initialize synchronously from localStorage on mount before first event transformation, eliminating the race condition.
 
-**Impact:** Users lose visual distinction between different calendars, making it harder to identify event sources at a glance.
+### ~~6. Agenda View Date Offset Bug~~ ✅ RESOLVED
 
-**Action Required:** Investigate event color storage/retrieval logic and ensure calendar colors persist across page reloads.
-
-**Possible Causes:**
-
-- Calendar metadata not being cached properly
-- Color mapping being lost during deserialization
-- Race condition in event loading
-
-**Timeline:** High priority (impacts core calendar functionality)
-
-### 6. Agenda View Date Offset Bug
-
-**Issue:** Events show on the correct days in SimpleCalendar month view, but the agenda view shows events offset one day prior to when they are scheduled.
-
-**Impact:** Users see incorrect event dates in the agenda view, leading to confusion and potential missed appointments.
-
-**Action Required:** Debug date handling in agenda view component and ensure timezone/date conversion is consistent with month view.
-
-**Possible Causes:**
-
-- Timezone conversion inconsistency
-- UTC vs local time handling
-- Date parsing during event transformation for agenda view
-
-**Timeline:** High priority (data accuracy is critical)
+> **Resolved in PR #48** (#63) — Date-only strings now get `T00:00:00` appended to force local time interpretation, fixing the UTC midnight timezone shift.
 
 ## Medium Priority
 
-### 1. All-Day Event Detection Logic (PR #23 Feedback)
+### ~~1. All-Day Event Detection Logic (PR #23 Feedback)~~ ✅ RESOLVED
 
-**Issue:** The all-day event detection in `AgendaCalendar.tsx` uses duration-based logic (`>= 24 hours`) which is incorrect for multi-day events.
+> **Resolved in PR #48** (#64) — Added `isAllDay` field to `IEvent` interface. `transformGoogleEvent` sets it based on presence of `start.date` vs `start.dateTime`. `AgendaCalendar` now uses `event.isAllDay` directly.
 
-**Impact:** Events spanning multiple days are incorrectly marked as all-day events.
+### ~~2. Color Mappings Race Condition (PR #23 Feedback)~~ ✅ RESOLVED
 
-**Root Cause:** Google Calendar API provides an explicit all-day indicator via the `date` (vs `dateTime`) field, but the current implementation checks duration instead.
+> **Resolved in PR #48** (#65) — Color mappings now initialize synchronously from localStorage in the `useState` initializer, before any event transformation occurs.
 
-**Fix Required:**
+### ~~3. All-Day Event Timezone Parsing (PR #23 Feedback)~~ ✅ RESOLVED
 
-- Check for the presence of `event.start.date` (vs `event.start.dateTime`) to determine all-day status
-- Or check for exactly 24 hours rather than "24 hours or more"
-
-**Location:** `src/components/calendar/AgendaCalendar.tsx` (lines 44-49)
-
-**Timeline:** Next iteration
-
-### 2. Color Mappings Race Condition (PR #23 Feedback)
-
-**Issue:** Color mappings load asynchronously after event transformation, creating a race condition on initial mount.
-
-**Impact:** Cached events are transformed with empty `colorMappings` on mount, causing event colors to be incorrect until the next refresh.
-
-**Root Cause:** The `useEffect` that fetches color mappings runs after the initial render, but events are transformed immediately from cache.
-
-**Fix Required:**
-
-- Load `colorMappings` from localStorage synchronously before first transformation
-- Or defer event transformation until `colorMappings` are loaded
-
-**Location:** `src/components/providers/CalendarProvider.tsx` (lines 307-322)
-
-**Timeline:** Next iteration
-
-### 3. All-Day Event Timezone Parsing (PR #23 Feedback)
-
-**Issue:** All-day event dates stored without timezone indicators get misinterpreted by JavaScript.
-
-**Impact:** Events may appear on the wrong day depending on user's local timezone (dates like "2026-01-05" parse as UTC midnight, which shifts to the previous day in many local timezones).
-
-**Root Cause:** JavaScript's `Date` constructor interprets date-only strings as UTC, not local time.
-
-**Fix Required:**
-
-- Parse all-day event dates explicitly with local timezone handling
-- Or append 'T00:00:00' to force local time interpretation
-
-**Location:** `src/components/providers/CalendarProvider.tsx` (lines 89-97)
-
-**Timeline:** Next iteration
+> **Resolved in PR #48** (#66) — Date-only strings now get `T00:00:00` appended during event transformation to force local time interpretation.
 
 ### 4. Token Storage Security
 
