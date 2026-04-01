@@ -37,7 +37,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@microsoft/applicationinsights-web": "^3.3.11",
     "@prisma/adapter-pg": "^7.3.0",
-    "@prisma/client": "^7.3.0",
+    "@prisma/client": "^7.6.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",
