@@ -82,4 +82,24 @@ describe("ScreenScheduler", () => {
       screen.queryByRole("navigation", { name: /screen rotation controls/i })
     ).not.toBeInTheDocument();
   });
+
+  it("renders status indicator when scheduler is active", () => {
+    render(
+      <ScreenScheduler config={defaultConfig} autoStart>
+        <div>Content</div>
+      </ScreenScheduler>
+    );
+
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("does not render status indicator when scheduler is inactive", () => {
+    render(
+      <ScreenScheduler config={emptyConfig}>
+        <div>Content</div>
+      </ScreenScheduler>
+    );
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
 });
