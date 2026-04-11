@@ -112,7 +112,7 @@ try {
   await criticalSystemOperation();
 } catch (error) {
   logger.critical(error as Error, {
-    operation: "critical-system-op"
+    operation: "critical-system-op",
   });
 }
 ```
@@ -170,10 +170,14 @@ function MyComponent() {
 ```typescript
 // Validation error (expected, not exceptional)
 if (!userId || userId.length === 0) {
-  logger.log("Validation failed: User ID required", {
-    field: "userId",
-    endpoint: "/api/users"
-  }, "warn");
+  logger.log(
+    "Validation failed: User ID required",
+    {
+      field: "userId",
+      endpoint: "/api/users",
+    },
+    "warn"
+  );
   return NextResponse.json({ error: "User ID is required" }, { status: 400 });
 }
 

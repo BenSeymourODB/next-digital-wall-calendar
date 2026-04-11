@@ -765,11 +765,11 @@ export class RecognitionSessionManager {
 
 ```typescript
 // src/app/api/face-recognition/settings/route.ts
-import { requireAuth, getCurrentUser } from '@/lib/auth/helpers';
-import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
-import { NextRequest, NextResponse } from 'next/server';
-import { encrypt, decrypt } from '@/lib/encryption';
+import { getCurrentUser, requireAuth } from "@/lib/auth/helpers";
+import { prisma } from "@/lib/db";
+import { decrypt, encrypt } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET() {
   try {
@@ -788,7 +788,7 @@ export async function GET() {
 
     // Decrypt API key for display (masked)
     const decryptedApiKey = decrypt(settings.frigateApiKey);
-    const maskedApiKey = decryptedApiKey.slice(0, 4) + '*'.repeat(12);
+    const maskedApiKey = decryptedApiKey.slice(0, 4) + "*".repeat(12);
 
     return NextResponse.json({
       ...settings,
@@ -796,14 +796,11 @@ export async function GET() {
     });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/face-recognition/settings',
-      method: 'GET',
+      endpoint: "/api/face-recognition/settings",
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch settings' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });
   }
 }
 
@@ -827,7 +824,7 @@ export async function POST(request: NextRequest) {
     // Validate required fields if enabling
     if (enabled && (!frigateUrl || !frigateApiKey || !cameraName)) {
       return NextResponse.json(
-        { error: 'Frigate URL, API key, and camera name are required' },
+        { error: "Frigate URL, API key, and camera name are required" },
         { status: 400 }
       );
     }
@@ -851,9 +848,9 @@ export async function POST(request: NextRequest) {
       create: {
         userId: user.id,
         enabled: enabled || false,
-        frigateUrl: frigateUrl || '',
-        frigateApiKey: encryptedApiKey || '',
-        cameraName: cameraName || '',
+        frigateUrl: frigateUrl || "",
+        frigateApiKey: encryptedApiKey || "",
+        cameraName: cameraName || "",
         confidenceThreshold: confidenceThreshold || 85,
         autoSwitchDelay: autoSwitchDelay || 2,
         cameraTimeout: cameraTimeout || 10,
@@ -862,7 +859,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    logger.event('FaceRecognitionSettingsUpdated', {
+    logger.event("FaceRecognitionSettingsUpdated", {
       userId: user.id,
       enabled: settings.enabled,
     });
@@ -870,14 +867,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/face-recognition/settings',
-      method: 'POST',
+      endpoint: "/api/face-recognition/settings",
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to update settings' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
   }
 }
 
@@ -893,19 +887,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (!settings || !settings.enabled) {
-      return NextResponse.json(
-        { error: 'Face recognition not enabled' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Face recognition not enabled" }, { status: 400 });
     }
 
     // Create session
     const session = await prisma.recognitionSession.create({
       data: {
         userId: user.id,
-        status: 'idle',
+        status: "idle",
         detectedFaces: [],
-        source: 'manual',
+        source: "manual",
       },
     });
 
@@ -932,22 +923,16 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/face-recognition/session',
-      method: 'POST',
+      endpoint: "/api/face-recognition/session",
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to start recognition session' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to start recognition session" }, { status: 500 });
   }
 }
 
 // src/app/api/face-recognition/session/[id]/route.ts
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -960,10 +945,7 @@ export async function GET(
     });
 
     if (!session) {
-      return NextResponse.json(
-        { error: 'Session not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
     // Get profiles for detected faces
@@ -980,7 +962,7 @@ export async function GET(
     });
 
     const result: RecognitionResult = {
-      status: profileIds.length === 0 ? 'none' : profileIds.length === 1 ? 'single' : 'multiple',
+      status: profileIds.length === 0 ? "none" : profileIds.length === 1 ? "single" : "multiple",
       faces: detectedFaces.map((df) => ({
         profileId: df.profileId,
         profile: profiles.find((p) => p.id === df.profileId),
@@ -996,20 +978,14 @@ export async function GET(
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/face-recognition/session/${params.id}`,
-      method: 'GET',
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch session' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch session" }, { status: 500 });
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -1023,22 +999,19 @@ export async function DELETE(
     });
 
     if (!session) {
-      return NextResponse.json(
-        { error: 'Session not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
     // Update session
     await prisma.recognitionSession.update({
       where: { id: params.id },
       data: {
-        status: 'timeout',
+        status: "timeout",
         endedAt: new Date(),
       },
     });
 
-    logger.event('RecognitionSessionCancelled', {
+    logger.event("RecognitionSessionCancelled", {
       sessionId: params.id,
       userId: user.id,
     });
@@ -1047,13 +1020,10 @@ export async function DELETE(
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/face-recognition/session/${params.id}`,
-      method: 'DELETE',
+      method: "DELETE",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to cancel session' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to cancel session" }, { status: 500 });
   }
 }
 
@@ -1067,26 +1037,20 @@ export async function POST(request: NextRequest) {
     const adminProfile = await prisma.profile.findFirst({
       where: {
         userId: user.id,
-        type: 'admin',
+        type: "admin",
       },
     });
 
     if (!adminProfile) {
-      return NextResponse.json(
-        { error: 'Admin permissions required' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Admin permissions required" }, { status: 403 });
     }
 
     const formData = await request.formData();
-    const profileId = formData.get('profileId') as string;
-    const imageFile = formData.get('image') as File;
+    const profileId = formData.get("profileId") as string;
+    const imageFile = formData.get("image") as File;
 
     if (!profileId || !imageFile) {
-      return NextResponse.json(
-        { error: 'Profile ID and image are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Profile ID and image are required" }, { status: 400 });
     }
 
     // Get profile
@@ -1099,10 +1063,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!profile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
     // Get settings
@@ -1111,10 +1072,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!settings || !settings.enabled) {
-      return NextResponse.json(
-        { error: 'Face recognition not enabled' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Face recognition not enabled" }, { status: 400 });
     }
 
     // Initialize Frigate client
@@ -1134,10 +1092,7 @@ export async function POST(request: NextRequest) {
     const success = await frigateClient.enrollFace(frigatePersonId, profile.name, imageBlob);
 
     if (!success) {
-      return NextResponse.json(
-        { error: 'Failed to enroll face' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to enroll face" }, { status: 500 });
     }
 
     // Update or create ProfileFaceData
@@ -1155,7 +1110,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    logger.event('FaceEnrolled', {
+    logger.event("FaceEnrolled", {
       userId: user.id,
       profileId: profile.id,
       photoCount: faceData.photoCount,
@@ -1167,14 +1122,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/face-recognition/enroll',
-      method: 'POST',
+      endpoint: "/api/face-recognition/enroll",
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to enroll face' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to enroll face" }, { status: 500 });
   }
 }
 ```

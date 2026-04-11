@@ -746,10 +746,10 @@ export function getFloatingDate(date: Date): { year: number; month: number; day:
 
 ```typescript
 // src/app/api/events/route.ts
-import { requireAuth, getCurrentUser } from '@/lib/auth/helpers';
-import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
-import { NextRequest, NextResponse } from 'next/server';
+import { getCurrentUser, requireAuth } from "@/lib/auth/helpers";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
@@ -757,10 +757,10 @@ export async function GET(request: NextRequest) {
     const user = await getCurrentUser();
 
     const { searchParams } = new URL(request.url);
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
-    const profileIds = searchParams.get('profileIds')?.split(',');
-    const includeDeleted = searchParams.get('includeDeleted') === 'true';
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
+    const profileIds = searchParams.get("profileIds")?.split(",");
+    const includeDeleted = searchParams.get("includeDeleted") === "true";
 
     // Build query
     const where: any = {
@@ -774,13 +774,13 @@ export async function GET(request: NextRequest) {
 
       if (startDate) {
         where.AND.push({
-          endTime: { gte: new Date(startDate) }
+          endTime: { gte: new Date(startDate) },
         });
       }
 
       if (endDate) {
         where.AND.push({
-          startTime: { lte: new Date(endDate) }
+          startTime: { lte: new Date(endDate) },
         });
       }
     }
@@ -789,8 +789,8 @@ export async function GET(request: NextRequest) {
     if (profileIds && profileIds.length > 0) {
       where.assignments = {
         some: {
-          profileId: { in: profileIds }
-        }
+          profileId: { in: profileIds },
+        },
       };
     }
 
@@ -799,37 +799,33 @@ export async function GET(request: NextRequest) {
       include: {
         assignments: {
           include: {
-            profile: true
-          }
-        }
+            profile: true,
+          },
+        },
       },
       orderBy: {
-        startTime: 'asc'
-      }
+        startTime: "asc",
+      },
     });
 
-    logger.log('Events fetched', {
+    logger.log("Events fetched", {
       userId: user.id,
       count: events.length,
-      dateRange: { startDate, endDate }
+      dateRange: { startDate, endDate },
     });
 
     return NextResponse.json({
       events,
       total: events.length,
-      hasMore: false
+      hasMore: false,
     });
-
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/events',
-      method: 'GET'
+      endpoint: "/api/events",
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch events' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch events" }, { status: 500 });
   }
 }
 
@@ -850,30 +846,27 @@ export async function POST(request: NextRequest) {
       color,
       emoji,
       reminders,
-      profileIds
+      profileIds,
     } = body;
 
     // Validation
     if (!title || !startTime || !endTime) {
       return NextResponse.json(
-        { error: 'Title, start time, and end time are required' },
+        { error: "Title, start time, and end time are required" },
         { status: 400 }
       );
     }
 
     if (new Date(endTime) < new Date(startTime)) {
-      return NextResponse.json(
-        { error: 'End time must be after start time' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "End time must be after start time" }, { status: 400 });
     }
 
     // Get active profile for createdBy
     const activeProfile = await prisma.profile.findFirst({
       where: {
         userId: user.id,
-        isActive: true
-      }
+        isActive: true,
+      },
     });
 
     const createdBy = activeProfile?.id || user.id;
@@ -888,56 +881,52 @@ export async function POST(request: NextRequest) {
         startTime: new Date(startTime),
         endTime: new Date(endTime),
         allDay: allDay ?? false,
-        timezone: timezone ?? 'UTC',
-        color: color ?? '#3B82F6',
+        timezone: timezone ?? "UTC",
+        color: color ?? "#3B82F6",
         emoji,
         reminders: reminders ?? [],
         createdBy,
         lastModifiedBy: createdBy,
-        assignments: profileIds && profileIds.length > 0 ? {
-          create: profileIds.map((profileId: string) => ({
-            profileId,
-            status: 'accepted'
-          }))
-        } : undefined
+        assignments:
+          profileIds && profileIds.length > 0
+            ? {
+                create: profileIds.map((profileId: string) => ({
+                  profileId,
+                  status: "accepted",
+                })),
+              }
+            : undefined,
       },
       include: {
         assignments: {
           include: {
-            profile: true
-          }
-        }
-      }
+            profile: true,
+          },
+        },
+      },
     });
 
-    logger.event('EventCreated', {
+    logger.event("EventCreated", {
       userId: user.id,
       eventId: event.id,
       title: event.title,
       allDay: event.allDay,
-      profileCount: profileIds?.length ?? 0
+      profileCount: profileIds?.length ?? 0,
     });
 
     return NextResponse.json(event, { status: 201 });
-
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/events',
-      method: 'POST'
+      endpoint: "/api/events",
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to create event' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to create event" }, { status: 500 });
   }
 }
 
 // src/app/api/events/[id]/route.ts
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -946,45 +935,35 @@ export async function GET(
     const event = await prisma.calendarEvent.findFirst({
       where: {
         id,
-        userId: user.id
+        userId: user.id,
       },
       include: {
         assignments: {
           include: {
-            profile: true
-          }
+            profile: true,
+          },
         },
         parentEvent: true,
-        childEvents: true
-      }
+        childEvents: true,
+      },
     });
 
     if (!event) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
     return NextResponse.json(event);
-
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/events/[id]',
-      method: 'GET'
+      endpoint: "/api/events/[id]",
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch event' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch event" }, { status: 500 });
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -994,15 +973,12 @@ export async function PATCH(
     const existingEvent = await prisma.calendarEvent.findFirst({
       where: {
         id,
-        userId: user.id
-      }
+        userId: user.id,
+      },
     });
 
     if (!existingEvent) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
     const body = await request.json();
@@ -1018,15 +994,15 @@ export async function PATCH(
       emoji,
       reminders,
       profileIds,
-      isDeleted
+      isDeleted,
     } = body;
 
     // Get active profile for lastModifiedBy
     const activeProfile = await prisma.profile.findFirst({
       where: {
         userId: user.id,
-        isActive: true
-      }
+        isActive: true,
+      },
     });
 
     const lastModifiedBy = activeProfile?.id || user.id;
@@ -1037,7 +1013,7 @@ export async function PATCH(
       if (profileIds !== undefined) {
         // Remove existing assignments
         await tx.eventProfileAssignment.deleteMany({
-          where: { eventId: id }
+          where: { eventId: id },
         });
 
         // Add new assignments
@@ -1046,8 +1022,8 @@ export async function PATCH(
             data: profileIds.map((profileId: string) => ({
               eventId: id,
               profileId,
-              status: 'accepted'
-            }))
+              status: "accepted",
+            })),
           });
         }
       }
@@ -1068,38 +1044,34 @@ export async function PATCH(
           ...(reminders !== undefined && { reminders }),
           ...(isDeleted !== undefined && {
             isDeleted,
-            deletedAt: isDeleted ? new Date() : null
+            deletedAt: isDeleted ? new Date() : null,
           }),
-          lastModifiedBy
+          lastModifiedBy,
         },
         include: {
           assignments: {
             include: {
-              profile: true
-            }
-          }
-        }
+              profile: true,
+            },
+          },
+        },
       });
     });
 
-    logger.event('EventUpdated', {
+    logger.event("EventUpdated", {
       userId: user.id,
       eventId: event.id,
-      updatedFields: Object.keys(body)
+      updatedFields: Object.keys(body),
     });
 
     return NextResponse.json(event);
-
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/events/[id]',
-      method: 'PATCH'
+      endpoint: "/api/events/[id]",
+      method: "PATCH",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to update event' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update event" }, { status: 500 });
   }
 }
 
@@ -1113,33 +1085,30 @@ export async function DELETE(
     const { id } = await params;
 
     const { searchParams } = new URL(request.url);
-    const permanent = searchParams.get('permanent') === 'true';
+    const permanent = searchParams.get("permanent") === "true";
 
     // Verify ownership
     const existingEvent = await prisma.calendarEvent.findFirst({
       where: {
         id,
-        userId: user.id
-      }
+        userId: user.id,
+      },
     });
 
     if (!existingEvent) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
     if (permanent) {
       // Hard delete
       await prisma.calendarEvent.delete({
-        where: { id }
+        where: { id },
       });
 
-      logger.event('EventDeleted', {
+      logger.event("EventDeleted", {
         userId: user.id,
         eventId: id,
-        permanent: true
+        permanent: true,
       });
     } else {
       // Soft delete
@@ -1147,29 +1116,25 @@ export async function DELETE(
         where: { id },
         data: {
           isDeleted: true,
-          deletedAt: new Date()
-        }
+          deletedAt: new Date(),
+        },
       });
 
-      logger.event('EventDeleted', {
+      logger.event("EventDeleted", {
         userId: user.id,
         eventId: id,
-        permanent: false
+        permanent: false,
       });
     }
 
     return NextResponse.json({ success: true });
-
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/events/[id]',
-      method: 'DELETE'
+      endpoint: "/api/events/[id]",
+      method: "DELETE",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to delete event' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to delete event" }, { status: 500 });
   }
 }
 ```
@@ -2049,24 +2014,22 @@ test("user can create timed event with profile assignment", async ({ page }) => 
 Implementation using `@upstash/ratelimit` or similar:
 
 ```typescript
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 
 const ratelimit = new Ratelimit({
   redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(60, '1 m'),
+  limiter: Ratelimit.slidingWindow(60, "1 m"),
   analytics: true,
 });
 
 // In API route:
-const { success, limit, remaining } = await ratelimit.limit(
-  `events:${user.id}:create`
-);
+const { success, limit, remaining } = await ratelimit.limit(`events:${user.id}:create`);
 
 if (!success) {
   return NextResponse.json(
-    { error: 'Rate limit exceeded. Try again later.' },
-    { status: 429, headers: { 'X-RateLimit-Remaining': remaining.toString() } }
+    { error: "Rate limit exceeded. Try again later." },
+    { status: 429, headers: { "X-RateLimit-Remaining": remaining.toString() } }
   );
 }
 ```

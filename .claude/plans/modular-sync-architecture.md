@@ -604,19 +604,19 @@ export const syncService = new SyncService();
 
 ```typescript
 // src/app/api/sync/modules/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { syncRegistry } from '@/lib/sync/registry';
-import { getServerSession } from '@/lib/auth';
+import { getServerSession } from "@/lib/auth";
+import { syncRegistry } from "@/lib/sync/registry";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession();
   if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const profileId = request.nextUrl.searchParams.get('profileId');
+  const profileId = request.nextUrl.searchParams.get("profileId");
   if (!profileId) {
-    return NextResponse.json({ error: 'Profile ID required' }, { status: 400 });
+    return NextResponse.json({ error: "Profile ID required" }, { status: 400 });
   }
 
   // Get all available modules with their status
@@ -627,7 +627,7 @@ export async function GET(request: NextRequest) {
       description: module.description,
       icon: module.icon,
       configured: await module.isConfigured(profileId),
-      status: await module.getSyncStatus(profileId)
+      status: await module.getSyncStatus(profileId),
     }))
   );
 
@@ -635,20 +635,17 @@ export async function GET(request: NextRequest) {
 }
 
 // src/app/api/sync/modules/[provider]/enable/route.ts
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { provider: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { provider: string } }) {
   const session = await getServerSession();
   if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { profileId } = await request.json();
   const module = syncRegistry.get(params.provider);
 
   if (!module) {
-    return NextResponse.json({ error: 'Unknown provider' }, { status: 404 });
+    return NextResponse.json({ error: "Unknown provider" }, { status: 404 });
   }
 
   const result = await module.enable(profileId);
@@ -660,13 +657,10 @@ export async function POST(
 
 // src/app/api/sync/[profileId]/route.ts
 // POST - Trigger manual sync for profile
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { profileId: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { profileId: string } }) {
   const session = await getServerSession();
   if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { provider } = await request.json();

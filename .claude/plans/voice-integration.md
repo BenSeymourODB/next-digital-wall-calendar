@@ -537,30 +537,24 @@ export const handler = Alexa.SkillBuilders.custom()
 
 ```typescript
 // src/app/api/voice/tasks/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getAccessToken, getCurrentUser } from '@/lib/auth/helpers';
-import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
+import { getAccessToken, getCurrentUser } from "@/lib/auth/helpers";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
     // Authenticate using bearer token from Alexa
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const accessToken = authHeader.replace('Bearer ', '');
+    const accessToken = authHeader.replace("Bearer ", "");
     const user = await getUserFromAccessToken(accessToken);
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid access token' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Invalid access token" }, { status: 401 });
     }
 
     const { taskName, profileName, dueDate, source } = await request.json();
@@ -573,17 +567,14 @@ export async function POST(request: NextRequest) {
           userId: user.id,
           name: {
             equals: profileName,
-            mode: 'insensitive',
+            mode: "insensitive",
           },
           isActive: true,
         },
       });
 
       if (!profile) {
-        return NextResponse.json(
-          { error: `Profile "${profileName}" not found` },
-          { status: 404 }
-        );
+        return NextResponse.json({ error: `Profile "${profileName}" not found` }, { status: 404 });
       }
     }
 
@@ -595,15 +586,15 @@ export async function POST(request: NextRequest) {
       where: { userId: user.id },
     });
 
-    const taskListId = settings?.defaultTaskListId || '@default';
+    const taskListId = settings?.defaultTaskListId || "@default";
 
     const taskResponse = await fetch(
       `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${googleAccessToken}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${googleAccessToken}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           title: taskName,
@@ -614,7 +605,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!taskResponse.ok) {
-      throw new Error('Failed to create task in Google Tasks');
+      throw new Error("Failed to create task in Google Tasks");
     }
 
     const task = await taskResponse.json();
@@ -630,7 +621,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    logger.event('VoiceTaskAdded', {
+    logger.event("VoiceTaskAdded", {
       userId: user.id,
       taskName,
       profileName,
@@ -644,40 +635,31 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/voice/tasks',
-      method: 'POST',
+      endpoint: "/api/voice/tasks",
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to add task' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to add task" }, { status: 500 });
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const accessToken = authHeader.replace('Bearer ', '');
+    const accessToken = authHeader.replace("Bearer ", "");
     const user = await getUserFromAccessToken(accessToken);
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid access token' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Invalid access token" }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
-    const profileName = searchParams.get('profileName');
-    const date = searchParams.get('date') || 'today';
+    const profileName = searchParams.get("profileName");
+    const date = searchParams.get("date") || "today";
 
     // Find profile if specified
     let profile = null;
@@ -687,7 +669,7 @@ export async function GET(request: NextRequest) {
           userId: user.id,
           name: {
             equals: profileName,
-            mode: 'insensitive',
+            mode: "insensitive",
           },
           isActive: true,
         },
@@ -700,18 +682,18 @@ export async function GET(request: NextRequest) {
       where: { userId: user.id },
     });
 
-    const taskListId = settings?.defaultTaskListId || '@default';
+    const taskListId = settings?.defaultTaskListId || "@default";
     const tasksResponse = await fetch(
       `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks`,
       {
         headers: {
-          'Authorization': `Bearer ${googleAccessToken}`,
+          Authorization: `Bearer ${googleAccessToken}`,
         },
       }
     );
 
     if (!tasksResponse.ok) {
-      throw new Error('Failed to fetch tasks from Google Tasks');
+      throw new Error("Failed to fetch tasks from Google Tasks");
     }
 
     let tasks = await tasksResponse.json();
@@ -728,8 +710,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Filter by date
-    if (date === 'today') {
-      const today = new Date().toISOString().split('T')[0];
+    if (date === "today") {
+      const today = new Date().toISOString().split("T")[0];
       tasks = tasks.filter((t: any) => {
         if (!t.due) return false;
         return t.due.startsWith(today);
@@ -746,14 +728,11 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/voice/tasks',
-      method: 'GET',
+      endpoint: "/api/voice/tasks",
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch tasks' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
   }
 }
 
@@ -768,22 +747,16 @@ async function getUserFromAccessToken(token: string) {
 // src/app/api/voice/points/route.ts
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const accessToken = authHeader.replace('Bearer ', '');
+    const accessToken = authHeader.replace("Bearer ", "");
     const user = await getUserFromAccessToken(accessToken);
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid access token' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Invalid access token" }, { status: 401 });
     }
 
     const { profileName, points, source } = await request.json();
@@ -792,15 +765,12 @@ export async function POST(request: NextRequest) {
     const adminProfile = await prisma.profile.findFirst({
       where: {
         userId: user.id,
-        type: 'admin',
+        type: "admin",
       },
     });
 
     if (!adminProfile) {
-      return NextResponse.json(
-        { error: 'Admin permissions required' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Admin permissions required" }, { status: 403 });
     }
 
     // Find target profile
@@ -809,17 +779,14 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         name: {
           equals: profileName,
-          mode: 'insensitive',
+          mode: "insensitive",
         },
         isActive: true,
       },
     });
 
     if (!targetProfile) {
-      return NextResponse.json(
-        { error: `Profile "${profileName}" not found` },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: `Profile "${profileName}" not found` }, { status: 404 });
     }
 
     // Award points
@@ -841,7 +808,7 @@ export async function POST(request: NextRequest) {
         data: {
           profileId: targetProfile.id,
           points,
-          reason: 'manual',
+          reason: "manual",
           awardedBy: adminProfile.id,
           note: `Voice command via ${source}`,
         },
@@ -850,7 +817,7 @@ export async function POST(request: NextRequest) {
       return rewardPoints;
     });
 
-    logger.event('VoicePointsAwarded', {
+    logger.event("VoicePointsAwarded", {
       userId: user.id,
       profileName,
       points,
@@ -863,14 +830,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/voice/points',
-      method: 'POST',
+      endpoint: "/api/voice/points",
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to award points' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to award points" }, { status: 500 });
   }
 }
 ```

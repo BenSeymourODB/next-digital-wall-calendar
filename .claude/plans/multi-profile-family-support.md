@@ -1093,10 +1093,10 @@ export function ProfileGrid() {
 
 ```typescript
 // src/app/api/profiles/route.ts
-import { requireAuth, getCurrentUser } from '@/lib/auth/helpers';
-import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
-import { NextRequest, NextResponse } from 'next/server';
+import { getCurrentUser, requireAuth } from "@/lib/auth/helpers";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET() {
   try {
@@ -1112,21 +1112,18 @@ export async function GET() {
         rewardPoints: true,
       },
       orderBy: {
-        createdAt: 'asc',
+        createdAt: "asc",
       },
     });
 
     return NextResponse.json(profiles);
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/profiles',
-      method: 'GET',
+      endpoint: "/api/profiles",
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch profiles' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch profiles" }, { status: 500 });
   }
 }
 
@@ -1139,10 +1136,7 @@ export async function POST(request: NextRequest) {
 
     // Validate input
     if (!name || name.length < 1) {
-      return NextResponse.json(
-        { error: 'Name is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
     // Check profile limit
@@ -1159,10 +1153,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (existingCount >= (userSettings?.maxProfiles || 10)) {
-      return NextResponse.json(
-        { error: 'Profile limit reached' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Profile limit reached" }, { status: 400 });
     }
 
     // Create profile with reward points
@@ -1170,13 +1161,13 @@ export async function POST(request: NextRequest) {
       data: {
         userId: user.id,
         name,
-        type: type || 'standard',
-        ageGroup: ageGroup || 'adult',
-        color: color || '#3b82f6',
+        type: type || "standard",
+        ageGroup: ageGroup || "adult",
+        color: color || "#3b82f6",
         avatar: avatar || {
-          type: 'initials',
+          type: "initials",
           value: name.substring(0, 2).toUpperCase(),
-          backgroundColor: color || '#3b82f6',
+          backgroundColor: color || "#3b82f6",
         },
         rewardPoints: {
           create: {
@@ -1186,9 +1177,9 @@ export async function POST(request: NextRequest) {
         settings: {
           create: {
             showCompletedTasks: false,
-            taskSortOrder: 'dueDate',
-            theme: 'light',
-            language: 'en',
+            taskSortOrder: "dueDate",
+            theme: "light",
+            language: "en",
           },
         },
       },
@@ -1198,7 +1189,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    logger.event('ProfileCreated', {
+    logger.event("ProfileCreated", {
       profileId: profile.id,
       userId: user.id,
       name: profile.name,
@@ -1207,22 +1198,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(profile, { status: 201 });
   } catch (error) {
     logger.error(error as Error, {
-      endpoint: '/api/profiles',
-      method: 'POST',
+      endpoint: "/api/profiles",
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to create profile' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to create profile" }, { status: 500 });
   }
 }
 
 // src/app/api/profiles/[id]/route.ts
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -1240,30 +1225,21 @@ export async function GET(
     });
 
     if (!profile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
     return NextResponse.json(profile);
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/profiles/${params.id}`,
-      method: 'GET',
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch profile' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 });
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -1279,10 +1255,7 @@ export async function PATCH(
     });
 
     if (!existingProfile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
     // Update profile
@@ -1301,7 +1274,7 @@ export async function PATCH(
       },
     });
 
-    logger.event('ProfileUpdated', {
+    logger.event("ProfileUpdated", {
       profileId: profile.id,
       userId: user.id,
     });
@@ -1310,20 +1283,14 @@ export async function PATCH(
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/profiles/${params.id}`,
-      method: 'PATCH',
+      method: "PATCH",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to update profile' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -1340,13 +1307,10 @@ export async function DELETE(
     });
 
     if (profile.count === 0) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    logger.event('ProfileDeleted', {
+    logger.event("ProfileDeleted", {
       profileId: params.id,
       userId: user.id,
     });
@@ -1355,21 +1319,15 @@ export async function DELETE(
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/profiles/${params.id}`,
-      method: 'DELETE',
+      method: "DELETE",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to delete profile' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to delete profile" }, { status: 500 });
   }
 }
 
 // src/app/api/profiles/[id]/stats/route.ts
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -1388,10 +1346,7 @@ export async function GET(
     });
 
     if (!profile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
     // Get task stats (would require Google Tasks API integration)
@@ -1400,32 +1355,26 @@ export async function GET(
       profileId: profile.id,
       totalPoints: profile.rewardPoints?.totalPoints || 0,
       currentStreak: profile.rewardPoints?.currentStreak || 0,
-      tasksToday: 0,  // TODO: Calculate from Google Tasks
-      tasksCompleted: 0,  // TODO: Calculate from Google Tasks
+      tasksToday: 0, // TODO: Calculate from Google Tasks
+      tasksCompleted: 0, // TODO: Calculate from Google Tasks
       tasksTotal: profile.taskAssignments.length,
-      completionRate: 0,  // TODO: Calculate
-      rank: 1,  // TODO: Calculate from family leaderboard
+      completionRate: 0, // TODO: Calculate
+      rank: 1, // TODO: Calculate from family leaderboard
     };
 
     return NextResponse.json(stats);
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/profiles/${params.id}/stats`,
-      method: 'GET',
+      method: "GET",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch profile stats' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch profile stats" }, { status: 500 });
   }
 }
 
 // src/app/api/profiles/[id]/give-points/route.ts
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -1433,10 +1382,7 @@ export async function POST(
     const { points, note, awardedByProfileId } = await request.json();
 
     if (!points || points <= 0) {
-      return NextResponse.json(
-        { error: 'Invalid points value' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid points value" }, { status: 400 });
     }
 
     // Verify the awarding profile is an admin
@@ -1444,15 +1390,12 @@ export async function POST(
       where: {
         id: awardedByProfileId,
         userId: user.id,
-        type: 'admin',
+        type: "admin",
       },
     });
 
     if (!awardingProfile) {
-      return NextResponse.json(
-        { error: 'Unauthorized - admin access required' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Unauthorized - admin access required" }, { status: 403 });
     }
 
     // Verify target profile exists
@@ -1465,10 +1408,7 @@ export async function POST(
     });
 
     if (!targetProfile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
     // Award points in transaction
@@ -1490,7 +1430,7 @@ export async function POST(
         data: {
           profileId: params.id,
           points,
-          reason: 'manual',
+          reason: "manual",
           awardedBy: awardedByProfileId,
           note,
         },
@@ -1499,7 +1439,7 @@ export async function POST(
       return rewardPoints;
     });
 
-    logger.event('BonusPointsAwarded', {
+    logger.event("BonusPointsAwarded", {
       profileId: params.id,
       awardedBy: awardedByProfileId,
       points,
@@ -1513,21 +1453,15 @@ export async function POST(
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/profiles/${params.id}/give-points`,
-      method: 'POST',
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to award points' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to award points" }, { status: 500 });
   }
 }
 
 // src/app/api/profiles/[id]/set-pin/route.ts
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -1536,10 +1470,7 @@ export async function POST(
 
     // Validate PIN format (4-6 digits)
     if (!pin || !/^\d{4,6}$/.test(pin)) {
-      return NextResponse.json(
-        { error: 'PIN must be 4-6 digits' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "PIN must be 4-6 digits" }, { status: 400 });
     }
 
     // Get profile
@@ -1552,27 +1483,18 @@ export async function POST(
     });
 
     if (!profile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
     // If profile already has a PIN, verify current PIN
     if (profile.pinEnabled && profile.pinHash) {
       if (!currentPin) {
-        return NextResponse.json(
-          { error: 'Current PIN required' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Current PIN required" }, { status: 400 });
       }
 
       const isValid = await bcrypt.compare(currentPin, profile.pinHash);
       if (!isValid) {
-        return NextResponse.json(
-          { error: 'Current PIN is incorrect' },
-          { status: 401 }
-        );
+        return NextResponse.json({ error: "Current PIN is incorrect" }, { status: 401 });
       }
     }
 
@@ -1590,7 +1512,7 @@ export async function POST(
       },
     });
 
-    logger.event('ProfilePinSet', {
+    logger.event("ProfilePinSet", {
       userId: user.id,
       profileId: params.id,
       isUpdate: profile.pinEnabled,
@@ -1600,21 +1522,15 @@ export async function POST(
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/profiles/${params.id}/set-pin`,
-      method: 'POST',
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to set PIN' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to set PIN" }, { status: 500 });
   }
 }
 
 // src/app/api/profiles/[id]/verify-pin/route.ts
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -1622,10 +1538,7 @@ export async function POST(
     const { pin } = await request.json();
 
     if (!pin) {
-      return NextResponse.json(
-        { error: 'PIN required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "PIN required" }, { status: 400 });
     }
 
     // Get profile
@@ -1638,21 +1551,16 @@ export async function POST(
     });
 
     if (!profile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
     // Check if profile is locked
     if (profile.pinLockedUntil && profile.pinLockedUntil > new Date()) {
-      const remainingSeconds = Math.ceil(
-        (profile.pinLockedUntil.getTime() - Date.now()) / 1000
-      );
+      const remainingSeconds = Math.ceil((profile.pinLockedUntil.getTime() - Date.now()) / 1000);
 
       return NextResponse.json(
         {
-          error: 'Profile locked due to too many failed attempts',
+          error: "Profile locked due to too many failed attempts",
           lockedFor: remainingSeconds,
         },
         { status: 429 }
@@ -1677,7 +1585,7 @@ export async function POST(
         },
       });
 
-      logger.event('ProfilePinVerified', {
+      logger.event("ProfilePinVerified", {
         userId: user.id,
         profileId: params.id,
       });
@@ -1699,7 +1607,7 @@ export async function POST(
         },
       });
 
-      logger.event('ProfilePinFailed', {
+      logger.event("ProfilePinFailed", {
         userId: user.id,
         profileId: params.id,
         failedAttempts,
@@ -1708,7 +1616,7 @@ export async function POST(
 
       return NextResponse.json(
         {
-          error: 'Incorrect PIN',
+          error: "Incorrect PIN",
           attemptsRemaining: Math.max(0, 5 - failedAttempts),
           locked: lockout,
         },
@@ -1718,21 +1626,15 @@ export async function POST(
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/profiles/${params.id}/verify-pin`,
-      method: 'POST',
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to verify PIN' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to verify PIN" }, { status: 500 });
   }
 }
 
 // src/app/api/profiles/[id]/remove-pin/route.ts
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -1749,35 +1651,23 @@ export async function POST(
     });
 
     if (!profile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
     // Admin profiles cannot remove PIN
-    if (profile.type === 'admin') {
-      return NextResponse.json(
-        { error: 'Admin profiles must have a PIN' },
-        { status: 403 }
-      );
+    if (profile.type === "admin") {
+      return NextResponse.json({ error: "Admin profiles must have a PIN" }, { status: 403 });
     }
 
     // Verify current PIN
     if (profile.pinEnabled && profile.pinHash) {
       if (!currentPin) {
-        return NextResponse.json(
-          { error: 'Current PIN required' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Current PIN required" }, { status: 400 });
       }
 
       const isValid = await bcrypt.compare(currentPin, profile.pinHash);
       if (!isValid) {
-        return NextResponse.json(
-          { error: 'Current PIN is incorrect' },
-          { status: 401 }
-        );
+        return NextResponse.json({ error: "Current PIN is incorrect" }, { status: 401 });
       }
     }
 
@@ -1792,7 +1682,7 @@ export async function POST(
       },
     });
 
-    logger.event('ProfilePinRemoved', {
+    logger.event("ProfilePinRemoved", {
       userId: user.id,
       profileId: params.id,
     });
@@ -1801,22 +1691,16 @@ export async function POST(
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/profiles/${params.id}/remove-pin`,
-      method: 'POST',
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to remove PIN' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to remove PIN" }, { status: 500 });
   }
 }
 
 // src/app/api/profiles/[id]/reset-pin/route.ts
 // Admin can reset PIN for standard profiles
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await requireAuth();
     const user = await getCurrentUser();
@@ -1825,10 +1709,7 @@ export async function POST(
 
     // Validate new PIN format (4-6 digits)
     if (!newPin || !/^\d{4,6}$/.test(newPin)) {
-      return NextResponse.json(
-        { error: 'New PIN must be 4-6 digits' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "New PIN must be 4-6 digits" }, { status: 400 });
     }
 
     // Verify admin profile
@@ -1836,31 +1717,22 @@ export async function POST(
       where: {
         id: adminProfileId,
         userId: user.id,
-        type: 'admin',
+        type: "admin",
       },
     });
 
     if (!adminProfile) {
-      return NextResponse.json(
-        { error: 'Admin profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Admin profile not found" }, { status: 404 });
     }
 
     // Verify admin PIN
     if (!adminProfile.pinHash || !adminPin) {
-      return NextResponse.json(
-        { error: 'Admin PIN required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Admin PIN required" }, { status: 400 });
     }
 
     const isAdminPinValid = await bcrypt.compare(adminPin, adminProfile.pinHash);
     if (!isAdminPinValid) {
-      return NextResponse.json(
-        { error: 'Admin PIN is incorrect' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Admin PIN is incorrect" }, { status: 401 });
     }
 
     // Get target profile
@@ -1873,18 +1745,12 @@ export async function POST(
     });
 
     if (!targetProfile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
     // Cannot reset another admin's PIN
-    if (targetProfile.type === 'admin' && targetProfile.id !== adminProfileId) {
-      return NextResponse.json(
-        { error: 'Cannot reset another admin\'s PIN' },
-        { status: 403 }
-      );
+    if (targetProfile.type === "admin" && targetProfile.id !== adminProfileId) {
+      return NextResponse.json({ error: "Cannot reset another admin's PIN" }, { status: 403 });
     }
 
     // Hash new PIN
@@ -1901,7 +1767,7 @@ export async function POST(
       },
     });
 
-    logger.event('ProfilePinReset', {
+    logger.event("ProfilePinReset", {
       userId: user.id,
       profileId: params.id,
       resetBy: adminProfileId,
@@ -1911,13 +1777,10 @@ export async function POST(
   } catch (error) {
     logger.error(error as Error, {
       endpoint: `/api/profiles/${params.id}/reset-pin`,
-      method: 'POST',
+      method: "POST",
     });
 
-    return NextResponse.json(
-      { error: 'Failed to reset PIN' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to reset PIN" }, { status: 500 });
   }
 }
 ```
