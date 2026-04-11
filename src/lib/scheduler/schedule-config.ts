@@ -8,12 +8,19 @@ import type {
   ScheduleConfig,
   ScreenSequence,
   TimeSpecificNavigation,
+  TransitionConfig,
 } from "@/components/scheduler/types";
 
 /** Default scheduler timing values (matching Prisma UserSettings defaults) */
 export const SCHEDULER_DEFAULTS = {
   intervalSeconds: 10,
   pauseOnInteractionSeconds: 30,
+} as const;
+
+/** Default transition configuration */
+export const DEFAULT_TRANSITION_CONFIG: TransitionConfig = {
+  type: "slide",
+  durationMs: 400,
 } as const;
 
 /** Optional overrides for scheduler timing, typically from user settings */
@@ -82,6 +89,7 @@ export function createDefaultScheduleConfig(
       },
     ],
     timeSpecific: [],
+    transition: { ...DEFAULT_TRANSITION_CONFIG },
   };
 }
 
