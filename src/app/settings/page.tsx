@@ -49,6 +49,9 @@ export default async function SettingsPage() {
           rewardSystemEnabled: settings.rewardSystemEnabled,
           defaultTaskPoints: settings.defaultTaskPoints,
           showPointsOnCompletion: settings.showPointsOnCompletion,
+          schedulerIntervalSeconds: settings.schedulerIntervalSeconds,
+          schedulerPauseOnInteractionSeconds:
+            settings.schedulerPauseOnInteractionSeconds,
         }}
       />
     </div>

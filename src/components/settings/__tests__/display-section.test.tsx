@@ -2,6 +2,7 @@
  * Tests for DisplaySection component
  * Following TDD - tests are written before implementation
  */
+import { MockSlider } from "@/lib/test-utils/ui-component-mocks";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,23 +10,7 @@ import { DisplaySection } from "../display-section";
 
 // Mock Slider since Radix UI components don't work in jsdom
 vi.mock("@/components/ui/slider", () => ({
-  Slider: ({
-    value,
-    onValueChange,
-  }: {
-    value: number[];
-    min: number;
-    max: number;
-    step: number;
-    onValueChange: (value: number[]) => void;
-  }) => (
-    <input
-      type="range"
-      data-testid="zoom-slider"
-      value={value[0]}
-      onChange={(e) => onValueChange([parseFloat(e.target.value)])}
-    />
-  ),
+  Slider: MockSlider,
 }));
 
 const defaultValues = {
