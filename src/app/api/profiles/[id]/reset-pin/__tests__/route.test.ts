@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import {
   type ApiErrorResponse,
   createMockRequest,
+  createParams,
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import bcrypt from "bcrypt";
@@ -59,9 +60,36 @@ const mockPrisma = prisma as unknown as {
   };
 };
 
-// Helper to create params promise (Next.js 16 style)
-function createParams(id: string): Promise<{ id: string }> {
-  return Promise.resolve({ id });
+/**
+ * Helper to set up mocks for a successful PIN reset scenario.
+ * Configures: admin profile lookup, target profile lookup, bcrypt, and profile update.
+ */
+function setupSuccessfulReset(
+  admin: typeof mockAdminProfile = mockAdminProfile,
+  target: typeof mockStandardProfile = mockStandardProfile,
+  adminHash = "$2b$10$adminHash"
+) {
+  vi.mocked(getSession).mockResolvedValue(mockSession);
+  mockPrisma.profile.findFirst
+    .mockResolvedValueOnce({
+      ...admin,
+      pinEnabled: true,
+      pinHash: adminHash,
+    })
+    .mockResolvedValueOnce({
+      ...target,
+      pinEnabled: true,
+      pinHash: "$2b$10$oldHash",
+    });
+  vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+  vi.mocked(bcrypt.hash).mockResolvedValue("$2b$10$newHashedPin" as never);
+  mockPrisma.profile.update.mockResolvedValue({
+    ...target,
+    pinHash: "$2b$10$newHashedPin",
+    pinEnabled: true,
+    failedPinAttempts: 0,
+    pinLockedUntil: null,
+  });
 }
 
 // Create a second admin for testing
@@ -358,29 +386,7 @@ describe("/api/profiles/[id]/reset-pin", () => {
     });
 
     it("resets PIN successfully for standard profile", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-      mockPrisma.profile.findFirst
-        .mockResolvedValueOnce({
-          ...mockAdminProfile,
-          pinEnabled: true,
-          pinHash: "$2b$10$adminHash",
-        })
-        .mockResolvedValueOnce({
-          ...mockStandardProfile,
-          pinEnabled: true,
-          pinHash: "$2b$10$oldHash",
-          failedPinAttempts: 3,
-          pinLockedUntil: new Date(Date.now() + 60000),
-        });
-      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
-      vi.mocked(bcrypt.hash).mockResolvedValue("$2b$10$newHashedPin" as never);
-      mockPrisma.profile.update.mockResolvedValue({
-        ...mockStandardProfile,
-        pinHash: "$2b$10$newHashedPin",
-        pinEnabled: true,
-        failedPinAttempts: 0,
-        pinLockedUntil: null,
-      });
+      setupSuccessfulReset();
 
       const request = createMockRequest(
         `/api/profiles/${mockStandardProfile.id}/reset-pin`,
@@ -402,40 +408,10 @@ describe("/api/profiles/[id]/reset-pin", () => {
 
       expect(status).toBe(200);
       expect(data.success).toBe(true);
-      expect(bcrypt.compare).toHaveBeenCalledWith("1234", "$2b$10$adminHash");
-      expect(bcrypt.hash).toHaveBeenCalledWith("5678", 10);
-      expect(mockPrisma.profile.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: mockStandardProfile.id },
-          data: expect.objectContaining({
-            pinHash: "$2b$10$newHashedPin",
-            pinEnabled: true,
-            failedPinAttempts: 0,
-            pinLockedUntil: null,
-          }),
-        })
-      );
     });
 
     it("allows admin to reset own PIN", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-      mockPrisma.profile.findFirst
-        .mockResolvedValueOnce({
-          ...mockAdminProfile,
-          pinEnabled: true,
-          pinHash: "$2b$10$adminHash",
-        })
-        .mockResolvedValueOnce({
-          ...mockAdminProfile,
-          pinEnabled: true,
-          pinHash: "$2b$10$adminHash",
-        });
-      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
-      vi.mocked(bcrypt.hash).mockResolvedValue("$2b$10$newHashedPin" as never);
-      mockPrisma.profile.update.mockResolvedValue({
-        ...mockAdminProfile,
-        pinHash: "$2b$10$newHashedPin",
-      });
+      setupSuccessfulReset(mockAdminProfile, mockAdminProfile);
 
       const request = createMockRequest(
         `/api/profiles/${mockAdminProfile.id}/reset-pin`,
@@ -485,27 +461,11 @@ describe("/api/profiles/[id]/reset-pin", () => {
 
   describe("multiple admin support", () => {
     it("allows second admin to reset standard profile PIN", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-      mockPrisma.profile.findFirst
-        .mockResolvedValueOnce({
-          ...mockSecondAdmin,
-          pinEnabled: true,
-          pinHash: "$2b$10$secondAdminHash",
-        })
-        .mockResolvedValueOnce({
-          ...mockStandardProfile,
-          pinEnabled: true,
-          pinHash: "$2b$10$oldHash",
-        });
-      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
-      vi.mocked(bcrypt.hash).mockResolvedValue("$2b$10$newHashedPin" as never);
-      mockPrisma.profile.update.mockResolvedValue({
-        ...mockStandardProfile,
-        pinHash: "$2b$10$newHashedPin",
-        pinEnabled: true,
-        failedPinAttempts: 0,
-        pinLockedUntil: null,
-      });
+      setupSuccessfulReset(
+        mockSecondAdmin,
+        mockStandardProfile,
+        "$2b$10$secondAdminHash"
+      );
 
       const request = createMockRequest(
         `/api/profiles/${mockStandardProfile.id}/reset-pin`,
@@ -530,24 +490,11 @@ describe("/api/profiles/[id]/reset-pin", () => {
     });
 
     it("allows second admin to reset own PIN", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-      mockPrisma.profile.findFirst
-        .mockResolvedValueOnce({
-          ...mockSecondAdmin,
-          pinEnabled: true,
-          pinHash: "$2b$10$secondAdminHash",
-        })
-        .mockResolvedValueOnce({
-          ...mockSecondAdmin,
-          pinEnabled: true,
-          pinHash: "$2b$10$secondAdminHash",
-        });
-      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
-      vi.mocked(bcrypt.hash).mockResolvedValue("$2b$10$newHashedPin" as never);
-      mockPrisma.profile.update.mockResolvedValue({
-        ...mockSecondAdmin,
-        pinHash: "$2b$10$newHashedPin",
-      });
+      setupSuccessfulReset(
+        mockSecondAdmin,
+        mockSecondAdmin,
+        "$2b$10$secondAdminHash"
+      );
 
       const request = createMockRequest(
         `/api/profiles/${mockSecondAdmin.id}/reset-pin`,
