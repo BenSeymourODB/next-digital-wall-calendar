@@ -7,7 +7,8 @@ export default function ScreenA() {
       <h1 className="text-6xl font-bold">Calendar</h1>
       <p className="mt-6 max-w-md text-center text-blue-200">
         This page auto-rotates every 10 seconds. Move your mouse to pause for
-        30s. Use the floating controls at the bottom to navigate manually.
+        30s. Use the floating controls at the bottom to navigate manually. The
+        status indicator in the bottom-left shows countdown progress.
       </p>
     </div>
   );
