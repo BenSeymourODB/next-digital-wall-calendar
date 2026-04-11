@@ -28,6 +28,18 @@ jobs:
         run: |
           pnpm lint && pnpm check-types
 
+      - name: Validate Prisma migrations are up to date
+        run: |
+          # Check that migrations directory matches the schema
+          # Exit code 2 means there is a diff (migrations are out of date)
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema prisma/schema.prisma \
+            --exit-code || {
+            echo "::error::Prisma migrations are out of date. Run 'pnpm db:migrate' to create a new migration."
+            exit 1
+          }
+
       - name: Build Next.js Standalone
         run: |
           # Build Next.js in standalone mode
