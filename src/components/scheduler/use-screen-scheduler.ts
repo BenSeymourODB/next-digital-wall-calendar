@@ -16,6 +16,7 @@ import type {
   SchedulerState,
   ScreenSequence,
   TimeSpecificNavigation,
+  TransitionDirection,
 } from "./types";
 
 interface UseScreenSchedulerResult {
@@ -90,9 +91,10 @@ export function useScreenScheduler(
   const [timeUntilNextNav, setTimeUntilNextNav] = useState(0);
   const [activeTimeSpecific, setActiveTimeSpecific] =
     useState<TimeSpecificNavigation | null>(null);
+  const [transitionDirection, setTransitionDirection] =
+    useState<TransitionDirection>("forward");
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVisibleRef = useRef(true);
   const currentIndexRef = useRef(currentIndex);
@@ -139,6 +141,7 @@ export function useScreenScheduler(
     if (!isActive || !activeSequence) return;
     const screens = activeSequence.screens;
     const nextIndex = (currentIndex + 1) % screens.length;
+    setTransitionDirection("forward");
     setCurrentIndex(nextIndex);
     router.push(screens[nextIndex]);
     setTimeUntilNextNav(activeSequence.intervalSeconds);
@@ -148,6 +151,7 @@ export function useScreenScheduler(
     if (!isActive || !activeSequence) return;
     const screens = activeSequence.screens;
     const prevIndex = (currentIndex - 1 + screens.length) % screens.length;
+    setTransitionDirection("backward");
     setCurrentIndex(prevIndex);
     router.push(screens[prevIndex]);
     setTimeUntilNextNav(activeSequence.intervalSeconds);
@@ -167,10 +171,6 @@ export function useScreenScheduler(
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
-      }
       return;
     }
 
@@ -181,31 +181,28 @@ export function useScreenScheduler(
 
     const intervalSecs = activeSequence.intervalSeconds;
 
-    // Countdown timer (every second) — starts at full interval
+    // Single 1-second tick drives both countdown and navigation,
+    // keeping the progress indicator perfectly in sync with rotation.
     let countdown = intervalSecs;
-    countdownRef.current = setInterval(() => {
+
+    intervalRef.current = setInterval(() => {
       countdown -= 1;
-      if (countdown < 0) countdown = intervalSecs;
+      if (countdown <= 0) {
+        // Navigate to next screen (auto-rotation is always forward)
+        const screens = activeSequence.screens;
+        const nextIndex = (currentIndexRef.current + 1) % screens.length;
+        setTransitionDirection("forward");
+        setCurrentIndex(nextIndex);
+        router.push(screens[nextIndex]);
+        countdown = intervalSecs;
+      }
       setTimeUntilNextNav(countdown);
     }, 1000);
-
-    // Navigation interval — router.push must be outside the state updater
-    // to avoid updating Router during React's render phase
-    intervalRef.current = setInterval(() => {
-      const screens = activeSequence.screens;
-      const nextIndex = (currentIndexRef.current + 1) % screens.length;
-      setCurrentIndex(nextIndex);
-      router.push(screens[nextIndex]);
-    }, activeSequence.intervalSeconds * 1000);
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
-      }
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
       }
     };
   }, [
@@ -276,6 +273,7 @@ export function useScreenScheduler(
     timeUntilNextNav,
     pausedUntil: null,
     activeTimeSpecific,
+    transitionDirection,
   };
 
   const controls: SchedulerControls = {

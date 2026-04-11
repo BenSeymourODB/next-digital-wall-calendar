@@ -77,6 +77,10 @@ model UserSettings {
   dateFormat             String  @default("MM/DD/YYYY")
   showPointsOnCompletion Boolean @default(true)
 
+  // Scheduler settings
+  schedulerIntervalSeconds           Int @default(10)
+  schedulerPauseOnInteractionSeconds Int @default(30)
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
