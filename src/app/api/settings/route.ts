@@ -125,6 +125,42 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Validate schedulerIntervalSeconds (5-120)
+    if (body.schedulerIntervalSeconds !== undefined) {
+      if (
+        typeof body.schedulerIntervalSeconds !== "number" ||
+        !Number.isInteger(body.schedulerIntervalSeconds) ||
+        body.schedulerIntervalSeconds < 5 ||
+        body.schedulerIntervalSeconds > 120
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "schedulerIntervalSeconds must be an integer between 5 and 120",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate schedulerPauseOnInteractionSeconds (10-300)
+    if (body.schedulerPauseOnInteractionSeconds !== undefined) {
+      if (
+        typeof body.schedulerPauseOnInteractionSeconds !== "number" ||
+        !Number.isInteger(body.schedulerPauseOnInteractionSeconds) ||
+        body.schedulerPauseOnInteractionSeconds < 10 ||
+        body.schedulerPauseOnInteractionSeconds > 300
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "schedulerPauseOnInteractionSeconds must be an integer between 10 and 300",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const settings = await prisma.userSettings.upsert({
       where: { userId },
       create: {
