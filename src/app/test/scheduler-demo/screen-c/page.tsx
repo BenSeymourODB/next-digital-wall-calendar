@@ -6,8 +6,9 @@ export default function ScreenC() {
       </p>
       <h1 className="text-6xl font-bold">Recipes</h1>
       <p className="mt-6 max-w-md text-center text-purple-200">
-        After this screen, the sequence wraps back to Screen 1. The floating
-        controls auto-hide after 5 seconds of inactivity.
+        After this screen, the sequence wraps back to Screen 1 with a smooth
+        slide transition. Transition type and duration are configurable in
+        Settings. Controls auto-hide after 5 seconds of inactivity.
       </p>
     </div>
   );

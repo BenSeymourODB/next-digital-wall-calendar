@@ -72,6 +72,32 @@ export function isApiError(data: unknown): data is ApiErrorResponse {
 }
 
 /**
+ * Create Next.js 16 style params promise for API route testing.
+ * Replaces the identical `createParams` helper duplicated across 8+ test files.
+ *
+ * @example
+ * ```ts
+ * // Single "id" param (most common)
+ * createParams("profile-1")  // => Promise<{ id: "profile-1" }>
+ *
+ * // Multiple or custom params
+ * createParams({ taskId: "task-1" })  // => Promise<{ taskId: "task-1" }>
+ * ```
+ */
+export function createParams(id: string): Promise<{ id: string }>;
+export function createParams<T extends Record<string, string>>(
+  params: T
+): Promise<T>;
+export function createParams<T extends Record<string, string>>(
+  idOrParams: string | T
+): Promise<{ id: string } | T> {
+  if (typeof idOrParams === "string") {
+    return Promise.resolve({ id: idOrParams });
+  }
+  return Promise.resolve(idOrParams);
+}
+
+/**
  * Create mock headers with optional authorization
  */
 export function createMockHeaders(
