@@ -6,8 +6,9 @@ export default function ScreenB() {
       </p>
       <h1 className="text-6xl font-bold">Tasks</h1>
       <p className="mt-6 max-w-md text-center text-emerald-200">
-        The scheduler rotates through configured screens automatically. Keyboard
-        shortcuts: Left/Right arrows to navigate, Space to pause/resume.
+        Transitions slide left on auto-rotation and forward navigation, slide
+        right on backward navigation. Keyboard: Left/Right arrows, Space to
+        pause/resume. Transitions respect prefers-reduced-motion.
       </p>
     </div>
   );

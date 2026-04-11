@@ -35,6 +35,8 @@ export default function TestSettingsPage() {
             rewardSystemEnabled: true,
             defaultTaskPoints: 10,
             showPointsOnCompletion: true,
+            schedulerIntervalSeconds: 10,
+            schedulerPauseOnInteractionSeconds: 30,
           }}
         />
       </div>

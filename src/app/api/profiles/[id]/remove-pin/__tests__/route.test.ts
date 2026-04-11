@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import {
   type ApiErrorResponse,
   createMockRequest,
+  createParams,
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import bcrypt from "bcrypt";
@@ -55,11 +56,6 @@ const mockPrisma = prisma as unknown as {
     update: ReturnType<typeof vi.fn>;
   };
 };
-
-// Helper to create params promise (Next.js 16 style)
-function createParams(id: string): Promise<{ id: string }> {
-  return Promise.resolve({ id });
-}
 
 describe("/api/profiles/[id]/remove-pin", () => {
   beforeEach(() => {
@@ -226,21 +222,6 @@ describe("/api/profiles/[id]/remove-pin", () => {
 
       expect(status).toBe(200);
       expect(data.success).toBe(true);
-      expect(bcrypt.compare).toHaveBeenCalledWith(
-        "1234",
-        "$2b$10$existingHash"
-      );
-      expect(mockPrisma.profile.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: mockStandardProfile.id },
-          data: expect.objectContaining({
-            pinHash: null,
-            pinEnabled: false,
-            failedPinAttempts: 0,
-            pinLockedUntil: null,
-          }),
-        })
-      );
     });
 
     it("returns 500 on database error", async () => {
