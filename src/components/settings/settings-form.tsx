@@ -1,6 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import type { TransitionConfig } from "@/components/scheduler/types";
+import { DEFAULT_TRANSITION_CONFIG } from "@/lib/scheduler/schedule-config";
+import {
+  loadScheduleConfig,
+  saveScheduleConfig,
+} from "@/lib/scheduler/schedule-storage";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AccountSection } from "./account-section";
 import { DisplaySection } from "./display-section";
@@ -8,6 +14,7 @@ import { PrivacySection } from "./privacy-section";
 import { RewardSection } from "./reward-section";
 import { SchedulerSection } from "./scheduler-section";
 import { TaskSection } from "./task-section";
+import { TransitionSection } from "./transition-section";
 
 interface UserSettingsData {
   theme: string;
@@ -43,6 +50,15 @@ export function SettingsForm({
     taskSortOrder: "dueDate",
     showCompletedTasks: false,
   });
+  const [transitionConfig, setTransitionConfig] = useState<TransitionConfig>(
+    () => DEFAULT_TRANSITION_CONFIG
+  );
+
+  // Load transition config from localStorage on mount
+  useEffect(() => {
+    const config = loadScheduleConfig();
+    setTransitionConfig(config.transition ?? DEFAULT_TRANSITION_CONFIG);
+  }, []);
 
   const updateSettings = async (partial: Partial<UserSettingsData>) => {
     const updated = { ...settings, ...partial };
@@ -80,6 +96,12 @@ export function SettingsForm({
     }
   };
 
+  const handleTransitionChange = (updated: TransitionConfig) => {
+    setTransitionConfig(updated);
+    const config = loadScheduleConfig();
+    saveScheduleConfig({ ...config, transition: updated });
+  };
+
   const handleDeleteAllData = async () => {
     await handleDeleteAccount();
   };
@@ -110,6 +132,11 @@ export function SettingsForm({
             settings.schedulerPauseOnInteractionSeconds,
         }}
         onChange={updateSettings}
+      />
+
+      <TransitionSection
+        values={transitionConfig}
+        onChange={handleTransitionChange}
       />
 
       <RewardSection
