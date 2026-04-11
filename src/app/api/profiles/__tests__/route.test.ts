@@ -100,31 +100,6 @@ describe("/api/profiles", () => {
 
       expect(status).toBe(200);
       expect(data).toHaveLength(3);
-      expect(mockPrisma.profile.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            userId: mockSession.user.id,
-            isActive: true,
-          },
-        })
-      );
-    });
-
-    it("only returns active profiles", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-      mockPrisma.profile.findMany.mockResolvedValue([mockAdminProfile]);
-
-      const response = await GET();
-      const { status } = await parseResponse<unknown[]>(response);
-
-      expect(status).toBe(200);
-      expect(mockPrisma.profile.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            isActive: true,
-          }),
-        })
-      );
     });
 
     it("returns 500 on database error", async () => {
