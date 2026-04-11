@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SCHEDULE_CONFIG,
+  DEFAULT_TRANSITION_CONFIG,
   SCHEDULER_DEFAULTS,
   createDefaultScheduleConfig,
   createDefaultSequence,
@@ -133,5 +134,36 @@ describe("createDefaultTimeSpecific", () => {
   it("is enabled by default", () => {
     const nav = createDefaultTimeSpecific();
     expect(nav.enabled).toBe(true);
+  });
+});
+
+describe("DEFAULT_TRANSITION_CONFIG", () => {
+  it("has slide as default type", () => {
+    expect(DEFAULT_TRANSITION_CONFIG.type).toBe("slide");
+  });
+
+  it("has 400ms as default duration", () => {
+    expect(DEFAULT_TRANSITION_CONFIG.durationMs).toBe(400);
+  });
+});
+
+describe("ScheduleConfig transition field", () => {
+  it("DEFAULT_SCHEDULE_CONFIG includes transition config", () => {
+    expect(DEFAULT_SCHEDULE_CONFIG.transition).toBeDefined();
+    expect(DEFAULT_SCHEDULE_CONFIG.transition).toEqual(
+      DEFAULT_TRANSITION_CONFIG
+    );
+  });
+
+  it("createDefaultScheduleConfig includes transition config", () => {
+    const config = createDefaultScheduleConfig();
+    expect(config.transition).toEqual(DEFAULT_TRANSITION_CONFIG);
+  });
+
+  it("createDefaultScheduleConfig transition is a separate copy", () => {
+    const config1 = createDefaultScheduleConfig();
+    const config2 = createDefaultScheduleConfig();
+    expect(config1.transition).not.toBe(config2.transition);
+    expect(config1.transition).toEqual(config2.transition);
   });
 });

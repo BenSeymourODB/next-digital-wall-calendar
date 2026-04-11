@@ -326,6 +326,62 @@ describe("useScreenScheduler", () => {
     });
   });
 
+  describe("transition direction", () => {
+    it("defaults to forward direction", () => {
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+      expect(result.current.state.transitionDirection).toBe("forward");
+    });
+
+    it("sets direction to forward on navigateToNext", () => {
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      act(() => {
+        result.current.controls.start();
+      });
+
+      act(() => {
+        result.current.controls.navigateToNext();
+      });
+
+      expect(result.current.state.transitionDirection).toBe("forward");
+    });
+
+    it("sets direction to backward on navigateToPrevious", () => {
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      act(() => {
+        result.current.controls.start();
+      });
+
+      act(() => {
+        result.current.controls.navigateToPrevious();
+      });
+
+      expect(result.current.state.transitionDirection).toBe("backward");
+    });
+
+    it("sets direction to forward on auto-rotation", () => {
+      mockPathname.mockReturnValue("/calendar");
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      // Navigate backward first to change direction
+      act(() => {
+        result.current.controls.start();
+      });
+      act(() => {
+        result.current.controls.navigateToPrevious();
+      });
+      expect(result.current.state.transitionDirection).toBe("backward");
+
+      // Auto-rotation should reset to forward
+      act(() => {
+        vi.advanceTimersByTime(60000);
+      });
+
+      expect(result.current.state.transitionDirection).toBe("forward");
+    });
+  });
+
   describe("edge cases", () => {
     it("single-screen sequence wraps to same index on navigateToNext", () => {
       const singleScreenConfig: ScheduleConfig = {

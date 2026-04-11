@@ -8,10 +8,13 @@
  * the screen scheduler hook, interaction detector, and navigation
  * controls into a cohesive component.
  */
+import { DEFAULT_TRANSITION_CONFIG } from "@/lib/scheduler/schedule-config";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { NavigationControls } from "./navigation-controls";
 import { SchedulerStatusIndicator } from "./scheduler-status-indicator";
+import { ScreenTransition } from "./screen-transition";
 import type { ScheduleConfig } from "./types";
 import { useInteractionDetector } from "./use-interaction-detector";
 import { useScreenScheduler } from "./use-screen-scheduler";
@@ -61,8 +64,10 @@ export function ScreenScheduler({
   });
 
   const { state, controls } = useScreenScheduler(config, isInteractionPaused);
+  const pathname = usePathname();
 
   const totalScreens = enabledSequence ? enabledSequence.screens.length : 0;
+  const transitionConfig = config.transition ?? DEFAULT_TRANSITION_CONFIG;
   const effectivelyPaused = state.isPaused || isInteractionPaused;
   const isRotating =
     state.isActive && !effectivelyPaused && !state.activeTimeSpecific;
@@ -138,7 +143,13 @@ export function ScreenScheduler({
 
   return (
     <>
-      {children}
+      <ScreenTransition
+        pathname={pathname}
+        direction={state.transitionDirection}
+        transition={transitionConfig}
+      >
+        {children}
+      </ScreenTransition>
       {state.isActive && totalScreens > 0 && (
         <>
           <NavigationControls

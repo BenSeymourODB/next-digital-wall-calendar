@@ -20,6 +20,7 @@ const DEMO_CONFIG: ScheduleConfig = {
     },
   ],
   timeSpecific: [],
+  transition: { type: "slide", durationMs: 400 },
 };
 
 export default function SchedulerDemoLayout({
