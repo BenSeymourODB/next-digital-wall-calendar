@@ -592,6 +592,7 @@ export function MyComponent() {
 8. **Use migrations for schema changes** - Run `pnpm db:migrate` (never `prisma db push`). See [docs/database.md](./docs/database.md)
 9. **Test locally** - Use `pnpm build:standalone && pnpm start:standalone`
 10. **Consult docs/** - For detailed information on specific topics
+11. **Never commit test output artifacts** - Do not `git add` Playwright/E2E output directories (`test-results/`, `playwright-report/`, `blob-report/`). These are already in `.gitignore` and must stay out of version control
 
 **⚠️ Critical:** Do not consider any task complete until:
 
