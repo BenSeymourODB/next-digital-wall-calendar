@@ -69,6 +69,8 @@ export interface SchedulerState {
   timeUntilNextNav: number;
   pausedUntil: Date | null;
   activeTimeSpecific: TimeSpecificNavigation | null;
+  /** Direction of the last navigation (for transition animations) */
+  transitionDirection: TransitionDirection;
 }
 
 /**

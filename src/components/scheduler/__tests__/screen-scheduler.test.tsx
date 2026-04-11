@@ -102,4 +102,32 @@ describe("ScreenScheduler", () => {
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
+
+  it("wraps children with screen transition component", () => {
+    render(
+      <ScreenScheduler config={defaultConfig}>
+        <div data-testid="child-content">Calendar Content</div>
+      </ScreenScheduler>
+    );
+
+    expect(screen.getByTestId("screen-transition")).toBeInTheDocument();
+    expect(screen.getByTestId("child-content")).toBeInTheDocument();
+  });
+
+  it("applies transition config from schedule config", () => {
+    const configWithTransition: ScheduleConfig = {
+      ...defaultConfig,
+      transition: { type: "none", durationMs: 0 },
+    };
+
+    render(
+      <ScreenScheduler config={configWithTransition}>
+        <div data-testid="content">Content</div>
+      </ScreenScheduler>
+    );
+
+    // With type: none, children should be rendered directly
+    expect(screen.getByTestId("content")).toBeInTheDocument();
+    expect(screen.getByTestId("screen-transition")).toBeInTheDocument();
+  });
 });
