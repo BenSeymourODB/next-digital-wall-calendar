@@ -6,6 +6,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SCHEDULE_CONFIG,
+  DEFAULT_TRANSITION_CONFIG,
+  SCHEDULER_DEFAULTS,
+  createDefaultScheduleConfig,
   createDefaultSequence,
   createDefaultTimeSpecific,
 } from "../schedule-config";
@@ -37,9 +40,9 @@ describe("DEFAULT_SCHEDULE_CONFIG", () => {
 
   it("default sequence has reasonable interval defaults", () => {
     const seq = DEFAULT_SCHEDULE_CONFIG.sequences[0];
-    expect(seq.intervalSeconds).toBeGreaterThanOrEqual(10);
+    expect(seq.intervalSeconds).toBeGreaterThanOrEqual(5);
     expect(seq.intervalSeconds).toBeLessThanOrEqual(300);
-    expect(seq.pauseOnInteractionSeconds).toBeGreaterThanOrEqual(30);
+    expect(seq.pauseOnInteractionSeconds).toBeGreaterThanOrEqual(10);
   });
 });
 
@@ -62,14 +65,50 @@ describe("createDefaultSequence", () => {
     expect(seq1.id).not.toBe(seq2.id);
   });
 
-  it("has default interval of 60 seconds", () => {
+  it("uses SCHEDULER_DEFAULTS when no overrides provided", () => {
     const seq = createDefaultSequence();
-    expect(seq.intervalSeconds).toBe(60);
+    expect(seq.intervalSeconds).toBe(SCHEDULER_DEFAULTS.intervalSeconds);
+    expect(seq.pauseOnInteractionSeconds).toBe(
+      SCHEDULER_DEFAULTS.pauseOnInteractionSeconds
+    );
   });
 
-  it("has default pause on interaction of 120 seconds", () => {
-    const seq = createDefaultSequence();
-    expect(seq.pauseOnInteractionSeconds).toBe(120);
+  it("accepts timing overrides from user settings", () => {
+    const seq = createDefaultSequence({
+      intervalSeconds: 45,
+      pauseOnInteractionSeconds: 90,
+    });
+    expect(seq.intervalSeconds).toBe(45);
+    expect(seq.pauseOnInteractionSeconds).toBe(90);
+  });
+
+  it("allows partial overrides", () => {
+    const seq = createDefaultSequence({ intervalSeconds: 20 });
+    expect(seq.intervalSeconds).toBe(20);
+    expect(seq.pauseOnInteractionSeconds).toBe(
+      SCHEDULER_DEFAULTS.pauseOnInteractionSeconds
+    );
+  });
+});
+
+describe("createDefaultScheduleConfig", () => {
+  it("returns config with SCHEDULER_DEFAULTS when no overrides", () => {
+    const config = createDefaultScheduleConfig();
+    expect(config.sequences[0].intervalSeconds).toBe(
+      SCHEDULER_DEFAULTS.intervalSeconds
+    );
+    expect(config.sequences[0].pauseOnInteractionSeconds).toBe(
+      SCHEDULER_DEFAULTS.pauseOnInteractionSeconds
+    );
+  });
+
+  it("accepts timing overrides", () => {
+    const config = createDefaultScheduleConfig({
+      intervalSeconds: 60,
+      pauseOnInteractionSeconds: 120,
+    });
+    expect(config.sequences[0].intervalSeconds).toBe(60);
+    expect(config.sequences[0].pauseOnInteractionSeconds).toBe(120);
   });
 });
 
@@ -95,5 +134,36 @@ describe("createDefaultTimeSpecific", () => {
   it("is enabled by default", () => {
     const nav = createDefaultTimeSpecific();
     expect(nav.enabled).toBe(true);
+  });
+});
+
+describe("DEFAULT_TRANSITION_CONFIG", () => {
+  it("has slide as default type", () => {
+    expect(DEFAULT_TRANSITION_CONFIG.type).toBe("slide");
+  });
+
+  it("has 400ms as default duration", () => {
+    expect(DEFAULT_TRANSITION_CONFIG.durationMs).toBe(400);
+  });
+});
+
+describe("ScheduleConfig transition field", () => {
+  it("DEFAULT_SCHEDULE_CONFIG includes transition config", () => {
+    expect(DEFAULT_SCHEDULE_CONFIG.transition).toBeDefined();
+    expect(DEFAULT_SCHEDULE_CONFIG.transition).toEqual(
+      DEFAULT_TRANSITION_CONFIG
+    );
+  });
+
+  it("createDefaultScheduleConfig includes transition config", () => {
+    const config = createDefaultScheduleConfig();
+    expect(config.transition).toEqual(DEFAULT_TRANSITION_CONFIG);
+  });
+
+  it("createDefaultScheduleConfig transition is a separate copy", () => {
+    const config1 = createDefaultScheduleConfig();
+    const config2 = createDefaultScheduleConfig();
+    expect(config1.transition).not.toBe(config2.transition);
+    expect(config1.transition).toEqual(config2.transition);
   });
 });
