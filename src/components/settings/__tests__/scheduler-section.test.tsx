@@ -1,31 +1,14 @@
 /**
  * Tests for SchedulerSection component
  */
+import { MockSlider } from "@/lib/test-utils/ui-component-mocks";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SchedulerSection } from "../scheduler-section";
 
 // Mock Slider since Radix UI components don't work in jsdom
 vi.mock("@/components/ui/slider", () => ({
-  Slider: ({
-    value,
-    onValueChange,
-    id,
-  }: {
-    value: number[];
-    min: number;
-    max: number;
-    step: number;
-    id?: string;
-    onValueChange: (value: number[]) => void;
-  }) => (
-    <input
-      type="range"
-      data-testid={id ?? "slider"}
-      value={value[0]}
-      onChange={(e) => onValueChange([parseFloat(e.target.value)])}
-    />
-  ),
+  Slider: MockSlider,
 }));
 
 const defaultValues = {
