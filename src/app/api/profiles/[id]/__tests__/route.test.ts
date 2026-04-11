@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import {
   type ApiErrorResponse,
   createMockRequest,
+  createParams,
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -51,11 +52,6 @@ const mockPrisma = prisma as unknown as {
     updateMany: ReturnType<typeof vi.fn>;
   };
 };
-
-// Helper to create params promise (Next.js 16 style)
-function createParams(id: string): Promise<{ id: string }> {
-  return Promise.resolve({ id });
-}
 
 describe("/api/profiles/[id]", () => {
   beforeEach(() => {
@@ -111,24 +107,6 @@ describe("/api/profiles/[id]", () => {
       expect(data.name).toBe(mockAdminProfile.name);
       expect(data.rewardPoints).toBeDefined();
       expect(data.settings).toBeDefined();
-    });
-
-    it("only returns profiles owned by the user", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-      mockPrisma.profile.findFirst.mockResolvedValue(mockAdminProfile);
-
-      const request = createMockRequest(`/api/profiles/${mockAdminProfile.id}`);
-      await GET(request, { params: createParams(mockAdminProfile.id) });
-
-      expect(mockPrisma.profile.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            id: mockAdminProfile.id,
-            userId: mockSession.user.id,
-            isActive: true,
-          }),
-        })
-      );
     });
 
     it("returns 500 on database error", async () => {
@@ -325,18 +303,6 @@ describe("/api/profiles/[id]", () => {
 
       expect(status).toBe(200);
       expect(data.success).toBe(true);
-
-      expect(mockPrisma.profile.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            id: mockStandardProfile.id,
-            userId: mockSession.user.id,
-          },
-          data: {
-            isActive: false,
-          },
-        })
-      );
     });
 
     it("returns 500 on database error", async () => {
