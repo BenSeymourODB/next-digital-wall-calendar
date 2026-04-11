@@ -6,6 +6,7 @@ import { AccountSection } from "./account-section";
 import { DisplaySection } from "./display-section";
 import { PrivacySection } from "./privacy-section";
 import { RewardSection } from "./reward-section";
+import { SchedulerSection } from "./scheduler-section";
 import { TaskSection } from "./task-section";
 
 interface UserSettingsData {
@@ -16,6 +17,8 @@ interface UserSettingsData {
   rewardSystemEnabled: boolean;
   defaultTaskPoints: number;
   showPointsOnCompletion: boolean;
+  schedulerIntervalSeconds: number;
+  schedulerPauseOnInteractionSeconds: number;
 }
 
 interface SettingsFormProps {
@@ -96,6 +99,15 @@ export function SettingsForm({
           timeFormat: settings.timeFormat,
           dateFormat: settings.dateFormat,
           defaultZoomLevel: settings.defaultZoomLevel,
+        }}
+        onChange={updateSettings}
+      />
+
+      <SchedulerSection
+        values={{
+          schedulerIntervalSeconds: settings.schedulerIntervalSeconds,
+          schedulerPauseOnInteractionSeconds:
+            settings.schedulerPauseOnInteractionSeconds,
         }}
         onChange={updateSettings}
       />

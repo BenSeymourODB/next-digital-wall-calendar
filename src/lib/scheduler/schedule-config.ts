@@ -10,19 +10,38 @@ import type {
   TimeSpecificNavigation,
 } from "@/components/scheduler/types";
 
+/** Default scheduler timing values (matching Prisma UserSettings defaults) */
+export const SCHEDULER_DEFAULTS = {
+  intervalSeconds: 10,
+  pauseOnInteractionSeconds: 30,
+} as const;
+
+/** Optional overrides for scheduler timing, typically from user settings */
+export interface SchedulerTimingOverrides {
+  intervalSeconds?: number;
+  pauseOnInteractionSeconds?: number;
+}
+
 /**
  * Create a new ScreenSequence with default values.
+ * Optionally accepts timing overrides from user settings.
  *
+ * @param overrides - Optional interval/pause values from user settings
  * @returns A new ScreenSequence with a unique ID and sensible defaults
  */
-export function createDefaultSequence(): ScreenSequence {
+export function createDefaultSequence(
+  overrides?: SchedulerTimingOverrides
+): ScreenSequence {
   return {
     id: `seq-${crypto.randomUUID()}`,
     name: "New Sequence",
     enabled: true,
     screens: ["/calendar"],
-    intervalSeconds: 60,
-    pauseOnInteractionSeconds: 120,
+    intervalSeconds:
+      overrides?.intervalSeconds ?? SCHEDULER_DEFAULTS.intervalSeconds,
+    pauseOnInteractionSeconds:
+      overrides?.pauseOnInteractionSeconds ??
+      SCHEDULER_DEFAULTS.pauseOnInteractionSeconds,
   };
 }
 
@@ -43,17 +62,32 @@ export function createDefaultTimeSpecific(): TimeSpecificNavigation {
 
 /**
  * Default schedule configuration with a basic rotation sequence.
+ * Optionally accepts timing overrides from user settings.
  */
-export const DEFAULT_SCHEDULE_CONFIG: ScheduleConfig = {
-  sequences: [
-    {
-      id: "default-seq",
-      name: "Main Rotation",
-      enabled: true,
-      screens: ["/calendar", "/tasks"],
-      intervalSeconds: 60,
-      pauseOnInteractionSeconds: 120,
-    },
-  ],
-  timeSpecific: [],
-};
+export function createDefaultScheduleConfig(
+  overrides?: SchedulerTimingOverrides
+): ScheduleConfig {
+  return {
+    sequences: [
+      {
+        id: "default-seq",
+        name: "Main Rotation",
+        enabled: true,
+        screens: ["/calendar", "/tasks"],
+        intervalSeconds:
+          overrides?.intervalSeconds ?? SCHEDULER_DEFAULTS.intervalSeconds,
+        pauseOnInteractionSeconds:
+          overrides?.pauseOnInteractionSeconds ??
+          SCHEDULER_DEFAULTS.pauseOnInteractionSeconds,
+      },
+    ],
+    timeSpecific: [],
+  };
+}
+
+/**
+ * Default schedule configuration with a basic rotation sequence.
+ * @deprecated Use createDefaultScheduleConfig() for user-configurable defaults
+ */
+export const DEFAULT_SCHEDULE_CONFIG: ScheduleConfig =
+  createDefaultScheduleConfig();

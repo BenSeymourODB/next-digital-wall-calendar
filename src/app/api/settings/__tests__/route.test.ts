@@ -54,6 +54,8 @@ const mockSettings = {
   timeFormat: "12h",
   dateFormat: "MM/DD/YYYY",
   showPointsOnCompletion: true,
+  schedulerIntervalSeconds: 10,
+  schedulerPauseOnInteractionSeconds: 30,
 };
 
 describe("/api/settings", () => {
@@ -248,6 +250,94 @@ describe("/api/settings", () => {
 
       expect(status).toBe(200);
       expect(data.rewardSystemEnabled).toBe(true);
+    });
+
+    it("validates schedulerIntervalSeconds range (5-120)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      // Too low
+      const requestLow = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { schedulerIntervalSeconds: 2 },
+      });
+      const responseLow = await PUT(requestLow);
+      const { status: statusLow, data: dataLow } =
+        await parseResponse<ApiErrorResponse>(responseLow);
+      expect(statusLow).toBe(400);
+      expect(dataLow.error).toContain("schedulerIntervalSeconds");
+
+      // Too high
+      const requestHigh = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { schedulerIntervalSeconds: 200 },
+      });
+      const responseHigh = await PUT(requestHigh);
+      const { status: statusHigh, data: dataHigh } =
+        await parseResponse<ApiErrorResponse>(responseHigh);
+      expect(statusHigh).toBe(400);
+      expect(dataHigh.error).toContain("schedulerIntervalSeconds");
+
+      // Non-integer
+      const requestFloat = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { schedulerIntervalSeconds: 10.5 },
+      });
+      const responseFloat = await PUT(requestFloat);
+      const { status: statusFloat } =
+        await parseResponse<ApiErrorResponse>(responseFloat);
+      expect(statusFloat).toBe(400);
+    });
+
+    it("validates schedulerPauseOnInteractionSeconds range (10-300)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      // Too low
+      const requestLow = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { schedulerPauseOnInteractionSeconds: 5 },
+      });
+      const responseLow = await PUT(requestLow);
+      const { status: statusLow, data: dataLow } =
+        await parseResponse<ApiErrorResponse>(responseLow);
+      expect(statusLow).toBe(400);
+      expect(dataLow.error).toContain("schedulerPauseOnInteractionSeconds");
+
+      // Too high
+      const requestHigh = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { schedulerPauseOnInteractionSeconds: 500 },
+      });
+      const responseHigh = await PUT(requestHigh);
+      const { status: statusHigh, data: dataHigh } =
+        await parseResponse<ApiErrorResponse>(responseHigh);
+      expect(statusHigh).toBe(400);
+      expect(dataHigh.error).toContain("schedulerPauseOnInteractionSeconds");
+    });
+
+    it("accepts valid scheduler settings", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      const updatedSettings = {
+        ...mockSettings,
+        schedulerIntervalSeconds: 30,
+        schedulerPauseOnInteractionSeconds: 60,
+      };
+      mockPrisma.userSettings.upsert.mockResolvedValue(updatedSettings);
+
+      const request = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: {
+          schedulerIntervalSeconds: 30,
+          schedulerPauseOnInteractionSeconds: 60,
+        },
+      });
+
+      const response = await PUT(request);
+      const { status, data } =
+        await parseResponse<typeof mockSettings>(response);
+
+      expect(status).toBe(200);
+      expect(data.schedulerIntervalSeconds).toBe(30);
+      expect(data.schedulerPauseOnInteractionSeconds).toBe(60);
     });
 
     it("returns 500 on database error", async () => {
