@@ -34,6 +34,12 @@ pnpm format           # Check formatting
 pnpm format:fix       # Fix formatting
 pnpm check-types      # TypeScript type check
 
+# Database migrations
+pnpm db:migrate          # Create new migration (development)
+pnpm db:migrate:deploy   # Apply pending migrations (production)
+pnpm db:migrate:reset    # Reset DB and reapply all migrations
+pnpm db:migrate:status   # Check migration status
+
 # Dependencies
 pnpm bump-deps        # Update to @latest (major/minor)
 pnpm bump-deps-minor  # Safe minor updates only
@@ -421,6 +427,7 @@ scripts/             # Build and deployment scripts
 **For detailed information, refer to these documentation files:**
 
 - **[Application Insights](./docs/application-insights.md)** - Logging, telemetry, troubleshooting
+- **[Database & Migrations](./docs/database.md)** - Prisma migration workflow, troubleshooting
 - **[React Compiler](./docs/react-compiler.md)** - How it works, best practices
 - **[Deployment](./docs/deployment.md)** - Azure deployment, workflows, scripts
 - **[Styling](./docs/styling.md)** - Tailwind CSS usage, components
@@ -582,8 +589,10 @@ export function MyComponent() {
 5. **Use the logger** - For all errors, events, and performance tracking
 6. **Let React Compiler optimize** - Don't add manual memoization
 7. **ALWAYS lint and format** - Run `pnpm lint:fix && pnpm format:fix && pnpm check-types` after generating/modifying code
-8. **Test locally** - Use `pnpm build:standalone && pnpm start:standalone`
-9. **Consult docs/** - For detailed information on specific topics
+8. **Use migrations for schema changes** - Run `pnpm db:migrate` (never `prisma db push`). See [docs/database.md](./docs/database.md)
+9. **Test locally** - Use `pnpm build:standalone && pnpm start:standalone`
+10. **Consult docs/** - For detailed information on specific topics
+11. **Never commit test output artifacts** - Do not `git add` Playwright/E2E output directories (`test-results/`, `playwright-report/`, `blob-report/`). These are already in `.gitignore` and must stay out of version control
 
 **⚠️ Critical:** Do not consider any task complete until:
 

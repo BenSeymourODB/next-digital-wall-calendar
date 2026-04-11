@@ -128,5 +128,36 @@ describe("schedule-storage", () => {
       const loaded = loadScheduleConfig();
       expect(loaded).toEqual(config);
     });
+
+    it("save then load preserves transition config", () => {
+      const config: ScheduleConfig = {
+        sequences: [],
+        timeSpecific: [],
+        transition: { type: "fade", durationMs: 600 },
+      };
+      saveScheduleConfig(config);
+      const loaded = loadScheduleConfig();
+      expect(loaded.transition).toEqual({ type: "fade", durationMs: 600 });
+    });
+
+    it("loads config without transition field (backwards compat)", () => {
+      const legacyConfig = {
+        sequences: [
+          {
+            id: "legacy-seq",
+            name: "Legacy",
+            enabled: true,
+            screens: ["/calendar"],
+            intervalSeconds: 10,
+            pauseOnInteractionSeconds: 30,
+          },
+        ],
+        timeSpecific: [],
+      };
+      localStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(legacyConfig));
+      const loaded = loadScheduleConfig();
+      expect(loaded.transition).toBeUndefined();
+      expect(loaded.sequences).toEqual(legacyConfig.sequences);
+    });
   });
 });
