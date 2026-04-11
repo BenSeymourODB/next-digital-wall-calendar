@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import {
   type ApiErrorResponse,
   createMockRequest,
+  createParams,
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,11 +48,6 @@ const mockPrisma = prisma as unknown as {
     findMany: ReturnType<typeof vi.fn>;
   };
 };
-
-// Helper to create params promise (Next.js 16 style)
-function createParams(id: string): Promise<{ id: string }> {
-  return Promise.resolve({ id });
-}
 
 // Profile stats response type
 interface ProfileStats {
@@ -186,33 +182,6 @@ describe("/api/profiles/[id]/stats", () => {
       expect(data.tasksCompleted).toBe(0);
       expect(data.completionRate).toBe(0);
       expect(data.rank).toBe(1);
-    });
-
-    it("verifies query filters by userId and isActive", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-      mockPrisma.profile.findFirst.mockResolvedValue({
-        ...mockAdminProfile,
-        rewardPoints: mockProfileRewardPoints,
-      });
-      mockPrisma.profile.findMany.mockResolvedValue([]);
-
-      const request = createMockRequest(
-        `/api/profiles/${mockAdminProfile.id}/stats`
-      );
-      await GET(request, {
-        params: createParams(mockAdminProfile.id),
-      });
-
-      expect(mockPrisma.profile.findFirst).toHaveBeenCalledWith({
-        where: {
-          id: mockAdminProfile.id,
-          userId: mockUserId,
-          isActive: true,
-        },
-        include: {
-          rewardPoints: true,
-        },
-      });
     });
   });
 

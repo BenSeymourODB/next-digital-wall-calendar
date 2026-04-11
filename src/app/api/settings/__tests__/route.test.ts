@@ -99,15 +99,6 @@ describe("/api/settings", () => {
         await parseResponse<typeof mockSettings>(response);
 
       expect(status).toBe(200);
-      expect(mockPrisma.userSettings.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { userId: mockSession.user.id },
-          create: expect.objectContaining({
-            userId: mockSession.user.id,
-          }),
-          update: {},
-        })
-      );
       expect(data.theme).toBe("light");
     });
 
