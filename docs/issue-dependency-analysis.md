@@ -91,7 +91,7 @@ TIER 3 — Highest Dependencies
 
 ---
 
-### #94 — Add animated page transitions
+### #94 — Add animated page transitions ✅ IMPLEMENTED
 
 | Relationship     | Issue | Nature                                                                                                                                                                         |
 | ---------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -100,7 +100,7 @@ TIER 3 — Highest Dependencies
 | **Synergy with** | #108  | Both extend `ScheduleConfig`; should coordinate the settings UI to avoid duplication                                                                                           |
 | **Synergy with** | #95   | Indicator must remain visible during page transitions                                                                                                                          |
 
-**Priority: MEDIUM** — Independent feature, but benefits from #92 decision on animation library.
+**Status: COMPLETE** — ScreenTransition component with slide/fade/slide-fade types, configurable duration (200-1000ms), prefers-reduced-motion support, TransitionSection settings UI, and direction-aware animations (forward/backward). Uses CSS transforms for GPU-composited 60fps performance.
 
 ---
 
@@ -200,9 +200,9 @@ Phase 1 — Foundation (parallel)
   #92   Finalize reference component evaluation decision
 
 Phase 2 — Independent scheduler enhancements (parallel, after Phase 1)
-  #95   Scheduler status indicator (has PR #96)
+  #95   Scheduler status indicator (has PR #96) ✅ DONE
   #108  Screen rotation settings (after #109) ✅ DONE
-  #94   Animated page transitions (after #92 informs animation library choice)
+  #94   Animated page transitions (after #92 informs animation library choice) ✅ DONE
 
 Phase 3 — Calendar UI components (parallel, after #92 decision)
   #70   Week and day views
