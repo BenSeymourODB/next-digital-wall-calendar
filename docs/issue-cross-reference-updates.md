@@ -15,6 +15,7 @@
 ### Cross-References (added 2026-04-03)
 
 **Informs implementation of:**
+
 - #70, #80, #81, #82, #83, #84 — Evaluation recommends cherry-picking from Jeraidi for all calendar UI components
 - #94 — Jeraidi uses framer-motion for transitions, relevant to page transition animation approach
 - #87 — Jeraidi has smooth view transitions directly applicable to calendar view animations
@@ -37,9 +38,11 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Related (different scope, shared infrastructure):**
-- #87 — Calendar *view* transitions (month/week/day) vs this issue's scheduler *page* transitions. Could share animation library choice.
+
+- #87 — Calendar _view_ transitions (month/week/day) vs this issue's scheduler _page_ transitions. Could share animation library choice.
 
 **Synergies:**
+
 - #92 — Jeraidi reference uses framer-motion; same library could power page transitions
 - #108 — Both extend `ScheduleConfig`; coordinate settings UI to avoid duplication
 - #95 — Status indicator must remain visible during page transitions; coordinate layout
@@ -61,6 +64,7 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Synergies:**
+
 - #108 — Indicator displays countdown based on `intervalSeconds` which #108 makes user-configurable
 - #94 — Both enhance scheduler visuals; indicator positioning may interact with transition animations
 
@@ -81,9 +85,11 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Benefits from:**
+
 - #109 — Adding Prisma schema fields (`schedulerIntervalSeconds`, `schedulerPauseOnInteractionSeconds`) is safer with proper migration workflow in place
 
 **Synergies:**
+
 - #94 — Both modify scheduler behavior and extend `ScheduleConfig`; coordinate the settings UI
 - #95 — Status indicator shows the interval countdown that this issue makes configurable
 
@@ -104,6 +110,7 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Enables:**
+
 - #108 — Adds new Prisma schema fields; proper migrations make this safe and repeatable
 - #115, #116, #118 — All "local database write path" work depends on reliable schema migration
 - All future DB-dependent features (profiles, rewards, meal planning, etc.)
@@ -125,9 +132,11 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Blocked by:**
+
 - Radial clock UI components (`analog-clock.tsx`, `clock-face.tsx`, `event-arc.tsx`) — not yet built, no tracked issue exists for the UI work
 
 **Independent of:**
+
 - #113, #114, #115, #116, #117, #118 — Different UI component with different data filtering (12-hour window vs date range)
 
 **Note:** Consider creating a separate issue to track the radial clock UI component build (steps 1-3, 6 from the analog clock plan).
@@ -147,9 +156,11 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Blocked by:**
+
 - #70 — Week/day view UI components must exist before wiring
 
 **Synergies:**
+
 - #114 — Mini-calendar sidebar navigates to day/week views; both extend CalendarProvider date-range loading
 - #117 — Year view click-through navigates to day view; shared CalendarProvider extensions
 
@@ -170,9 +181,11 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Blocked by:**
+
 - #80 — Mini-calendar sidebar UI must exist before wiring
 
 **Synergies:**
+
 - #113 — Mini-calendar navigates to day/week views; both need CalendarProvider `selectedDate` and event-by-date queries
 - #117 — Both render event dot indicators per day; share the day-has-events aggregation logic
 
@@ -193,16 +206,20 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Blocked by:**
+
 - #81 — Event detail modal UI must exist before wiring
 
 **Shared API route:**
+
 - #118 — Both use `PATCH /api/calendar/events/[id]`; this issue should define the route first
 
 **Synergies:**
+
 - #116 — Complementary CRUD operations; share API route file, validation patterns, optimistic update logic
 - #118 — All three (#115, #116, #118) write to Google Calendar API; share OAuth scope requirements and error handling
 
 **Benefits from:**
+
 - #109 — Local database write paths need proper migration workflow
 
 **Cluster:** Part of "Calendar CRUD API Routes" cluster with #116 and #118. Design the API route structure here first, then #116 and #118 follow the same patterns.
@@ -222,13 +239,16 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Blocked by:**
+
 - #82 — Event creation dialog UI must exist before wiring
 
 **Synergies:**
+
 - #115 — Complementary CRUD operations; share API route file, validation patterns, optimistic update logic
 - #118 — All three (#115, #116, #118) write to Google Calendar API; share OAuth scope requirements and error handling
 
 **Benefits from:**
+
 - #109 — Local database write paths need proper migration workflow
 
 **Cluster:** Part of "Calendar CRUD API Routes" cluster with #115 and #118.
@@ -248,12 +268,15 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Blocked by:**
+
 - #83 — Year view UI must exist before wiring
 
 **Benefits from:**
+
 - #72 — Year view loads 365 days of events; performance optimization directly impacts feasibility
 
 **Synergies:**
+
 - #114 — Both render event dot indicators per day; share the day-has-events aggregation logic
 - #113 — Year view click-through navigates to day/month view via CalendarProvider
 
@@ -274,13 +297,16 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 ### Cross-References (added 2026-04-03)
 
 **Blocked by:**
+
 - #84 — Drag-and-drop UI must exist before wiring
 - #115 — Shares `PATCH /api/calendar/events/[id]` route; #115 should define this route first
 
 **Synergies:**
+
 - #115, #116 — All three are Google Calendar write operations sharing OAuth scopes, error handling, optimistic updates
 
 **Benefits from:**
+
 - #109 — Local database write paths need proper migration workflow
 
 **Cluster:** Part of "Calendar CRUD API Routes" cluster with #115 and #116.
