@@ -7,7 +7,10 @@ import {
   endOfMonth,
   format,
   getDay,
+  isAfter,
+  isBefore,
   isSameDay,
+  isSameMonth,
   startOfMonth,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -45,15 +48,59 @@ export function SimpleCalendar() {
   };
 
   const today = new Date();
+  const isCurrentMonth = isSameMonth(selectedDate, today);
+
+  // Count events in the displayed month
+  const monthEventCount = events.filter((event) => {
+    const eventStart = new Date(event.startDate);
+    return (
+      (isAfter(eventStart, monthStart) ||
+        eventStart.getTime() === monthStart.getTime()) &&
+      (isBefore(eventStart, monthEnd) ||
+        eventStart.getTime() === monthEnd.getTime())
+    );
+  }).length;
+
+  const goToToday = () => {
+    setSelectedDate(new Date());
+  };
 
   return (
     <div className="w-full space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">
-          {format(selectedDate, "MMMM yyyy")}
-        </h2>
-        <div className="flex gap-2">
+        <div>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-gray-900">
+              {format(selectedDate, "MMMM yyyy")}
+            </h2>
+            <span
+              className="text-sm text-gray-500"
+              data-testid="calendar-event-count"
+            >
+              {monthEventCount} {monthEventCount === 1 ? "event" : "events"}
+            </span>
+          </div>
+          <p
+            className="text-sm text-gray-500"
+            data-testid="calendar-date-range"
+          >
+            {format(monthStart, "MMM d, yyyy")} –{" "}
+            {format(monthEnd, "MMM d, yyyy")}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={goToToday}
+            disabled={isCurrentMonth}
+            className="border-gray-200 text-xs font-semibold hover:bg-gray-50"
+            data-testid="calendar-today-btn"
+            aria-label="Go to today"
+          >
+            {format(today, "MMM d").toUpperCase()}
+          </Button>
           <Button
             variant="outline"
             size="icon"
