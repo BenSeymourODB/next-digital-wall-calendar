@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
-const VALID_THEMES = ["light", "dark", "auto"];
+const VALID_THEMES = ["light", "dark", "auto", "system"];
 const VALID_TIME_FORMATS = ["12h", "24h"];
 const VALID_DATE_FORMATS = ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"];
 
@@ -67,7 +67,7 @@ export async function PUT(request: NextRequest) {
     if (body.theme !== undefined) {
       if (!VALID_THEMES.includes(body.theme as string)) {
         return NextResponse.json(
-          { error: "Invalid theme. Must be one of: light, dark, auto" },
+          { error: "Invalid theme. Must be one of: light, dark, system" },
           { status: 400 }
         );
       }

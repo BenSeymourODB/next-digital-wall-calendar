@@ -71,18 +71,18 @@ export function SimpleCalendar() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold text-gray-900">
+            <h2 className="text-foreground text-2xl font-bold">
               {format(selectedDate, "MMMM yyyy")}
             </h2>
             <span
-              className="text-sm text-gray-500"
+              className="text-muted-foreground text-sm"
               data-testid="calendar-event-count"
             >
               {monthEventCount} {monthEventCount === 1 ? "event" : "events"}
             </span>
           </div>
           <p
-            className="text-sm text-gray-500"
+            className="text-muted-foreground text-sm"
             data-testid="calendar-date-range"
           >
             {format(monthStart, "MMM d, yyyy")} –{" "}
@@ -95,7 +95,7 @@ export function SimpleCalendar() {
             size="sm"
             onClick={goToToday}
             disabled={isCurrentMonth}
-            className="border-gray-200 text-xs font-semibold hover:bg-gray-50"
+            className="text-xs font-semibold"
             data-testid="calendar-today-btn"
             aria-label="Go to today"
           >
@@ -105,7 +105,6 @@ export function SimpleCalendar() {
             variant="outline"
             size="icon"
             onClick={previousMonth}
-            className="border-gray-200 hover:bg-gray-50"
             data-testid="calendar-prev-month"
             aria-label="Previous month"
           >
@@ -115,7 +114,6 @@ export function SimpleCalendar() {
             variant="outline"
             size="icon"
             onClick={nextMonth}
-            className="border-gray-200 hover:bg-gray-50"
             data-testid="calendar-next-month"
             aria-label="Next month"
           >
@@ -126,17 +124,19 @@ export function SimpleCalendar() {
 
       {/* Loading indicator */}
       {isLoading && (
-        <div className="text-center text-gray-600">Loading events...</div>
+        <div className="text-muted-foreground text-center">
+          Loading events...
+        </div>
       )}
 
       {/* Calendar Grid */}
-      <div className="rounded-lg border border-gray-200 bg-white">
+      <div className="border-border bg-card rounded-lg border">
         {/* Day headers */}
-        <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
+        <div className="border-border bg-muted grid grid-cols-7 border-b">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
             <div
               key={day}
-              className="p-3 text-center text-sm font-semibold text-gray-700"
+              className="text-muted-foreground p-3 text-center text-sm font-semibold"
             >
               {day}
             </div>
@@ -149,7 +149,7 @@ export function SimpleCalendar() {
           {paddingDays.map((index) => (
             <div
               key={`padding-${index}`}
-              className="min-h-[100px] border-r border-b border-gray-200 bg-gray-50"
+              className="border-border bg-muted min-h-[100px] border-r border-b"
             />
           ))}
 
@@ -161,15 +161,15 @@ export function SimpleCalendar() {
             return (
               <div
                 key={day.toISOString()}
-                className={`min-h-[100px] border-r border-b border-gray-200 p-2 ${
-                  isToday ? "bg-blue-50" : "bg-white"
+                className={`border-border min-h-[100px] border-r border-b p-2 ${
+                  isToday ? "bg-blue-50 dark:bg-blue-950" : "bg-card"
                 }`}
               >
                 <div
                   className={`mb-1 text-sm ${
                     isToday
                       ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white"
-                      : "text-gray-700"
+                      : "text-muted-foreground"
                   }`}
                 >
                   {format(day, "d")}
@@ -182,23 +182,23 @@ export function SimpleCalendar() {
                       key={event.id}
                       className={`rounded px-2 py-1 text-xs ${
                         event.color === "blue"
-                          ? "bg-blue-100 text-blue-800"
+                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
                           : event.color === "green"
-                            ? "bg-green-100 text-green-800"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                             : event.color === "red"
-                              ? "bg-red-100 text-red-800"
+                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
                               : event.color === "yellow"
-                                ? "bg-yellow-100 text-yellow-800"
+                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
                                 : event.color === "purple"
-                                  ? "bg-purple-100 text-purple-800"
-                                  : "bg-orange-100 text-orange-800"
+                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
+                                  : "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
                       }`}
                     >
                       {event.title}
                     </div>
                   ))}
                   {dayEvents.length > 3 && (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-muted-foreground text-xs">
                       +{dayEvents.length - 3} more
                     </div>
                   )}
