@@ -77,10 +77,12 @@ export function AccountManager() {
   // Show session error if refresh token failed
   if (session?.error === "RefreshTokenError") {
     return (
-      <Card className="border-yellow-200 bg-yellow-50">
+      <Card className="border-yellow-200 bg-yellow-50 dark:border-yellow-700 dark:bg-yellow-950">
         <CardHeader>
-          <CardTitle className="text-yellow-800">Session Expired</CardTitle>
-          <CardDescription className="text-yellow-700">
+          <CardTitle className="text-yellow-800 dark:text-yellow-200">
+            Session Expired
+          </CardTitle>
+          <CardDescription className="text-yellow-700 dark:text-yellow-300">
             Your Google session has expired. Please sign in again to continue
             viewing your calendar.
           </CardDescription>
@@ -99,21 +101,21 @@ export function AccountManager() {
   }
 
   return (
-    <Card className="border-gray-200">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-gray-900">Calendar Accounts</CardTitle>
-        <CardDescription className="text-gray-600">
+        <CardTitle>Calendar Accounts</CardTitle>
+        <CardDescription>
           Connect your Google Calendar account to display events
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {status === "loading" ? (
           <div className="py-8 text-center">
-            <p className="text-gray-600">Loading...</p>
+            <p className="text-muted-foreground">Loading...</p>
           </div>
         ) : !isAuthenticated ? (
           <div className="py-8 text-center">
-            <p className="mb-4 text-gray-600">
+            <p className="text-muted-foreground mb-4">
               Sign in with your Google account to view your calendar events.
             </p>
             <Button
@@ -127,7 +129,7 @@ export function AccountManager() {
         ) : (
           <>
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="border-border bg-muted flex items-center justify-between rounded-lg border p-3">
                 <div className="flex items-center gap-3">
                   {session?.user?.image && (
                     <Image
@@ -139,14 +141,14 @@ export function AccountManager() {
                     />
                   )}
                   <div>
-                    <p className="font-medium text-gray-900">
+                    <p className="text-foreground font-medium">
                       {session?.user?.name || "Google Account"}
                     </p>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-muted-foreground text-sm">
                       {session?.user?.email}
                     </p>
                     {accountInfo && (
-                      <p className="mt-1 text-xs text-gray-500">
+                      <p className="text-muted-foreground mt-1 text-xs">
                         {accountInfo.calendarIds.length} calendar(s) connected
                       </p>
                     )}
@@ -157,15 +159,15 @@ export function AccountManager() {
                   size="sm"
                   onClick={handleSignOut}
                   disabled={isSigningOut}
-                  className="border-red-200 text-red-600 hover:bg-red-50"
+                  className="border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
                 >
                   {isSigningOut ? "Signing out..." : "Sign out"}
                 </Button>
               </div>
             </div>
 
-            <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-              <p className="text-sm text-green-700">
+            <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-950">
+              <p className="text-sm text-green-700 dark:text-green-300">
                 Your Google Calendar is connected. Events will automatically
                 sync every 15 minutes.
               </p>

@@ -13,6 +13,16 @@ vi.mock("@/components/ui/slider", () => ({
   Slider: MockSlider,
 }));
 
+// Mock next-themes
+const mockSetTheme = vi.fn();
+
+vi.mock("next-themes", () => ({
+  useTheme: () => ({
+    theme: "light",
+    setTheme: mockSetTheme,
+  }),
+}));
+
 const defaultValues = {
   theme: "light",
   timeFormat: "12h",
@@ -32,7 +42,7 @@ describe("DisplaySection", () => {
 
     expect(screen.getByLabelText(/light/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/dark/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/auto/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/system/i)).toBeInTheDocument();
   });
 
   it("renders time format options", () => {
@@ -50,7 +60,7 @@ describe("DisplaySection", () => {
     expect(screen.getByText(/100%/)).toBeInTheDocument();
   });
 
-  it("onChange fires when theme changes", async () => {
+  it("onChange fires and setTheme is called when theme changes", async () => {
     const user = userEvent.setup();
 
     render(<DisplaySection values={defaultValues} onChange={mockOnChange} />);
@@ -61,6 +71,7 @@ describe("DisplaySection", () => {
     expect(mockOnChange).toHaveBeenCalledWith(
       expect.objectContaining({ theme: "dark" })
     );
+    expect(mockSetTheme).toHaveBeenCalledWith("dark");
   });
 
   it("onChange fires when time format changes", async () => {
@@ -98,5 +109,31 @@ describe("DisplaySection", () => {
 
     const twentyFourHour = screen.getByLabelText(/24-hour/i);
     expect(twentyFourHour).toBeChecked();
+  });
+
+  it("maps legacy 'auto' theme value to 'system' for display", () => {
+    render(
+      <DisplaySection
+        values={{ ...defaultValues, theme: "auto" }}
+        onChange={mockOnChange}
+      />
+    );
+
+    const systemRadio = screen.getByLabelText(/system/i);
+    expect(systemRadio).toBeChecked();
+  });
+
+  it("calls setTheme with 'system' when system option is clicked", async () => {
+    const user = userEvent.setup();
+
+    render(<DisplaySection values={defaultValues} onChange={mockOnChange} />);
+
+    const systemRadio = screen.getByLabelText(/system/i);
+    await user.click(systemRadio);
+
+    expect(mockSetTheme).toHaveBeenCalledWith("system");
+    expect(mockOnChange).toHaveBeenCalledWith(
+      expect.objectContaining({ theme: "system" })
+    );
   });
 });
