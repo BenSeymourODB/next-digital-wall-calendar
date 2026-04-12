@@ -7,6 +7,11 @@ import type { ClockFaceProps } from "./types";
 /** Hour marker positions (1-12) at 30-degree intervals */
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 
+/** Minute tick positions (60 total, skip multiples of 5 where hour markers go) */
+const MINUTE_TICKS = Array.from({ length: 60 }, (_, i) => i).filter(
+  (i) => i % 5 !== 0
+);
+
 /** Calculate the rotation angle for each hour number (30 degrees per hour) */
 function hourToDegrees(hour: number): number {
   return hour * 30;
@@ -24,22 +29,27 @@ export function ClockFace({
   const seconds = time.getSeconds();
 
   // Hand angles (0 = 12 o'clock, clockwise)
-  const hourAngle = hours * 30 + minutes * 0.5; // 30° per hour + 0.5° per minute
-  const minuteAngle = minutes * 6; // 6° per minute
-  const secondAngle = seconds * 6; // 6° per second
+  const hourAngle = hours * 30 + minutes * 0.5;
+  const minuteAngle = minutes * 6;
+  const secondAngle = seconds * 6;
 
   const isPM = time.getHours() >= 12;
 
-  // Hand lengths relative to radius
-  const hourHandLength = radius * 0.5;
-  const minuteHandLength = radius * 0.7;
-  const secondHandLength = radius * 0.75;
+  // Face fills 80% of radius, leaving room for event arcs
+  const faceRadius = radius * 0.8;
 
-  // Marker dimensions
-  const markerOuterRadius = radius * 0.92;
-  const markerInnerRadius = radius * 0.84;
-  const markerInnerRadiusMinor = radius * 0.88;
-  const numberRadius = radius * 0.72;
+  // Hand lengths relative to face radius
+  const hourHandLength = faceRadius * 0.55;
+  const minuteHandLength = faceRadius * 0.75;
+  const secondHandLength = faceRadius * 0.8;
+
+  // Marker dimensions - keep entirely within the face circle
+  const markerOuterRadius = faceRadius * 0.96;
+  const markerInnerRadiusMajor = faceRadius * 0.84;
+  const markerInnerRadiusMinor = faceRadius * 0.9;
+  const minuteTickOuter = faceRadius * 0.96;
+  const minuteTickInner = faceRadius * 0.93;
+  const numberRadius = faceRadius * 0.72;
 
   return (
     <g data-testid="clock-face">
@@ -48,11 +58,33 @@ export function ClockFace({
         data-testid="clock-face-bg"
         cx={cx}
         cy={cy}
-        r={radius * 0.8}
+        r={faceRadius}
         fill="white"
-        stroke="#d1d5db"
-        strokeWidth={1}
+        stroke="#e5e7eb"
+        strokeWidth={1.5}
       />
+
+      {/* Minute tick marks */}
+      {MINUTE_TICKS.map((minute) => {
+        const angle = minute * 6;
+        const angleRad = ((angle - 90) * Math.PI) / 180;
+        const outerX = cx + minuteTickOuter * Math.cos(angleRad);
+        const outerY = cy + minuteTickOuter * Math.sin(angleRad);
+        const innerX = cx + minuteTickInner * Math.cos(angleRad);
+        const innerY = cy + minuteTickInner * Math.sin(angleRad);
+
+        return (
+          <line
+            key={`min-${minute}`}
+            x1={outerX}
+            y1={outerY}
+            x2={innerX}
+            y2={innerY}
+            stroke="#d1d5db"
+            strokeWidth={0.75}
+          />
+        );
+      })}
 
       {/* Hour markers and numbers */}
       {HOURS.map((hour) => {
@@ -62,7 +94,9 @@ export function ClockFace({
 
         const outerX = cx + markerOuterRadius * Math.cos(angleRad);
         const outerY = cy + markerOuterRadius * Math.sin(angleRad);
-        const innerR = isQuarter ? markerInnerRadius : markerInnerRadiusMinor;
+        const innerR = isQuarter
+          ? markerInnerRadiusMajor
+          : markerInnerRadiusMinor;
         const innerX = cx + innerR * Math.cos(angleRad);
         const innerY = cy + innerR * Math.sin(angleRad);
 
@@ -71,7 +105,6 @@ export function ClockFace({
 
         return (
           <g key={hour}>
-            {/* Hour tick mark */}
             <line
               data-testid={`hour-marker-${hour}`}
               x1={outerX}
@@ -82,14 +115,13 @@ export function ClockFace({
               strokeWidth={isQuarter ? 3 : 1.5}
               strokeLinecap="round"
             />
-            {/* Hour number */}
             <text
               data-testid={`hour-number-${hour}`}
               x={numberX}
               y={numberY}
               textAnchor="middle"
               dominantBaseline="central"
-              fontSize={radius * 0.12}
+              fontSize={faceRadius * 0.14}
               fontWeight={isQuarter ? 700 : 500}
               fill="#1f2937"
               fontFamily="system-ui, -apple-system, sans-serif"
@@ -104,10 +136,10 @@ export function ClockFace({
       <text
         data-testid="period-indicator"
         x={cx}
-        y={cy + radius * 0.3}
+        y={cy + faceRadius * 0.35}
         textAnchor="middle"
         dominantBaseline="central"
-        fontSize={radius * 0.08}
+        fontSize={faceRadius * 0.09}
         fontWeight={600}
         fill="#9ca3af"
         fontFamily="system-ui, -apple-system, sans-serif"
@@ -123,7 +155,7 @@ export function ClockFace({
         x2={cx}
         y2={cy - hourHandLength}
         stroke="#1f2937"
-        strokeWidth={radius * 0.04}
+        strokeWidth={faceRadius * 0.045}
         strokeLinecap="round"
         transform={`rotate(${hourAngle}, ${cx}, ${cy})`}
       />
@@ -136,7 +168,7 @@ export function ClockFace({
         x2={cx}
         y2={cy - minuteHandLength}
         stroke="#374151"
-        strokeWidth={radius * 0.025}
+        strokeWidth={faceRadius * 0.028}
         strokeLinecap="round"
         transform={`rotate(${minuteAngle}, ${cx}, ${cy})`}
       />
@@ -146,7 +178,7 @@ export function ClockFace({
         <line
           data-testid="second-hand"
           x1={cx}
-          y1={cy + radius * 0.1}
+          y1={cy + faceRadius * 0.12}
           x2={cx}
           y2={cy - secondHandLength}
           stroke="#ef4444"
@@ -161,7 +193,7 @@ export function ClockFace({
         data-testid="clock-center-dot"
         cx={cx}
         cy={cy}
-        r={radius * 0.03}
+        r={faceRadius * 0.035}
         fill="#1f2937"
       />
     </g>
