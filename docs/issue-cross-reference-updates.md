@@ -1,7 +1,7 @@
 # Issue Cross-Reference Updates
 
 > Append the text below to each issue's description to document dependencies and synergies.
-> Generated 2026-04-03.
+> Generated 2026-04-03. Updated 2026-04-13.
 
 ---
 
@@ -17,7 +17,7 @@
 **Informs implementation of:**
 
 - #70, #80, #81, #82, #83, #84 — Evaluation recommends cherry-picking from Jeraidi for all calendar UI components
-- #94 — Jeraidi uses framer-motion for transitions, relevant to page transition animation approach
+- ~~#94~~ ✅ — Jeraidi uses framer-motion for transitions; page transitions now implemented
 - #87 — Jeraidi has smooth view transitions directly applicable to calendar view animations
 - #113, #114, #115, #116, #117, #118 — UI component approach decision cascades to all API wiring issues
 
@@ -28,97 +28,27 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 
 ---
 
-## #94 — Add animated page transitions to screen rotation scheduler
+## #94 — ~~Add animated page transitions to screen rotation scheduler~~ ✅ CLOSED
 
-**Append to description:**
-
-```markdown
----
-
-### Cross-References (added 2026-04-03)
-
-**Related (different scope, shared infrastructure):**
-
-- #87 — Calendar _view_ transitions (month/week/day) vs this issue's scheduler _page_ transitions. Could share animation library choice.
-
-**Synergies:**
-
-- #92 — Jeraidi reference uses framer-motion; same library could power page transitions
-- #108 — Both extend `ScheduleConfig`; coordinate settings UI to avoid duplication
-- #95 — Status indicator must remain visible during page transitions; coordinate layout
-
-**Cluster:** Part of "Scheduler UX Polish" cluster with #95 and #108.
-
-See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for full dependency graph.
-```
+> Resolved. Page transitions implemented.
 
 ---
 
-## #95 — Add persistent scheduler status indicator with composable positioning
+## #95 — ~~Add persistent scheduler status indicator with composable positioning~~ ✅ CLOSED
 
-**Append to description:**
-
-```markdown
----
-
-### Cross-References (added 2026-04-03)
-
-**Synergies:**
-
-- #108 — Indicator displays countdown based on `intervalSeconds` which #108 makes user-configurable
-- #94 — Both enhance scheduler visuals; indicator positioning may interact with transition animations
-
-**Cluster:** Part of "Scheduler UX Polish" cluster with #94 and #108.
-
-See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for full dependency graph.
-```
+> Resolved. Status indicator implemented.
 
 ---
 
-## #108 — Add user-configurable screen rotation settings
+## #108 — ~~Add user-configurable screen rotation settings~~ ✅ CLOSED
 
-**Append to description:**
-
-```markdown
----
-
-### Cross-References (added 2026-04-03)
-
-**Benefits from:**
-
-- #109 — Adding Prisma schema fields (`schedulerIntervalSeconds`, `schedulerPauseOnInteractionSeconds`) is safer with proper migration workflow in place
-
-**Synergies:**
-
-- #94 — Both modify scheduler behavior and extend `ScheduleConfig`; coordinate the settings UI
-- #95 — Status indicator shows the interval countdown that this issue makes configurable
-
-**Cluster:** Part of "Scheduler UX Polish" cluster with #94 and #95.
-
-See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for full dependency graph.
-```
+> Resolved. User-configurable scheduler settings implemented. "Scheduler UX Polish" cluster (#94, #95, #108) is now complete.
 
 ---
 
-## #109 — Set up Prisma migration workflow
+## #109 — ~~Set up Prisma migration workflow~~ ✅ CLOSED
 
-**Append to description:**
-
-```markdown
----
-
-### Cross-References (added 2026-04-03)
-
-**Enables:**
-
-- #108 — Adds new Prisma schema fields; proper migrations make this safe and repeatable
-- #115, #116, #118 — All "local database write path" work depends on reliable schema migration
-- All future DB-dependent features (profiles, rewards, meal planning, etc.)
-
-**Priority:** HIGH — Foundation infrastructure with no blockers. Should be addressed first.
-
-See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for full dependency graph.
-```
+> Resolved (PR #120). Prisma migration workflow is in place. This unblocked #108 (also now closed) and enables safe schema changes for #115, #116, #118 and future DB-dependent features.
 
 ---
 
@@ -133,13 +63,11 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 
 **Blocked by:**
 
-- Radial clock UI components (`analog-clock.tsx`, `clock-face.tsx`, `event-arc.tsx`) — not yet built, no tracked issue exists for the UI work
+- ~~Radial clock UI components (`analog-clock.tsx`, `clock-face.tsx`, `event-arc.tsx`) — not yet built~~ **Unblocked:** UI components are being built in PR #130.
 
 **Independent of:**
 
 - #113, #114, #115, #116, #117, #118 — Different UI component with different data filtering (12-hour window vs date range)
-
-**Note:** Consider creating a separate issue to track the radial clock UI component build (steps 1-3, 6 from the analog clock plan).
 
 See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for full dependency graph.
 ```
@@ -220,7 +148,7 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 
 **Benefits from:**
 
-- #109 — Local database write paths need proper migration workflow
+- ~~#109~~ ✅ — Prisma migration workflow now in place (PR #120)
 
 **Cluster:** Part of "Calendar CRUD API Routes" cluster with #116 and #118. Design the API route structure here first, then #116 and #118 follow the same patterns.
 
@@ -249,7 +177,7 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 
 **Benefits from:**
 
-- #109 — Local database write paths need proper migration workflow
+- ~~#109~~ ✅ — Prisma migration workflow now in place (PR #120)
 
 **Cluster:** Part of "Calendar CRUD API Routes" cluster with #115 and #118.
 
@@ -307,7 +235,7 @@ See [docs/issue-dependency-analysis.md](./docs/issue-dependency-analysis.md) for
 
 **Benefits from:**
 
-- #109 — Local database write paths need proper migration workflow
+- ~~#109~~ ✅ — Prisma migration workflow now in place (PR #120)
 
 **Cluster:** Part of "Calendar CRUD API Routes" cluster with #115 and #116.
 **Priority note:** Highest dependency count of all open issues (double-blocked by #84 + #115).
