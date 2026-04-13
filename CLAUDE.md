@@ -41,6 +41,17 @@ pnpm bump-ui             # Update shadcn components
 
 ## AI Agent Instructions
 
+### Starting a Task
+
+Work is tracked in **GitHub Issues**. At the start of every session:
+
+1. **Identify the issue** — read the linked GitHub issue (if provided) to understand requirements and acceptance criteria
+2. **Check for an existing plan** — look in `.claude/plans/` for a file matching the feature/issue
+3. **If a plan exists** — read it before writing any code; it contains specs, schemas, and testing strategies
+4. **If no plan exists** — enter planning mode first. Produce a plan based on the GitHub issue (or the session prompt if no issue is linked) and save it to `.claude/plans/` before implementing
+
+Never skip straight to implementation without a plan.
+
 ### Styling
 
 Use **standard Tailwind CSS colors** only — default palette (`gray-*`, `blue-*`, `red-*`, `green-*`, `yellow-*`, etc.). See [docs/styling.md](./docs/styling.md).
@@ -121,7 +132,7 @@ scripts/              # Build and deployment scripts
 .github/workflows/    # CI/CD workflows
 ```
 
-**Before implementing any planned feature, ALWAYS read the corresponding plan in `.claude/plans/` first.** Plans contain technical specs, database schemas, API routes, component hierarchies, and testing strategies.
+See [Starting a Task](#starting-a-task) for the plan-first workflow.
 
 ### Key Files
 
