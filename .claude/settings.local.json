@@ -54,9 +54,14 @@
       "Bash(git -C /home/bseymour/next-digital-wall-calendar log --oneline -10)",
       "Bash(git -C /home/bseymour/next-digital-wall-calendar diff --stat)",
       "Bash(pnpm dev:*)",
-      "mcp__next-devtools__browser_eval"
+      "mcp__next-devtools__browser_eval",
+      "mcp__fe2c88c4-213a-4b4d-ba59-2c34a84fce6f__web_fetch_exa"
     ]
   },
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": ["next-devtools", "context7", "shadcn"]
+  "enabledMcpjsonServers": [
+    "next-devtools",
+    "context7",
+    "shadcn"
+  ]
 }
