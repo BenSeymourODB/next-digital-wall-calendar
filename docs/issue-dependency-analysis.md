@@ -1,6 +1,6 @@
 # Open Issue Dependency Analysis
 
-> Generated 2026-04-03 | Covers all 12 open issues at time of analysis
+> Generated 2026-04-03 | Updated 2026-04-12 | Covers all 12 open issues at time of analysis + newly completed issues
 
 ## Dependency Graph
 
@@ -101,6 +101,17 @@ TIER 3 — Highest Dependencies
 | **Synergy with** | #95   | Indicator must remain visible during page transitions                                                                                                                          |
 
 **Status: COMPLETE** — ScreenTransition component with slide/fade/slide-fade types, configurable duration (200-1000ms), prefers-reduced-motion support, TransitionSection settings UI, and direction-aware animations (forward/backward). Uses CSS transforms for GPU-composited 60fps performance.
+
+---
+
+### #90 — Add dark/light/system theme toggle ✅ IMPLEMENTED
+
+| Relationship     | Issue | Nature                                                                                           |
+| ---------------- | ----- | ------------------------------------------------------------------------------------------------ |
+| **Independent**  | —     | No blockers; uses existing `next-themes` dependency and shadcn/ui dark mode support              |
+| **Synergy with** | #86   | Calendar settings panel could integrate the ThemeToggle dropdown; shares settings infrastructure |
+
+**Status: COMPLETE** — ThemeProvider (next-themes), ThemeToggle dropdown (Sun/Moon/Monitor icons), complete shadcn/ui CSS variable definitions for light and dark themes (oklch, slate base), semantic color tokens throughout all major components (SimpleCalendar, AgendaCalendar, AccountManager, Home, Settings, Calendar page). DisplaySection wired to `setTheme()` for instant switching. Theme options changed from "auto" to "system" (next-themes standard). API accepts both "auto" and "system" for backward compatibility. localStorage persistence via next-themes.
 
 ---
 

@@ -81,12 +81,12 @@ function parseDateKeyAsLocal(dateKey: string): Date {
  */
 function getColorClasses(color: TEventColor): string {
   const classes: Record<TEventColor, string> = {
-    blue: "border-blue-500 bg-blue-50",
-    green: "border-green-500 bg-green-50",
-    red: "border-red-500 bg-red-50",
-    yellow: "border-yellow-500 bg-yellow-50",
-    purple: "border-purple-500 bg-purple-50",
-    orange: "border-orange-500 bg-orange-50",
+    blue: "border-blue-500 bg-blue-50 dark:bg-blue-950",
+    green: "border-green-500 bg-green-50 dark:bg-green-950",
+    red: "border-red-500 bg-red-50 dark:bg-red-950",
+    yellow: "border-yellow-500 bg-yellow-50 dark:bg-yellow-950",
+    purple: "border-purple-500 bg-purple-50 dark:bg-purple-950",
+    orange: "border-orange-500 bg-orange-50 dark:bg-orange-950",
   };
   return classes[color];
 }
@@ -132,12 +132,14 @@ function EventCard({
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <h4 className="font-semibold text-gray-900">{event.title}</h4>
-          <p className="mt-1 text-sm text-gray-600">
+          <h4 className="text-foreground font-semibold">{event.title}</h4>
+          <p className="text-muted-foreground mt-1 text-sm">
             {isAllDay ? "All day" : `${startTime} - ${endTime}`}
           </p>
           {event.description && (
-            <p className="mt-2 text-sm text-gray-600">{event.description}</p>
+            <p className="text-muted-foreground mt-2 text-sm">
+              {event.description}
+            </p>
           )}
         </div>
         <div
@@ -173,27 +175,27 @@ export function AgendaCalendar() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-gray-500">Loading events...</p>
+        <p className="text-muted-foreground">Loading events...</p>
       </div>
     );
   }
 
   return (
     <div className="w-full space-y-4">
-      <h2 className="text-2xl font-bold text-gray-900">Upcoming Events</h2>
+      <h2 className="text-foreground text-2xl font-bold">Upcoming Events</h2>
 
       {/* Scrollable container */}
-      <div className="max-h-[600px] overflow-y-auto rounded-lg border border-gray-200 bg-white">
+      <div className="border-border bg-card max-h-[600px] overflow-y-auto rounded-lg border">
         {sortedGroupedEvents.length > 0 ? (
           <div className="space-y-6 p-4">
             {sortedGroupedEvents.map(([dateKey, dayEvents]) => (
               <div key={dateKey} className="space-y-3">
                 {/* Date Header - Sticky */}
-                <div className="sticky top-0 z-10 border-b border-gray-200 bg-white pt-2 pb-2">
-                  <h3 className="text-lg font-semibold text-gray-900">
+                <div className="border-border bg-card sticky top-0 z-10 border-b pt-2 pb-2">
+                  <h3 className="text-foreground text-lg font-semibold">
                     {format(parseDateKeyAsLocal(dateKey), "EEEE, MMMM d")}
                   </h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-muted-foreground text-sm">
                     {dayEvents.length}{" "}
                     {dayEvents.length === 1 ? "event" : "events"}
                   </p>
@@ -214,7 +216,7 @@ export function AgendaCalendar() {
           </div>
         ) : (
           /* Empty state */
-          <div className="py-12 text-center text-gray-500">
+          <div className="text-muted-foreground py-12 text-center">
             <p>No upcoming events in the next 7 days</p>
           </div>
         )}

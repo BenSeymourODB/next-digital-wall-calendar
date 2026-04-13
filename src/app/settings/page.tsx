@@ -32,7 +32,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="container mx-auto max-w-2xl p-8">
-      <h1 className="mb-8 text-3xl font-bold text-gray-900">Settings</h1>
+      <h1 className="text-foreground mb-8 text-3xl font-bold">Settings</h1>
       <SettingsForm
         user={{
           name: session.user.name,
