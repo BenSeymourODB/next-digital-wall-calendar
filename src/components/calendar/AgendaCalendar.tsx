@@ -2,7 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import type { IEvent, TEventColor } from "@/types/calendar";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";
 import { EventDetailModal } from "./EventDetailModal";
 
@@ -108,18 +108,16 @@ function getColorBadgeClasses(color: TEventColor): string {
   return classes[color];
 }
 
+interface EventCardProps {
+  event: IEvent;
+  use24HourFormat: boolean;
+  onClick: (event: IEvent, trigger: HTMLElement) => void;
+}
+
 /**
  * Event card component
  */
-function EventCard({
-  event,
-  use24HourFormat,
-  onClick,
-}: {
-  event: IEvent;
-  use24HourFormat: boolean;
-  onClick: (event: IEvent) => void;
-}) {
+function EventCard({ event, use24HourFormat, onClick }: EventCardProps) {
   const isAllDay = isAllDayEvent(event);
   const startTime = format(
     new Date(event.startDate),
@@ -129,11 +127,12 @@ function EventCard({
     new Date(event.endDate),
     use24HourFormat ? "HH:mm" : "h:mm a"
   );
+  const hasDescription = Boolean(event.description?.trim());
 
   return (
     <button
       type="button"
-      onClick={() => onClick(event)}
+      onClick={(e) => onClick(event, e.currentTarget)}
       className={`hover:bg-accent/40 focus:ring-ring w-full cursor-pointer rounded-lg border-l-4 p-4 text-left transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none ${getColorClasses(event.color)}`}
     >
       <div className="flex items-start justify-between">
@@ -142,7 +141,7 @@ function EventCard({
           <p className="text-muted-foreground mt-1 text-sm">
             {isAllDay ? "All day" : `${startTime} - ${endTime}`}
           </p>
-          {event.description && (
+          {hasDescription && (
             <p className="text-muted-foreground mt-2 text-sm">
               {event.description}
             </p>
@@ -163,6 +162,12 @@ function EventCard({
 export function AgendaCalendar() {
   const { events, use24HourFormat, isLoading } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
+  const openModal = (event: IEvent, trigger: HTMLElement) => {
+    triggerRef.current = trigger;
+    setSelectedEvent(event);
+  };
 
   // Filter to next 7 days from today
   const agendaEvents = filterEventsForNextNDays(events, 7);
@@ -215,7 +220,7 @@ export function AgendaCalendar() {
                       key={event.id}
                       event={event}
                       use24HourFormat={use24HourFormat}
-                      onClick={setSelectedEvent}
+                      onClick={openModal}
                     />
                   ))}
                 </div>
@@ -232,9 +237,9 @@ export function AgendaCalendar() {
 
       <EventDetailModal
         event={selectedEvent}
-        isOpen={selectedEvent !== null}
         onClose={() => setSelectedEvent(null)}
         use24HourFormat={use24HourFormat}
+        returnFocusTo={triggerRef}
       />
     </div>
   );
