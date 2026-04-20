@@ -196,11 +196,12 @@ describe("Task Complete API", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.task).toBeDefined();
-      expect(data.task.status).toBe("completed");
-      expect(data.streak).toBeDefined();
-      expect(data.streak.current).toBeDefined();
-      expect(data.streak.longest).toBeDefined();
+      expect(data.task).toEqual({
+        id: "task-123",
+        title: "Test Task",
+        status: "completed",
+      });
+      expect(data.streak).toEqual({ current: 4, longest: 5 });
     });
   });
 });

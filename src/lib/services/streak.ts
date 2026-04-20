@@ -16,9 +16,10 @@ export interface StreakResult {
 /**
  * Update the streak for a profile after a task completion.
  *
- * Reads the profile's `ProfileRewardPoints` row, computes the new
- * streak via `calculateNewStreak`, and either updates the existing row
- * or creates a fresh one if the profile has not earned points before.
+ * The read-compute-write cycle runs inside a single Prisma
+ * `$transaction` so concurrent completions for the same profile
+ * cannot read the same `currentStreak` and stomp on each other's
+ * update (classic TOCTOU on `findUnique` + `update`).
  *
  * @param profileId The profile being credited.
  * @returns         The profile's new `current` and `longest` streaks.
@@ -26,38 +27,40 @@ export interface StreakResult {
 export async function updateProfileStreak(
   profileId: string
 ): Promise<StreakResult> {
-  const rewardPoints = await prisma.profileRewardPoints.findUnique({
-    where: { profileId },
-  });
-
-  if (rewardPoints) {
-    const current = calculateNewStreak(
-      rewardPoints.currentStreak,
-      rewardPoints.lastActivityDate
-    );
-    const longest = Math.max(current, rewardPoints.longestStreak);
-
-    await prisma.profileRewardPoints.update({
+  return prisma.$transaction(async (tx) => {
+    const rewardPoints = await tx.profileRewardPoints.findUnique({
       where: { profileId },
+    });
+
+    if (rewardPoints) {
+      const current = calculateNewStreak(
+        rewardPoints.currentStreak,
+        rewardPoints.lastActivityDate
+      );
+      const longest = Math.max(current, rewardPoints.longestStreak);
+
+      await tx.profileRewardPoints.update({
+        where: { profileId },
+        data: {
+          currentStreak: current,
+          longestStreak: longest,
+          lastActivityDate: new Date(),
+        },
+      });
+
+      return { current, longest };
+    }
+
+    await tx.profileRewardPoints.create({
       data: {
-        currentStreak: current,
-        longestStreak: longest,
+        profileId,
+        totalPoints: 0,
+        currentStreak: 1,
+        longestStreak: 1,
         lastActivityDate: new Date(),
       },
     });
 
-    return { current, longest };
-  }
-
-  await prisma.profileRewardPoints.create({
-    data: {
-      profileId,
-      totalPoints: 0,
-      currentStreak: 1,
-      longestStreak: 1,
-      lastActivityDate: new Date(),
-    },
+    return { current: 1, longest: 1 };
   });
-
-  return { current: 1, longest: 1 };
 }

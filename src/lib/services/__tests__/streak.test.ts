@@ -6,16 +6,13 @@
  */
 import { prisma } from "@/lib/db";
 import { calculateNewStreak } from "@/lib/streak-helpers";
+import { mockTransaction } from "@/lib/test-utils/prisma-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { updateProfileStreak } from "../streak";
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    profileRewardPoints: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-      create: vi.fn(),
-    },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -24,11 +21,7 @@ vi.mock("@/lib/streak-helpers", () => ({
 }));
 
 const mockPrisma = prisma as unknown as {
-  profileRewardPoints: {
-    findUnique: ReturnType<typeof vi.fn>;
-    update: ReturnType<typeof vi.fn>;
-    create: ReturnType<typeof vi.fn>;
-  };
+  $transaction: ReturnType<typeof vi.fn>;
 };
 
 const mockCalculateNewStreak = vi.mocked(calculateNewStreak);
@@ -39,7 +32,7 @@ describe("updateProfileStreak", () => {
   });
 
   it("increments streak for a profile that already has reward points", async () => {
-    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue({
+    const findUnique = vi.fn().mockResolvedValue({
       id: "rp-1",
       profileId: "profile-1",
       totalPoints: 100,
@@ -47,13 +40,17 @@ describe("updateProfileStreak", () => {
       longestStreak: 5,
       lastActivityDate: new Date("2024-06-14"),
     });
+    const update = vi.fn().mockResolvedValue({});
+    const create = vi.fn().mockResolvedValue({});
+    mockTransaction(mockPrisma, {
+      profileRewardPoints: { findUnique, update, create },
+    });
     mockCalculateNewStreak.mockReturnValue(4);
-    mockPrisma.profileRewardPoints.update.mockResolvedValue({});
 
     const result = await updateProfileStreak("profile-1");
 
     expect(result).toEqual({ current: 4, longest: 5 });
-    expect(mockPrisma.profileRewardPoints.update).toHaveBeenCalledWith(
+    expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { profileId: "profile-1" },
         data: expect.objectContaining({
@@ -65,7 +62,7 @@ describe("updateProfileStreak", () => {
   });
 
   it("promotes longestStreak when the new streak exceeds the previous record", async () => {
-    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue({
+    const findUnique = vi.fn().mockResolvedValue({
       id: "rp-1",
       profileId: "profile-1",
       totalPoints: 100,
@@ -73,13 +70,17 @@ describe("updateProfileStreak", () => {
       longestStreak: 5,
       lastActivityDate: new Date("2024-06-14"),
     });
+    const update = vi.fn().mockResolvedValue({});
+    const create = vi.fn().mockResolvedValue({});
+    mockTransaction(mockPrisma, {
+      profileRewardPoints: { findUnique, update, create },
+    });
     mockCalculateNewStreak.mockReturnValue(6);
-    mockPrisma.profileRewardPoints.update.mockResolvedValue({});
 
     const result = await updateProfileStreak("profile-1");
 
     expect(result).toEqual({ current: 6, longest: 6 });
-    expect(mockPrisma.profileRewardPoints.update).toHaveBeenCalledWith(
+    expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ longestStreak: 6 }),
       })
@@ -87,7 +88,7 @@ describe("updateProfileStreak", () => {
   });
 
   it("preserves the previous longestStreak when the new streak is lower", async () => {
-    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue({
+    const findUnique = vi.fn().mockResolvedValue({
       id: "rp-1",
       profileId: "profile-1",
       totalPoints: 100,
@@ -95,13 +96,17 @@ describe("updateProfileStreak", () => {
       longestStreak: 10,
       lastActivityDate: new Date("2024-06-01"),
     });
+    const update = vi.fn().mockResolvedValue({});
+    const create = vi.fn().mockResolvedValue({});
+    mockTransaction(mockPrisma, {
+      profileRewardPoints: { findUnique, update, create },
+    });
     mockCalculateNewStreak.mockReturnValue(1);
-    mockPrisma.profileRewardPoints.update.mockResolvedValue({});
 
     const result = await updateProfileStreak("profile-1");
 
     expect(result).toEqual({ current: 1, longest: 10 });
-    expect(mockPrisma.profileRewardPoints.update).toHaveBeenCalledWith(
+    expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ longestStreak: 10 }),
       })
@@ -110,7 +115,7 @@ describe("updateProfileStreak", () => {
 
   it("passes the stored currentStreak and lastActivityDate into calculateNewStreak", async () => {
     const lastActivity = new Date("2024-06-14");
-    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue({
+    const findUnique = vi.fn().mockResolvedValue({
       id: "rp-1",
       profileId: "profile-1",
       totalPoints: 100,
@@ -118,8 +123,12 @@ describe("updateProfileStreak", () => {
       longestStreak: 10,
       lastActivityDate: lastActivity,
     });
+    const update = vi.fn().mockResolvedValue({});
+    const create = vi.fn().mockResolvedValue({});
+    mockTransaction(mockPrisma, {
+      profileRewardPoints: { findUnique, update, create },
+    });
     mockCalculateNewStreak.mockReturnValue(8);
-    mockPrisma.profileRewardPoints.update.mockResolvedValue({});
 
     await updateProfileStreak("profile-1");
 
@@ -128,7 +137,7 @@ describe("updateProfileStreak", () => {
 
   it("stamps lastActivityDate with the current time on update", async () => {
     const before = Date.now();
-    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue({
+    const findUnique = vi.fn().mockResolvedValue({
       id: "rp-1",
       profileId: "profile-1",
       totalPoints: 100,
@@ -136,26 +145,34 @@ describe("updateProfileStreak", () => {
       longestStreak: 5,
       lastActivityDate: new Date("2024-06-14"),
     });
+    const update = vi.fn().mockResolvedValue({});
+    const create = vi.fn().mockResolvedValue({});
+    mockTransaction(mockPrisma, {
+      profileRewardPoints: { findUnique, update, create },
+    });
     mockCalculateNewStreak.mockReturnValue(4);
-    mockPrisma.profileRewardPoints.update.mockResolvedValue({});
 
     await updateProfileStreak("profile-1");
     const after = Date.now();
 
-    const call = mockPrisma.profileRewardPoints.update.mock.calls[0][0];
+    const call = update.mock.calls[0][0];
     const stamped = (call.data.lastActivityDate as Date).getTime();
     expect(stamped).toBeGreaterThanOrEqual(before);
     expect(stamped).toBeLessThanOrEqual(after);
   });
 
   it("creates a new reward-points record when the profile has none", async () => {
-    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue(null);
-    mockPrisma.profileRewardPoints.create.mockResolvedValue({});
+    const findUnique = vi.fn().mockResolvedValue(null);
+    const update = vi.fn().mockResolvedValue({});
+    const create = vi.fn().mockResolvedValue({});
+    mockTransaction(mockPrisma, {
+      profileRewardPoints: { findUnique, update, create },
+    });
 
     const result = await updateProfileStreak("profile-1");
 
     expect(result).toEqual({ current: 1, longest: 1 });
-    expect(mockPrisma.profileRewardPoints.create).toHaveBeenCalledWith(
+    expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           profileId: "profile-1",
@@ -165,16 +182,43 @@ describe("updateProfileStreak", () => {
         }),
       })
     );
-    expect(mockPrisma.profileRewardPoints.update).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
     expect(mockCalculateNewStreak).not.toHaveBeenCalled();
   });
 
-  it("does not call update when creating a new record", async () => {
-    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue(null);
-    mockPrisma.profileRewardPoints.create.mockResolvedValue({});
+  it("runs the read-compute-write cycle inside a single $transaction", async () => {
+    const findUnique = vi.fn().mockResolvedValue({
+      id: "rp-1",
+      profileId: "profile-1",
+      totalPoints: 100,
+      currentStreak: 3,
+      longestStreak: 5,
+      lastActivityDate: new Date("2024-06-14"),
+    });
+    const update = vi.fn().mockResolvedValue({});
+    const create = vi.fn().mockResolvedValue({});
+    mockTransaction(mockPrisma, {
+      profileRewardPoints: { findUnique, update, create },
+    });
+    mockCalculateNewStreak.mockReturnValue(4);
 
     await updateProfileStreak("profile-1");
 
-    expect(mockPrisma.profileRewardPoints.update).not.toHaveBeenCalled();
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates errors thrown by prisma inside the transaction", async () => {
+    const findUnique = vi.fn().mockRejectedValue(new Error("db down"));
+    const update = vi.fn();
+    const create = vi.fn();
+    mockTransaction(mockPrisma, {
+      profileRewardPoints: { findUnique, update, create },
+    });
+
+    await expect(updateProfileStreak("profile-1")).rejects.toThrow("db down");
+    expect(update).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 });
