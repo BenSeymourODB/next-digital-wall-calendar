@@ -22,6 +22,8 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
+const MAX_INLINE_EVENTS = 3;
+
 const EVENT_COLOR_CLASSES: Record<TEventColor, string> = {
   blue: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   green: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
@@ -56,7 +58,7 @@ function DayOverflowPopover({
 }) {
   const dayKey = format(day, "yyyy-MM-dd");
   const dayHeading = format(day, "EEEE, MMMM d, yyyy");
-  const overflowCount = dayEvents.length - 3;
+  const overflowCount = dayEvents.length - MAX_INLINE_EVENTS;
 
   return (
     <Popover>
@@ -81,7 +83,7 @@ function DayOverflowPopover({
           </h3>
           <PopoverClose
             className="text-muted-foreground hover:text-foreground focus-visible:ring-ring -mt-1 -mr-1 rounded p-1 focus-visible:ring-2 focus-visible:outline-none"
-            aria-label="Close"
+            aria-label={`Close events for ${dayHeading}`}
             data-testid={`day-events-popover-close-${dayKey}`}
           >
             <X className="h-4 w-4" />
@@ -270,7 +272,7 @@ export function SimpleCalendar() {
 
                 {/* Events for this day */}
                 <div className="space-y-1">
-                  {dayEvents.slice(0, 3).map((event) => (
+                  {dayEvents.slice(0, MAX_INLINE_EVENTS).map((event) => (
                     <div
                       key={event.id}
                       className={`rounded px-2 py-1 text-xs ${
@@ -280,7 +282,7 @@ export function SimpleCalendar() {
                       {event.title}
                     </div>
                   ))}
-                  {dayEvents.length > 3 && (
+                  {dayEvents.length > MAX_INLINE_EVENTS && (
                     <DayOverflowPopover
                       day={day}
                       dayEvents={dayEvents}

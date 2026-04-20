@@ -21,6 +21,7 @@ import { SimpleCalendar } from "../SimpleCalendar";
  * - Today button rendering and behavior
  * - Event count badge
  * - Date range display
+ * - Day overflow popover (+X more trigger, event list, close behavior, focus)
  */
 
 function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
@@ -295,6 +296,19 @@ describe("SimpleCalendar", () => {
       ).not.toBeInTheDocument();
     });
 
+    it("renders '+1 more' at the boundary of exactly 4 events", () => {
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(4),
+      });
+
+      const trigger = screen.getByTestId(`day-overflow-trigger-${dayKey}`);
+      expect(trigger).toHaveTextContent("+1 more");
+      expect(trigger).toHaveAccessibleName(
+        "Show all 4 events for Wednesday, April 15, 2026"
+      );
+    });
+
     it("opens a popover listing all events for the day when clicked", async () => {
       const user = userEvent.setup();
       renderWithContext({
@@ -366,14 +380,37 @@ describe("SimpleCalendar", () => {
       await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
       await screen.findByTestId(`day-events-popover-${dayKey}`);
 
-      await user.click(
-        screen.getByTestId(`day-events-popover-close-${dayKey}`)
+      const closeBtn = screen.getByTestId(`day-events-popover-close-${dayKey}`);
+      expect(closeBtn).toHaveAccessibleName(
+        "Close events for Wednesday, April 15, 2026"
       );
+
+      await user.click(closeBtn);
 
       await vi.waitFor(() => {
         expect(
           screen.queryByTestId(`day-events-popover-${dayKey}`)
         ).not.toBeInTheDocument();
+      });
+    });
+
+    it("returns focus to the trigger after the popover is closed", async () => {
+      const user = userEvent.setup();
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(5),
+      });
+
+      const trigger = screen.getByTestId(`day-overflow-trigger-${dayKey}`);
+      await user.click(trigger);
+      await screen.findByTestId(`day-events-popover-${dayKey}`);
+
+      await user.click(
+        screen.getByTestId(`day-events-popover-close-${dayKey}`)
+      );
+
+      await vi.waitFor(() => {
+        expect(trigger).toHaveFocus();
       });
     });
   });
