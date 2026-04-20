@@ -9,6 +9,7 @@ import type {
   TEventColor,
 } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AgendaCalendar } from "../AgendaCalendar";
 
@@ -247,6 +248,62 @@ describe("AgendaCalendar", () => {
       renderWithContext(events);
 
       expect(screen.getByText("Green Event")).toBeInTheDocument();
+    });
+  });
+
+  describe("Event click opens detail modal", () => {
+    it("opens EventDetailModal with the clicked event's details", async () => {
+      const user = userEvent.setup();
+      const events = [
+        createMockEvent({
+          id: "detail-me",
+          title: "Client Demo",
+          description: "Q2 roadmap presentation",
+          startDate: getFutureDate(1, 14, 0),
+          endDate: getFutureDate(1, 15, 0),
+          color: "red",
+        }),
+      ];
+
+      renderWithContext(events);
+
+      // Modal should not be open initially (no dialog role)
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      // AgendaCalendar renders the event title once per card, so click by title.
+      await user.click(screen.getByRole("button", { name: /Client Demo/i }));
+
+      // The dialog should now be open and contain the event details
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      // The description appears both in the card and in the modal; both are fine.
+      expect(
+        screen.getAllByText("Q2 roadmap presentation").length
+      ).toBeGreaterThan(0);
+      // Modal-specific data attribute is uniquely the modal's description
+      expect(screen.getByTestId("event-detail-description")).toHaveTextContent(
+        "Q2 roadmap presentation"
+      );
+    });
+
+    it("closes the modal when the close button is clicked", async () => {
+      const user = userEvent.setup();
+      const events = [
+        createMockEvent({
+          id: "close-me",
+          title: "Team Sync",
+          startDate: getFutureDate(1, 10, 0),
+          endDate: getFutureDate(1, 11, 0),
+        }),
+      ];
+
+      renderWithContext(events);
+
+      await user.click(screen.getByText("Team Sync"));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /close/i }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 });

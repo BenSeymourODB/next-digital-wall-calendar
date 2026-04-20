@@ -2,7 +2,9 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import type { IEvent, TEventColor } from "@/types/calendar";
+import { useState } from "react";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";
+import { EventDetailModal } from "./EventDetailModal";
 
 /**
  * Filter events for the next N days from today
@@ -112,9 +114,11 @@ function getColorBadgeClasses(color: TEventColor): string {
 function EventCard({
   event,
   use24HourFormat,
+  onClick,
 }: {
   event: IEvent;
   use24HourFormat: boolean;
+  onClick: (event: IEvent) => void;
 }) {
   const isAllDay = isAllDayEvent(event);
   const startTime = format(
@@ -127,8 +131,10 @@ function EventCard({
   );
 
   return (
-    <div
-      className={`rounded-lg border-l-4 p-4 ${getColorClasses(event.color)}`}
+    <button
+      type="button"
+      onClick={() => onClick(event)}
+      className={`hover:bg-accent/40 focus:ring-ring w-full cursor-pointer rounded-lg border-l-4 p-4 text-left transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none ${getColorClasses(event.color)}`}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
@@ -146,7 +152,7 @@ function EventCard({
           className={`h-3 w-3 rounded-full ${getColorBadgeClasses(event.color)}`}
         />
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -156,6 +162,7 @@ function EventCard({
  */
 export function AgendaCalendar() {
   const { events, use24HourFormat, isLoading } = useCalendar();
+  const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
 
   // Filter to next 7 days from today
   const agendaEvents = filterEventsForNextNDays(events, 7);
@@ -208,6 +215,7 @@ export function AgendaCalendar() {
                       key={event.id}
                       event={event}
                       use24HourFormat={use24HourFormat}
+                      onClick={setSelectedEvent}
                     />
                   ))}
                 </div>
@@ -221,6 +229,13 @@ export function AgendaCalendar() {
           </div>
         )}
       </div>
+
+      <EventDetailModal
+        event={selectedEvent}
+        isOpen={selectedEvent !== null}
+        onClose={() => setSelectedEvent(null)}
+        use24HourFormat={use24HourFormat}
+      />
     </div>
   );
 }
