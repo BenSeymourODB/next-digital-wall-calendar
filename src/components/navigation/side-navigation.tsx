@@ -55,12 +55,12 @@ export function SideNavigation() {
       aria-label="Main navigation"
       className="bg-sidebar-background text-sidebar-foreground border-sidebar-border fixed top-0 left-0 z-40 flex h-screen w-16 flex-col items-center gap-2 border-r py-4"
     >
-      <ul className="flex flex-col items-center gap-2">
+      <ul className="flex list-none flex-col items-center gap-2 p-0">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = item.href === activeHref;
           return (
-            <li key={item.href}>
+            <li key={item.href} className="list-none">
               <a
                 href={item.href}
                 role="link"
