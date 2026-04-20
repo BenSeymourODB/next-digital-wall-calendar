@@ -67,6 +67,89 @@ test.describe("Month Calendar (SimpleCalendar)", () => {
   });
 });
 
+test.describe("Month Calendar - Day Overflow Popover", () => {
+  // Capture video of the popover open/close animation path
+  test.use({ video: "on" });
+
+  function todayKey(): string {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  test("clicking +X more opens a popover listing every event for the day", async ({
+    page,
+  }) => {
+    await page.goto("/test/calendar?events=overflow&view=month");
+
+    const key = todayKey();
+    const trigger = page.getByTestId(`day-overflow-trigger-${key}`);
+    await expect(trigger).toBeVisible();
+    await expect(trigger).toHaveText(/\+\d+ more/);
+
+    await trigger.click();
+
+    const popover = page.getByTestId(`day-events-popover-${key}`);
+    await expect(popover).toBeVisible();
+
+    // Heading format "Events on <Weekday>, <Month> <day>, <year>"
+    await expect(
+      popover.getByRole("heading", {
+        name: /Events on \w+, \w+ \d{1,2}, \d{4}/,
+      })
+    ).toBeVisible();
+
+    // All 10 overflow events appear inside the popover
+    for (let i = 1; i <= 10; i++) {
+      await expect(
+        popover.getByText(`Event ${i}`, { exact: true })
+      ).toBeVisible();
+    }
+  });
+
+  test("close button dismisses the popover", async ({ page }) => {
+    await page.goto("/test/calendar?events=overflow&view=month");
+
+    const key = todayKey();
+    await page.getByTestId(`day-overflow-trigger-${key}`).click();
+
+    const popover = page.getByTestId(`day-events-popover-${key}`);
+    await expect(popover).toBeVisible();
+
+    await page.getByTestId(`day-events-popover-close-${key}`).click();
+
+    await expect(popover).toBeHidden();
+  });
+
+  test("Escape key dismisses the popover", async ({ page }) => {
+    await page.goto("/test/calendar?events=overflow&view=month");
+
+    const key = todayKey();
+    await page.getByTestId(`day-overflow-trigger-${key}`).click();
+
+    const popover = page.getByTestId(`day-events-popover-${key}`);
+    await expect(popover).toBeVisible();
+
+    await page.keyboard.press("Escape");
+
+    await expect(popover).toBeHidden();
+  });
+
+  test("renders event times inside the popover", async ({ page }) => {
+    await page.goto("/test/calendar?events=overflow&view=month");
+
+    const key = todayKey();
+    await page.getByTestId(`day-overflow-trigger-${key}`).click();
+
+    const popover = page.getByTestId(`day-events-popover-${key}`);
+    // Overflow events start at 08:00 and 17:00 (i=0 and i=9)
+    await expect(popover.getByText(/08:00 - 09:00/)).toBeVisible();
+    await expect(popover.getByText(/17:00 - 18:00/)).toBeVisible();
+  });
+});
+
 test.describe("Month Calendar - Color Variations", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/test/calendar?events=colors&view=month");
