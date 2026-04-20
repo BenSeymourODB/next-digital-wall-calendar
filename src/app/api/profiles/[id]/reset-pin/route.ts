@@ -5,6 +5,7 @@
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { verifyAdminWithPin } from "@/lib/services/admin-verification";
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
 
@@ -55,46 +56,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Get admin profile
-    const adminProfile = await prisma.profile.findFirst({
-      where: {
-        id: adminProfileId,
-        userId: session.user.id,
-        isActive: true,
-      },
-    });
-
-    if (!adminProfile) {
-      return NextResponse.json(
-        { error: "Admin profile not found" },
-        { status: 404 }
-      );
-    }
-
-    // Verify admin type
-    if (adminProfile.type !== "admin") {
-      return NextResponse.json(
-        { error: "Only admin profiles can reset PINs" },
-        { status: 403 }
-      );
-    }
-
-    // Verify admin's PIN
-    if (!adminProfile.pinHash) {
-      return NextResponse.json(
-        { error: "Admin PIN is incorrect" },
-        { status: 401 }
-      );
-    }
-
-    const isAdminPinValid = await bcrypt.compare(
-      adminPin,
-      adminProfile.pinHash
+    // Verify admin profile + PIN (lookup, type check, bcrypt compare)
+    const verification = await verifyAdminWithPin(
+      session.user.id,
+      adminProfileId,
+      adminPin
     );
-    if (!isAdminPinValid) {
+    if (!verification.success) {
       return NextResponse.json(
-        { error: "Admin PIN is incorrect" },
-        { status: 401 }
+        { error: verification.error },
+        { status: verification.status }
       );
     }
 
