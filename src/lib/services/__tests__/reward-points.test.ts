@@ -70,6 +70,8 @@ describe("awardPoints", () => {
 
     await awardPoints("profile-1", 10, "admin-1");
 
+    // note is undefined (not omitted) - Prisma treats both the same and
+    // this matches the service's pass-through semantics.
     expect(create).toHaveBeenCalledWith({
       data: {
         profileId: "profile-1",

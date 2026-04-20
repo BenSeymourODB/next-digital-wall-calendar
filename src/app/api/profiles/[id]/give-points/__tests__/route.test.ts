@@ -274,6 +274,12 @@ describe("/api/profiles/[id]/give-points", () => {
       expect(status).toBe(200);
       expect(data.success).toBe(true);
       expect(data.newTotal).toBe(25);
+      expect(mockAwardPoints).toHaveBeenCalledWith(
+        mockStandardProfile.id,
+        25,
+        mockAdminProfile.id,
+        undefined
+      );
     });
 
     it("allows admin to award points to themselves", async () => {
@@ -303,6 +309,12 @@ describe("/api/profiles/[id]/give-points", () => {
 
       expect(status).toBe(200);
       expect(data.success).toBe(true);
+      expect(mockAwardPoints).toHaveBeenCalledWith(
+        mockAdminProfile.id,
+        10,
+        mockAdminProfile.id,
+        undefined
+      );
     });
   });
 
