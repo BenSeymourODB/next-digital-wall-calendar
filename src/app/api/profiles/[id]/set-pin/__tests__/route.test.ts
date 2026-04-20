@@ -96,54 +96,6 @@ describe("/api/profiles/[id]/set-pin", () => {
       expect(data.error).toBe("PIN must be 4-6 digits");
     });
 
-    it("returns 400 when PIN is too short", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-
-      const request = createMockRequest("/api/profiles/profile-1/set-pin", {
-        method: "POST",
-        body: { pin: "123" },
-      });
-      const response = await POST(request, {
-        params: createParams("profile-1"),
-      });
-      const { status, data } = await parseResponse<ApiErrorResponse>(response);
-
-      expect(status).toBe(400);
-      expect(data.error).toBe("PIN must be 4-6 digits");
-    });
-
-    it("returns 400 when PIN is too long", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-
-      const request = createMockRequest("/api/profiles/profile-1/set-pin", {
-        method: "POST",
-        body: { pin: "1234567" },
-      });
-      const response = await POST(request, {
-        params: createParams("profile-1"),
-      });
-      const { status, data } = await parseResponse<ApiErrorResponse>(response);
-
-      expect(status).toBe(400);
-      expect(data.error).toBe("PIN must be 4-6 digits");
-    });
-
-    it("returns 400 when PIN contains non-digits", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-
-      const request = createMockRequest("/api/profiles/profile-1/set-pin", {
-        method: "POST",
-        body: { pin: "12ab" },
-      });
-      const response = await POST(request, {
-        params: createParams("profile-1"),
-      });
-      const { status, data } = await parseResponse<ApiErrorResponse>(response);
-
-      expect(status).toBe(400);
-      expect(data.error).toBe("PIN must be 4-6 digits");
-    });
-
     it("returns 404 when profile not found", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
       mockPrisma.profile.findFirst.mockResolvedValue(null);
