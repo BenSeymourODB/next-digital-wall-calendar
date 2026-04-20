@@ -4,13 +4,13 @@
 import { getSession } from "@/lib/auth";
 import { mockSession } from "@/lib/auth/__tests__/fixtures";
 import { prisma } from "@/lib/db";
+import { awardPoints } from "@/lib/services/reward-points";
 import {
   type ApiErrorResponse,
   createMockRequest,
   createParams,
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
-import { mockTransaction } from "@/lib/test-utils/prisma-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   mockAdminProfile,
@@ -33,47 +33,29 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-// Mock Prisma client
+// Prisma is mocked only for the `profile.findFirst` lookups the route does
+// itself (admin verification + target profile check). The `$transaction` +
+// reward-points + point-transaction writes live inside `awardPoints`, which
+// we mock directly below.
 vi.mock("@/lib/db", () => ({
   prisma: {
     profile: {
       findFirst: vi.fn(),
     },
-    profileRewardPoints: {
-      upsert: vi.fn(),
-    },
-    pointTransaction: {
-      create: vi.fn(),
-    },
-    $transaction: vi.fn(),
   },
 }));
 
-// Cast prisma to get typed mocks
+vi.mock("@/lib/services/reward-points", () => ({
+  awardPoints: vi.fn(),
+}));
+
 const mockPrisma = prisma as unknown as {
   profile: {
     findFirst: ReturnType<typeof vi.fn>;
   };
-  profileRewardPoints: {
-    upsert: ReturnType<typeof vi.fn>;
-  };
-  pointTransaction: {
-    create: ReturnType<typeof vi.fn>;
-  };
-  $transaction: ReturnType<typeof vi.fn>;
 };
 
-/** Helper to set up the $transaction mock for points awarding tests. */
-function mockPointsTransaction(totalPoints: number) {
-  mockTransaction(mockPrisma, {
-    profileRewardPoints: {
-      upsert: vi.fn().mockResolvedValue({ totalPoints }),
-    },
-    pointTransaction: {
-      create: vi.fn().mockResolvedValue({}),
-    },
-  });
-}
+const mockAwardPoints = vi.mocked(awardPoints);
 
 // Give points response type
 interface GivePointsResponse {
@@ -234,7 +216,7 @@ describe("/api/profiles/[id]/give-points", () => {
       mockPrisma.profile.findFirst.mockResolvedValueOnce(mockStandardProfile);
 
       const newTotal = mockProfileRewardPoints.totalPoints + 50;
-      mockPointsTransaction(newTotal);
+      mockAwardPoints.mockResolvedValue({ totalPoints: newTotal });
 
       const request = createMockRequest(
         `/api/profiles/${mockStandardProfile.id}/give-points`,
@@ -256,6 +238,12 @@ describe("/api/profiles/[id]/give-points", () => {
       expect(status).toBe(200);
       expect(data.success).toBe(true);
       expect(data.newTotal).toBe(newTotal);
+      expect(mockAwardPoints).toHaveBeenCalledWith(
+        mockStandardProfile.id,
+        50,
+        mockAdminProfile.id,
+        "Great job!"
+      );
     });
 
     it("awards points to profile without existing reward points record", async () => {
@@ -265,7 +253,7 @@ describe("/api/profiles/[id]/give-points", () => {
       // Second call for target profile - return standard profile
       mockPrisma.profile.findFirst.mockResolvedValueOnce(mockStandardProfile);
 
-      mockPointsTransaction(25);
+      mockAwardPoints.mockResolvedValue({ totalPoints: 25 });
 
       const request = createMockRequest(
         `/api/profiles/${mockStandardProfile.id}/give-points`,
@@ -293,7 +281,9 @@ describe("/api/profiles/[id]/give-points", () => {
       // Both calls return admin profile
       mockPrisma.profile.findFirst.mockResolvedValue(mockAdminProfile);
 
-      mockPointsTransaction(mockProfileRewardPoints.totalPoints + 10);
+      mockAwardPoints.mockResolvedValue({
+        totalPoints: mockProfileRewardPoints.totalPoints + 10,
+      });
 
       const request = createMockRequest(
         `/api/profiles/${mockAdminProfile.id}/give-points`,
@@ -340,7 +330,7 @@ describe("/api/profiles/[id]/give-points", () => {
       mockPrisma.profile.findFirst.mockResolvedValueOnce(mockSecondAdmin);
       mockPrisma.profile.findFirst.mockResolvedValueOnce(mockStandardProfile);
 
-      mockPointsTransaction(50);
+      mockAwardPoints.mockResolvedValue({ totalPoints: 50 });
 
       const request = createMockRequest(
         `/api/profiles/${mockStandardProfile.id}/give-points`,
@@ -368,7 +358,7 @@ describe("/api/profiles/[id]/give-points", () => {
       mockPrisma.profile.findFirst.mockResolvedValueOnce(mockAdminProfile);
       mockPrisma.profile.findFirst.mockResolvedValueOnce(mockSecondAdmin);
 
-      mockPointsTransaction(100);
+      mockAwardPoints.mockResolvedValue({ totalPoints: 100 });
 
       const request = createMockRequest(
         `/api/profiles/${mockSecondAdmin.id}/give-points`,
