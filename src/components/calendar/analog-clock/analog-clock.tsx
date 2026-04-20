@@ -11,6 +11,11 @@
  */
 import { useEffect, useState } from "react";
 import { ClockFace } from "./clock-face";
+import {
+  eventsToClockEvents,
+  filterEventsForPeriod,
+  getPeriodBounds,
+} from "./clock-utils";
 import { EventArc } from "./event-arc";
 import type { AnalogClockProps, ClockEvent } from "./types";
 
@@ -65,7 +70,8 @@ function useClockTime(currentTime?: Date): Date {
 
 export function AnalogClock({
   size = DEFAULT_SIZE,
-  events = [],
+  events,
+  rawEvents,
   showSeconds = false,
   currentTime,
   arcThickness = DEFAULT_ARC_THICKNESS,
@@ -77,8 +83,24 @@ export function AnalogClock({
   const outerRadius = size / 2 - 8; // Small padding from SVG edge
   const clockRadius = outerRadius - arcThickness;
 
+  // Resolve events: prefer `events` if provided; otherwise derive from rawEvents.
+  let resolvedEvents: ClockEvent[];
+  if (events) {
+    resolvedEvents = events;
+  } else if (rawEvents) {
+    const { periodStart, periodEnd } = getPeriodBounds(time);
+    const periodEvents = filterEventsForPeriod(
+      rawEvents,
+      periodStart,
+      periodEnd
+    );
+    resolvedEvents = eventsToClockEvents(periodEvents, periodStart);
+  } else {
+    resolvedEvents = [];
+  }
+
   // Assign ring indices for overlapping events
-  const ringIndices = assignRingIndices(events);
+  const ringIndices = assignRingIndices(resolvedEvents);
 
   // Calculate radii for stacked rings
   const ringThickness = arcThickness * 0.9;
@@ -91,12 +113,12 @@ export function AnalogClock({
       height={size}
       viewBox={`0 0 ${size} ${size}`}
       role="img"
-      aria-label={`Analog clock showing ${time.toLocaleTimeString()} with ${events.length} events`}
+      aria-label={`Analog clock showing ${time.toLocaleTimeString()} with ${resolvedEvents.length} events`}
       className="select-none"
     >
       {/* Event arcs layer (behind clock face numbers but in front of background) */}
       <g data-testid="event-arcs-layer">
-        {events.map((event) => {
+        {resolvedEvents.map((event) => {
           const ringIndex = ringIndices.get(event.id) ?? 0;
           const ringOuterRadius =
             outerRadius - ringIndex * (ringThickness + ringGap);

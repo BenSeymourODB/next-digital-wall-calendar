@@ -1,7 +1,9 @@
 /**
  * Utility functions for the analog clock with calendar event arcs
  */
-import type { ArcAngles, ParsedEventTitle } from "./types";
+import { TAILWIND_COLORS } from "@/lib/color-utils";
+import type { IEvent } from "@/types/calendar";
+import type { ArcAngles, ClockEvent, ParsedEventTitle } from "./types";
 
 /** Map of color emoji to their hex color values */
 const COLOR_EMOJI_MAP: Record<string, string> = {
@@ -80,6 +82,75 @@ export function getPeriodStart(time: Date): Date {
   periodStart.setMinutes(0, 0, 0);
   periodStart.setHours(time.getHours() < 12 ? 0 : 12);
   return periodStart;
+}
+
+/**
+ * Get both the start and end of the current 12-hour period.
+ * periodEnd is exactly 12 hours after periodStart.
+ */
+export function getPeriodBounds(time: Date): {
+  periodStart: Date;
+  periodEnd: Date;
+} {
+  const periodStart = getPeriodStart(time);
+  const periodEnd = new Date(periodStart.getTime() + 12 * 60 * 60 * 1000);
+  return { periodStart, periodEnd };
+}
+
+/**
+ * Filter raw calendar events to those that overlap a 12-hour period.
+ * All-day events are excluded (they do not map to arc positions).
+ *
+ * Overlap is exclusive at both boundaries: an event ending exactly at
+ * periodStart, or starting exactly at periodEnd, is not included.
+ */
+export function filterEventsForPeriod(
+  events: IEvent[],
+  periodStart: Date,
+  periodEnd: Date
+): IEvent[] {
+  const startMs = periodStart.getTime();
+  const endMs = periodEnd.getTime();
+  return events.filter((event) => {
+    if (event.isAllDay) return false;
+    const eventStart = new Date(event.startDate).getTime();
+    const eventEnd = new Date(event.endDate).getTime();
+    return eventStart < endMs && eventEnd > startMs;
+  });
+}
+
+/**
+ * Convert raw calendar events (IEvent[]) into ClockEvent[] suitable for
+ * rendering on the AnalogClock. Each event's title is parsed for emoji
+ * prefixes, arc angles are computed against the supplied periodStart,
+ * and the event's configured color is used as the fallback.
+ *
+ * This does not filter the events — pass through filterEventsForPeriod
+ * first if you only want events for the current 12-hour period.
+ */
+export function eventsToClockEvents(
+  events: IEvent[],
+  periodStart: Date
+): ClockEvent[] {
+  return events.map((event) => {
+    const fallbackColor = TAILWIND_COLORS[event.color];
+    const parsed = parseEventTitle(event.title, fallbackColor);
+    const angles = calculateArcAngles(
+      new Date(event.startDate),
+      new Date(event.endDate),
+      periodStart
+    );
+    return {
+      id: event.id,
+      title: event.title,
+      cleanTitle: parsed.cleanTitle,
+      startAngle: angles.startAngle,
+      endAngle: angles.endAngle,
+      color: parsed.color,
+      eventEmoji: parsed.eventEmoji,
+      isAllDay: event.isAllDay,
+    };
+  });
 }
 
 /**
