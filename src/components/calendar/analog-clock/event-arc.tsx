@@ -5,7 +5,7 @@
  * Uses SVG textPath for curved text that follows the arc path,
  * with emoji positioned at the midpoint of the arc.
  */
-import { describeArc, polarToCartesian } from "./clock-utils";
+import { describeArc, polarToCartesian, roundCoord } from "./clock-utils";
 import type { EventArcProps } from "./types";
 
 /**
@@ -60,28 +60,40 @@ export function EventArc({
   // Calculate arc span and midpoint
   const arcSpan = endAngle - startAngle;
   const midAngle = (startAngle + endAngle) / 2;
-  const textRadius = (outerRadius + innerRadius) / 2;
+  const arcHeight = outerRadius - innerRadius;
+
+  // Place emoji near the inner edge (closer to the clock face) and the
+  // title near the outer edge so they stack radially instead of overlaying.
+  // For arcs on the bottom half of the clock, textPath direction is reversed
+  // (so text reads right-side-up); this doesn't affect the radial split.
+  const emojiRadius = innerRadius + arcHeight * 0.28;
+  const titleRadius = innerRadius + arcHeight * 0.68;
 
   // Whether we have enough room for different elements
   const showEmoji = arcSpan >= 10;
   const showTitle = arcSpan >= 20;
 
-  // Text positioning for emoji (centered on arc midpoint)
-  const emojiPos = polarToCartesian(cx, cy, textRadius, midAngle);
+  // Text positioning for emoji (centered on arc midpoint, on inner radius)
+  const emojiPos = polarToCartesian(cx, cy, emojiRadius, midAngle);
   const emojiRotation =
     midAngle > 90 && midAngle < 270 ? midAngle + 180 : midAngle;
 
-  // Font sizing
-  const arcHeight = outerRadius - innerRadius;
-  const emojiFontSize = Math.min(arcHeight - 4, 20);
-  const titleFontSize = Math.min(arcHeight * 0.35, 12);
+  // Font sizing — arcs are now thicker so we can use more of the height
+  const emojiFontSize = roundCoord(Math.min(arcHeight * 0.4, 26));
+  const titleFontSize = roundCoord(Math.min(arcHeight * 0.3, 18));
 
   // Prepare display text: emoji + title combined for textPath
   const displayText =
     cleanTitle.length > 15 ? `${cleanTitle.slice(0, 14)}...` : cleanTitle;
 
-  // Text path for curved title - slightly offset from emoji
-  const textArcPath = describeTextArc(cx, cy, textRadius, startAngle, endAngle);
+  // Text path for curved title
+  const textArcPath = describeTextArc(
+    cx,
+    cy,
+    titleRadius,
+    startAngle,
+    endAngle
+  );
   const textPathId = `text-path-${id}`;
 
   return (
@@ -105,7 +117,7 @@ export function EventArc({
         <path id={textPathId} d={textArcPath} fill="none" />
       </defs>
 
-      {/* Event emoji - positioned at midpoint, rotated to match arc angle */}
+      {/* Event emoji - inner-radius midpoint, rotated to match arc angle */}
       {eventEmoji && showEmoji && (
         <text
           data-testid={`event-emoji-${id}`}
@@ -114,7 +126,7 @@ export function EventArc({
           textAnchor="middle"
           dominantBaseline="central"
           fontSize={emojiFontSize}
-          transform={`rotate(${emojiRotation}, ${emojiPos.x}, ${emojiPos.y})`}
+          transform={`rotate(${roundCoord(emojiRotation)}, ${emojiPos.x}, ${emojiPos.y})`}
         >
           {eventEmoji}
         </text>

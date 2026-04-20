@@ -102,9 +102,17 @@ export function AnalogClock({
   // Assign ring indices for overlapping events
   const ringIndices = assignRingIndices(resolvedEvents);
 
-  // Calculate radii for stacked rings
-  const ringThickness = arcThickness * 0.9;
-  const ringGap = arcThickness * 0.1;
+  // Fit all ring slots into the band between the clock face edge and the
+  // SVG outer edge. With a single ring (no overlaps) the arc fills the
+  // whole band so emoji + title have enough radial room to stack. With
+  // N overlapping rings, the band is split into N equal rings plus gaps.
+  const maxRingIndex = resolvedEvents.reduce(
+    (max, e) => Math.max(max, ringIndices.get(e.id) ?? 0),
+    0
+  );
+  const ringCount = maxRingIndex + 1;
+  const ringGap = ringCount > 1 ? Math.max(2, arcThickness * 0.06) : 0;
+  const ringThickness = (arcThickness - (ringCount - 1) * ringGap) / ringCount;
 
   return (
     <svg

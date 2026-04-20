@@ -2,11 +2,14 @@ import type { IEvent } from "@/types/calendar";
 import { describe, expect, it } from "vitest";
 import {
   calculateArcAngles,
+  describeArc,
   eventsToClockEvents,
   filterEventsForPeriod,
   getPeriodBounds,
   getPeriodStart,
   parseEventTitle,
+  polarToCartesian,
+  roundCoord,
 } from "../clock-utils";
 
 function makeEvent(overrides: Partial<IEvent> = {}): IEvent {
@@ -421,5 +424,54 @@ describe("eventsToClockEvents", () => {
     ];
     const result = eventsToClockEvents(events, periodStart);
     expect(result[0].isAllDay).toBe(true);
+  });
+});
+
+describe("roundCoord", () => {
+  it("rounds to 4 decimals by default", () => {
+    expect(roundCoord(160.74060486414018)).toBe(160.7406);
+    expect(roundCoord(160.74060486414015)).toBe(160.7406);
+  });
+
+  it("is deterministic for the same input", () => {
+    const a = roundCoord(27.328000000000007);
+    const b = roundCoord(27.328000000000007);
+    expect(a).toBe(b);
+  });
+
+  it("produces identical output for inputs that differ only in floating-point noise", () => {
+    // These are the exact values from the hydration error
+    expect(roundCoord(160.74060486414018)).toBe(roundCoord(160.74060486414015));
+    expect(roundCoord(148.39668739008982)).toBe(roundCoord(148.39668739008985));
+  });
+
+  it("accepts a custom precision", () => {
+    expect(roundCoord(1.23456789, 2)).toBe(1.23);
+    expect(roundCoord(1.23456789, 0)).toBe(1);
+  });
+});
+
+describe("polarToCartesian output stability", () => {
+  it("returns coordinates rounded to a stable precision", () => {
+    // Use an angle that typically produces long floating-point tails
+    const p = polarToCartesian(300, 300, 244, 137);
+    // String round-trip should not change the value (no hidden trailing digits)
+    expect(Number(p.x.toString())).toBe(p.x);
+    expect(Number(p.y.toString())).toBe(p.y);
+    // Max 4 decimal places
+    expect(p.x.toString().split(".")[1]?.length ?? 0).toBeLessThanOrEqual(4);
+    expect(p.y.toString().split(".")[1]?.length ?? 0).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("describeArc output stability", () => {
+  it("produces a path string with bounded decimal precision per coordinate", () => {
+    const path = describeArc(300, 300, 292, 244, 90, 120);
+    // Extract all numeric tokens and verify each has <=4 decimals
+    const numbers = path.match(/-?\d+(\.\d+)?/g) ?? [];
+    for (const n of numbers) {
+      const decimals = n.split(".")[1]?.length ?? 0;
+      expect(decimals).toBeLessThanOrEqual(4);
+    }
   });
 });

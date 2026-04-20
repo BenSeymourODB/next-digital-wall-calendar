@@ -197,8 +197,25 @@ export function calculateArcAngles(
 }
 
 /**
+ * Round a computed coordinate/size to a stable precision.
+ *
+ * Math.cos / Math.sin / floating-point arithmetic can produce results that
+ * differ at the least-significant bit between the SSR (Node) runtime and
+ * the browser, which triggers React hydration mismatches on SVG numeric
+ * attributes. Rounding here forces identical output on both sides while
+ * staying far below sub-pixel precision for SVG rendering.
+ */
+export function roundCoord(n: number, decimals = 4): number {
+  const factor = 10 ** decimals;
+  return Math.round(n * factor) / factor;
+}
+
+/**
  * Convert polar coordinates (angle in degrees, radius) to cartesian (x, y).
  * 0 degrees = 12 o'clock (top), clockwise.
+ *
+ * Output is rounded to a stable precision so server and client render
+ * identical SVG attribute strings (see roundCoord).
  */
 export function polarToCartesian(
   cx: number,
@@ -209,8 +226,8 @@ export function polarToCartesian(
   // Offset by -90 degrees so 0° = 12 o'clock (top)
   const angleRad = ((angleDegrees - 90) * Math.PI) / 180;
   return {
-    x: cx + radius * Math.cos(angleRad),
-    y: cy + radius * Math.sin(angleRad),
+    x: roundCoord(cx + radius * Math.cos(angleRad)),
+    y: roundCoord(cy + radius * Math.sin(angleRad)),
   };
 }
 
