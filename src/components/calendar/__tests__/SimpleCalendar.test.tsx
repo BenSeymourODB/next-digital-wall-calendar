@@ -253,4 +253,128 @@ describe("SimpleCalendar", () => {
       );
     });
   });
+
+  describe("Day overflow popover", () => {
+    const overflowDate = new Date(2026, 3, 15); // April 15, 2026 (Wed)
+    const dayKey = "2026-04-15";
+
+    function makeOverflowEvents(count: number): IEvent[] {
+      return Array.from({ length: count }, (_, i) =>
+        createMockEvent({
+          id: `ov-${i}`,
+          title: `Event ${i + 1}`,
+          startDate: new Date(2026, 3, 15, 8 + i, 0).toISOString(),
+          endDate: new Date(2026, 3, 15, 9 + i, 0).toISOString(),
+        })
+      );
+    }
+
+    it("renders +X more as an accessible button when more than 3 events exist", () => {
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(5),
+      });
+
+      const trigger = screen.getByTestId(`day-overflow-trigger-${dayKey}`);
+      expect(trigger).toBeInTheDocument();
+      expect(trigger.tagName).toBe("BUTTON");
+      expect(trigger).toHaveTextContent("+2 more");
+      expect(trigger).toHaveAccessibleName(
+        "Show all 5 events for Wednesday, April 15, 2026"
+      );
+    });
+
+    it("does not render a popover trigger when 3 or fewer events exist", () => {
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(3),
+      });
+
+      expect(
+        screen.queryByTestId(`day-overflow-trigger-${dayKey}`)
+      ).not.toBeInTheDocument();
+    });
+
+    it("opens a popover listing all events for the day when clicked", async () => {
+      const user = userEvent.setup();
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(5),
+      });
+
+      // Popover content not rendered until trigger is clicked
+      expect(
+        screen.queryByTestId(`day-events-popover-${dayKey}`)
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+
+      const popover = await screen.findByTestId(`day-events-popover-${dayKey}`);
+      expect(popover).toBeVisible();
+      expect(popover).toHaveTextContent("Events on Wednesday, April 15, 2026");
+
+      // All 5 events (not just overflow ones) appear inside the popover
+      for (let i = 1; i <= 5; i++) {
+        expect(popover).toHaveTextContent(`Event ${i}`);
+      }
+    });
+
+    it("renders event start and end times in the popover", async () => {
+      const user = userEvent.setup();
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(4),
+        use24HourFormat: true,
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+
+      const popover = await screen.findByTestId(`day-events-popover-${dayKey}`);
+      expect(popover).toHaveTextContent("08:00 - 09:00");
+      expect(popover).toHaveTextContent("11:00 - 12:00");
+    });
+
+    it("shows 'All day' for all-day events in the popover", async () => {
+      const user = userEvent.setup();
+      const events: IEvent[] = [
+        ...makeOverflowEvents(3),
+        createMockEvent({
+          id: "allday-1",
+          title: "Holiday",
+          startDate: new Date(2026, 3, 15, 0, 0).toISOString(),
+          endDate: new Date(2026, 3, 15, 23, 59).toISOString(),
+          isAllDay: true,
+        }),
+      ];
+
+      renderWithContext({ selectedDate: overflowDate, events });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+
+      const popover = await screen.findByTestId(`day-events-popover-${dayKey}`);
+      expect(popover).toHaveTextContent("Holiday");
+      expect(popover).toHaveTextContent("All day");
+    });
+
+    it("closes the popover when the close button is clicked", async () => {
+      const user = userEvent.setup();
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(5),
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+      await screen.findByTestId(`day-events-popover-${dayKey}`);
+
+      await user.click(
+        screen.getByTestId(`day-events-popover-close-${dayKey}`)
+      );
+
+      await vi.waitFor(() => {
+        expect(
+          screen.queryByTestId(`day-events-popover-${dayKey}`)
+        ).not.toBeInTheDocument();
+      });
+    });
+  });
 });
