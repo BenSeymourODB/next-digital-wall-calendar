@@ -1,12 +1,17 @@
 /**
  * Tests for task completion API route
  * POST - Complete a task and update profile streak
+ *
+ * The streak database flow lives in `@/lib/services/streak` and is
+ * covered by its own unit tests. This suite mocks the service and
+ * focuses on the handler's concerns: auth, validation, the Google
+ * Tasks call, and response shaping.
  */
+import { updateProfileStreak } from "@/lib/services/streak";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "../route";
 
-// Mock getSession and getAccessToken
 const mockGetSession = vi.fn();
 const mockGetAccessToken = vi.fn();
 
@@ -15,32 +20,14 @@ vi.mock("@/lib/auth/helpers", () => ({
   getAccessToken: () => mockGetAccessToken(),
 }));
 
-// Mock fetch for Google Tasks API
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-// Mock Prisma
-const mockFindUnique = vi.fn();
-const mockUpdate = vi.fn();
-const mockCreate = vi.fn();
-
-vi.mock("@/lib/db", () => ({
-  prisma: {
-    profileRewardPoints: {
-      findUnique: () => mockFindUnique(),
-      update: (args: unknown) => mockUpdate(args),
-      create: (args: unknown) => mockCreate(args),
-    },
-  },
+vi.mock("@/lib/services/streak", () => ({
+  updateProfileStreak: vi.fn(),
 }));
 
-// Mock streak helpers
-vi.mock("@/lib/streak-helpers", () => ({
-  calculateNewStreak: vi.fn((current, last) => {
-    if (last === null) return 1;
-    return current + 1;
-  }),
-}));
+const mockUpdateProfileStreak = vi.mocked(updateProfileStreak);
 
 function createRequest(body?: unknown): NextRequest {
   const url = new URL("http://localhost:3000/api/tasks/task-123/complete");
@@ -70,6 +57,7 @@ describe("Task Complete API", () => {
           status: "completed",
         }),
     });
+    mockUpdateProfileStreak.mockResolvedValue({ current: 4, longest: 5 });
   });
 
   describe("authentication", () => {
@@ -128,19 +116,6 @@ describe("Task Complete API", () => {
 
   describe("task completion", () => {
     it("marks task as completed via Google Tasks API", async () => {
-      mockFindUnique.mockResolvedValue({
-        id: "rp-1",
-        profileId: "profile-1",
-        totalPoints: 100,
-        currentStreak: 3,
-        longestStreak: 5,
-        lastActivityDate: new Date("2024-06-14"),
-      });
-      mockUpdate.mockResolvedValue({
-        currentStreak: 4,
-        longestStreak: 5,
-      });
-
       const request = createRequest({
         listId: "list-1",
         profileId: "profile-1",
@@ -175,24 +150,12 @@ describe("Task Complete API", () => {
       });
 
       expect(response.status).toBe(500);
+      expect(mockUpdateProfileStreak).not.toHaveBeenCalled();
     });
   });
 
   describe("streak updates", () => {
-    it("updates streak when task is completed for profile", async () => {
-      mockFindUnique.mockResolvedValue({
-        id: "rp-1",
-        profileId: "profile-1",
-        totalPoints: 100,
-        currentStreak: 3,
-        longestStreak: 5,
-        lastActivityDate: new Date("2024-06-14"),
-      });
-      mockUpdate.mockResolvedValue({
-        currentStreak: 4,
-        longestStreak: 5,
-      });
-
+    it("delegates the streak update to the streak service with the request profileId", async () => {
       const request = createRequest({
         listId: "list-1",
         profileId: "profile-1",
@@ -202,81 +165,27 @@ describe("Task Complete API", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(mockUpdate).toHaveBeenCalled();
+      expect(mockUpdateProfileStreak).toHaveBeenCalledWith("profile-1");
+    });
+
+    it("returns the streak values produced by the service", async () => {
+      mockUpdateProfileStreak.mockResolvedValue({ current: 6, longest: 6 });
+
+      const request = createRequest({
+        listId: "list-1",
+        profileId: "profile-1",
+      });
+      const response = await POST(request, {
+        params: Promise.resolve({ taskId: "task-123" }),
+      });
+
       const data = await response.json();
-      expect(data.streak).toBeDefined();
-    });
-
-    it("updates longestStreak when current exceeds it", async () => {
-      mockFindUnique.mockResolvedValue({
-        id: "rp-1",
-        profileId: "profile-1",
-        totalPoints: 100,
-        currentStreak: 5,
-        longestStreak: 5,
-        lastActivityDate: new Date("2024-06-14"),
-      });
-      mockUpdate.mockResolvedValue({
-        currentStreak: 6,
-        longestStreak: 6,
-      });
-
-      const request = createRequest({
-        listId: "list-1",
-        profileId: "profile-1",
-      });
-      await POST(request, {
-        params: Promise.resolve({ taskId: "task-123" }),
-      });
-
-      expect(mockUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            longestStreak: expect.any(Number),
-          }),
-        })
-      );
-    });
-
-    it("creates reward points record if not exists", async () => {
-      mockFindUnique.mockResolvedValue(null);
-      mockCreate.mockResolvedValue({
-        id: "rp-1",
-        profileId: "profile-1",
-        totalPoints: 0,
-        currentStreak: 1,
-        longestStreak: 1,
-        lastActivityDate: new Date(),
-      });
-
-      const request = createRequest({
-        listId: "list-1",
-        profileId: "profile-1",
-      });
-      const response = await POST(request, {
-        params: Promise.resolve({ taskId: "task-123" }),
-      });
-
-      expect(response.status).toBe(200);
-      expect(mockCreate).toHaveBeenCalled();
+      expect(data.streak).toEqual({ current: 6, longest: 6 });
     });
   });
 
   describe("response", () => {
     it("returns task and streak data", async () => {
-      mockFindUnique.mockResolvedValue({
-        id: "rp-1",
-        profileId: "profile-1",
-        totalPoints: 100,
-        currentStreak: 3,
-        longestStreak: 5,
-        lastActivityDate: new Date("2024-06-14"),
-      });
-      mockUpdate.mockResolvedValue({
-        currentStreak: 4,
-        longestStreak: 5,
-      });
-
       const request = createRequest({
         listId: "list-1",
         profileId: "profile-1",
