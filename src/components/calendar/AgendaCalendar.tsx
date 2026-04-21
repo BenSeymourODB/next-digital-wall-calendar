@@ -2,7 +2,9 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import type { IEvent, TEventColor } from "@/types/calendar";
+import { useRef, useState } from "react";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";
+import { EventDetailModal } from "./EventDetailModal";
 
 /**
  * Filter events for the next N days from today
@@ -106,16 +108,16 @@ function getColorBadgeClasses(color: TEventColor): string {
   return classes[color];
 }
 
+interface EventCardProps {
+  event: IEvent;
+  use24HourFormat: boolean;
+  onClick: (event: IEvent, trigger: HTMLElement) => void;
+}
+
 /**
  * Event card component
  */
-function EventCard({
-  event,
-  use24HourFormat,
-}: {
-  event: IEvent;
-  use24HourFormat: boolean;
-}) {
+function EventCard({ event, use24HourFormat, onClick }: EventCardProps) {
   const isAllDay = isAllDayEvent(event);
   const startTime = format(
     new Date(event.startDate),
@@ -125,10 +127,13 @@ function EventCard({
     new Date(event.endDate),
     use24HourFormat ? "HH:mm" : "h:mm a"
   );
+  const hasDescription = Boolean(event.description?.trim());
 
   return (
-    <div
-      className={`rounded-lg border-l-4 p-4 ${getColorClasses(event.color)}`}
+    <button
+      type="button"
+      onClick={(e) => onClick(event, e.currentTarget)}
+      className={`hover:bg-accent/40 focus:ring-ring w-full cursor-pointer rounded-lg border-l-4 p-4 text-left transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none ${getColorClasses(event.color)}`}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
@@ -136,7 +141,7 @@ function EventCard({
           <p className="text-muted-foreground mt-1 text-sm">
             {isAllDay ? "All day" : `${startTime} - ${endTime}`}
           </p>
-          {event.description && (
+          {hasDescription && (
             <p className="text-muted-foreground mt-2 text-sm">
               {event.description}
             </p>
@@ -146,7 +151,7 @@ function EventCard({
           className={`h-3 w-3 rounded-full ${getColorBadgeClasses(event.color)}`}
         />
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -156,6 +161,13 @@ function EventCard({
  */
 export function AgendaCalendar() {
   const { events, use24HourFormat, isLoading } = useCalendar();
+  const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
+  const openModal = (event: IEvent, trigger: HTMLElement) => {
+    triggerRef.current = trigger;
+    setSelectedEvent(event);
+  };
 
   // Filter to next 7 days from today
   const agendaEvents = filterEventsForNextNDays(events, 7);
@@ -208,6 +220,7 @@ export function AgendaCalendar() {
                       key={event.id}
                       event={event}
                       use24HourFormat={use24HourFormat}
+                      onClick={openModal}
                     />
                   ))}
                 </div>
@@ -221,6 +234,13 @@ export function AgendaCalendar() {
           </div>
         )}
       </div>
+
+      <EventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        use24HourFormat={use24HourFormat}
+        returnFocusTo={triggerRef}
+      />
     </div>
   );
 }

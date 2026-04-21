@@ -2,6 +2,8 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import type { IEvent } from "@/types/calendar";
+import { useRef, useState } from "react";
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -14,9 +16,13 @@ import {
   startOfMonth,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { EventDetailModal } from "./EventDetailModal";
 
 export function SimpleCalendar() {
-  const { selectedDate, setSelectedDate, events, isLoading } = useCalendar();
+  const { selectedDate, setSelectedDate, events, isLoading, use24HourFormat } =
+    useCalendar();
+  const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   const monthStart = startOfMonth(selectedDate);
   const monthEnd = endOfMonth(selectedDate);
@@ -178,24 +184,29 @@ export function SimpleCalendar() {
                 {/* Events for this day */}
                 <div className="space-y-1">
                   {dayEvents.slice(0, 3).map((event) => (
-                    <div
+                    <button
                       key={event.id}
-                      className={`rounded px-2 py-1 text-xs ${
+                      type="button"
+                      onClick={(e) => {
+                        triggerRef.current = e.currentTarget;
+                        setSelectedEvent(event);
+                      }}
+                      className={`block w-full cursor-pointer truncate rounded px-2 py-1 text-left text-xs transition-opacity hover:opacity-80 focus:ring-2 focus:ring-offset-1 focus:outline-none ${
                         event.color === "blue"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                          ? "bg-blue-100 text-blue-800 focus:ring-blue-500 dark:bg-blue-900 dark:text-blue-200 dark:focus:ring-blue-400"
                           : event.color === "green"
-                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                            ? "bg-green-100 text-green-800 focus:ring-green-500 dark:bg-green-900 dark:text-green-200 dark:focus:ring-green-400"
                             : event.color === "red"
-                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                              ? "bg-red-100 text-red-800 focus:ring-red-500 dark:bg-red-900 dark:text-red-200 dark:focus:ring-red-400"
                               : event.color === "yellow"
-                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                                ? "bg-yellow-100 text-yellow-800 focus:ring-yellow-500 dark:bg-yellow-900 dark:text-yellow-200 dark:focus:ring-yellow-400"
                                 : event.color === "purple"
-                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-                                  : "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
+                                  ? "bg-purple-100 text-purple-800 focus:ring-purple-500 dark:bg-purple-900 dark:text-purple-200 dark:focus:ring-purple-400"
+                                  : "bg-orange-100 text-orange-800 focus:ring-orange-500 dark:bg-orange-900 dark:text-orange-200 dark:focus:ring-orange-400"
                       }`}
                     >
                       {event.title}
-                    </div>
+                    </button>
                   ))}
                   {dayEvents.length > 3 && (
                     <div className="text-muted-foreground text-xs">
@@ -208,6 +219,13 @@ export function SimpleCalendar() {
           })}
         </div>
       </div>
+
+      <EventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        use24HourFormat={use24HourFormat}
+        returnFocusTo={triggerRef}
+      />
     </div>
   );
 }
