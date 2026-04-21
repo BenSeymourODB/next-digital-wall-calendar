@@ -96,6 +96,22 @@ describe("/api/profiles/[id]/set-pin", () => {
       expect(data.error).toBe("PIN must be 4-6 digits");
     });
 
+    it("returns 400 and forwards the validator error when PIN is malformed", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const request = createMockRequest("/api/profiles/profile-1/set-pin", {
+        method: "POST",
+        body: { pin: "abc" },
+      });
+      const response = await POST(request, {
+        params: createParams("profile-1"),
+      });
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toBe("PIN must be 4-6 digits");
+    });
+
     it("returns 404 when profile not found", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
       mockPrisma.profile.findFirst.mockResolvedValue(null);

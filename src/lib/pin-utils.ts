@@ -4,10 +4,9 @@
 
 const PIN_FORMAT = /^\d{4,6}$/;
 
-export interface PinFormatValidation {
-  valid: boolean;
-  error?: string;
-}
+export type PinFormatValidation =
+  | { valid: true }
+  | { valid: false; error: string };
 
 export interface ValidatePinFormatOptions {
   /** Label used in the error message (e.g., "PIN", "New PIN"). Defaults to "PIN". */
