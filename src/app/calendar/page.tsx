@@ -58,12 +58,21 @@ function CalendarContent() {
         {/* View Switcher */}
         <ViewSwitcher />
 
-        {/* Calendar + mini-calendar sidebar */}
-        <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+        {/* Calendar + mini-calendar sidebar.
+         * The mini-calendar is hidden on month view where it duplicates the
+         * main grid; on day/week/agenda it acts as a date-picker / at-a-glance
+         * overview. See issue #146. */}
+        <div
+          className={
+            view === "month"
+              ? "grid gap-6"
+              : "grid gap-6 lg:grid-cols-[1fr_280px]"
+          }
+        >
           <div className="border-border bg-card rounded-lg border p-6">
             {view === "month" ? <SimpleCalendar /> : <AgendaCalendar />}
           </div>
-          <MiniCalendarSidebar />
+          {view !== "month" && <MiniCalendarSidebar />}
         </div>
       </div>
     </div>
