@@ -1,0 +1,365 @@
+import {
+  CalendarContext,
+  type ICalendarContext,
+} from "@/components/providers/CalendarProvider";
+import type {
+  IEvent,
+  IUser,
+  TCalendarView,
+  TEventColor,
+} from "@/types/calendar";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { addMonths, format, isSameDay, subMonths } from "date-fns";
+import { describe, expect, it, vi } from "vitest";
+import { MiniCalendarSidebar } from "../MiniCalendarSidebar";
+
+function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
+  return {
+    id: "test-event-1",
+    title: "Test Event",
+    startDate: new Date().toISOString(),
+    endDate: new Date().toISOString(),
+    color: "blue",
+    description: "",
+    isAllDay: false,
+    calendarId: "primary",
+    user: {
+      id: "user-1",
+      name: "Test User",
+      picturePath: null,
+    },
+    ...overrides,
+  };
+}
+
+function createMockContext(
+  overrides: Partial<ICalendarContext> = {}
+): ICalendarContext {
+  return {
+    selectedDate: new Date(),
+    view: "month" as TCalendarView,
+    setView: vi.fn(),
+    agendaModeGroupBy: "date",
+    setAgendaModeGroupBy: vi.fn(),
+    use24HourFormat: true,
+    toggleTimeFormat: vi.fn(),
+    setSelectedDate: vi.fn(),
+    selectedUserId: "all",
+    setSelectedUserId: vi.fn(),
+    badgeVariant: "colored",
+    setBadgeVariant: vi.fn(),
+    selectedColors: [] as TEventColor[],
+    filterEventsBySelectedColors: vi.fn(),
+    filterEventsBySelectedUser: vi.fn(),
+    users: [] as IUser[],
+    events: [],
+    addEvent: vi.fn(),
+    updateEvent: vi.fn(),
+    removeEvent: vi.fn(),
+    clearFilter: vi.fn(),
+    refreshEvents: vi.fn(),
+    isLoading: false,
+    isAuthenticated: true,
+    ...overrides,
+  };
+}
+
+function renderWithContext(contextOverrides: Partial<ICalendarContext> = {}) {
+  const contextValue = createMockContext(contextOverrides);
+  return {
+    ...render(
+      <CalendarContext.Provider value={contextValue}>
+        <MiniCalendarSidebar />
+      </CalendarContext.Provider>
+    ),
+    contextValue,
+  };
+}
+
+describe("MiniCalendarSidebar", () => {
+  describe("Month grid", () => {
+    it("renders a mini-calendar sidebar root", () => {
+      renderWithContext();
+      expect(screen.getByTestId("mini-calendar-sidebar")).toBeInTheDocument();
+    });
+
+    it("displays the selected date's month and year in the header", () => {
+      const may2025 = new Date(2025, 4, 10);
+      renderWithContext({ selectedDate: may2025 });
+
+      const header = screen.getByTestId("mini-calendar-header");
+      expect(header).toHaveTextContent("May 2025");
+    });
+
+    it("renders single-letter day-of-week headers", () => {
+      renderWithContext();
+      const grid = screen.getByTestId("mini-calendar-grid");
+      // 7 day-of-week labels
+      const labels = within(grid).getAllByTestId("mini-calendar-dow");
+      expect(labels).toHaveLength(7);
+      expect(labels.map((el) => el.textContent)).toEqual([
+        "S",
+        "M",
+        "T",
+        "W",
+        "T",
+        "F",
+        "S",
+      ]);
+    });
+
+    it("renders a day cell for each day of the month", () => {
+      // February 2025 has 28 days
+      const feb2025 = new Date(2025, 1, 15);
+      renderWithContext({ selectedDate: feb2025 });
+
+      const grid = screen.getByTestId("mini-calendar-grid");
+      const dayCells = within(grid).getAllByTestId(/^mini-calendar-day-/);
+      // Should include every day of Feb (28) plus leading/trailing padding
+      const inMonth = dayCells.filter(
+        (el) => el.getAttribute("data-in-month") === "true"
+      );
+      expect(inMonth).toHaveLength(28);
+    });
+  });
+
+  describe("Today highlight", () => {
+    it("marks today's cell with data-today='true'", () => {
+      renderWithContext();
+      const today = new Date();
+      const todayCell = screen.getByTestId(
+        `mini-calendar-day-${format(today, "yyyy-MM-dd")}`
+      );
+      expect(todayCell).toHaveAttribute("data-today", "true");
+    });
+  });
+
+  describe("Selected day highlight", () => {
+    it("marks the selected day's cell with data-selected='true'", () => {
+      const selected = new Date(2025, 4, 15);
+      renderWithContext({ selectedDate: selected });
+
+      const cell = screen.getByTestId(
+        `mini-calendar-day-${format(selected, "yyyy-MM-dd")}`
+      );
+      expect(cell).toHaveAttribute("data-selected", "true");
+    });
+  });
+
+  describe("Navigation", () => {
+    it("advances the mini-calendar view month without changing selectedDate", async () => {
+      const user = userEvent.setup();
+      const selected = new Date(2025, 4, 15);
+      const { contextValue } = renderWithContext({ selectedDate: selected });
+
+      const nextBtn = screen.getByTestId("mini-calendar-next-month");
+      await user.click(nextBtn);
+
+      // Header moved to June 2025
+      const header = screen.getByTestId("mini-calendar-header");
+      expect(header).toHaveTextContent(
+        format(addMonths(selected, 1), "MMMM yyyy")
+      );
+      // selectedDate must not have been changed by browsing months
+      expect(contextValue.setSelectedDate).not.toHaveBeenCalled();
+    });
+
+    it("retreats the mini-calendar view month without changing selectedDate", async () => {
+      const user = userEvent.setup();
+      const selected = new Date(2025, 4, 15);
+      const { contextValue } = renderWithContext({ selectedDate: selected });
+
+      const prevBtn = screen.getByTestId("mini-calendar-prev-month");
+      await user.click(prevBtn);
+
+      const header = screen.getByTestId("mini-calendar-header");
+      expect(header).toHaveTextContent(
+        format(subMonths(selected, 1), "MMMM yyyy")
+      );
+      expect(contextValue.setSelectedDate).not.toHaveBeenCalled();
+    });
+
+    it("calls setSelectedDate when a day cell is clicked", async () => {
+      const user = userEvent.setup();
+      const selected = new Date(2025, 4, 15);
+      const { contextValue } = renderWithContext({ selectedDate: selected });
+
+      const target = new Date(2025, 4, 20);
+      const cell = screen.getByTestId(
+        `mini-calendar-day-${format(target, "yyyy-MM-dd")}`
+      );
+      await user.click(cell);
+
+      expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
+      const calledWith = (
+        contextValue.setSelectedDate as ReturnType<typeof vi.fn>
+      ).mock.calls[0][0] as Date;
+      expect(isSameDay(calledWith, target)).toBe(true);
+    });
+  });
+
+  describe("Event indicators", () => {
+    it("shows a colored dot on days with events", () => {
+      const anchor = new Date(2025, 4, 15);
+      const eventDay = new Date(2025, 4, 20, 10, 0, 0);
+      const events = [
+        createMockEvent({
+          id: "e1",
+          startDate: eventDay.toISOString(),
+          endDate: eventDay.toISOString(),
+          color: "blue",
+        }),
+      ];
+      renderWithContext({ selectedDate: anchor, events });
+
+      const cell = screen.getByTestId(
+        `mini-calendar-day-${format(eventDay, "yyyy-MM-dd")}`
+      );
+      const dot = within(cell).queryByTestId("mini-calendar-event-dot");
+      expect(dot).toBeInTheDocument();
+    });
+
+    it("does not show an event dot on empty days", () => {
+      const anchor = new Date(2025, 4, 15);
+      renderWithContext({ selectedDate: anchor, events: [] });
+
+      const emptyDay = new Date(2025, 4, 7);
+      const cell = screen.getByTestId(
+        `mini-calendar-day-${format(emptyDay, "yyyy-MM-dd")}`
+      );
+      const dot = within(cell).queryByTestId("mini-calendar-event-dot");
+      expect(dot).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Events list", () => {
+    it("renders an events list for the selected date", () => {
+      const selected = new Date(2025, 4, 15, 9, 0, 0);
+      const events = [
+        createMockEvent({
+          id: "e1",
+          title: "Morning Standup",
+          startDate: new Date(2025, 4, 15, 9, 0).toISOString(),
+          endDate: new Date(2025, 4, 15, 9, 30).toISOString(),
+          color: "blue",
+        }),
+        createMockEvent({
+          id: "e2",
+          title: "Project Review",
+          startDate: new Date(2025, 4, 15, 14, 0).toISOString(),
+          endDate: new Date(2025, 4, 15, 15, 0).toISOString(),
+          color: "green",
+        }),
+        // An event on another day should NOT appear in the list
+        createMockEvent({
+          id: "e3",
+          title: "Tomorrow",
+          startDate: new Date(2025, 4, 16, 9, 0).toISOString(),
+          endDate: new Date(2025, 4, 16, 10, 0).toISOString(),
+          color: "red",
+        }),
+      ];
+      renderWithContext({ selectedDate: selected, events });
+
+      const list = screen.getByTestId("mini-calendar-events-list");
+      expect(within(list).getByText("Morning Standup")).toBeInTheDocument();
+      expect(within(list).getByText("Project Review")).toBeInTheDocument();
+      expect(within(list).queryByText("Tomorrow")).not.toBeInTheDocument();
+    });
+
+    it("renders an empty state when the selected day has no events", () => {
+      const selected = new Date(2025, 4, 15);
+      renderWithContext({ selectedDate: selected, events: [] });
+
+      const list = screen.getByTestId("mini-calendar-events-list");
+      expect(list).toHaveTextContent(/no events/i);
+    });
+
+    it("sorts events chronologically within the day", () => {
+      const selected = new Date(2025, 4, 15);
+      const events = [
+        createMockEvent({
+          id: "late",
+          title: "Late meeting",
+          startDate: new Date(2025, 4, 15, 16, 0).toISOString(),
+          endDate: new Date(2025, 4, 15, 17, 0).toISOString(),
+          color: "red",
+        }),
+        createMockEvent({
+          id: "early",
+          title: "Early breakfast",
+          startDate: new Date(2025, 4, 15, 7, 0).toISOString(),
+          endDate: new Date(2025, 4, 15, 8, 0).toISOString(),
+          color: "yellow",
+        }),
+      ];
+      renderWithContext({ selectedDate: selected, events });
+
+      const list = screen.getByTestId("mini-calendar-events-list");
+      const items = within(list).getAllByTestId(/^mini-calendar-event-/);
+      expect(items[0]).toHaveTextContent("Early breakfast");
+      expect(items[1]).toHaveTextContent("Late meeting");
+    });
+
+    it("formats times using the configured time format (24h)", () => {
+      const selected = new Date(2025, 4, 15);
+      const events = [
+        createMockEvent({
+          id: "e1",
+          title: "Afternoon block",
+          startDate: new Date(2025, 4, 15, 14, 30).toISOString(),
+          endDate: new Date(2025, 4, 15, 15, 30).toISOString(),
+          color: "blue",
+        }),
+      ];
+      renderWithContext({
+        selectedDate: selected,
+        events,
+        use24HourFormat: true,
+      });
+
+      const list = screen.getByTestId("mini-calendar-events-list");
+      expect(list).toHaveTextContent("14:30");
+    });
+
+    it("formats times using the configured time format (12h)", () => {
+      const selected = new Date(2025, 4, 15);
+      const events = [
+        createMockEvent({
+          id: "e1",
+          title: "Afternoon block",
+          startDate: new Date(2025, 4, 15, 14, 30).toISOString(),
+          endDate: new Date(2025, 4, 15, 15, 30).toISOString(),
+          color: "blue",
+        }),
+      ];
+      renderWithContext({
+        selectedDate: selected,
+        events,
+        use24HourFormat: false,
+      });
+
+      const list = screen.getByTestId("mini-calendar-events-list");
+      expect(list).toHaveTextContent(/2:30\s*PM/i);
+    });
+
+    it("shows 'All day' label for all-day events", () => {
+      const selected = new Date(2025, 4, 15);
+      const events = [
+        createMockEvent({
+          id: "e1",
+          title: "Vacation day",
+          startDate: new Date(2025, 4, 15, 0, 0).toISOString(),
+          endDate: new Date(2025, 4, 16, 0, 0).toISOString(),
+          isAllDay: true,
+          color: "green",
+        }),
+      ];
+      renderWithContext({ selectedDate: selected, events });
+
+      const list = screen.getByTestId("mini-calendar-events-list");
+      expect(list).toHaveTextContent(/all day/i);
+    });
+  });
+});

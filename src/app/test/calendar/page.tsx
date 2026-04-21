@@ -1,6 +1,7 @@
 "use client";
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
 import {
@@ -362,6 +363,7 @@ function TestCalendarContent() {
   const loadingDelay = parseInt(searchParams.get("loadingDelay") || "0", 10);
   const showControls = searchParams.get("controls") !== "false";
   const use24Hour = searchParams.get("24hour") !== "false";
+  const showSidebar = searchParams.get("sidebar") === "true";
 
   // Get events for the specified set
   const events = mockEventSets[eventSet] || mockEventSets.default;
@@ -390,7 +392,14 @@ function TestCalendarContent() {
           <ViewSwitcher />
         </div>
 
-        <CalendarDisplay />
+        {showSidebar ? (
+          <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+            <CalendarDisplay />
+            <MiniCalendarSidebar />
+          </div>
+        ) : (
+          <CalendarDisplay />
+        )}
       </div>
     </MockCalendarProvider>
   );
@@ -406,6 +415,7 @@ function TestCalendarContent() {
  * - loadingDelay: Simulate loading delay in ms
  * - controls: Show test controls (true/false)
  * - 24hour: Use 24-hour format (true/false)
+ * - sidebar: Show the mini-calendar sidebar (true/false)
  *
  * Examples:
  * - /test/calendar - Default events, month view
