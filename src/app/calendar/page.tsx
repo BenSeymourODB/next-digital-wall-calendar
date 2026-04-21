@@ -2,6 +2,7 @@
 
 import { AccountManager } from "@/components/calendar/AccountManager";
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
@@ -55,8 +56,11 @@ function CalendarContent() {
           </div>
         )}
 
-        {/* View Switcher */}
-        <ViewSwitcher />
+        {/* View Switcher + Filter Panel */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <ViewSwitcher />
+          <CalendarFilterPanel />
+        </div>
 
         {/* Calendar + mini-calendar sidebar */}
         <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
