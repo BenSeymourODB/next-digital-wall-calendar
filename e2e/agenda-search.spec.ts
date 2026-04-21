@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-// Enable video capture for these interaction-heavy tests so the search flow
-// can be inspected if a regression sneaks in.
-test.use({ video: "on" });
+// Retain video only when a test fails so the interaction flow can be replayed
+// without accumulating artifacts on every passing run.
+test.use({ video: "retain-on-failure" });
 
 test.describe("Agenda Calendar — Search", () => {
   test.beforeEach(async ({ page }) => {

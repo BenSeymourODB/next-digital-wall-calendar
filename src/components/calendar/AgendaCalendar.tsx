@@ -240,11 +240,9 @@ export function AgendaCalendar() {
   } = useCalendar();
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Filter to next 7 days from today, then apply the search query
-  const agendaEvents = filterEventsBySearch(
-    filterEventsForNextNDays(events, 7),
-    searchQuery
-  );
+  // Window the data once, then apply the search query
+  const windowedEvents = filterEventsForNextNDays(events, 7);
+  const agendaEvents = filterEventsBySearch(windowedEvents, searchQuery);
 
   if (isLoading) {
     return (
@@ -254,9 +252,14 @@ export function AgendaCalendar() {
     );
   }
 
-  const hasEventsBeforeSearch = filterEventsForNextNDays(events, 7).length > 0;
+  const hasEventsBeforeSearch = windowedEvents.length > 0;
   const searchActive = searchQuery.trim().length > 0;
   const noMatches = searchActive && agendaEvents.length === 0;
+  const resultCount = agendaEvents.length;
+
+  // Build color groups once per render (only used when grouping by color)
+  const colorGroups =
+    agendaModeGroupBy === "color" ? groupEventsByColor(agendaEvents) : null;
 
   return (
     <div className="w-full space-y-4">
@@ -304,17 +307,32 @@ export function AgendaCalendar() {
           className="pr-9 pl-9"
         />
         {searchActive && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setSearchQuery("")}
             aria-label="Clear search"
             data-testid="agenda-search-clear"
-            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 focus-visible:ring-2 focus-visible:outline-none"
+            className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         )}
       </div>
+
+      {/* Live region announces result count while the user types. Visually
+          hidden so it doesn't displace other UI. */}
+      <p
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="agenda-search-status"
+      >
+        {searchActive
+          ? `${resultCount} ${resultCount === 1 ? "event matches" : "events match"} "${searchQuery.trim()}"`
+          : ""}
+      </p>
 
       <div className="border-border bg-card max-h-[600px] overflow-y-auto rounded-lg border">
         {noMatches ? (
@@ -325,29 +343,28 @@ export function AgendaCalendar() {
           <div className="text-muted-foreground py-12 text-center">
             <p>No upcoming events in the next 7 days</p>
           </div>
-        ) : agendaModeGroupBy === "color" ? (
+        ) : agendaModeGroupBy === "color" && colorGroups ? (
           <div className="space-y-6 p-4">
-            {COLOR_ORDER.filter((color) =>
-              groupEventsByColor(agendaEvents).has(color)
-            ).map((color) => {
-              const colorEvents =
-                groupEventsByColor(agendaEvents).get(color) ?? [];
-              return (
-                <AgendaGroup
-                  key={color}
-                  headerText={capitalize(color)}
-                  eventCount={colorEvents.length}
-                >
-                  {colorEvents.map((event) => (
-                    <EventCard
-                      key={event.id}
-                      event={event}
-                      use24HourFormat={use24HourFormat}
-                    />
-                  ))}
-                </AgendaGroup>
-              );
-            })}
+            {COLOR_ORDER.filter((color) => colorGroups.has(color)).map(
+              (color) => {
+                const colorEvents = colorGroups.get(color) ?? [];
+                return (
+                  <AgendaGroup
+                    key={color}
+                    headerText={capitalize(color)}
+                    eventCount={colorEvents.length}
+                  >
+                    {colorEvents.map((event) => (
+                      <EventCard
+                        key={event.id}
+                        event={event}
+                        use24HourFormat={use24HourFormat}
+                      />
+                    ))}
+                  </AgendaGroup>
+                );
+              }
+            )}
           </div>
         ) : (
           <div className="space-y-6 p-4">
