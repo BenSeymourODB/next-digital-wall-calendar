@@ -12,6 +12,7 @@ import {
   getEventsForWeek,
   getEventsForYear,
   getFirstLetters,
+  getShortWeekdayLabels,
   getWeekDates,
   groupEvents,
   navigateDate,
@@ -412,6 +413,26 @@ describe("WEEK_STARTS_ON", () => {
     expect(WEEK_STARTS_ON).toBeGreaterThanOrEqual(0);
     expect(WEEK_STARTS_ON).toBeLessThanOrEqual(6);
     expect(Number.isInteger(WEEK_STARTS_ON)).toBe(true);
+  });
+});
+
+describe("getShortWeekdayLabels", () => {
+  it("returns 7 labels", () => {
+    expect(getShortWeekdayLabels()).toHaveLength(7);
+  });
+
+  it("starts with the label for WEEK_STARTS_ON", () => {
+    const calendarLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const labels = getShortWeekdayLabels();
+    expect(labels[0]).toBe(calendarLabels[WEEK_STARTS_ON]);
+  });
+
+  it("covers every weekday exactly once", () => {
+    const labels = getShortWeekdayLabels();
+    expect(new Set(labels).size).toBe(7);
+    expect([...labels].sort()).toEqual(
+      ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].sort()
+    );
   });
 });
 

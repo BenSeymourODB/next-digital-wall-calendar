@@ -46,6 +46,26 @@ const FORMAT_STRING = "MMM d, yyyy";
  */
 export const WEEK_STARTS_ON: Day = 0;
 
+const SHORT_WEEKDAY_LABELS = [
+  "Sun",
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+] as const;
+
+/**
+ * Returns the 7 short weekday labels (`"Sun"`…`"Sat"`) rotated so the
+ * first entry corresponds to `WEEK_STARTS_ON`. Use this for day-of-week
+ * headers instead of hard-coding the array so every view agrees.
+ */
+export const getShortWeekdayLabels = (): string[] => [
+  ...SHORT_WEEKDAY_LABELS.slice(WEEK_STARTS_ON),
+  ...SHORT_WEEKDAY_LABELS.slice(0, WEEK_STARTS_ON),
+];
+
 export function rangeText(view: TCalendarView, date: Date): string {
   let start: Date;
   let end: Date;
