@@ -134,6 +134,16 @@ describe("getEventsCount", () => {
     const count = getEventsCount(events, testDate, "month");
     expect(count).toBe(3);
   });
+
+  it("counts events for the same week using WEEK_STARTS_ON", () => {
+    // testDate = Fri Mar 15 2024. With WEEK_STARTS_ON = 0 (Sunday), the week
+    // runs Sun Mar 10 – Sat Mar 16. Sun Mar 17 falls into the next week.
+    const weekEvents: IEvent[] = [
+      createMockEvent({ id: "same-week", startDate: "2024-03-10T10:00:00" }),
+      createMockEvent({ id: "next-week", startDate: "2024-03-17T10:00:00" }),
+    ];
+    expect(getEventsCount(weekEvents, testDate, "week")).toBe(1);
+  });
 });
 
 describe("groupEvents", () => {
@@ -408,31 +418,19 @@ describe("getWeekDates", () => {
   });
 });
 
-describe("WEEK_STARTS_ON", () => {
-  it("is a valid date-fns Day value (0-6)", () => {
-    expect(WEEK_STARTS_ON).toBeGreaterThanOrEqual(0);
-    expect(WEEK_STARTS_ON).toBeLessThanOrEqual(6);
-    expect(Number.isInteger(WEEK_STARTS_ON)).toBe(true);
-  });
-});
-
 describe("getShortWeekdayLabels", () => {
-  it("returns 7 labels", () => {
-    expect(getShortWeekdayLabels()).toHaveLength(7);
-  });
-
-  it("starts with the label for WEEK_STARTS_ON", () => {
-    const calendarLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const labels = getShortWeekdayLabels();
-    expect(labels[0]).toBe(calendarLabels[WEEK_STARTS_ON]);
-  });
-
-  it("covers every weekday exactly once", () => {
-    const labels = getShortWeekdayLabels();
-    expect(new Set(labels).size).toBe(7);
-    expect([...labels].sort()).toEqual(
-      ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].sort()
-    );
+  it("returns labels in correct rotation order", () => {
+    // Documents expected output for WEEK_STARTS_ON = 0 (Sunday-first).
+    // Update this alongside WEEK_STARTS_ON if the default ever changes.
+    expect(getShortWeekdayLabels()).toEqual([
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+    ]);
   });
 });
 

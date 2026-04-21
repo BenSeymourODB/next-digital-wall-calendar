@@ -16,10 +16,12 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-const WEEKDAY_HEADERS = getShortWeekdayLabels();
-
 export function SimpleCalendar() {
   const { selectedDate, setSelectedDate, events, isLoading } = useCalendar();
+
+  // Computed per render so a future user-configurable WEEK_STARTS_ON
+  // flows through without a module reload. React Compiler memoizes.
+  const weekdayHeaders = getShortWeekdayLabels();
 
   const monthStart = startOfMonth(selectedDate);
   const monthEnd = endOfMonth(selectedDate);
@@ -134,7 +136,7 @@ export function SimpleCalendar() {
       <div className="border-border bg-card rounded-lg border">
         {/* Day headers */}
         <div className="border-border bg-muted grid grid-cols-7 border-b">
-          {WEEKDAY_HEADERS.map((day) => (
+          {weekdayHeaders.map((day) => (
             <div
               key={day}
               className="text-muted-foreground p-3 text-center text-sm font-semibold"

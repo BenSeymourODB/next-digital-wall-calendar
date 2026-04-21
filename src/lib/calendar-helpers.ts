@@ -119,7 +119,7 @@ export function getEventsCount(
 ): number {
   const compareFns: Record<TCalendarView, (d1: Date, d2: Date) => boolean> = {
     day: isSameDay,
-    week: isSameWeek,
+    week: (d1, d2) => isSameWeek(d1, d2, { weekStartsOn: WEEK_STARTS_ON }),
     month: isSameMonth,
     year: isSameYear,
     agenda: isSameMonth,
