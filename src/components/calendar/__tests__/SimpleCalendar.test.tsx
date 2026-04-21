@@ -253,4 +253,11 @@ describe("SimpleCalendar", () => {
       );
     });
   });
+
+  describe("Toolbar", () => {
+    it("renders an Add event button in the toolbar", () => {
+      renderWithContext();
+      expect(screen.getByTestId("calendar-add-event-btn")).toBeInTheDocument();
+    });
+  });
 });

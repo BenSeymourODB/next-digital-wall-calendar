@@ -14,6 +14,7 @@ import {
   startOfMonth,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AddEventButton } from "./AddEventButton";
 
 export function SimpleCalendar() {
   const { selectedDate, setSelectedDate, events, isLoading } = useCalendar();
@@ -90,6 +91,7 @@ export function SimpleCalendar() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <AddEventButton />
           <Button
             variant="outline"
             size="sm"
