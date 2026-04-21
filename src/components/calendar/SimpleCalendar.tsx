@@ -14,9 +14,15 @@ import {
   startOfMonth,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  DayOverflowPopover,
+  EVENT_COLOR_CLASSES,
+  MAX_INLINE_EVENTS,
+} from "./DayOverflowPopover";
 
 export function SimpleCalendar() {
-  const { selectedDate, setSelectedDate, events, isLoading } = useCalendar();
+  const { selectedDate, setSelectedDate, events, isLoading, use24HourFormat } =
+    useCalendar();
 
   const monthStart = startOfMonth(selectedDate);
   const monthEnd = endOfMonth(selectedDate);
@@ -177,30 +183,22 @@ export function SimpleCalendar() {
 
                 {/* Events for this day */}
                 <div className="space-y-1">
-                  {dayEvents.slice(0, 3).map((event) => (
+                  {dayEvents.slice(0, MAX_INLINE_EVENTS).map((event) => (
                     <div
                       key={event.id}
                       className={`rounded px-2 py-1 text-xs ${
-                        event.color === "blue"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                          : event.color === "green"
-                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                            : event.color === "red"
-                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                              : event.color === "yellow"
-                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                                : event.color === "purple"
-                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-                                  : "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
+                        EVENT_COLOR_CLASSES[event.color]
                       }`}
                     >
                       {event.title}
                     </div>
                   ))}
-                  {dayEvents.length > 3 && (
-                    <div className="text-muted-foreground text-xs">
-                      +{dayEvents.length - 3} more
-                    </div>
+                  {dayEvents.length > MAX_INLINE_EVENTS && (
+                    <DayOverflowPopover
+                      day={day}
+                      dayEvents={dayEvents}
+                      use24HourFormat={use24HourFormat}
+                    />
                   )}
                 </div>
               </div>
