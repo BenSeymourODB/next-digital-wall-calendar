@@ -162,6 +162,7 @@ describe("updateProfileStreak", () => {
   });
 
   it("creates a new reward-points record when the profile has none", async () => {
+    const before = Date.now();
     const findUnique = vi.fn().mockResolvedValue(null);
     const update = vi.fn().mockResolvedValue({});
     const create = vi.fn().mockResolvedValue({});
@@ -170,6 +171,7 @@ describe("updateProfileStreak", () => {
     });
 
     const result = await updateProfileStreak("profile-1");
+    const after = Date.now();
 
     expect(result).toEqual({ current: 1, longest: 1 });
     expect(create).toHaveBeenCalledWith(
@@ -182,6 +184,11 @@ describe("updateProfileStreak", () => {
         }),
       })
     );
+    const stamped = (
+      create.mock.calls[0][0].data.lastActivityDate as Date
+    ).getTime();
+    expect(stamped).toBeGreaterThanOrEqual(before);
+    expect(stamped).toBeLessThanOrEqual(after);
     expect(update).not.toHaveBeenCalled();
     expect(mockCalculateNewStreak).not.toHaveBeenCalled();
   });
