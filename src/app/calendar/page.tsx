@@ -4,6 +4,7 @@ import { AccountManager } from "@/components/calendar/AccountManager";
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
+import { YearCalendar } from "@/components/calendar/YearCalendar";
 import {
   CalendarProvider,
   useCalendar,
@@ -59,7 +60,9 @@ function CalendarContent() {
 
         {/* Calendar - Conditional rendering based on view */}
         <div className="border-border bg-card rounded-lg border p-6">
-          {view === "month" ? <SimpleCalendar /> : <AgendaCalendar />}
+          {view === "month" && <SimpleCalendar />}
+          {view === "year" && <YearCalendar />}
+          {view === "agenda" && <AgendaCalendar />}
         </div>
       </div>
     </div>
