@@ -1,9 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-// Record video for this spec so the view-transition flow produces an artifact
-// (useful for PR review of the navigation feel). Video lands under
-// `test-results/` which is gitignored.
-test.use({ video: "on" });
+// Keep video only when a test fails so CI doesn't accumulate artifacts for
+// every green run. Artifacts land under `test-results/` which is gitignored.
+test.use({ video: "retain-on-failure" });
 
 test.describe("Week Calendar", () => {
   test.beforeEach(async ({ page }) => {

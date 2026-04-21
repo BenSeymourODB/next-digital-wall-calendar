@@ -11,7 +11,7 @@ import {
   useCalendar,
 } from "@/components/providers/MockCalendarProvider";
 import { Button } from "@/components/ui/button";
-import type { IEvent, TEventColor } from "@/types/calendar";
+import type { IEvent, TCalendarView, TEventColor } from "@/types/calendar";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -362,9 +362,7 @@ function TestCalendarContent() {
 
   // Get test configuration from URL params
   const eventSet = searchParams.get("events") || "default";
-  const view =
-    (searchParams.get("view") as "day" | "week" | "month" | "agenda") ||
-    "month";
+  const view = (searchParams.get("view") as TCalendarView) || "month";
   const loading = searchParams.get("loading") === "true";
   const loadingDelay = parseInt(searchParams.get("loadingDelay") || "0", 10);
   const showControls = searchParams.get("controls") !== "false";

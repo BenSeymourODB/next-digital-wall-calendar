@@ -14,6 +14,11 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+// Stable reference so relative labels ("Today" / "Tomorrow" / "Yesterday")
+// and the disabled state of the Today button don't drift across midnight
+// within a single render pass.
+const today = startOfDay(new Date());
+
 function getColorClasses(color: TEventColor): string {
   const classes: Record<TEventColor, string> = {
     blue: "border-blue-500 bg-blue-50 dark:bg-blue-950",
@@ -74,6 +79,7 @@ function EventCard({
           )}
         </div>
         <div
+          aria-hidden="true"
           className={`h-3 w-3 shrink-0 rounded-full ${getBadgeClasses(event.color)}`}
         />
       </div>
@@ -85,7 +91,6 @@ export function DayCalendar() {
   const { selectedDate, setSelectedDate, events, isLoading, use24HourFormat } =
     useCalendar();
 
-  const today = new Date();
   const isToday = isSameDay(selectedDate, today);
 
   const dayEvents = events.filter((event) =>
@@ -133,7 +138,7 @@ export function DayCalendar() {
                 ? "Tomorrow"
                 : isSameDay(selectedDate, subDays(today, 1))
                   ? "Yesterday"
-                  : format(startOfDay(selectedDate), "PPPP")}
+                  : format(selectedDate, "PPPP")}
           </p>
         </div>
         <div className="flex items-center gap-2">

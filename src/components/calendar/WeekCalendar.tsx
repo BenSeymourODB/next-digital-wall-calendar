@@ -11,18 +11,24 @@ import {
 } from "@/lib/calendar-helpers";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import {
-  addDays,
+  addWeeks,
   endOfWeek,
   format,
   isSameDay,
   isSameWeek,
   parseISO,
+  startOfDay,
   startOfWeek,
-  subDays,
+  subWeeks,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const MAX_EVENTS_PER_DAY = 3;
+
+// Stable reference so midnight-boundary comparisons don't drift between the
+// week-level `isSameWeek` check and the cell-level `isSameDay` check within
+// a single render.
+const today = startOfDay(new Date());
 
 function getEventPillClasses(color: TEventColor): string {
   const classes: Record<TEventColor, string> = {
@@ -60,13 +66,12 @@ export function WeekCalendar() {
   const weekEvents = getEventsForWeek(events, selectedDate);
   const weekEventCount = weekEvents.length;
 
-  const today = new Date();
   const isCurrentWeek = isSameWeek(selectedDate, today, {
     weekStartsOn: WEEK_STARTS_ON,
   });
 
-  const previousWeek = () => setSelectedDate(subDays(selectedDate, 7));
-  const nextWeek = () => setSelectedDate(addDays(selectedDate, 7));
+  const previousWeek = () => setSelectedDate(subWeeks(selectedDate, 1));
+  const nextWeek = () => setSelectedDate(addWeeks(selectedDate, 1));
   const goToToday = () => setSelectedDate(new Date());
 
   return (
@@ -75,8 +80,12 @@ export function WeekCalendar() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-foreground text-2xl font-bold">
-              {format(weekStart, "MMM d")} – {format(weekEnd, "MMM d, yyyy")}
+            <h2
+              className="text-foreground text-2xl font-bold"
+              data-testid="week-calendar-range"
+            >
+              {format(weekStart, "MMM d, yyyy")} –{" "}
+              {format(weekEnd, "MMM d, yyyy")}
             </h2>
             <span
               className="text-muted-foreground text-sm"
@@ -85,13 +94,6 @@ export function WeekCalendar() {
               {weekEventCount} {weekEventCount === 1 ? "event" : "events"}
             </span>
           </div>
-          <p
-            className="text-muted-foreground text-sm"
-            data-testid="week-calendar-range"
-          >
-            {format(weekStart, "MMM d, yyyy")} –{" "}
-            {format(weekEnd, "MMM d, yyyy")}
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -134,11 +136,19 @@ export function WeekCalendar() {
       )}
 
       {/* Week grid */}
-      <div className="border-border bg-card rounded-lg border">
-        <div className="border-border bg-muted grid grid-cols-7 border-b">
+      <div
+        className="border-border bg-card rounded-lg border"
+        role="grid"
+        aria-label={`Week of ${format(weekStart, "MMMM d, yyyy")}`}
+      >
+        <div
+          className="border-border bg-muted grid grid-cols-7 border-b"
+          role="row"
+        >
           {weekdayHeaders.map((label) => (
             <div
               key={label}
+              role="columnheader"
               className="text-muted-foreground p-3 text-center text-sm font-semibold"
             >
               {label}
@@ -146,7 +156,7 @@ export function WeekCalendar() {
           ))}
         </div>
 
-        <div className="grid grid-cols-7">
+        <div className="grid grid-cols-7" role="row">
           {weekDates.map((day, index) => {
             const dayEvents = getEventsStartingOnDay(weekEvents, day);
             const isToday = isSameDay(day, today);
@@ -156,13 +166,18 @@ export function WeekCalendar() {
             return (
               <div
                 key={day.toISOString()}
+                role="gridcell"
+                aria-label={format(day, "EEEE, MMMM d")}
                 data-testid={isToday ? "week-calendar-today-cell" : undefined}
                 className={`border-border min-h-[240px] border-r border-b p-2 last:border-r-0 ${
                   isToday ? "bg-blue-50 dark:bg-blue-950" : "bg-card"
                 }`}
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-muted-foreground text-xs font-medium">
+                  <span
+                    className="text-muted-foreground text-xs font-medium"
+                    aria-hidden="true"
+                  >
                     {weekdayHeaders[index]}
                   </span>
                   <span
@@ -180,6 +195,12 @@ export function WeekCalendar() {
                   {visible.map((event) => (
                     <div
                       key={event.id}
+                      role="listitem"
+                      aria-label={
+                        event.isAllDay
+                          ? `${event.title}, all day`
+                          : `${event.title}, ${formatTime(event.startDate, use24HourFormat)}`
+                      }
                       className={`truncate rounded px-2 py-1 text-xs ${getEventPillClasses(event.color)}`}
                       title={event.title}
                     >

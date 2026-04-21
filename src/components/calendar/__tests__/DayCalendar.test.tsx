@@ -313,5 +313,12 @@ describe("DayCalendar", () => {
       renderWithContext({ isLoading: true });
       expect(screen.getByText("Loading events...")).toBeInTheDocument();
     });
+
+    it("does not show empty state while loading", () => {
+      renderWithContext({ isLoading: true, events: [] });
+      expect(
+        screen.queryByText("No events scheduled for this day")
+      ).not.toBeInTheDocument();
+    });
   });
 });

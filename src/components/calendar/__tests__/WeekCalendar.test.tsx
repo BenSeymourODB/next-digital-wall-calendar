@@ -295,7 +295,7 @@ describe("WeekCalendar", () => {
 
       renderWithContext({ selectedDate, events });
 
-      expect(screen.getByText(/\+2 more/)).toBeInTheDocument();
+      expect(screen.getByText("+2 more")).toBeInTheDocument();
     });
 
     it("shows all-day events with an 'All day' label", () => {
