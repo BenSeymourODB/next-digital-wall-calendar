@@ -191,7 +191,7 @@ describe("/api/profiles/[id]/reset-pin", () => {
       );
     });
 
-    it("returns 400 when newPin is invalid format (too short)", async () => {
+    it("returns 400 and forwards the validator error when newPin is malformed", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
 
       const request = createMockRequest("/api/profiles/profile-1/reset-pin", {
@@ -199,47 +199,7 @@ describe("/api/profiles/[id]/reset-pin", () => {
         body: {
           adminProfileId: mockAdminProfile.id,
           adminPin: "1234",
-          newPin: "123", // Too short
-        },
-      });
-      const response = await POST(request, {
-        params: createParams("profile-1"),
-      });
-      const { status, data } = await parseResponse<ApiErrorResponse>(response);
-
-      expect(status).toBe(400);
-      expect(data.error).toBe("New PIN must be 4-6 digits");
-    });
-
-    it("returns 400 when newPin is invalid format (too long)", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-
-      const request = createMockRequest("/api/profiles/profile-1/reset-pin", {
-        method: "POST",
-        body: {
-          adminProfileId: mockAdminProfile.id,
-          adminPin: "1234",
-          newPin: "1234567", // Too long
-        },
-      });
-      const response = await POST(request, {
-        params: createParams("profile-1"),
-      });
-      const { status, data } = await parseResponse<ApiErrorResponse>(response);
-
-      expect(status).toBe(400);
-      expect(data.error).toBe("New PIN must be 4-6 digits");
-    });
-
-    it("returns 400 when newPin contains non-digits", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-
-      const request = createMockRequest("/api/profiles/profile-1/reset-pin", {
-        method: "POST",
-        body: {
-          adminProfileId: mockAdminProfile.id,
-          adminPin: "1234",
-          newPin: "12ab",
+          newPin: "abc",
         },
       });
       const response = await POST(request, {

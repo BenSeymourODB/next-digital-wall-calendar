@@ -5,6 +5,7 @@
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { validatePinFormat } from "@/lib/pin-utils";
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
 
@@ -38,12 +39,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body = (await request.json()) as SetPinBody;
     const { pin, currentPin } = body;
 
-    // Validate PIN format (4-6 digits)
-    if (!pin || !/^\d{4,6}$/.test(pin)) {
-      return NextResponse.json(
-        { error: "PIN must be 4-6 digits" },
-        { status: 400 }
-      );
+    const pinCheck = validatePinFormat(pin);
+    if (!pinCheck.valid) {
+      return NextResponse.json({ error: pinCheck.error }, { status: 400 });
     }
 
     // Get profile
