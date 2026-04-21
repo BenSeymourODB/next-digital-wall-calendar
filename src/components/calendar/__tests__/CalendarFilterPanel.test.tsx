@@ -246,10 +246,23 @@ describe("CalendarFilterPanel", () => {
     });
 
     it("displays initials for the selected user on the trigger", () => {
-      renderPanel({ users: [mom, emma], selectedUserId: emma.id });
+      // Use a two-word name so the assertion proves the multi-word initials
+      // branch (first+last) — not just that the name happens to start with
+      // the asserted letter.
+      const jackSmith: IUser = {
+        id: "kid-2",
+        name: "Jack Smith",
+        picturePath: null,
+      };
+      renderPanel({
+        users: [mom, jackSmith],
+        selectedUserId: jackSmith.id,
+      });
       const trigger = screen.getByTestId("filter-panel-user-trigger");
-      // Emma → "E"
-      expect(trigger).toHaveTextContent("E");
+      // "Jack Smith" → "JS" — this substring does not appear anywhere in
+      // "Jack Smith" itself, so matching it confirms it came from the
+      // AvatarFallback initials.
+      expect(trigger).toHaveTextContent("JS");
     });
   });
 

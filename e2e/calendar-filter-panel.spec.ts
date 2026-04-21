@@ -65,7 +65,8 @@ test.describe("CalendarFilterPanel", () => {
     const userPopover = page.getByTestId("filter-panel-user-popover");
     await expect(userPopover).toBeVisible();
 
-    // All + the four users from the `family` mock set.
+    // All + 4 users from `family` (Mom, Emma, Jack, and the shared "Family"
+    // calendar pseudo-user, not an individual profile).
     await expect(
       userPopover.getByTestId("filter-panel-user-option-all")
     ).toBeVisible();
@@ -89,11 +90,14 @@ test.describe("CalendarFilterPanel", () => {
   });
 
   test("Clear filters restores all events", async ({ page }) => {
-    // Apply both a color and a user filter.
+    // Apply a discriminating color+user intersection: purple + Emma (kid-1).
+    // Emma has both green (Soccer Practice) and purple (Piano Lesson) events,
+    // so the color filter proves it's doing work on top of the user filter —
+    // Soccer Practice is hidden by color while Piano Lesson survives.
     await page.getByTestId("filter-panel-color-trigger").click();
     await page
       .getByTestId("filter-panel-color-popover")
-      .getByTestId("filter-panel-color-option-red")
+      .getByTestId("filter-panel-color-option-purple")
       .click();
     await page.keyboard.press("Escape");
 
@@ -104,8 +108,13 @@ test.describe("CalendarFilterPanel", () => {
       .click();
     await page.keyboard.press("Escape");
 
-    // Something previously visible is now hidden.
+    // Mom's Work Meeting (blue) is hidden by the user filter.
     await expect(page.getByText("Work Meeting")).not.toBeVisible();
+    // Emma's Soccer Practice (green) is hidden by the color filter — proves
+    // the color filter is actually applied on top of the user filter.
+    await expect(page.getByText("Soccer Practice")).not.toBeVisible();
+    // Emma's Piano Lesson (purple) survives both filters.
+    await expect(page.getByText("Piano Lesson")).toBeVisible();
 
     // Clear.
     await page.getByTestId("filter-panel-clear").click();

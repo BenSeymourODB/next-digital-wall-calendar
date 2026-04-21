@@ -123,15 +123,12 @@ export function CalendarFilterPanel() {
                     aria-pressed={checked}
                   >
                     <span
-                      role="checkbox"
-                      aria-checked={checked}
+                      aria-hidden="true"
                       data-state={checked ? "checked" : "unchecked"}
                       data-testid={`filter-panel-color-checkbox-${color}`}
                       className="border-input data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=checked]:border-primary flex size-4 shrink-0 items-center justify-center rounded-[4px] border shadow-xs"
                     >
-                      {checked ? (
-                        <Check className="size-3.5" aria-hidden="true" />
-                      ) : null}
+                      {checked ? <Check className="size-3.5" /> : null}
                     </span>
                     <span
                       className={`h-3 w-3 rounded-full ${COLOR_SWATCH_CLASS[color]}`}
@@ -157,9 +154,11 @@ export function CalendarFilterPanel() {
             data-testid="filter-panel-user-trigger"
           >
             {selectedUser ? (
-              <UserAvatar user={selectedUser} className="size-6" />
-            ) : (
-              <div className="flex -space-x-2">
+              <span aria-hidden="true">
+                <UserAvatar user={selectedUser} className="size-6" />
+              </span>
+            ) : users.length > 0 ? (
+              <div className="flex -space-x-2" aria-hidden="true">
                 {users.slice(0, 3).map((u) => (
                   <UserAvatar
                     key={u.id}
@@ -167,13 +166,8 @@ export function CalendarFilterPanel() {
                     className="border-background size-6 border-2"
                   />
                 ))}
-                {users.length === 0 ? (
-                  <Avatar className="size-6">
-                    <AvatarFallback className="text-xs">All</AvatarFallback>
-                  </Avatar>
-                ) : null}
               </div>
-            )}
+            ) : null}
             <span>{selectedUser ? selectedUser.name : "All"}</span>
           </Button>
         </PopoverTrigger>
@@ -195,12 +189,18 @@ export function CalendarFilterPanel() {
                 data-selected={selectedUserId === "all"}
                 aria-pressed={selectedUserId === "all"}
               >
-                <Avatar className="size-6">
+                <Avatar className="size-6" aria-hidden="true">
                   <AvatarFallback className="text-xs font-medium">
                     All
                   </AvatarFallback>
                 </Avatar>
-                <span className="text-sm">All</span>
+                <span className="flex-1 text-sm">All</span>
+                {selectedUserId === "all" ? (
+                  <Check
+                    className="text-primary size-4 shrink-0"
+                    data-testid="filter-panel-user-option-all-check"
+                  />
+                ) : null}
               </button>
             </li>
             {users.length === 0 ? (
@@ -224,8 +224,16 @@ export function CalendarFilterPanel() {
                       data-selected={isSelected}
                       aria-pressed={isSelected}
                     >
-                      <UserAvatar user={u} className="size-6" />
-                      <span className="text-sm">{u.name}</span>
+                      <span aria-hidden="true">
+                        <UserAvatar user={u} className="size-6" />
+                      </span>
+                      <span className="flex-1 text-sm">{u.name}</span>
+                      {isSelected ? (
+                        <Check
+                          className="text-primary size-4 shrink-0"
+                          data-testid={`filter-panel-user-option-${u.id}-check`}
+                        />
+                      ) : null}
                     </button>
                   </li>
                 );
