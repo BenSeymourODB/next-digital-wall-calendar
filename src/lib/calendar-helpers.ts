@@ -4,6 +4,7 @@ import type {
   TCalendarView,
   TEventColor,
 } from "@/types/calendar";
+import type { Day } from "date-fns";
 import {
   addDays,
   addMonths,
@@ -34,6 +35,37 @@ import {
 
 const FORMAT_STRING = "MMM d, yyyy";
 
+/**
+ * Project-wide convention for which day a calendar week begins on.
+ *
+ * 0 = Sunday, 1 = Monday, ..., 6 = Saturday (matches `date-fns` `Day`).
+ *
+ * Use this constant anywhere a week boundary is computed — `startOfWeek`,
+ * `endOfWeek`, calendar grid padding, weekday header labels — so every view
+ * agrees. A future settings screen can override this per user (see #141).
+ */
+export const WEEK_STARTS_ON: Day = 0;
+
+const SHORT_WEEKDAY_LABELS = [
+  "Sun",
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+] as const;
+
+/**
+ * Returns the 7 short weekday labels (`"Sun"`…`"Sat"`) rotated so the
+ * first entry corresponds to `WEEK_STARTS_ON`. Use this for day-of-week
+ * headers instead of hard-coding the array so every view agrees.
+ */
+export const getShortWeekdayLabels = (): string[] => [
+  ...SHORT_WEEKDAY_LABELS.slice(WEEK_STARTS_ON),
+  ...SHORT_WEEKDAY_LABELS.slice(0, WEEK_STARTS_ON),
+];
+
 export function rangeText(view: TCalendarView, date: Date): string {
   let start: Date;
   let end: Date;
@@ -44,8 +76,8 @@ export function rangeText(view: TCalendarView, date: Date): string {
       end = endOfMonth(date);
       break;
     case "week":
-      start = startOfWeek(date);
-      end = endOfWeek(date);
+      start = startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
+      end = endOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
       break;
     case "day":
       return format(date, FORMAT_STRING);
@@ -87,7 +119,7 @@ export function getEventsCount(
 ): number {
   const compareFns: Record<TCalendarView, (d1: Date, d2: Date) => boolean> = {
     day: isSameDay,
-    week: isSameWeek,
+    week: (d1, d2) => isSameWeek(d1, d2, { weekStartsOn: WEEK_STARTS_ON }),
     month: isSameMonth,
     year: isSameYear,
     agenda: isSameMonth,
@@ -148,14 +180,16 @@ export function getCalendarCells(selectedDate: Date): ICalendarCell[] {
   const month = selectedDate.getMonth();
 
   const daysInMonth = endOfMonth(selectedDate).getDate(); // Faster than new Date(year, month + 1, 0)
-  const firstDayOfMonth = startOfMonth(selectedDate).getDay();
+  // Offset of the 1st relative to WEEK_STARTS_ON (0..6).
+  const firstDayOffset =
+    (startOfMonth(selectedDate).getDay() - WEEK_STARTS_ON + 7) % 7;
   const daysInPrevMonth = endOfMonth(new Date(year, month - 1)).getDate();
-  const totalDays = firstDayOfMonth + daysInMonth;
+  const totalDays = firstDayOffset + daysInMonth;
 
-  const prevMonthCells = Array.from({ length: firstDayOfMonth }, (_, i) => ({
-    day: daysInPrevMonth - firstDayOfMonth + i + 1,
+  const prevMonthCells = Array.from({ length: firstDayOffset }, (_, i) => ({
+    day: daysInPrevMonth - firstDayOffset + i + 1,
     currentMonth: false,
-    date: new Date(year, month - 1, daysInPrevMonth - firstDayOfMonth + i + 1),
+    date: new Date(year, month - 1, daysInPrevMonth - firstDayOffset + i + 1),
   }));
 
   const currentMonthCells = Array.from({ length: daysInMonth }, (_, i) => ({
@@ -331,7 +365,7 @@ export const getEventsForDay = (
 };
 
 export const getWeekDates = (date: Date): Date[] => {
-  const startDate = startOfWeek(date, { weekStartsOn: 1 });
+  const startDate = startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
   return Array.from({ length: 7 }, (_, i) => addDays(startDate, i));
 };
 
