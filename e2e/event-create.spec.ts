@@ -12,7 +12,7 @@ import { expect, test } from "@playwright/test";
  * the feature. Screenshots from the test run should be attached to the PR.
  */
 
-test.use({ video: "on" });
+test.use({ video: "retain-on-failure" });
 
 test.describe("Event creation dialog", () => {
   test("opens the dialog from the toolbar button", async ({ page }) => {
@@ -81,10 +81,11 @@ test.describe("Event creation dialog", () => {
     // Dialog should close
     await expect(dialog).not.toBeVisible();
 
-    // Event should be visible in the calendar grid. The dialog seeds from the
-    // currently selected date (today) so the new event lands somewhere in the
-    // current month view.
-    await expect(page.getByText("Team offsite").first()).toBeVisible();
+    // Event should be visible in the calendar grid exactly once. The dialog
+    // seeds from the currently selected date (today) so the new event lands
+    // somewhere in the current month view.
+    await expect(page.getByText("Team offsite")).toHaveCount(1);
+    await expect(page.getByText("Team offsite")).toBeVisible();
   });
 
   test("Cancel closes the dialog without creating an event", async ({

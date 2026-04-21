@@ -106,8 +106,7 @@ describe("AddEventButton", () => {
 
     expect(ctx.addEvent).toHaveBeenCalledTimes(1);
 
-    const event = (ctx.addEvent as ReturnType<typeof vi.fn>).mock
-      .calls[0][0] as IEvent;
+    const event = vi.mocked(ctx.addEvent).mock.calls[0][0];
     expect(event.title).toBe("Dentist");
     expect(event.color).toBe("red");
     expect(event.isAllDay).toBe(false);
@@ -145,8 +144,7 @@ describe("AddEventButton", () => {
     await user.type(screen.getByLabelText(/title/i), "Picnic");
     await user.click(screen.getByRole("button", { name: /create event/i }));
 
-    const event = (ctx.addEvent as ReturnType<typeof vi.fn>).mock
-      .calls[0][0] as IEvent;
+    const event = vi.mocked(ctx.addEvent).mock.calls[0][0];
     const start = new Date(event.startDate);
     expect(start.getFullYear()).toBe(2026);
     // Month is 0-indexed

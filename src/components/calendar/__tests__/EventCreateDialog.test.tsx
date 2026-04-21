@@ -1,8 +1,7 @@
-import type { TEventColor } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { EventCreateDialog } from "../EventCreateDialog";
+import { EventCreateDialog, type EventCreateInput } from "../EventCreateDialog";
 
 /**
  * Tests for EventCreateDialog — issue #82.
@@ -14,14 +13,7 @@ import { EventCreateDialog } from "../EventCreateDialog";
 
 function renderOpen(
   overrides: {
-    onCreate?: (event: {
-      title: string;
-      startDate: string;
-      endDate: string;
-      color: TEventColor;
-      description: string;
-      isAllDay: boolean;
-    }) => void;
+    onCreate?: (event: EventCreateInput) => void;
     onOpenChange?: (open: boolean) => void;
     defaultDate?: Date;
   } = {}
@@ -127,6 +119,76 @@ describe("EventCreateDialog", () => {
 
       expect(start.type).toBe("date");
       expect(end.type).toBe("date");
+    });
+
+    it("does not show an order error for an all-day single-day event", async () => {
+      const user = userEvent.setup();
+      renderOpen({ defaultDate: new Date(2026, 3, 20) });
+
+      await user.type(screen.getByLabelText(/title/i), "Day off");
+      await user.click(screen.getByRole("checkbox", { name: /all day/i }));
+
+      // Start and end default to the same date — valid single-day all-day
+      expect(
+        screen.queryByText(/end must be after start/i)
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /create event/i })
+      ).toBeEnabled();
+    });
+
+    it("shows the order error when the all-day end date is before the start date", async () => {
+      const user = userEvent.setup();
+      renderOpen({ defaultDate: new Date(2026, 3, 20) });
+
+      await user.type(screen.getByLabelText(/title/i), "Backwards");
+      await user.click(screen.getByRole("checkbox", { name: /all day/i }));
+
+      const start = screen.getByLabelText(/^start/i);
+      const end = screen.getByLabelText(/^end/i);
+
+      await user.clear(start);
+      await user.type(start, "2026-04-20");
+      await user.clear(end);
+      await user.type(end, "2026-04-19");
+      await user.tab();
+
+      expect(screen.getByText(/end must be after start/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /create event/i })
+      ).toBeDisabled();
+    });
+
+    it("submits a multi-day all-day event with endDate on the end day, not the start day", async () => {
+      const user = userEvent.setup();
+      const onCreate = vi.fn();
+      renderOpen({ onCreate, defaultDate: new Date(2026, 3, 20) });
+
+      await user.type(screen.getByLabelText(/title/i), "Conference");
+      await user.click(screen.getByRole("checkbox", { name: /all day/i }));
+
+      const start = screen.getByLabelText(/^start/i);
+      const end = screen.getByLabelText(/^end/i);
+
+      await user.clear(start);
+      await user.type(start, "2026-04-20");
+      await user.clear(end);
+      await user.type(end, "2026-04-22");
+
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      expect(onCreate).toHaveBeenCalledTimes(1);
+      const payload = onCreate.mock.calls[0][0] as EventCreateInput;
+      expect(payload.isAllDay).toBe(true);
+
+      const startDate = new Date(payload.startDate);
+      const endDate = new Date(payload.endDate);
+      // End must be on the 22nd, not the 20th
+      expect(endDate.getFullYear()).toBe(2026);
+      expect(endDate.getMonth()).toBe(3);
+      expect(endDate.getDate()).toBe(22);
+      // And clearly later than the start (start is 20th midnight, end is 22nd 23:59:59.999)
+      expect(endDate.getTime()).toBeGreaterThan(startDate.getTime());
     });
   });
 

@@ -29,8 +29,23 @@ interface EventCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreate: (event: EventCreateInput) => void;
-  /** Seed value for start/end — defaults to now. */
+  /**
+   * Seed value for start/end. Defaults to now. Only re-read when the dialog
+   * transitions from closed → open, so changes while the dialog is already
+   * open will not overwrite the user's in-progress edits.
+   */
   defaultDate?: Date;
+}
+
+interface DialogState {
+  title: string;
+  description: string;
+  color: TEventColor;
+  isAllDay: boolean;
+  startTimed: string;
+  endTimed: string;
+  startAllDay: string;
+  endAllDay: string;
 }
 
 const COLOR_OPTIONS: readonly {
@@ -73,14 +88,14 @@ function toDateOnly(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function buildInitialState(defaultDate: Date | undefined) {
+function buildInitialState(defaultDate: Date | undefined): DialogState {
   const base = roundToNextHalfHour(defaultDate ?? new Date());
   const end = new Date(base);
   end.setHours(end.getHours() + 1);
   return {
     title: "",
     description: "",
-    color: "blue" as TEventColor,
+    color: "blue",
     isAllDay: false,
     startTimed: toDateTimeLocal(base),
     endTimed: toDateTimeLocal(end),
@@ -112,6 +127,26 @@ function parseDateTimeLocal(value: string): Date | null {
   // what we want for a datetime-local input.
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function resolveDates(state: DialogState): {
+  start: Date | null;
+  end: Date | null;
+} {
+  if (state.isAllDay) {
+    const start = parseDateOnly(state.startAllDay);
+    const endDay = parseDateOnly(state.endAllDay);
+    // Normalize: all-day events span start-of-day to end-of-day of the end
+    // date (which may differ from the start date for multi-day events).
+    if (!start || !endDay) return { start: null, end: null };
+    const end = new Date(endDay);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+  return {
+    start: parseDateTimeLocal(state.startTimed),
+    end: parseDateTimeLocal(state.endTimed),
+  };
 }
 
 export function EventCreateDialog({
@@ -219,7 +254,6 @@ export function EventCreateDialog({
                   id={startId}
                   type="date"
                   value={state.startAllDay}
-                  aria-invalid={!!orderError}
                   onChange={(e) =>
                     setState((prev) => ({
                       ...prev,
@@ -232,7 +266,6 @@ export function EventCreateDialog({
                   id={startId}
                   type="datetime-local"
                   value={state.startTimed}
-                  aria-invalid={!!orderError}
                   onChange={(e) =>
                     setState((prev) => ({
                       ...prev,
@@ -290,11 +323,7 @@ export function EventCreateDialog({
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Color</legend>
-            <div
-              role="radiogroup"
-              aria-label="Color"
-              className="flex flex-wrap gap-3"
-            >
+            <div className="flex flex-wrap gap-3">
               {COLOR_OPTIONS.map((option) => {
                 const checked = state.color === option.value;
                 return (
@@ -356,23 +385,4 @@ export function EventCreateDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function resolveDates(state: ReturnType<typeof buildInitialState>): {
-  start: Date | null;
-  end: Date | null;
-} {
-  if (state.isAllDay) {
-    const start = parseDateOnly(state.startAllDay);
-    const endDay = parseDateOnly(state.endAllDay);
-    // Normalize: all-day events span start-of-day to end-of-day.
-    if (!start || !endDay) return { start: null, end: null };
-    const end = new Date(endDay);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
-  }
-  return {
-    start: parseDateTimeLocal(state.startTimed),
-    end: parseDateTimeLocal(state.endTimed),
-  };
 }

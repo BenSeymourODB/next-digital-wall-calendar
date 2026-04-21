@@ -17,10 +17,7 @@ const LOCAL_USER: IUser = {
 };
 
 function generateId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `evt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  return crypto.randomUUID();
 }
 
 export function AddEventButton() {
