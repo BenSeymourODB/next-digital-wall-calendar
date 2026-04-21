@@ -16,6 +16,7 @@ import type {
   IUser,
   TCalendarView,
   TEventColor,
+  TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
 import {
@@ -45,6 +46,8 @@ export interface ICalendarContext {
   setAgendaModeGroupBy: (groupBy: "date" | "color") => void;
   use24HourFormat: boolean;
   toggleTimeFormat: () => void;
+  weekStartDay: TWeekStartDay;
+  setWeekStartDay: (day: TWeekStartDay) => void;
   setSelectedDate: (date: Date | undefined) => void;
   selectedUserId: IUser["id"] | "all";
   setSelectedUserId: (userId: IUser["id"] | "all") => void;
@@ -69,6 +72,7 @@ interface CalendarSettings {
   view: TCalendarView;
   use24HourFormat: boolean;
   agendaModeGroupBy: "date" | "color";
+  weekStartDay: TWeekStartDay;
 }
 
 const DEFAULT_SETTINGS: CalendarSettings = {
@@ -76,6 +80,7 @@ const DEFAULT_SETTINGS: CalendarSettings = {
   view: "month",
   use24HourFormat: true,
   agendaModeGroupBy: "date",
+  weekStartDay: 0,
 };
 
 export const CalendarContext = createContext({} as ICalendarContext);
@@ -111,17 +116,20 @@ export function CalendarProvider({
   );
 
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
-    settings.badgeVariant
+    settings.badgeVariant ?? DEFAULT_SETTINGS.badgeVariant
   );
   const [currentView, setCurrentViewState] = useState<TCalendarView>(
-    settings.view
+    settings.view ?? DEFAULT_SETTINGS.view
   );
   const [use24HourFormat, setUse24HourFormatState] = useState<boolean>(
-    settings.use24HourFormat
+    settings.use24HourFormat ?? DEFAULT_SETTINGS.use24HourFormat
   );
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
-  >(settings.agendaModeGroupBy);
+  >(settings.agendaModeGroupBy ?? DEFAULT_SETTINGS.agendaModeGroupBy);
+  const [weekStartDay, setWeekStartDayState] = useState<TWeekStartDay>(
+    settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay
+  );
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
@@ -167,6 +175,11 @@ export function CalendarProvider({
   const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
     setAgendaModeGroupByState(groupBy);
     updateSettings({ agendaModeGroupBy: groupBy });
+  };
+
+  const setWeekStartDay = (day: TWeekStartDay) => {
+    setWeekStartDayState(day);
+    updateSettings({ weekStartDay: day });
   };
 
   const filterEventsBySelectedColors = (color: TEventColor) => {
@@ -559,6 +572,8 @@ export function CalendarProvider({
     setAgendaModeGroupBy,
     use24HourFormat,
     toggleTimeFormat,
+    weekStartDay,
+    setWeekStartDay,
     setSelectedDate: handleSetSelectedDate,
     selectedUserId,
     setSelectedUserId,

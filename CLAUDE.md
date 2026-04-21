@@ -88,6 +88,7 @@ All new features follow TDD (red-green-refactor):
 4. **Verify** — `pnpm test && pnpm lint:fix && pnpm format:fix && pnpm check-types`
 
 **Critical rules:**
+
 - NEVER remove or weaken tests without explicit user authorization
 - ALWAYS write tests before implementation
 - No feature is complete until all tests pass
@@ -101,6 +102,7 @@ When making UI changes, start the dev server and verify the feature in a browser
 ### Client-Side Storage
 
 **Backend (PostgreSQL) is the source of truth.** Client-side storage is for performance optimization only:
+
 - **IndexedDB** — cache API responses (calendar events, tasks, profiles)
 - **LocalStorage** — user preferences (theme, UI settings)
 - **Session Storage** — temporary UI state (form drafts, modals)
@@ -159,6 +161,7 @@ Automatically loaded: **Next.js DevTools** (runtime state, docs) | **Context7** 
 ## Checklist — Task Completion
 
 A task is **not complete** until:
+
 1. All tests pass (`pnpm test`)
 2. All code quality checks pass (`pnpm lint:fix && pnpm format:fix && pnpm check-types`)
 3. Feature matches the plan spec (if implementing from `.claude/plans/`)
