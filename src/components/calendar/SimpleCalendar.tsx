@@ -138,6 +138,7 @@ export function SimpleCalendar() {
           {weekdayHeaders.map((day) => (
             <div
               key={day}
+              data-testid="calendar-dow"
               className="text-muted-foreground p-3 text-center text-sm font-semibold"
             >
               {day}

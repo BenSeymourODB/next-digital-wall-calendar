@@ -151,10 +151,10 @@ export function CalendarProvider({
   const isLoadingRangeRef = useRef(false);
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
-    setSettings({
-      ...settings,
+    setSettings((prev) => ({
+      ...prev,
       ...newPartialSettings,
-    });
+    }));
   };
 
   const setBadgeVariant = (variant: "dot" | "colored") => {

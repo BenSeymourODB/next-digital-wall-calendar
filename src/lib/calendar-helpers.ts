@@ -36,13 +36,13 @@ import {
 const FORMAT_STRING = "MMM d, yyyy";
 
 /**
- * Project-wide convention for which day a calendar week begins on.
+ * Project-wide default for which day a calendar week begins on.
  *
  * 0 = Sunday, 1 = Monday, ..., 6 = Saturday (matches `date-fns` `Day`).
  *
- * Use this constant anywhere a week boundary is computed — `startOfWeek`,
- * `endOfWeek`, calendar grid padding, weekday header labels — so every view
- * agrees. A future settings screen can override this per user (see #141).
+ * Used as the fallback when a caller hasn't been wired through to the
+ * user-selectable `weekStartDay` setting (#86). New code should prefer
+ * reading `weekStartDay` from `CalendarProvider` over this constant.
  */
 export const WEEK_STARTS_ON: Day = 0;
 

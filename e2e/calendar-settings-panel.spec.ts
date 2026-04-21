@@ -30,13 +30,15 @@ test.describe("CalendarSettingsPanel", () => {
     await expect(panel.getByTestId("setting-week-start-day")).toBeVisible();
   });
 
-  test("switching week start to Monday reorders the mini-calendar day headers", async ({
+  test("switching week start to Monday reorders both calendar grids", async ({
     page,
   }) => {
-    const dowLabels = page.getByTestId("mini-calendar-dow");
+    const miniDow = page.getByTestId("mini-calendar-dow");
+    const mainDow = page.getByTestId("calendar-dow");
 
-    // Default Sunday-first ordering
-    await expect(dowLabels.first()).toHaveText("S");
+    // Default Sunday-first ordering in both grids
+    await expect(miniDow.first()).toHaveText("S");
+    await expect(mainDow.first()).toHaveText("Sun");
 
     await page.getByTestId("calendar-settings-trigger").click();
     await page
@@ -44,10 +46,12 @@ test.describe("CalendarSettingsPanel", () => {
       .getByTestId("setting-week-start-day-monday")
       .click();
 
-    // Close the popover so the assertion targets the underlying grid.
+    // Close the popover so the assertion targets the underlying grids.
     await page.keyboard.press("Escape");
 
-    await expect(dowLabels.first()).toHaveText("M");
-    await expect(dowLabels.nth(6)).toHaveText("S");
+    await expect(miniDow.first()).toHaveText("M");
+    await expect(miniDow.nth(6)).toHaveText("S");
+    await expect(mainDow.first()).toHaveText("Mon");
+    await expect(mainDow.nth(6)).toHaveText("Sun");
   });
 });
