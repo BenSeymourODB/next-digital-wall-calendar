@@ -332,7 +332,7 @@ describe("/api/profiles/[id]/reset-pin", () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
       mockVerifyAdminWithPin.mockResolvedValue({
         success: false,
-        error: "Only admin profiles can reset PINs",
+        error: "This action requires an admin profile",
         status: 403,
       });
 
@@ -350,7 +350,7 @@ describe("/api/profiles/[id]/reset-pin", () => {
       const { status, data } = await parseResponse<ApiErrorResponse>(response);
 
       expect(status).toBe(403);
-      expect(data.error).toBe("Only admin profiles can reset PINs");
+      expect(data.error).toBe("This action requires an admin profile");
     });
 
     it("returns 404 when target profile not found", async () => {

@@ -45,7 +45,7 @@ export async function verifyAdminWithPin(
   if (adminProfile.type !== "admin") {
     return {
       success: false,
-      error: "Only admin profiles can reset PINs",
+      error: "This action requires an admin profile",
       status: 403,
     };
   }

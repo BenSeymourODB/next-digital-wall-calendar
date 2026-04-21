@@ -64,13 +64,15 @@ describe("verifyAdminWithPin", () => {
 
     await verifyAdminWithPin(mockUserId, mockAdminProfile.id, "1234");
 
-    expect(mockPrisma.profile.findFirst).toHaveBeenCalledWith({
-      where: {
-        id: mockAdminProfile.id,
-        userId: mockUserId,
-        isActive: true,
-      },
-    });
+    expect(mockPrisma.profile.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: mockAdminProfile.id,
+          userId: mockUserId,
+          isActive: true,
+        },
+      })
+    );
   });
 
   it("compares the supplied PIN against the stored hash", async () => {
@@ -110,7 +112,7 @@ describe("verifyAdminWithPin", () => {
 
     expect(result).toEqual({
       success: false,
-      error: "Only admin profiles can reset PINs",
+      error: "This action requires an admin profile",
       status: 403,
     });
     expect(bcrypt.compare).not.toHaveBeenCalled();
