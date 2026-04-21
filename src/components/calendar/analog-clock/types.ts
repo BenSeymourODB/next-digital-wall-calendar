@@ -1,6 +1,7 @@
 /**
  * Type definitions for the analog clock with calendar event arcs
  */
+import type { IEvent } from "@/types/calendar";
 
 /** Parsed result from an event title containing emoji prefixes */
 export interface ParsedEventTitle {
@@ -36,8 +37,14 @@ export interface ClockEvent {
 export interface AnalogClockProps {
   /** Clock diameter in pixels (default: 600) */
   size?: number;
-  /** Calendar events to display as arcs */
+  /** Pre-computed clock events (with arc angles). Takes precedence over rawEvents. */
   events?: ClockEvent[];
+  /**
+   * Raw calendar events. When provided, the clock will internally filter
+   * to the current 12-hour period (excluding all-day events) and compute
+   * arc angles automatically. Ignored if `events` is also provided.
+   */
+  rawEvents?: IEvent[];
   /** Whether to show the second hand (default: false for wall calendar) */
   showSeconds?: boolean;
   /** Current time override for testing (default: uses real time) */

@@ -8,7 +8,7 @@ import {
 } from "@/components/calendar/analog-clock";
 import type { ClockEvent } from "@/components/calendar/analog-clock";
 import { TAILWIND_COLORS } from "@/lib/color-utils";
-import type { TEventColor } from "@/types/calendar";
+import type { IEvent, TEventColor } from "@/types/calendar";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -364,6 +364,93 @@ function createMockClockEvents(
   });
 }
 
+/**
+ * Build raw IEvent[] for the "all-day-mix" scenario, which exercises
+ * the rawEvents code path: the AnalogClock internally filters out
+ * all-day events and events outside the current 12-hour period.
+ */
+function createAllDayMixRawEvents(referenceTime: Date): IEvent[] {
+  const isPM = referenceTime.getHours() >= 12;
+  const baseHour = isPM ? 12 : 0;
+
+  const at = (hourOffset: number, min: number) => {
+    const d = new Date(referenceTime);
+    d.setHours(baseHour + hourOffset, min, 0, 0);
+    return d.toISOString();
+  };
+
+  // All-day event covering the whole day
+  const dayStart = new Date(referenceTime);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+
+  // An event in the opposite 12-hour period (should also be filtered out)
+  const otherPeriodStart = new Date(referenceTime);
+  otherPeriodStart.setHours(isPM ? 3 : 15, 0, 0, 0);
+  const otherPeriodEnd = new Date(otherPeriodStart);
+  otherPeriodEnd.setHours(otherPeriodStart.getHours() + 1);
+
+  const user = { id: "u1", name: "Test", picturePath: null };
+  return [
+    {
+      id: "ad-1",
+      title: "🟡 National Holiday",
+      startDate: dayStart.toISOString(),
+      endDate: dayEnd.toISOString(),
+      color: "yellow",
+      description: "",
+      user,
+      isAllDay: true,
+      calendarId: "c1",
+    },
+    {
+      id: "op-1",
+      title: "🟣 Other Period Event",
+      startDate: otherPeriodStart.toISOString(),
+      endDate: otherPeriodEnd.toISOString(),
+      color: "purple",
+      description: "",
+      user,
+      isAllDay: false,
+      calendarId: "c1",
+    },
+    {
+      id: "tp-1",
+      title: "🟢 🎮 Game Night",
+      startDate: at(3, 0),
+      endDate: at(4, 30),
+      color: "green",
+      description: "",
+      user,
+      isAllDay: false,
+      calendarId: "c1",
+    },
+    {
+      id: "tp-2",
+      title: "🔴 Deadline",
+      startDate: at(5, 0),
+      endDate: at(5, 30),
+      color: "red",
+      description: "",
+      user,
+      isAllDay: false,
+      calendarId: "c1",
+    },
+    {
+      id: "tp-3",
+      title: "Team Standup",
+      startDate: at(9, 0),
+      endDate: at(9, 30),
+      color: "blue",
+      description: "",
+      user,
+      isAllDay: false,
+      calendarId: "c1",
+    },
+  ];
+}
+
 function TestClockContent() {
   const searchParams = useSearchParams();
 
@@ -372,6 +459,7 @@ function TestClockContent() {
   const showSeconds = searchParams.get("seconds") === "true";
   const fixedHour = searchParams.get("hour");
   const fixedMin = searchParams.get("min");
+  const input = searchParams.get("input") || "events";
 
   // Use a fixed reference time for consistent test screenshots
   const referenceTime = new Date();
@@ -383,7 +471,13 @@ function TestClockContent() {
   }
   referenceTime.setSeconds(0, 0);
 
-  const events = createMockClockEvents(scenario, referenceTime);
+  const useRawEvents = input === "raw" || scenario === "all-day-mix";
+  const rawEvents = useRawEvents
+    ? createAllDayMixRawEvents(referenceTime)
+    : undefined;
+  const events = useRawEvents
+    ? []
+    : createMockClockEvents(scenario, referenceTime);
 
   return (
     <div className="min-h-screen bg-gray-950 p-8" data-testid="test-page">
@@ -398,8 +492,8 @@ function TestClockContent() {
         >
           <strong>Config:</strong> scenario={scenario}, size={size}, seconds=
           {String(showSeconds)}, hour=
-          {fixedHour ?? "now"}, events=
-          {events.length}
+          {fixedHour ?? "now"}, input={useRawEvents ? "raw" : "events"}, events=
+          {useRawEvents ? (rawEvents?.length ?? 0) : events.length}
         </div>
 
         {/* Main clock display */}
@@ -407,14 +501,57 @@ function TestClockContent() {
           className="flex items-center justify-center rounded-xl bg-gray-900 p-8"
           data-testid="clock-container"
         >
-          <AnalogClock
-            size={size}
-            events={events}
-            showSeconds={showSeconds}
-            currentTime={referenceTime}
-            arcThickness={size * 0.08}
-          />
+          {useRawEvents ? (
+            <AnalogClock
+              size={size}
+              rawEvents={rawEvents}
+              showSeconds={showSeconds}
+              currentTime={referenceTime}
+              arcThickness={size * 0.08}
+            />
+          ) : (
+            <AnalogClock
+              size={size}
+              events={events}
+              showSeconds={showSeconds}
+              currentTime={referenceTime}
+              arcThickness={size * 0.08}
+            />
+          )}
         </div>
+
+        {/* Raw events listing (rawEvents mode shows all inputs, including filtered-out ones) */}
+        {useRawEvents && rawEvents && rawEvents.length > 0 && (
+          <div
+            className="rounded-lg border border-gray-700 bg-gray-900 p-4"
+            data-testid="raw-events-input"
+          >
+            <h2 className="mb-3 text-sm font-semibold text-gray-300">
+              Raw Events Input ({rawEvents.length}) — all-day and out-of-period
+              are filtered by AnalogClock
+            </h2>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {rawEvents.map((evt) => (
+                <div
+                  key={evt.id}
+                  className="flex items-center gap-2 text-sm text-gray-300"
+                  data-testid={`raw-input-item-${evt.id}`}
+                >
+                  <div
+                    className="h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: TAILWIND_COLORS[evt.color] }}
+                  />
+                  <span>{evt.title}</span>
+                  {evt.isAllDay && (
+                    <span className="rounded bg-gray-700 px-1 text-xs text-gray-400">
+                      all-day
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Event legend */}
         {events.length > 0 && (
@@ -458,11 +595,13 @@ function TestClockContent() {
  * Test page for E2E testing of the AnalogClock component.
  *
  * URL Parameters:
- * - scenario: Event scenario (default, overlap, colors, family, empty, single, dense)
+ * - scenario: Event scenario (default, overlap, colors, family, empty, single, dense, all-day-mix)
  * - size: Clock size in pixels (default: 600)
  * - seconds: Show second hand (true/false)
  * - hour: Fixed hour (0-23) for consistent screenshots
  * - min: Fixed minute (0-59) for consistent screenshots
+ * - input: "events" (default, pre-computed ClockEvents) or "raw" (raw IEvents).
+ *          The "all-day-mix" scenario always uses raw inputs.
  *
  * Examples:
  * - /test/analog-clock - Default events
@@ -471,6 +610,7 @@ function TestClockContent() {
  * - /test/analog-clock?scenario=family&hour=15 - Family calendar at 3 PM
  * - /test/analog-clock?scenario=empty - No events
  * - /test/analog-clock?scenario=dense&size=800 - Dense schedule, large clock
+ * - /test/analog-clock?scenario=all-day-mix&hour=9 - Demonstrates rawEvents + all-day filtering
  */
 export default function TestAnalogClockPage() {
   return (

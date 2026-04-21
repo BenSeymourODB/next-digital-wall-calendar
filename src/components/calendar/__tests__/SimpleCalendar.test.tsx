@@ -2,6 +2,7 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import type {
   IEvent,
   IUser,
@@ -258,6 +259,25 @@ describe("SimpleCalendar", () => {
     it("renders an Add event button in the toolbar", () => {
       renderWithContext();
       expect(screen.getByTestId("calendar-add-event-btn")).toBeInTheDocument();
+    });
+  });
+  
+  describe("Weekday headers", () => {
+    it("renders weekday headers in WEEK_STARTS_ON order", () => {
+      renderWithContext();
+      const labels = getShortWeekdayLabels();
+      const rendered = labels.map((label) => screen.getByText(label));
+      // Each label should appear, in document order matching the array.
+      rendered.forEach((el, i) => {
+        expect(el).toBeInTheDocument();
+        if (i > 0) {
+          // Preceding sibling order is preserved in the grid.
+          expect(
+            rendered[i - 1].compareDocumentPosition(el) &
+              Node.DOCUMENT_POSITION_FOLLOWING
+          ).toBeTruthy();
+        }
+      });
     });
   });
 });

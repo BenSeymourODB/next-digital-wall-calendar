@@ -2,6 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -19,15 +20,17 @@ import { AddEventButton } from "./AddEventButton";
 export function SimpleCalendar() {
   const { selectedDate, setSelectedDate, events, isLoading } = useCalendar();
 
+  // Computed per render so a future user-configurable WEEK_STARTS_ON
+  // flows through without a module reload. React Compiler memoizes.
+  const weekdayHeaders = getShortWeekdayLabels();
+
   const monthStart = startOfMonth(selectedDate);
   const monthEnd = endOfMonth(selectedDate);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-  // Get the day of week for the first day (0 = Sunday, 6 = Saturday)
-  const startDayOfWeek = getDay(monthStart);
-
-  // Create padding cells for days before the first day of the month
-  const paddingDays = Array.from({ length: startDayOfWeek }, (_, i) => i);
+  // Leading padding cells before the 1st, measured from WEEK_STARTS_ON.
+  const leadingPadding = (getDay(monthStart) - WEEK_STARTS_ON + 7) % 7;
+  const paddingDays = Array.from({ length: leadingPadding }, (_, i) => i);
 
   const previousMonth = () => {
     const newDate = new Date(selectedDate);
@@ -135,7 +138,7 @@ export function SimpleCalendar() {
       <div className="border-border bg-card rounded-lg border">
         {/* Day headers */}
         <div className="border-border bg-muted grid grid-cols-7 border-b">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+          {weekdayHeaders.map((day) => (
             <div
               key={day}
               className="text-muted-foreground p-3 text-center text-sm font-semibold"

@@ -1,7 +1,9 @@
 /**
  * Utility functions for the analog clock with calendar event arcs
  */
-import type { ArcAngles, ParsedEventTitle } from "./types";
+import { TAILWIND_COLORS } from "@/lib/color-utils";
+import type { IEvent } from "@/types/calendar";
+import type { ArcAngles, ClockEvent, ParsedEventTitle } from "./types";
 
 /** Map of color emoji to their hex color values */
 const COLOR_EMOJI_MAP: Record<string, string> = {
@@ -83,6 +85,75 @@ export function getPeriodStart(time: Date): Date {
 }
 
 /**
+ * Get both the start and end of the current 12-hour period.
+ * periodEnd is exactly 12 hours after periodStart.
+ */
+export function getPeriodBounds(time: Date): {
+  periodStart: Date;
+  periodEnd: Date;
+} {
+  const periodStart = getPeriodStart(time);
+  const periodEnd = new Date(periodStart.getTime() + 12 * 60 * 60 * 1000);
+  return { periodStart, periodEnd };
+}
+
+/**
+ * Filter raw calendar events to those that overlap a 12-hour period.
+ * All-day events are excluded (they do not map to arc positions).
+ *
+ * Overlap is exclusive at both boundaries: an event ending exactly at
+ * periodStart, or starting exactly at periodEnd, is not included.
+ */
+export function filterEventsForPeriod(
+  events: IEvent[],
+  periodStart: Date,
+  periodEnd: Date
+): IEvent[] {
+  const startMs = periodStart.getTime();
+  const endMs = periodEnd.getTime();
+  return events.filter((event) => {
+    if (event.isAllDay) return false;
+    const eventStart = new Date(event.startDate).getTime();
+    const eventEnd = new Date(event.endDate).getTime();
+    return eventStart < endMs && eventEnd > startMs;
+  });
+}
+
+/**
+ * Convert raw calendar events (IEvent[]) into ClockEvent[] suitable for
+ * rendering on the AnalogClock. Each event's title is parsed for emoji
+ * prefixes, arc angles are computed against the supplied periodStart,
+ * and the event's configured color is used as the fallback.
+ *
+ * This does not filter the events — pass through filterEventsForPeriod
+ * first if you only want events for the current 12-hour period.
+ */
+export function eventsToClockEvents(
+  events: IEvent[],
+  periodStart: Date
+): ClockEvent[] {
+  return events.map((event) => {
+    const fallbackColor = TAILWIND_COLORS[event.color];
+    const parsed = parseEventTitle(event.title, fallbackColor);
+    const angles = calculateArcAngles(
+      new Date(event.startDate),
+      new Date(event.endDate),
+      periodStart
+    );
+    return {
+      id: event.id,
+      title: event.title,
+      cleanTitle: parsed.cleanTitle,
+      startAngle: angles.startAngle,
+      endAngle: angles.endAngle,
+      color: parsed.color,
+      eventEmoji: parsed.eventEmoji,
+      isAllDay: event.isAllDay,
+    };
+  });
+}
+
+/**
  * Calculate arc start/end angles for an event within a 12-hour period.
  *
  * - 0 degrees = 12 o'clock position
@@ -126,8 +197,25 @@ export function calculateArcAngles(
 }
 
 /**
+ * Round a computed coordinate/size to a stable precision.
+ *
+ * Math.cos / Math.sin / floating-point arithmetic can produce results that
+ * differ at the least-significant bit between the SSR (Node) runtime and
+ * the browser, which triggers React hydration mismatches on SVG numeric
+ * attributes. Rounding here forces identical output on both sides while
+ * staying far below sub-pixel precision for SVG rendering.
+ */
+export function roundCoord(n: number, decimals = 4): number {
+  const factor = 10 ** decimals;
+  return Math.round(n * factor) / factor;
+}
+
+/**
  * Convert polar coordinates (angle in degrees, radius) to cartesian (x, y).
  * 0 degrees = 12 o'clock (top), clockwise.
+ *
+ * Output is rounded to a stable precision so server and client render
+ * identical SVG attribute strings (see roundCoord).
  */
 export function polarToCartesian(
   cx: number,
@@ -138,8 +226,8 @@ export function polarToCartesian(
   // Offset by -90 degrees so 0° = 12 o'clock (top)
   const angleRad = ((angleDegrees - 90) * Math.PI) / 180;
   return {
-    x: cx + radius * Math.cos(angleRad),
-    y: cy + radius * Math.sin(angleRad),
+    x: roundCoord(cx + radius * Math.cos(angleRad)),
+    y: roundCoord(cy + radius * Math.sin(angleRad)),
   };
 }
 

@@ -1,6 +1,7 @@
 import type { IEvent, TCalendarView } from "@/types/calendar";
 import { describe, expect, it } from "vitest";
 import {
+  WEEK_STARTS_ON,
   formatTime,
   getBgColor,
   getCalendarCells,
@@ -11,6 +12,7 @@ import {
   getEventsForWeek,
   getEventsForYear,
   getFirstLetters,
+  getShortWeekdayLabels,
   getWeekDates,
   groupEvents,
   navigateDate,
@@ -46,8 +48,8 @@ describe("rangeText", () => {
 
   it("returns correct range for week view", () => {
     const result = rangeText("week", testDate);
-    // Week containing March 15, 2024 (Sunday to Saturday)
-    expect(result).toContain(" - ");
+    // March 15, 2024 is a Friday; Sunday-first week is Mar 10 – Mar 16.
+    expect(result).toBe("Mar 10, 2024 - Mar 16, 2024");
   });
 
   it("returns single date for day view", () => {
@@ -132,6 +134,16 @@ describe("getEventsCount", () => {
     const count = getEventsCount(events, testDate, "month");
     expect(count).toBe(3);
   });
+
+  it("counts events for the same week using WEEK_STARTS_ON", () => {
+    // testDate = Fri Mar 15 2024. With WEEK_STARTS_ON = 0 (Sunday), the week
+    // runs Sun Mar 10 – Sat Mar 16. Sun Mar 17 falls into the next week.
+    const weekEvents: IEvent[] = [
+      createMockEvent({ id: "same-week", startDate: "2024-03-10T10:00:00" }),
+      createMockEvent({ id: "next-week", startDate: "2024-03-17T10:00:00" }),
+    ];
+    expect(getEventsCount(weekEvents, testDate, "week")).toBe(1);
+  });
 });
 
 describe("groupEvents", () => {
@@ -205,11 +217,17 @@ describe("getCalendarCells", () => {
     const date = new Date(2024, 2, 1); // March 2024 starts on Friday
     const cells = getCalendarCells(date);
 
-    // First cell should be from previous month (if March doesn't start on Sunday)
+    // First cell should be from previous month (if March doesn't start on WEEK_STARTS_ON)
     const prevMonthCells = cells.filter(
       (c) => !c.currentMonth && c.date.getMonth() === 1
     );
     expect(prevMonthCells.length).toBeGreaterThan(0);
+  });
+
+  it("starts the grid on WEEK_STARTS_ON", () => {
+    const date = new Date(2024, 2, 15); // March 2024
+    const cells = getCalendarCells(date);
+    expect(cells[0].date.getDay()).toBe(WEEK_STARTS_ON);
   });
 });
 
@@ -378,9 +396,41 @@ describe("getWeekDates", () => {
     expect(result.length).toBe(7);
   });
 
-  it("starts week on Monday", () => {
+  it("starts week on WEEK_STARTS_ON", () => {
     const result = getWeekDates(new Date(2024, 2, 15));
-    expect(result[0].getDay()).toBe(1); // Monday
+    expect(result[0].getDay()).toBe(WEEK_STARTS_ON);
+  });
+
+  it("returns consecutive days covering a full week", () => {
+    // March 15, 2024 is a Friday. With Sunday-first (WEEK_STARTS_ON = 0),
+    // the week runs from Sun Mar 10 through Sat Mar 16.
+    const result = getWeekDates(new Date(2024, 2, 15));
+    const isoDates = result.map((d) => d.toISOString().slice(0, 10));
+    expect(isoDates).toEqual([
+      "2024-03-10",
+      "2024-03-11",
+      "2024-03-12",
+      "2024-03-13",
+      "2024-03-14",
+      "2024-03-15",
+      "2024-03-16",
+    ]);
+  });
+});
+
+describe("getShortWeekdayLabels", () => {
+  it("returns labels in correct rotation order", () => {
+    // Documents expected output for WEEK_STARTS_ON = 0 (Sunday-first).
+    // Update this alongside WEEK_STARTS_ON if the default ever changes.
+    expect(getShortWeekdayLabels()).toEqual([
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+    ]);
   });
 });
 
