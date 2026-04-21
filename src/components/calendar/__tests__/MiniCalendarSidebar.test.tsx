@@ -113,6 +113,21 @@ describe("MiniCalendarSidebar", () => {
       ]);
     });
 
+    it("reorders day-of-week headers when weekStartDay is Monday", () => {
+      renderWithContext({ weekStartDay: 1 });
+      const grid = screen.getByTestId("mini-calendar-grid");
+      const labels = within(grid).getAllByTestId("mini-calendar-dow");
+      expect(labels.map((el) => el.textContent)).toEqual([
+        "M",
+        "T",
+        "W",
+        "T",
+        "F",
+        "S",
+        "S",
+      ]);
+    });
+
     it("renders a day cell for each day of the month", () => {
       // February 2025 has 28 days
       const feb2025 = new Date(2025, 1, 15);

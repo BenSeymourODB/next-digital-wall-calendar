@@ -274,5 +274,21 @@ describe("SimpleCalendar", () => {
         }
       });
     });
+
+    it("renders Monday-first weekday headers when weekStartDay is 1", () => {
+      renderWithContext({ weekStartDay: 1 });
+      const labels = getShortWeekdayLabels(1);
+      expect(labels[0]).toBe("Mon");
+      expect(labels[6]).toBe("Sun");
+      const rendered = labels.map((label) => screen.getByText(label));
+      rendered.forEach((el, i) => {
+        if (i > 0) {
+          expect(
+            rendered[i - 1].compareDocumentPosition(el) &
+              Node.DOCUMENT_POSITION_FOLLOWING
+          ).toBeTruthy();
+        }
+      });
+    });
   });
 });

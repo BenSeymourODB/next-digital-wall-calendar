@@ -58,12 +58,17 @@ const SHORT_WEEKDAY_LABELS = [
 
 /**
  * Returns the 7 short weekday labels (`"Sun"`…`"Sat"`) rotated so the
- * first entry corresponds to `WEEK_STARTS_ON`. Use this for day-of-week
+ * first entry corresponds to `weekStartsOn`. Use this for day-of-week
  * headers instead of hard-coding the array so every view agrees.
+ *
+ * `weekStartsOn` defaults to `WEEK_STARTS_ON` for callers that haven't
+ * been wired through to the user-selectable setting yet (#86).
  */
-export const getShortWeekdayLabels = (): string[] => [
-  ...SHORT_WEEKDAY_LABELS.slice(WEEK_STARTS_ON),
-  ...SHORT_WEEKDAY_LABELS.slice(0, WEEK_STARTS_ON),
+export const getShortWeekdayLabels = (
+  weekStartsOn: Day = WEEK_STARTS_ON
+): string[] => [
+  ...SHORT_WEEKDAY_LABELS.slice(weekStartsOn),
+  ...SHORT_WEEKDAY_LABELS.slice(0, weekStartsOn),
 ];
 
 export function rangeText(view: TCalendarView, date: Date): string {
