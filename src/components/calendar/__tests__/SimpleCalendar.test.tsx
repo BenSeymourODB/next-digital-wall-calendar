@@ -413,5 +413,23 @@ describe("SimpleCalendar", () => {
         expect(trigger).toHaveFocus();
       });
     });
+
+    it("tags each popover event card with data-event-id for #81 wiring", async () => {
+      const user = userEvent.setup();
+      const events = makeOverflowEvents(5);
+      renderWithContext({
+        selectedDate: overflowDate,
+        events,
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+
+      const popover = await screen.findByTestId(`day-events-popover-${dayKey}`);
+      for (const event of events) {
+        expect(
+          popover.querySelector(`[data-event-id="${event.id}"]`)
+        ).not.toBeNull();
+      }
+    });
   });
 });

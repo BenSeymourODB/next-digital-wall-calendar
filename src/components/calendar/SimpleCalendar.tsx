@@ -93,6 +93,7 @@ function DayOverflowPopover({
           {dayEvents.map((event) => (
             <li
               key={event.id}
+              data-event-id={event.id}
               className={`rounded px-3 py-2 text-xs ${
                 EVENT_COLOR_CLASSES[event.color]
               }`}
