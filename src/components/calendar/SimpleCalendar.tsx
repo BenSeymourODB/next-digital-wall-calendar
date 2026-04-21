@@ -142,6 +142,7 @@ export function SimpleCalendar() {
       );
       if (!dateKey) return;
       const [y, m, d] = dateKey.split("-").map(Number);
+      pendingFocusRef.current = true;
       setSelectedDate(new Date(y, m - 1, d));
       return;
     }
@@ -152,10 +153,6 @@ export function SimpleCalendar() {
     const nextDate = applyCalendarKeyboardAction(selectedDate, action);
     pendingFocusRef.current = true;
     setSelectedDate(nextDate);
-  };
-
-  const handleCellClick = (date: Date) => {
-    setSelectedDate(date);
   };
 
   return (
@@ -222,31 +219,40 @@ export function SimpleCalendar() {
         </div>
       )}
 
-      {/* Calendar Grid */}
-      <div className="border-border bg-card rounded-lg border">
+      {/* Calendar Grid — role="grid" wraps both the header rowgroup and the
+       * body rowgroup so all rows and columnheaders are true descendants of
+       * the grid per WAI-ARIA ownership rules.
+       */}
+      <div
+        ref={gridRef}
+        role="grid"
+        aria-label={`${format(selectedDate, "MMMM yyyy")} calendar`}
+        aria-multiselectable="false"
+        aria-rowcount={weekRows.length + 1}
+        aria-colcount={7}
+        onKeyDown={handleGridKeyDown}
+        className="border-border bg-card rounded-lg border"
+      >
         {/* Day headers */}
-        <div
-          role="row"
-          className="border-border bg-muted grid grid-cols-7 border-b"
-        >
-          {weekdayHeaders.map((day) => (
-            <div
-              key={day}
-              role="columnheader"
-              className="text-muted-foreground p-3 text-center text-sm font-semibold"
-            >
-              {day}
-            </div>
-          ))}
+        <div role="rowgroup">
+          <div
+            role="row"
+            className="border-border bg-muted grid grid-cols-7 border-b"
+          >
+            {weekdayHeaders.map((day) => (
+              <div
+                key={day}
+                role="columnheader"
+                className="text-muted-foreground p-3 text-center text-sm font-semibold"
+              >
+                {day}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Calendar days */}
-        <div
-          ref={gridRef}
-          role="grid"
-          aria-label={`${format(selectedDate, "MMMM yyyy")} calendar`}
-          onKeyDown={handleGridKeyDown}
-        >
+        <div role="rowgroup">
           {weekRows.map((row, rowIndex) => (
             <div
               key={`row-${rowIndex}`}
@@ -259,27 +265,24 @@ export function SimpleCalendar() {
                 const isSelected = isSameDay(date, selectedDate);
                 const dateKey = toDateKey(date);
                 const longLabel = format(date, "EEEE, MMMM d, yyyy");
-                const ariaLabel = inMonth
-                  ? dayEvents.length === 0
+                const ariaLabel =
+                  dayEvents.length === 0
                     ? longLabel
                     : `${longLabel}, ${dayEvents.length} ${
                         dayEvents.length === 1 ? "event" : "events"
-                      }`
-                  : longLabel;
-
-                const cellProps = {
-                  role: "gridcell" as const,
-                  "aria-label": ariaLabel,
-                  [CELL_DATE_ATTR]: dateKey,
-                };
+                      }`;
 
                 if (!inMonth) {
+                  // Padding cells are decorative — screen readers shouldn't
+                  // navigate them, so we hide them from the a11y tree. They
+                  // remain gridcells for layout/ARIA row-ownership purposes.
                   return (
                     <div
                       key={dateKey}
-                      {...cellProps}
-                      aria-disabled="true"
+                      role="gridcell"
+                      aria-hidden="true"
                       tabIndex={-1}
+                      {...{ [CELL_DATE_ATTR]: dateKey }}
                       className="border-border bg-muted min-h-[100px] border-r border-b"
                     />
                   );
@@ -288,11 +291,13 @@ export function SimpleCalendar() {
                 return (
                   <div
                     key={dateKey}
-                    {...cellProps}
+                    role="gridcell"
+                    aria-label={ariaLabel}
+                    {...{ [CELL_DATE_ATTR]: dateKey }}
                     aria-selected={isSelected}
                     aria-current={isToday ? "date" : undefined}
                     tabIndex={isSelected ? 0 : -1}
-                    onClick={() => handleCellClick(date)}
+                    onClick={() => setSelectedDate(date)}
                     className={`border-border min-h-[100px] cursor-pointer border-r border-b p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${
                       isToday ? "bg-blue-50 dark:bg-blue-950" : "bg-card"
                     } ${isSelected ? "ring-2 ring-blue-500 ring-inset" : ""}`}

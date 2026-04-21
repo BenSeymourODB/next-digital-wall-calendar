@@ -16,6 +16,21 @@ import { expect, test } from "@playwright/test";
 // focus transitions can be reviewed in the PR.
 test.use({ video: "on" });
 
+/**
+ * Parse a `YYYY-MM-DD` cell key as a local (not UTC) date so arithmetic
+ * across DST boundaries is exact, avoiding 23h/25h off-by-hour bugs that
+ * would produce a flaky CI result in non-UTC test runners.
+ */
+function parseCellKey(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function daysBetween(a: string, b: string): number {
+  const ms = parseCellKey(a).getTime() - parseCellKey(b).getTime();
+  return Math.round(ms / (24 * 60 * 60 * 1000));
+}
+
 test.describe("SimpleCalendar — keyboard navigation", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(
@@ -47,12 +62,7 @@ test.describe("SimpleCalendar — keyboard navigation", () => {
       .locator('[role="gridcell"][aria-selected="true"]')
       .getAttribute("data-date");
     expect(after).not.toBe(before);
-
-    // Verify the new selection is exactly one calendar day later.
-    const beforeDate = new Date(before!);
-    const afterDate = new Date(after!);
-    const diffMs = afterDate.getTime() - beforeDate.getTime();
-    expect(diffMs).toBe(24 * 60 * 60 * 1000);
+    expect(daysBetween(after!, before!)).toBe(1);
   });
 
   test("ArrowLeft moves selection back by one day", async ({ page }) => {
@@ -65,9 +75,7 @@ test.describe("SimpleCalendar — keyboard navigation", () => {
     const after = await page
       .locator('[role="gridcell"][aria-selected="true"]')
       .getAttribute("data-date");
-
-    const diffMs = new Date(before!).getTime() - new Date(after!).getTime();
-    expect(diffMs).toBe(24 * 60 * 60 * 1000);
+    expect(daysBetween(before!, after!)).toBe(1);
   });
 
   test("ArrowDown advances selection by one week", async ({ page }) => {
@@ -80,9 +88,7 @@ test.describe("SimpleCalendar — keyboard navigation", () => {
     const after = await page
       .locator('[role="gridcell"][aria-selected="true"]')
       .getAttribute("data-date");
-
-    const diffMs = new Date(after!).getTime() - new Date(before!).getTime();
-    expect(diffMs).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(daysBetween(after!, before!)).toBe(7);
   });
 
   test("ArrowUp moves selection back by one week", async ({ page }) => {
@@ -95,9 +101,7 @@ test.describe("SimpleCalendar — keyboard navigation", () => {
     const after = await page
       .locator('[role="gridcell"][aria-selected="true"]')
       .getAttribute("data-date");
-
-    const diffMs = new Date(before!).getTime() - new Date(after!).getTime();
-    expect(diffMs).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(daysBetween(before!, after!)).toBe(7);
   });
 
   test("Home snaps selection to the start of the current week (Sunday)", async ({
@@ -279,9 +283,10 @@ test.describe("SimpleCalendar — keyboard navigation", () => {
 
   test("clicking a gridcell selects it", async ({ page }) => {
     // Pick a non-selected in-month cell by scanning gridcells and finding
-    // one that isn't today's selected cell and isn't aria-disabled.
+    // one that isn't today's selected cell and isn't a decorative padding
+    // cell (those are aria-hidden).
     const cells = page.locator(
-      '[role="gridcell"]:not([aria-disabled="true"]):not([aria-selected="true"])'
+      '[role="gridcell"]:not([aria-hidden="true"]):not([aria-selected="true"])'
     );
     const count = await cells.count();
     expect(count).toBeGreaterThan(0);

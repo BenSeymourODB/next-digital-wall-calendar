@@ -303,16 +303,26 @@ describe("SimpleCalendar", () => {
       expect(cells).toHaveLength(30);
     });
 
-    it("marks padding cells as aria-disabled='true'", () => {
-      const selectedDate = new Date(2026, 3, 15); // April 2026
-      renderWithContext({ selectedDate });
+    it("marks padding cells as aria-hidden so screen readers skip them", () => {
+      const { container } = renderWithContext({
+        selectedDate: new Date(2026, 3, 15), // April 2026
+      });
 
-      const paddingCells = screen
-        .getAllByRole("gridcell")
-        .filter((cell) => cell.getAttribute("aria-disabled") === "true");
-      // April 1, 2026 is a Wednesday. With WEEK_STARTS_ON=0 (Sunday),
-      // three leading padding cells (Sun, Mon, Tue) precede it.
+      // aria-hidden cells are excluded from `getByRole`, so query the DOM
+      // directly. April 1, 2026 is a Wednesday → with WEEK_STARTS_ON=0
+      // (Sunday) there are three leading padding cells (Sun, Mon, Tue) and
+      // enough trailing padding to complete the final week.
+      const paddingCells = container.querySelectorAll(
+        '[role="gridcell"][aria-hidden="true"]'
+      );
       expect(paddingCells.length).toBeGreaterThanOrEqual(3);
+
+      // And they are removed from the accessible tree — i.e. not reachable
+      // via the normal gridcell role query.
+      const accessibleCells = screen.getAllByRole("gridcell");
+      accessibleCells.forEach((cell) => {
+        expect(cell.getAttribute("aria-hidden")).not.toBe("true");
+      });
     });
 
     it("sets aria-current='date' on today's cell", () => {
