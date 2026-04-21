@@ -31,6 +31,20 @@ test.describe("MiniCalendarSidebar layout rule", () => {
     await expect(page.getByTestId("mini-calendar-sidebar")).toBeVisible();
   });
 
+  test("is visible on day view", async ({ page }) => {
+    await page.goto("/test/calendar?events=default&view=day&sidebar=true");
+
+    await expect(page.getByTestId("calendar-display")).toBeVisible();
+    await expect(page.getByTestId("mini-calendar-sidebar")).toBeVisible();
+  });
+
+  test("is visible on week view", async ({ page }) => {
+    await page.goto("/test/calendar?events=default&view=week&sidebar=true");
+
+    await expect(page.getByTestId("calendar-display")).toBeVisible();
+    await expect(page.getByTestId("mini-calendar-sidebar")).toBeVisible();
+  });
+
   test("toggles live when switching between month and agenda views", async ({
     page,
   }) => {
