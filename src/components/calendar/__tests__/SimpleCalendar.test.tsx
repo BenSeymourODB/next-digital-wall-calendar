@@ -255,6 +255,13 @@ describe("SimpleCalendar", () => {
     });
   });
 
+  describe("Toolbar", () => {
+    it("renders an Add event button in the toolbar", () => {
+      renderWithContext();
+      expect(screen.getByTestId("calendar-add-event-btn")).toBeInTheDocument();
+    });
+  });
+  
   describe("Weekday headers", () => {
     it("renders weekday headers in WEEK_STARTS_ON order", () => {
       renderWithContext();
