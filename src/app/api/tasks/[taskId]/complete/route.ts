@@ -5,8 +5,7 @@
  * POST - Complete a task and update streak
  */
 import { getAccessToken, getSession } from "@/lib/auth/helpers";
-import { prisma } from "@/lib/db";
-import { calculateNewStreak } from "@/lib/streak-helpers";
+import { updateProfileStreak } from "@/lib/services/streak";
 import { NextRequest, NextResponse } from "next/server";
 
 interface RouteContext {
@@ -99,50 +98,7 @@ export async function POST(
 
   const task = (await googleResponse.json()) as GoogleTask;
 
-  // Update streak for the profile
-  const rewardPoints = await prisma.profileRewardPoints.findUnique({
-    where: { profileId },
-  });
+  const streak = await updateProfileStreak(profileId);
 
-  let newStreak: number;
-  let newLongestStreak: number;
-
-  if (rewardPoints) {
-    newStreak = calculateNewStreak(
-      rewardPoints.currentStreak,
-      rewardPoints.lastActivityDate
-    );
-    newLongestStreak = Math.max(newStreak, rewardPoints.longestStreak);
-
-    await prisma.profileRewardPoints.update({
-      where: { profileId },
-      data: {
-        currentStreak: newStreak,
-        longestStreak: newLongestStreak,
-        lastActivityDate: new Date(),
-      },
-    });
-  } else {
-    // Create reward points record if it doesn't exist
-    newStreak = 1;
-    newLongestStreak = 1;
-
-    await prisma.profileRewardPoints.create({
-      data: {
-        profileId,
-        totalPoints: 0,
-        currentStreak: 1,
-        longestStreak: 1,
-        lastActivityDate: new Date(),
-      },
-    });
-  }
-
-  return NextResponse.json({
-    task,
-    streak: {
-      current: newStreak,
-      longest: newLongestStreak,
-    },
-  });
+  return NextResponse.json({ task, streak });
 }
