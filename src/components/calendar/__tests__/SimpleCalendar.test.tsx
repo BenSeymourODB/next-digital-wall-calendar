@@ -273,4 +273,419 @@ describe("SimpleCalendar", () => {
       });
     });
   });
+
+  describe("Accessibility — ARIA semantics", () => {
+    it("renders the day grid with role='grid' and a descriptive aria-label", () => {
+      const selectedDate = new Date(2026, 3, 15); // April 2026
+      renderWithContext({ selectedDate });
+
+      const grid = screen.getByRole("grid", { name: /April 2026/ });
+      expect(grid).toBeInTheDocument();
+    });
+
+    it("renders weekday headers with role='columnheader'", () => {
+      renderWithContext();
+      const headers = screen.getAllByRole("columnheader");
+      expect(headers).toHaveLength(7);
+      const labels = getShortWeekdayLabels();
+      headers.forEach((header, i) => {
+        expect(header).toHaveTextContent(labels[i]);
+      });
+    });
+
+    it("renders exactly one gridcell per day in the displayed month", () => {
+      const selectedDate = new Date(2026, 3, 15); // April 2026 has 30 days
+      renderWithContext({ selectedDate });
+
+      const cells = screen
+        .getAllByRole("gridcell")
+        .filter((cell) => cell.getAttribute("aria-disabled") !== "true");
+      expect(cells).toHaveLength(30);
+    });
+
+    it("marks padding cells as aria-disabled='true'", () => {
+      const selectedDate = new Date(2026, 3, 15); // April 2026
+      renderWithContext({ selectedDate });
+
+      const paddingCells = screen
+        .getAllByRole("gridcell")
+        .filter((cell) => cell.getAttribute("aria-disabled") === "true");
+      // April 1, 2026 is a Wednesday. With WEEK_STARTS_ON=0 (Sunday),
+      // three leading padding cells (Sun, Mon, Tue) precede it.
+      expect(paddingCells.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it("sets aria-current='date' on today's cell", () => {
+      renderWithContext({ selectedDate: new Date() });
+
+      const todayCells = screen
+        .getAllByRole("gridcell")
+        .filter((cell) => cell.getAttribute("aria-current") === "date");
+      expect(todayCells).toHaveLength(1);
+    });
+
+    it("uses a full-date aria-label on each in-month cell", () => {
+      const selectedDate = new Date(2026, 3, 15); // April 2026
+      renderWithContext({ selectedDate });
+
+      // The cell for April 15 must describe itself with a human-readable date.
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      expect(cell).toBeInTheDocument();
+    });
+
+    it("includes event count in the cell aria-label when events are present", () => {
+      const selectedDate = new Date(2026, 3, 15); // April 2026
+      const events = [
+        createMockEvent({
+          id: "e1",
+          title: "Event 1",
+          startDate: new Date(2026, 3, 15, 10, 0).toISOString(),
+        }),
+        createMockEvent({
+          id: "e2",
+          title: "Event 2",
+          startDate: new Date(2026, 3, 15, 14, 0).toISOString(),
+        }),
+      ];
+      renderWithContext({ selectedDate, events });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026, 2 events/,
+      });
+      expect(cell).toBeInTheDocument();
+    });
+
+    it("uses singular 'event' in the cell aria-label for a count of one", () => {
+      const selectedDate = new Date(2026, 3, 15); // April 2026
+      const events = [
+        createMockEvent({
+          id: "e1",
+          title: "Event 1",
+          startDate: new Date(2026, 3, 15, 10, 0).toISOString(),
+        }),
+      ];
+      renderWithContext({ selectedDate, events });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026, 1 event$/,
+      });
+      expect(cell).toBeInTheDocument();
+    });
+  });
+
+  describe("Accessibility — roving tabindex", () => {
+    it("sets tabIndex=0 only on the selected day's gridcell", () => {
+      const selectedDate = new Date(2026, 3, 15); // April 15, 2026
+      renderWithContext({ selectedDate });
+
+      const cells = screen
+        .getAllByRole("gridcell")
+        .filter((cell) => cell.getAttribute("aria-disabled") !== "true");
+
+      const focusable = cells.filter(
+        (cell) => cell.getAttribute("tabindex") === "0"
+      );
+      expect(focusable).toHaveLength(1);
+
+      const selectedCell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      expect(selectedCell).toHaveAttribute("tabindex", "0");
+      expect(selectedCell).toHaveAttribute("aria-selected", "true");
+
+      // Every other in-month cell is tabIndex=-1.
+      const nonSelected = cells.filter((cell) => cell !== selectedCell);
+      nonSelected.forEach((cell) => {
+        expect(cell).toHaveAttribute("tabindex", "-1");
+      });
+    });
+  });
+
+  describe("Accessibility — keyboard navigation", () => {
+    it("ArrowRight moves selection one day forward", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{ArrowRight}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      expect(setSelected).toHaveBeenCalledTimes(1);
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(
+        new Date(2026, 3, 16).toDateString()
+      );
+    });
+
+    it("ArrowLeft moves selection one day backward", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{ArrowLeft}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      expect(setSelected).toHaveBeenCalledTimes(1);
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(
+        new Date(2026, 3, 14).toDateString()
+      );
+    });
+
+    it("ArrowDown moves selection one week forward", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{ArrowDown}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(
+        new Date(2026, 3, 22).toDateString()
+      );
+    });
+
+    it("ArrowUp moves selection one week backward", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{ArrowUp}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(new Date(2026, 3, 8).toDateString());
+    });
+
+    it("Home moves selection to the start of the current week", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15); // Wed
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{Home}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      // WEEK_STARTS_ON = 0 → Sunday April 12
+      expect(nextDate.toDateString()).toBe(
+        new Date(2026, 3, 12).toDateString()
+      );
+    });
+
+    it("End moves selection to the end of the current week", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15); // Wed
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{End}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      // WEEK_STARTS_ON = 0 → Saturday April 18
+      expect(nextDate.toDateString()).toBe(
+        new Date(2026, 3, 18).toDateString()
+      );
+    });
+
+    it("PageUp navigates to the previous month", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{PageUp}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(
+        new Date(2026, 2, 15).toDateString()
+      );
+    });
+
+    it("PageDown navigates to the next month", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{PageDown}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(
+        new Date(2026, 4, 15).toDateString()
+      );
+    });
+
+    it("Shift+PageUp navigates to the previous year", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{Shift>}{PageUp}{/Shift}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(
+        new Date(2025, 3, 15).toDateString()
+      );
+    });
+
+    it("Shift+PageDown navigates to the next year", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{Shift>}{PageDown}{/Shift}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(
+        new Date(2027, 3, 15).toDateString()
+      );
+    });
+
+    it("Enter selects the focused cell", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      // Focus a different (non-selected) cell.
+      const otherCell = screen.getByRole("gridcell", {
+        name: /April 17, 2026/,
+      });
+      otherCell.focus();
+      await user.keyboard("{Enter}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      expect(setSelected).toHaveBeenCalledTimes(1);
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(
+        new Date(2026, 3, 17).toDateString()
+      );
+    });
+
+    it("Space selects the focused cell", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const otherCell = screen.getByRole("gridcell", {
+        name: /April 17, 2026/,
+      });
+      otherCell.focus();
+      await user.keyboard(" ");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      expect(setSelected).toHaveBeenCalledTimes(1);
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(
+        new Date(2026, 3, 17).toDateString()
+      );
+    });
+
+    it("ignores keys that are not handled (e.g., Escape)", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const cell = screen.getByRole("gridcell", {
+        name: /April 15, 2026/,
+      });
+      cell.focus();
+      await user.keyboard("{Escape}");
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      expect(setSelected).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Clicking a day cell", () => {
+    it("calls setSelectedDate with the clicked date", async () => {
+      const user = userEvent.setup();
+      const selectedDate = new Date(2026, 3, 15);
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      const otherCell = screen.getByRole("gridcell", {
+        name: /April 17, 2026/,
+      });
+      await user.click(otherCell);
+
+      const setSelected = contextValue.setSelectedDate as ReturnType<
+        typeof vi.fn
+      >;
+      expect(setSelected).toHaveBeenCalledTimes(1);
+      const nextDate = setSelected.mock.calls[0][0] as Date;
+      expect(nextDate.toDateString()).toBe(
+        new Date(2026, 3, 17).toDateString()
+      );
+    });
+  });
 });
