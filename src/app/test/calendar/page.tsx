@@ -3,6 +3,7 @@
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
+import { YearCalendar } from "@/components/calendar/YearCalendar";
 import {
   MockCalendarProvider,
   useCalendar,
@@ -276,6 +277,7 @@ function CalendarDisplay() {
   return (
     <div data-testid="calendar-display">
       {view === "month" && <SimpleCalendar />}
+      {view === "year" && <YearCalendar />}
       {view === "agenda" && <AgendaCalendar />}
     </div>
   );
@@ -357,7 +359,8 @@ function TestCalendarContent() {
 
   // Get test configuration from URL params
   const eventSet = searchParams.get("events") || "default";
-  const view = (searchParams.get("view") as "month" | "agenda") || "month";
+  const view =
+    (searchParams.get("view") as "month" | "year" | "agenda") || "month";
   const loading = searchParams.get("loading") === "true";
   const loadingDelay = parseInt(searchParams.get("loadingDelay") || "0", 10);
   const showControls = searchParams.get("controls") !== "false";
