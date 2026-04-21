@@ -1,3 +1,4 @@
+import { AppShell } from "@/components/navigation/app-shell";
 import { AppInsightsProvider } from "@/components/providers/AppInsightsProvider";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
@@ -25,7 +26,9 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <SessionProvider>
           <ThemeProvider>
-            <AppInsightsProvider>{children}</AppInsightsProvider>
+            <AppInsightsProvider>
+              <AppShell>{children}</AppShell>
+            </AppInsightsProvider>
           </ThemeProvider>
         </SessionProvider>
       </body>
