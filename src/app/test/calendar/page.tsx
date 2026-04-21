@@ -10,7 +10,7 @@ import {
 } from "@/components/providers/MockCalendarProvider";
 import { Button } from "@/components/ui/button";
 import type { IEvent, TEventColor } from "@/types/calendar";
-import { Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 /**
@@ -283,6 +283,26 @@ function CalendarDisplay() {
 }
 
 /**
+ * Layout that mirrors the production /calendar page: the mini-calendar sidebar
+ * is hidden when the active view is month (where it duplicates the main grid)
+ * and shown on day, week, year, and agenda views. See issue #146.
+ */
+function SidebarAwareLayout({ children }: { children: ReactNode }) {
+  const { view } = useCalendar();
+
+  if (view === "month") {
+    return <div className="grid gap-4">{children}</div>;
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+      {children}
+      <MiniCalendarSidebar />
+    </div>
+  );
+}
+
+/**
  * Test controls for interacting with the calendar during testing
  */
 function TestControls() {
@@ -393,10 +413,9 @@ function TestCalendarContent() {
         </div>
 
         {showSidebar ? (
-          <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+          <SidebarAwareLayout>
             <CalendarDisplay />
-            <MiniCalendarSidebar />
-          </div>
+          </SidebarAwareLayout>
         ) : (
           <CalendarDisplay />
         )}
