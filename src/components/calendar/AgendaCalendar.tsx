@@ -28,14 +28,16 @@ function filterEventsForNextNDays(events: IEvent[], days: number): IEvent[] {
 }
 
 /**
- * Filter events whose title or description contains the query (case-insensitive).
- * An empty/whitespace-only query returns the list unchanged.
+ * Filter events whose title, description, or attendee name contains the
+ * query (case-insensitive). An empty/whitespace-only query returns the
+ * list unchanged.
  */
 function filterEventsBySearch(events: IEvent[], query: string): IEvent[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return events;
   return events.filter((event) => {
-    const haystack = `${event.title} ${event.description ?? ""}`.toLowerCase();
+    const haystack =
+      `${event.title} ${event.description ?? ""} ${event.user?.name ?? ""}`.toLowerCase();
     return haystack.includes(normalized);
   });
 }
@@ -301,7 +303,7 @@ export function AgendaCalendar() {
           type="search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search events by title or description…"
+          placeholder="Search events by title, description, or attendee…"
           aria-label="Search events"
           data-testid="agenda-search-input"
           className="pr-9 pl-9"

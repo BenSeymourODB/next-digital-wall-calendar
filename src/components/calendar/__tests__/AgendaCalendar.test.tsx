@@ -281,6 +281,13 @@ describe("AgendaCalendar", () => {
       expect(screen.getByPlaceholderText(/search events/i)).toBeInTheDocument();
     });
 
+    it("advertises attendee search in the placeholder", () => {
+      renderWithContext(buildEvents());
+      expect(
+        screen.getByPlaceholderText(/title, description, or attendee/i)
+      ).toBeInTheDocument();
+    });
+
     it("filters events by title in real time as the user types", async () => {
       const user = userEvent.setup();
       renderWithContext(buildEvents());
@@ -331,6 +338,62 @@ describe("AgendaCalendar", () => {
 
       expect(screen.getByText(/no events match/i)).toBeInTheDocument();
       expect(screen.queryByText("Dentist Appointment")).not.toBeInTheDocument();
+    });
+
+    it("matches against the attendee (user) name", async () => {
+      const user = userEvent.setup();
+      const events: IEvent[] = [
+        createMockEvent({
+          id: "a1",
+          title: "Soccer Practice",
+          description: "Field 3",
+          startDate: getFutureDate(1, 16, 0),
+          endDate: getFutureDate(1, 17, 0),
+          user: { id: "u-emma", name: "Emma", picturePath: null },
+        }),
+        createMockEvent({
+          id: "a2",
+          title: "Work Meeting",
+          description: "Quarterly review",
+          startDate: getFutureDate(2, 9, 0),
+          endDate: getFutureDate(2, 10, 0),
+          user: { id: "u-dad", name: "Dad", picturePath: null },
+        }),
+      ];
+
+      renderWithContext(events);
+      await user.type(screen.getByPlaceholderText(/search events/i), "emma");
+
+      expect(screen.getByText("Soccer Practice")).toBeInTheDocument();
+      expect(screen.queryByText("Work Meeting")).not.toBeInTheDocument();
+    });
+
+    it("attendee match is case-insensitive", async () => {
+      const user = userEvent.setup();
+      const events: IEvent[] = [
+        createMockEvent({
+          id: "b1",
+          title: "Piano Lesson",
+          description: "",
+          startDate: getFutureDate(1, 16, 0),
+          endDate: getFutureDate(1, 17, 0),
+          user: { id: "u-carol", name: "Carol", picturePath: null },
+        }),
+        createMockEvent({
+          id: "b2",
+          title: "Doctor",
+          description: "",
+          startDate: getFutureDate(2, 9, 0),
+          endDate: getFutureDate(2, 10, 0),
+          user: { id: "u-bob", name: "Bob", picturePath: null },
+        }),
+      ];
+
+      renderWithContext(events);
+      await user.type(screen.getByPlaceholderText(/search events/i), "CAROL");
+
+      expect(screen.getByText("Piano Lesson")).toBeInTheDocument();
+      expect(screen.queryByText("Doctor")).not.toBeInTheDocument();
     });
 
     it("restores all events when the search is cleared", async () => {

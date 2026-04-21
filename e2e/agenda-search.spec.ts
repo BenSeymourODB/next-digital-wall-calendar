@@ -60,6 +60,26 @@ test.describe("Agenda Calendar — Search", () => {
   });
 });
 
+test.describe("Agenda Calendar — Search (family scenario)", () => {
+  test("filters multi-user events by attendee name", async ({ page }) => {
+    await page.goto("/test/calendar?events=family&view=agenda");
+    await expect(page.getByText("Upcoming Events")).toBeVisible();
+
+    // Baseline: events from multiple attendees are visible
+    await expect(page.getByText("Soccer Practice")).toBeVisible();
+    await expect(page.getByText("Work Meeting")).toBeVisible();
+
+    await page.getByTestId("agenda-search-input").fill("emma");
+
+    // Emma's events remain, other attendees' events are hidden
+    await expect(page.getByText("Soccer Practice")).toBeVisible();
+    await expect(page.getByText("Piano Lesson")).toBeVisible();
+    await expect(page.getByText("Work Meeting")).not.toBeVisible();
+    await expect(page.getByText("Grocery Shopping")).not.toBeVisible();
+    await expect(page.getByText("Art Class")).not.toBeVisible();
+  });
+});
+
 test.describe("Agenda Calendar — Group By", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/test/calendar?events=default&view=agenda");
