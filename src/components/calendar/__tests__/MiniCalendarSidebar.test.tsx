@@ -44,6 +44,8 @@ function createMockContext(
     setView: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
+    weekStartDay: 0,
+    setWeekStartDay: vi.fn(),
     use24HourFormat: true,
     toggleTimeFormat: vi.fn(),
     setSelectedDate: vi.fn(),
@@ -107,6 +109,21 @@ describe("MiniCalendarSidebar", () => {
         "W",
         "T",
         "F",
+        "S",
+      ]);
+    });
+
+    it("reorders day-of-week headers when weekStartDay is Monday", () => {
+      renderWithContext({ weekStartDay: 1 });
+      const grid = screen.getByTestId("mini-calendar-grid");
+      const labels = within(grid).getAllByTestId("mini-calendar-dow");
+      expect(labels.map((el) => el.textContent)).toEqual([
+        "M",
+        "T",
+        "W",
+        "T",
+        "F",
+        "S",
         "S",
       ]);
     });

@@ -1,6 +1,7 @@
 "use client";
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { CalendarSettingsPanel } from "@/components/calendar/CalendarSettingsPanel";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
@@ -388,8 +389,9 @@ function TestCalendarContent() {
 
         {showControls && <TestControls />}
 
-        <div className="mb-4">
+        <div className="mb-4 flex items-center gap-2">
           <ViewSwitcher />
+          <CalendarSettingsPanel />
         </div>
 
         {showSidebar ? (

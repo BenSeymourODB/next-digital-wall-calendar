@@ -2,7 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
-import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -17,18 +17,17 @@ import {
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export function SimpleCalendar() {
-  const { selectedDate, setSelectedDate, events, isLoading } = useCalendar();
+  const { selectedDate, setSelectedDate, events, isLoading, weekStartDay } =
+    useCalendar();
 
-  // Computed per render so a future user-configurable WEEK_STARTS_ON
-  // flows through without a module reload. React Compiler memoizes.
-  const weekdayHeaders = getShortWeekdayLabels();
+  const weekdayHeaders = getShortWeekdayLabels(weekStartDay);
 
   const monthStart = startOfMonth(selectedDate);
   const monthEnd = endOfMonth(selectedDate);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-  // Leading padding cells before the 1st, measured from WEEK_STARTS_ON.
-  const leadingPadding = (getDay(monthStart) - WEEK_STARTS_ON + 7) % 7;
+  // Leading padding cells before the 1st, measured from weekStartDay.
+  const leadingPadding = (getDay(monthStart) - weekStartDay + 7) % 7;
   const paddingDays = Array.from({ length: leadingPadding }, (_, i) => i);
 
   const previousMonth = () => {
@@ -139,6 +138,7 @@ export function SimpleCalendar() {
           {weekdayHeaders.map((day) => (
             <div
               key={day}
+              data-testid="calendar-dow"
               className="text-muted-foreground p-3 text-center text-sm font-semibold"
             >
               {day}

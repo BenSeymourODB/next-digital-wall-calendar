@@ -432,6 +432,18 @@ describe("getShortWeekdayLabels", () => {
       "Sat",
     ]);
   });
+
+  it("rotates labels Monday-first when weekStartsOn is 1", () => {
+    expect(getShortWeekdayLabels(1)).toEqual([
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun",
+    ]);
+  });
 });
 
 describe("getColorClass", () => {

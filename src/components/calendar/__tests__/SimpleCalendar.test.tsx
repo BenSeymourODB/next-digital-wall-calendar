@@ -52,6 +52,8 @@ function createMockContext(
     setView: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
+    weekStartDay: 0,
+    setWeekStartDay: vi.fn(),
     use24HourFormat: true,
     toggleTimeFormat: vi.fn(),
     setSelectedDate: vi.fn(),
@@ -265,6 +267,22 @@ describe("SimpleCalendar", () => {
         expect(el).toBeInTheDocument();
         if (i > 0) {
           // Preceding sibling order is preserved in the grid.
+          expect(
+            rendered[i - 1].compareDocumentPosition(el) &
+              Node.DOCUMENT_POSITION_FOLLOWING
+          ).toBeTruthy();
+        }
+      });
+    });
+
+    it("renders Monday-first weekday headers when weekStartDay is 1", () => {
+      renderWithContext({ weekStartDay: 1 });
+      const labels = getShortWeekdayLabels(1);
+      expect(labels[0]).toBe("Mon");
+      expect(labels[6]).toBe("Sun");
+      const rendered = labels.map((label) => screen.getByText(label));
+      rendered.forEach((el, i) => {
+        if (i > 0) {
           expect(
             rendered[i - 1].compareDocumentPosition(el) &
               Node.DOCUMENT_POSITION_FOLLOWING

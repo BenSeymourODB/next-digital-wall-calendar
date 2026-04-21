@@ -69,6 +69,8 @@ function createMockContext(
     setView: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
+    weekStartDay: 0,
+    setWeekStartDay: vi.fn(),
     use24HourFormat: true,
     toggleTimeFormat: vi.fn(),
     setSelectedDate: vi.fn(),
