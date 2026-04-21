@@ -74,14 +74,26 @@ test.describe("MiniCalendarSidebar", () => {
       .first();
 
     await expect(nonTodayInMonth).toBeVisible();
+    const dayTestId = await nonTodayInMonth.getAttribute("data-testid");
+    const ariaLabel = await nonTodayInMonth.getAttribute("aria-label");
+    expect(dayTestId).toBeTruthy();
+    expect(ariaLabel).toBeTruthy();
+
     await nonTodayInMonth.click();
 
     // The clicked day should now carry data-selected="true"
     await expect(nonTodayInMonth).toHaveAttribute("data-selected", "true");
 
-    // Events list should re-render for the new selected date (either with new
-    // events or with the "No events" empty state). Either way, the container
-    // remains visible.
+    // Events list re-renders with the heading above it reflecting the new day.
+    // aria-label is "EEEE, MMMM d, yyyy"; the heading uses "EEE, MMM d".
+    const [dayOfWeek, monthDay] = (ariaLabel ?? "").split(", ");
+    const expectedHeading = `${dayOfWeek.slice(0, 3)}, ${monthDay
+      .split(" ")
+      .map((part, idx) => (idx === 0 ? part.slice(0, 3) : part))
+      .join(" ")}`;
+    await expect(page.getByTestId("mini-calendar-sidebar")).toContainText(
+      expectedHeading
+    );
     await expect(page.getByTestId("mini-calendar-events-list")).toBeVisible();
   });
 

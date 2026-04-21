@@ -2,6 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { getEventsForDay } from "@/lib/calendar-helpers";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useState } from "react";
 import {
@@ -12,13 +13,22 @@ import {
   format,
   isSameDay,
   isSameMonth,
+  parseISO,
   startOfMonth,
   startOfWeek,
   subMonths,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-const DOW_LABELS = ["S", "M", "T", "W", "T", "F", "S"] as const;
+const DOW_LABELS = [
+  { short: "S", full: "Sunday" },
+  { short: "M", full: "Monday" },
+  { short: "T", full: "Tuesday" },
+  { short: "W", full: "Wednesday" },
+  { short: "T", full: "Thursday" },
+  { short: "F", full: "Friday" },
+  { short: "S", full: "Saturday" },
+] as const;
 
 const COLOR_DOT_CLASS: Record<TEventColor, string> = {
   blue: "bg-blue-500",
@@ -29,16 +39,14 @@ const COLOR_DOT_CLASS: Record<TEventColor, string> = {
   orange: "bg-orange-500",
 };
 
-function getEventsForDay(events: IEvent[], day: Date): IEvent[] {
-  return events.filter((event) => isSameDay(new Date(event.startDate), day));
-}
-
 function formatEventTime(event: IEvent, use24HourFormat: boolean): string {
   if (event.isAllDay) {
     return "All day";
   }
-  const start = new Date(event.startDate);
-  return format(start, use24HourFormat ? "HH:mm" : "h:mm a");
+  return format(
+    parseISO(event.startDate),
+    use24HourFormat ? "HH:mm" : "h:mm a"
+  );
 }
 
 export function MiniCalendarSidebar() {
@@ -56,13 +64,24 @@ export function MiniCalendarSidebar() {
   const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
   const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
+  const weekRows: Date[][] = [];
+  for (let i = 0; i < days.length; i += 7) {
+    weekRows.push(days.slice(i, i + 7));
+  }
 
   const selectedEvents = getEventsForDay(events, selectedDate).sort(
-    (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+    (a, b) => parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime()
   );
 
   const goPrevMonth = () => setViewMonth((m) => subMonths(m, 1));
   const goNextMonth = () => setViewMonth((m) => addMonths(m, 1));
+
+  const handleDayClick = (day: Date, inMonth: boolean) => {
+    setSelectedDate(day);
+    if (!inMonth) {
+      setViewMonth(startOfMonth(day));
+    }
+  };
 
   return (
     <aside
@@ -103,61 +122,74 @@ export function MiniCalendarSidebar() {
       </div>
 
       {/* Month grid */}
-      <div data-testid="mini-calendar-grid">
-        <div className="mb-1 grid grid-cols-7">
+      <div
+        data-testid="mini-calendar-grid"
+        role="grid"
+        aria-label={format(viewMonth, "MMMM yyyy")}
+      >
+        <div role="row" className="mb-1 grid grid-cols-7">
           {DOW_LABELS.map((label, i) => (
             <div
               key={`dow-${i}`}
+              role="columnheader"
+              aria-label={label.full}
               data-testid="mini-calendar-dow"
               className="text-muted-foreground text-center text-[11px] font-medium"
             >
-              {label}
+              {label.short}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-y-1">
-          {days.map((day) => {
-            const isToday = isSameDay(day, today);
-            const isSelected = isSameDay(day, selectedDate);
-            const inMonth = isSameMonth(day, viewMonth);
-            const dayEvents = getEventsForDay(events, day);
-            const firstColor = dayEvents[0]?.color;
+        <div className="space-y-1">
+          {weekRows.map((week, rowIdx) => (
+            <div key={`week-${rowIdx}`} role="row" className="grid grid-cols-7">
+              {week.map((day) => {
+                const isToday = isSameDay(day, today);
+                const isSelected = isSameDay(day, selectedDate);
+                const inMonth = isSameMonth(day, viewMonth);
+                const dayEvents = getEventsForDay(events, day);
+                const firstColor = dayEvents[0]?.color;
 
-            return (
-              <button
-                key={day.toISOString()}
-                type="button"
-                data-testid={`mini-calendar-day-${format(day, "yyyy-MM-dd")}`}
-                data-today={isToday ? "true" : "false"}
-                data-selected={isSelected ? "true" : "false"}
-                data-in-month={inMonth ? "true" : "false"}
-                onClick={() => setSelectedDate(day)}
-                aria-label={format(day, "EEEE, MMMM d, yyyy")}
-                aria-pressed={isSelected}
-                className={[
-                  "relative mx-auto flex h-8 w-8 flex-col items-center justify-center rounded-full text-xs transition-colors",
-                  inMonth ? "text-foreground" : "text-muted-foreground/50",
-                  isToday && !isSelected
-                    ? "bg-blue-600 font-semibold text-white hover:bg-blue-700"
-                    : "",
-                  isSelected
-                    ? "ring-offset-card font-semibold ring-2 ring-blue-600 ring-offset-1"
-                    : "",
-                  !isToday && !isSelected ? "hover:bg-muted" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <span>{format(day, "d")}</span>
-                {firstColor && (
-                  <span
-                    data-testid="mini-calendar-event-dot"
-                    className={`absolute bottom-0.5 h-1 w-1 rounded-full ${COLOR_DOT_CLASS[firstColor]}`}
-                  />
-                )}
-              </button>
-            );
-          })}
+                return (
+                  <div key={day.toISOString()} role="gridcell">
+                    <button
+                      type="button"
+                      data-testid={`mini-calendar-day-${format(day, "yyyy-MM-dd")}`}
+                      data-today={isToday ? "true" : "false"}
+                      data-selected={isSelected ? "true" : "false"}
+                      data-in-month={inMonth ? "true" : "false"}
+                      onClick={() => handleDayClick(day, inMonth)}
+                      aria-label={format(day, "EEEE, MMMM d, yyyy")}
+                      aria-pressed={isSelected}
+                      className={[
+                        "relative mx-auto flex h-8 w-8 flex-col items-center justify-center rounded-full text-xs transition-colors",
+                        inMonth
+                          ? "text-foreground"
+                          : "text-muted-foreground/50",
+                        isToday && !isSelected
+                          ? "bg-blue-600 font-semibold text-white hover:bg-blue-700"
+                          : "",
+                        isSelected
+                          ? "ring-offset-card font-semibold ring-2 ring-blue-600 ring-offset-1"
+                          : "",
+                        !isToday && !isSelected ? "hover:bg-muted" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      <span>{format(day, "d")}</span>
+                      {firstColor && (
+                        <span
+                          data-testid="mini-calendar-event-dot"
+                          className={`absolute bottom-0.5 h-1 w-1 rounded-full ${COLOR_DOT_CLASS[firstColor]}`}
+                        />
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
 

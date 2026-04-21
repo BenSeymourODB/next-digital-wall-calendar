@@ -63,9 +63,7 @@ function CalendarContent() {
           <div className="border-border bg-card rounded-lg border p-6">
             {view === "month" ? <SimpleCalendar /> : <AgendaCalendar />}
           </div>
-          <div>
-            <MiniCalendarSidebar />
-          </div>
+          <MiniCalendarSidebar />
         </div>
       </div>
     </div>

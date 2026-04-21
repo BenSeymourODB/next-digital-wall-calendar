@@ -11,12 +11,14 @@ import type {
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { addMonths, format, isSameDay, subMonths } from "date-fns";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MiniCalendarSidebar } from "../MiniCalendarSidebar";
 
+let mockEventSeq = 0;
 function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
+  mockEventSeq += 1;
   return {
-    id: "test-event-1",
+    id: `test-event-${mockEventSeq}`,
     title: "Test Event",
     startDate: new Date().toISOString(),
     endDate: new Date().toISOString(),
@@ -125,11 +127,21 @@ describe("MiniCalendarSidebar", () => {
   });
 
   describe("Today highlight", () => {
+    const FIXED_TODAY = new Date(2025, 4, 15, 12, 0, 0);
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(FIXED_TODAY);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     it("marks today's cell with data-today='true'", () => {
-      renderWithContext();
-      const today = new Date();
+      renderWithContext({ selectedDate: FIXED_TODAY });
       const todayCell = screen.getByTestId(
-        `mini-calendar-day-${format(today, "yyyy-MM-dd")}`
+        `mini-calendar-day-${format(FIXED_TODAY, "yyyy-MM-dd")}`
       );
       expect(todayCell).toHaveAttribute("data-today", "true");
     });
@@ -197,6 +209,32 @@ describe("MiniCalendarSidebar", () => {
       ).mock.calls[0][0] as Date;
       expect(isSameDay(calledWith, target)).toBe(true);
     });
+
+    it("advances the view month when an out-of-month padding cell is clicked", async () => {
+      // May 2025 starts Thursday May 1; grid pads with Apr 27-30.
+      const user = userEvent.setup();
+      const selected = new Date(2025, 4, 15);
+      const { contextValue } = renderWithContext({ selectedDate: selected });
+
+      const outOfMonthDay = new Date(2025, 3, 30); // Apr 30
+      const cell = screen.getByTestId(
+        `mini-calendar-day-${format(outOfMonthDay, "yyyy-MM-dd")}`
+      );
+      expect(cell).toHaveAttribute("data-in-month", "false");
+
+      await user.click(cell);
+
+      expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
+      const calledWith = (
+        contextValue.setSelectedDate as ReturnType<typeof vi.fn>
+      ).mock.calls[0][0] as Date;
+      expect(isSameDay(calledWith, outOfMonthDay)).toBe(true);
+
+      // Header should have flipped to April so the selection stays visible.
+      expect(screen.getByTestId("mini-calendar-header")).toHaveTextContent(
+        "April 2025"
+      );
+    });
   });
 
   describe("Event indicators", () => {
@@ -230,6 +268,32 @@ describe("MiniCalendarSidebar", () => {
       );
       const dot = within(cell).queryByTestId("mini-calendar-event-dot");
       expect(dot).not.toBeInTheDocument();
+    });
+
+    it("shows event dots on every day spanned by a multi-day event", () => {
+      const anchor = new Date(2025, 4, 15);
+      const events = [
+        createMockEvent({
+          id: "vacation",
+          startDate: new Date(2025, 4, 20, 9, 0).toISOString(),
+          endDate: new Date(2025, 4, 22, 17, 0).toISOString(),
+          color: "green",
+        }),
+      ];
+      renderWithContext({ selectedDate: anchor, events });
+
+      for (const day of [
+        new Date(2025, 4, 20),
+        new Date(2025, 4, 21),
+        new Date(2025, 4, 22),
+      ]) {
+        const cell = screen.getByTestId(
+          `mini-calendar-day-${format(day, "yyyy-MM-dd")}`
+        );
+        expect(
+          within(cell).queryByTestId("mini-calendar-event-dot")
+        ).toBeInTheDocument();
+      }
     });
   });
 
