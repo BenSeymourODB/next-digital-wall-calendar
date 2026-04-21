@@ -2,6 +2,7 @@
 
 import { AccountManager } from "@/components/calendar/AccountManager";
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { AnalogClockView } from "@/components/calendar/AnalogClockView";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
@@ -12,8 +13,23 @@ import {
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
+import type { TCalendarView } from "@/types/calendar";
 import { useState } from "react";
 import { Settings } from "lucide-react";
+
+function renderCalendarView(view: TCalendarView) {
+  switch (view) {
+    case "month":
+      return <SimpleCalendar />;
+    case "clock":
+      return <AnalogClockView />;
+    case "day":
+    case "week":
+    case "year":
+    case "agenda":
+      return <AgendaCalendar />;
+  }
+}
 
 /**
  * Calendar content component
@@ -58,13 +74,20 @@ function CalendarContent() {
         {/* View Switcher */}
         <ViewSwitcher />
 
-        {/* Calendar + mini-calendar sidebar */}
-        <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+        {/* Clock view brings its own all-day-events aside, so we suppress the
+            shared mini-calendar sidebar to avoid two stacked side panels. */}
+        {view === "clock" ? (
           <div className="border-border bg-card rounded-lg border p-6">
-            {view === "month" ? <SimpleCalendar /> : <AgendaCalendar />}
+            {renderCalendarView(view)}
           </div>
-          <MiniCalendarSidebar />
-        </div>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+            <div className="border-border bg-card rounded-lg border p-6">
+              {renderCalendarView(view)}
+            </div>
+            <MiniCalendarSidebar />
+          </div>
+        )}
       </div>
     </div>
   );

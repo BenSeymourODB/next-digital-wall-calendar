@@ -1,6 +1,7 @@
 "use client";
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { AnalogClockView } from "@/components/calendar/AnalogClockView";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
@@ -9,7 +10,7 @@ import {
   useCalendar,
 } from "@/components/providers/MockCalendarProvider";
 import { Button } from "@/components/ui/button";
-import type { IEvent, TEventColor } from "@/types/calendar";
+import type { IEvent, TCalendarView, TEventColor } from "@/types/calendar";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -278,6 +279,7 @@ function CalendarDisplay() {
     <div data-testid="calendar-display">
       {view === "month" && <SimpleCalendar />}
       {view === "agenda" && <AgendaCalendar />}
+      {view === "clock" && <AnalogClockView />}
     </div>
   );
 }
@@ -358,7 +360,7 @@ function TestCalendarContent() {
 
   // Get test configuration from URL params
   const eventSet = searchParams.get("events") || "default";
-  const view = (searchParams.get("view") as "month" | "agenda") || "month";
+  const view = (searchParams.get("view") as TCalendarView) || "month";
   const loading = searchParams.get("loading") === "true";
   const loadingDelay = parseInt(searchParams.get("loadingDelay") || "0", 10);
   const showControls = searchParams.get("controls") !== "false";
@@ -410,7 +412,7 @@ function TestCalendarContent() {
  *
  * URL Parameters:
  * - events: Event set to use (default, empty, single, colors, overflow, family)
- * - view: Initial view (month, agenda)
+ * - view: Initial view (month, agenda, clock)
  * - loading: Show loading state (true/false)
  * - loadingDelay: Simulate loading delay in ms
  * - controls: Show test controls (true/false)
