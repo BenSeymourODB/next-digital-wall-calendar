@@ -37,13 +37,14 @@ export function AnalogClockView() {
       data-testid="analog-clock-view"
       className="grid gap-6 lg:grid-cols-[1fr_240px]"
     >
-      {/* Responsive square wrapper. The clock SVG renders at the wrapper's
-          inner width; 720 keeps the wall-display readability without forcing
-          horizontal scroll on smaller cards. */}
+      {/* Responsive square wrapper. AnalogClock renders an SVG with explicit
+          width/height attributes (720px); the descendant selector forces the
+          SVG to fill its container so narrow viewports scale via the viewBox
+          rather than overflowing the card. */}
       <div className="flex justify-center">
         <div
           data-testid="analog-clock-wrapper"
-          className="aspect-square w-full"
+          className="aspect-square w-full [&>svg]:h-full [&>svg]:w-full"
           style={{ maxWidth: `${CLOCK_MAX_PX}px` }}
         >
           <AnalogClock
@@ -70,7 +71,11 @@ export function AnalogClockView() {
             No all-day events
           </p>
         ) : (
-          <ul data-testid="analog-clock-all-day-list" className="space-y-2">
+          <ul
+            role="list"
+            data-testid="analog-clock-all-day-list"
+            className="space-y-2"
+          >
             {allDayToday.map((event) => (
               <li
                 key={event.id}

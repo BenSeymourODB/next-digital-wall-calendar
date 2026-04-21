@@ -74,13 +74,20 @@ function CalendarContent() {
         {/* View Switcher */}
         <ViewSwitcher />
 
-        {/* Calendar + mini-calendar sidebar */}
-        <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+        {/* Clock view brings its own all-day-events aside, so we suppress the
+            shared mini-calendar sidebar to avoid two stacked side panels. */}
+        {view === "clock" ? (
           <div className="border-border bg-card rounded-lg border p-6">
             {renderCalendarView(view)}
           </div>
-          <MiniCalendarSidebar />
-        </div>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+            <div className="border-border bg-card rounded-lg border p-6">
+              {renderCalendarView(view)}
+            </div>
+            <MiniCalendarSidebar />
+          </div>
+        )}
       </div>
     </div>
   );

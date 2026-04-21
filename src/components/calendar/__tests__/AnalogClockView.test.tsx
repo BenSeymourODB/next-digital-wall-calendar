@@ -9,7 +9,7 @@ import type {
   TEventColor,
 } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalogClockView } from "../AnalogClockView";
 
 function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
@@ -73,6 +73,19 @@ function renderView(overrides: Partial<ICalendarContext> = {}) {
 }
 
 describe("AnalogClockView", () => {
+  // Lock the system clock so the `new Date()` inside the component and the
+  // dates synthesised in each test share a single reference instant. Without
+  // this, a test running across midnight would compute `today` on one calendar
+  // day and the all-day window on the next, breaking the [start, end) check.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-21T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders the analog clock SVG", () => {
     renderView();
     expect(screen.getByTestId("analog-clock-view")).toBeInTheDocument();
