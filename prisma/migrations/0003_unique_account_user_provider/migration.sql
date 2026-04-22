@@ -1,0 +1,20 @@
+-- Enforce one Account per (userId, provider) to prevent stale duplicate OAuth
+-- links (see issue #61). Without this constraint, NextAuth's Prisma adapter
+-- can create a second Account row for the same user when a different Google
+-- identity signs in under an existing session, which caused perpetual
+-- TokenRefreshFailed errors against the older stale refresh token.
+--
+-- If this migration fails with "could not create unique index" there are
+-- duplicate rows in production; dedup before retrying. The pattern used in
+-- PR #48 was to keep the row with the newest expires_at and delete the rest:
+--
+--   DELETE FROM "Account" a
+--   USING "Account" b
+--   WHERE a."userId" = b."userId"
+--     AND a."provider" = b."provider"
+--     AND a.id <> b.id
+--     AND (a.expires_at IS NULL
+--          OR (b.expires_at IS NOT NULL AND a.expires_at < b.expires_at));
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Account_userId_provider_key" ON "Account"("userId", "provider");
