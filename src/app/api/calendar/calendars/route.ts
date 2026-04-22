@@ -89,10 +89,12 @@ export async function GET() {
     const data = await response.json();
     const items: gapi.client.calendar.CalendarListEntry[] = data.items || [];
 
-    // Transform to our CalendarInfo format
+    // Transform to our CalendarInfo format. `summary` is optional per the
+    // Google schema — fall back to empty string so downstream UI code can
+    // treat it as a plain string.
     const calendars: CalendarInfo[] = items.map((item) => ({
       id: item.id,
-      summary: item.summary,
+      summary: item.summary ?? "",
       description: item.description,
       backgroundColor: item.backgroundColor || "#4285f4", // Default Google blue
       foregroundColor: item.foregroundColor || "#ffffff",

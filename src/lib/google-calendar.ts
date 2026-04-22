@@ -2,10 +2,29 @@
  * Google Calendar API integration for client-side calendar fetching
  * This module handles OAuth authentication and event fetching from multiple Google Calendars
  * Uses Google Identity Services (GIS) for modern OAuth authentication
+ *
+ * The canonical `GoogleCalendarEvent` / `UserCalendar` types and the pure
+ * mappers that translate Google API responses live in
+ * `src/lib/google-calendar-mappers.ts` — a universal module that server code
+ * can import without dragging in the browser-only logic below. They are
+ * re-exported here for convenience.
  */
 import { logger } from "@/lib/logger";
 import { type CalendarColorMapping } from "./calendar-storage";
 import { mapHexToTailwindColor } from "./color-utils";
+import {
+  type GoogleCalendarEvent,
+  type UserCalendar,
+  normalizeCalendarListEntry,
+  normalizeFetchedEvent,
+} from "./google-calendar-mappers";
+
+export {
+  type GoogleCalendarEvent,
+  normalizeCalendarListEntry,
+  normalizeFetchedEvent,
+  type UserCalendar,
+} from "./google-calendar-mappers";
 
 // Google API configuration types
 export interface GoogleCalendarConfig {
@@ -23,146 +42,6 @@ export interface GoogleCalendarAccount {
   refreshToken?: string;
   expiresAt: number;
   calendarIds: string[]; // List of calendar IDs to fetch from this account
-}
-
-/**
- * Canonical shape of a Google Calendar event inside the app.
- *
- * Mirrors the public Google Calendar API v3 Events resource
- * (https://developers.google.com/workspace/calendar/api/v3/reference/events#resource)
- * and adds a mandatory `calendarId` that we stamp on fetch so downstream code
- * can round-trip events through IndexedDB caches and color mappings. All
- * upstream-optional fields remain optional here; keep additions in sync with
- * the ambient `gapi.client.calendar.Event` type in `src/types/gapi.d.ts`.
- */
-export interface GoogleCalendarEvent {
-  id: string;
-  /** Required here for our UI; Google marks this optional, so we tolerate an empty string upstream. */
-  summary: string;
-  description?: string;
-  start: {
-    dateTime?: string;
-    date?: string;
-    timeZone?: string;
-  };
-  end: {
-    dateTime?: string;
-    date?: string;
-    timeZone?: string;
-  };
-  colorId?: string;
-  creator?: {
-    id?: string;
-    email?: string;
-    displayName?: string;
-    self?: boolean;
-  };
-  organizer?: {
-    id?: string;
-    email?: string;
-    displayName?: string;
-    self?: boolean;
-  };
-
-  /** Lifecycle metadata preserved for caching and conflict resolution. */
-  etag?: string;
-  status?: "confirmed" | "tentative" | "cancelled";
-  htmlLink?: string;
-  created?: string;
-  updated?: string;
-  iCalUID?: string;
-  sequence?: number;
-
-  /** Location / conferencing metadata. */
-  location?: string;
-  hangoutLink?: string;
-
-  /** Visibility / scheduling flags. */
-  transparency?: "opaque" | "transparent";
-  visibility?: "default" | "public" | "private" | "confidential";
-  eventType?:
-    | "default"
-    | "outOfOffice"
-    | "focusTime"
-    | "workingLocation"
-    | "fromGmail";
-
-  /** Attendees, reminders, recurrence. */
-  attendees?: gapi.client.calendar.EventAttendee[];
-  reminders?: gapi.client.calendar.EventReminders;
-  recurrence?: string[];
-  recurringEventId?: string;
-  originalStartTime?: gapi.client.calendar.EventDateTime;
-
-  /** The calendar this event was fetched from — not a Google-API field. */
-  calendarId: string;
-}
-
-/**
- * Shape returned by `fetchUserCalendars` — mirrors the fields we pluck off
- * `gapi.client.calendar.CalendarListEntry`. Optional fields stay optional so
- * callers can progressively opt in.
- */
-export interface UserCalendar {
-  id: string;
-  summary: string;
-  description?: string;
-  backgroundColor?: string;
-  foregroundColor?: string;
-  primary?: boolean;
-  /** Calendar-level colorId from the calendarList resource (not event-level). */
-  colorId?: string;
-  timeZone?: string;
-  summaryOverride?: string;
-  selected?: boolean;
-  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
-}
-
-/**
- * Normalise a raw Google Calendar API event into our {@link GoogleCalendarEvent}
- * shape, stamping the source `calendarId` so cached events can be looked up by
- * calendar later.
- *
- * Exported for unit testing and for reuse by any code path that receives raw
- * Google Calendar API responses (e.g. the server-side REST fetch in
- * `src/app/api/calendar/events/route.ts`).
- */
-export function normalizeFetchedEvent(
-  event: gapi.client.calendar.Event,
-  calendarId: string
-): GoogleCalendarEvent {
-  return {
-    ...event,
-    // Google marks `summary` optional; our UI expects a string so we fall back
-    // to the empty string and let `transformGoogleEvent` substitute a label.
-    summary: event.summary ?? "",
-    calendarId,
-  };
-}
-
-/**
- * Normalise a raw `CalendarListEntry` into the slim shape consumed by the app.
- *
- * Also exported so server-side callers that fetch `calendarList.list` via
- * plain `fetch()` can reuse the same mapping without duplicating the field
- * selection.
- */
-export function normalizeCalendarListEntry(
-  entry: gapi.client.calendar.CalendarListEntry
-): UserCalendar {
-  return {
-    id: entry.id,
-    summary: entry.summary,
-    description: entry.description,
-    backgroundColor: entry.backgroundColor,
-    foregroundColor: entry.foregroundColor,
-    primary: entry.primary,
-    colorId: entry.colorId,
-    timeZone: entry.timeZone,
-    summaryOverride: entry.summaryOverride,
-    selected: entry.selected,
-    accessRole: entry.accessRole,
-  };
 }
 
 const GOOGLE_CALENDAR_CONFIG: GoogleCalendarConfig = {

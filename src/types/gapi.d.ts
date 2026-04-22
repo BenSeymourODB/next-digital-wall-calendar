@@ -271,10 +271,15 @@ declare namespace gapi.client.calendar {
   /**
    * CalendarList resource entry.
    * https://developers.google.com/workspace/calendar/api/v3/reference/calendarList#resource
+   *
+   * The Google API schema does not mark `summary` as required — matching the
+   * treatment of `Event.summary` — so it is modelled as optional here. Callers
+   * that need a guaranteed string should use `normalizeCalendarListEntry`,
+   * which applies the same `?? ""` fallback used for events.
    */
   interface CalendarListEntry {
     id: string;
-    summary: string;
+    summary?: string;
     description?: string;
     location?: string;
     timeZone?: string;

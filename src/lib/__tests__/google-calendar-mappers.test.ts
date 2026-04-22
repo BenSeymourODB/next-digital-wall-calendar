@@ -89,6 +89,73 @@ describe("normalizeFetchedEvent", () => {
     expect(result.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO"]);
   });
 
+  it("falls back to empty string when event has no summary", () => {
+    // Google marks Event.summary as optional. Downstream UI code (see
+    // `transformGoogleEvent` → `title: event.summary || "Untitled Event"`)
+    // expects a string, so the mapper defensively normalises.
+    const apiEvent: gapi.client.calendar.Event = {
+      id: "evt-no-title",
+      start: { dateTime: "2026-05-01T09:00:00Z" },
+      end: { dateTime: "2026-05-01T09:30:00Z" },
+    };
+
+    const result = normalizeFetchedEvent(apiEvent, "primary");
+
+    expect(result.summary).toBe("");
+    // And the field is typed as a plain string (no `undefined`), which is
+    // what the narrower `GoogleCalendarEvent.summary: string` buys us.
+    const summaryTypeCheck: string = result.summary;
+    expect(summaryTypeCheck).toBe("");
+  });
+
+  it("passes every Google-declared field through the spread (no silent drops)", () => {
+    // Guards against regressions on the review finding that
+    // `{ ...event }` was leaking fields the canonical type didn't declare.
+    // If `GoogleCalendarEvent` ever stops `extends Omit<Event, "summary">`,
+    // these assertions fail at the type layer and the runtime round-trip
+    // here fails as well.
+    const apiEvent: gapi.client.calendar.Event = {
+      id: "evt-full",
+      summary: "All fields",
+      start: { dateTime: "2026-05-01T09:00:00Z" },
+      end: { dateTime: "2026-05-01T10:00:00Z" },
+      kind: "calendar#event",
+      conferenceData: {
+        conferenceId: "abc",
+        entryPoints: [
+          { entryPointType: "video", uri: "https://meet.google.com/abc" },
+        ],
+      },
+      attachments: [
+        { fileUrl: "https://drive.google.com/file/d/1", title: "Agenda" },
+      ],
+      source: { url: "https://example.com", title: "Source" },
+      extendedProperties: { shared: { sharedKey: "sharedVal" } },
+      attendeesOmitted: false,
+      anyoneCanAddSelf: true,
+      guestsCanInviteOthers: true,
+      guestsCanModify: false,
+      guestsCanSeeOtherGuests: true,
+      privateCopy: false,
+      locked: false,
+    };
+
+    const result = normalizeFetchedEvent(apiEvent, "primary");
+
+    expect(result.kind).toBe("calendar#event");
+    expect(result.conferenceData?.conferenceId).toBe("abc");
+    expect(result.attachments?.[0]?.title).toBe("Agenda");
+    expect(result.source?.url).toBe("https://example.com");
+    expect(result.extendedProperties?.shared?.sharedKey).toBe("sharedVal");
+    expect(result.attendeesOmitted).toBe(false);
+    expect(result.anyoneCanAddSelf).toBe(true);
+    expect(result.guestsCanInviteOthers).toBe(true);
+    expect(result.guestsCanModify).toBe(false);
+    expect(result.guestsCanSeeOtherGuests).toBe(true);
+    expect(result.privateCopy).toBe(false);
+    expect(result.locked).toBe(false);
+  });
+
   it("handles recurring-event instance fields (recurringEventId + originalStartTime)", () => {
     const apiEvent: gapi.client.calendar.Event = {
       id: "evt-instance_20260501T140000Z",
@@ -152,6 +219,22 @@ describe("normalizeCalendarListEntry", () => {
     });
   });
 
+  it("falls back to empty string when calendarList entry has no summary", () => {
+    // CalendarList.summary is optional per the Google schema (and some
+    // synthetic/deleted entries may arrive without one). Mirror the
+    // defensive behaviour of `normalizeFetchedEvent` so the narrowed
+    // `UserCalendar.summary: string` is genuinely a string.
+    const apiEntry: gapi.client.calendar.CalendarListEntry = {
+      id: "quiet@group.calendar.google.com",
+    };
+
+    const result = normalizeCalendarListEntry(apiEntry);
+
+    expect(result.summary).toBe("");
+    const summaryTypeCheck: string = result.summary;
+    expect(summaryTypeCheck).toBe("");
+  });
+
   it("preserves extended CalendarList fields surfaced by the richer types", () => {
     const apiEntry: gapi.client.calendar.CalendarListEntry = {
       id: "primary",
@@ -176,18 +259,21 @@ describe("normalizeCalendarListEntry", () => {
   });
 });
 
-describe("type-level coverage: GoogleCalendarEvent is assignable from raw API responses", () => {
-  // These assignments are effectively compile-time assertions. They fail
-  // `pnpm check-types` if the extended fields on the canonical type drift
-  // out of sync with the shapes accepted by `normalizeFetchedEvent`.
-  it("accepts a realistic enriched Google Calendar v3 event payload", () => {
+describe("end-to-end: enriched API responses flow through the mappers", () => {
+  // These cases also act as compile-time coverage — enriched Google v3
+  // fixtures assigned to the richer response types will fail
+  // `pnpm check-types` if `gapi.d.ts` drifts away from the API. The runtime
+  // assertions here check the *full* round-trip so the tests earn their
+  // keep at runtime too.
+  it("round-trips an enriched events.list response through the mapper", () => {
+    const reminderMethod = "popup" as const;
     const apiResponse: gapi.client.calendar.EventsListResponse = {
       kind: "calendar#events",
       etag: '"list-etag"',
       summary: "Primary",
       timeZone: "America/New_York",
       accessRole: "owner",
-      defaultReminders: [{ method: "popup", minutes: 10 }],
+      defaultReminders: [{ method: reminderMethod, minutes: 10 }],
       nextPageToken: "next-page",
       nextSyncToken: "sync-token",
       updated: "2026-04-22T12:00:00Z",
@@ -195,26 +281,33 @@ describe("type-level coverage: GoogleCalendarEvent is assignable from raw API re
         {
           id: "evt-a",
           summary: "Lunch",
+          location: "Cafe",
+          htmlLink: "https://www.google.com/calendar/event?eid=a",
           start: { dateTime: "2026-05-01T12:00:00Z" },
           end: { dateTime: "2026-05-01T13:00:00Z" },
           reminders: { useDefault: true },
+          attendees: [{ email: "a@example.com", responseStatus: "accepted" }],
         },
       ],
     };
-
-    expect(apiResponse.items?.[0]?.id).toBe("evt-a");
-    expect(apiResponse.nextPageToken).toBe("next-page");
-    expect(apiResponse.defaultReminders?.[0]?.method).toBe("popup");
 
     const mapped: GoogleCalendarEvent[] = (apiResponse.items ?? []).map(
       (event) => normalizeFetchedEvent(event, "primary")
     );
 
     expect(mapped).toHaveLength(1);
-    expect(mapped[0]?.id).toBe("evt-a");
+    const [only] = mapped;
+    expect(only?.id).toBe("evt-a");
+    expect(only?.summary).toBe("Lunch");
+    expect(only?.location).toBe("Cafe");
+    expect(only?.htmlLink).toBe("https://www.google.com/calendar/event?eid=a");
+    expect(only?.calendarId).toBe("primary");
+    expect(only?.reminders?.useDefault).toBe(true);
+    expect(only?.attendees?.[0]?.email).toBe("a@example.com");
+    expect(apiResponse.nextSyncToken).toBe("sync-token");
   });
 
-  it("accepts a realistic enriched CalendarList response payload", () => {
+  it("round-trips an enriched calendarList.list response through the mapper", () => {
     const apiResponse: gapi.client.calendar.CalendarListListResponse = {
       kind: "calendar#calendarList",
       etag: '"etag"',
@@ -228,12 +321,27 @@ describe("type-level coverage: GoogleCalendarEvent is assignable from raw API re
           foregroundColor: "#000000",
           primary: true,
           accessRole: "owner",
+          timeZone: "UTC",
+          selected: true,
+        },
+        {
+          id: "shared@group.calendar.google.com",
+          summary: "Shared",
+          backgroundColor: "#16a765",
+          accessRole: "reader",
         },
       ],
     };
 
     const mapped = (apiResponse.items ?? []).map(normalizeCalendarListEntry);
+
+    expect(mapped).toHaveLength(2);
+    expect(mapped[0]?.id).toBe("primary");
     expect(mapped[0]?.accessRole).toBe("owner");
+    expect(mapped[0]?.timeZone).toBe("UTC");
+    expect(mapped[0]?.selected).toBe(true);
+    expect(mapped[1]?.accessRole).toBe("reader");
+    expect(mapped[1]?.summary).toBe("Shared");
   });
 });
 

@@ -7,7 +7,7 @@ import { AuthError, getAccessToken, getSession } from "@/lib/auth";
 import {
   type GoogleCalendarEvent,
   normalizeFetchedEvent,
-} from "@/lib/google-calendar";
+} from "@/lib/google-calendar-mappers";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
