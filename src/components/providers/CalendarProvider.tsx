@@ -1,11 +1,11 @@
 "use client";
 
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import {
   type CalendarColorMapping,
   eventCache,
   loadColorMappings,
-  loadSettings,
   saveColorMappings,
 } from "@/lib/calendar-storage";
 import { transformGoogleEvent } from "@/lib/calendar-transform";
@@ -62,6 +62,7 @@ export interface ICalendarContext {
   refreshEvents: () => Promise<void>;
   isLoading: boolean;
   isAuthenticated: boolean;
+  maxEventsPerDay: number;
 }
 
 interface CalendarSettings {
@@ -100,6 +101,11 @@ export function CalendarProvider({
   // Use NextAuth session for authentication
   const { data: session, status } = useSession();
   const isAuthenticated = status === "authenticated";
+
+  // User-configurable data-loading settings (fetched from server when authed,
+  // falls back to defaults otherwise). Powers auto-refresh interval and
+  // fetch-window sizing for refreshEvents.
+  const { settings: userSettings } = useUserSettings();
 
   const [settings, setSettings] = useLocalStorage<CalendarSettings>(
     "calendar-settings",
@@ -305,10 +311,18 @@ export function CalendarProvider({
         }
       }
 
-      // Calculate time range: 1 month ago to 6 months ahead
+      // Calculate time range from user settings (defaults: -1 month, +6 months)
       const now = new Date();
-      const timeMin = new Date(now.getFullYear(), now.getMonth() - 1, 1); // 1 month ago
-      const timeMax = new Date(now.getFullYear(), now.getMonth() + 7, 0); // End of 6 months ahead
+      const timeMin = new Date(
+        now.getFullYear(),
+        now.getMonth() - userSettings.calendarFetchMonthsBehind,
+        1
+      );
+      const timeMax = new Date(
+        now.getFullYear(),
+        now.getMonth() + userSettings.calendarFetchMonthsAhead + 1,
+        0
+      );
 
       // Fetch events from all calendars
       const transformedEvents = await fetchEventsForRange(
@@ -364,6 +378,8 @@ export function CalendarProvider({
     colorMappings,
     fetchCalendarList,
     fetchEventsForRange,
+    userSettings.calendarFetchMonthsAhead,
+    userSettings.calendarFetchMonthsBehind,
   ]);
 
   /**
@@ -500,15 +516,14 @@ export function CalendarProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  // Auto-refresh events based on settings
+  // Auto-refresh events using the user-configurable interval
   useEffect(() => {
     // Only set up refresh interval if authenticated
     if (status !== "authenticated") {
       return;
     }
 
-    const settings = loadSettings();
-    const intervalMs = settings.refreshInterval * 60 * 1000;
+    const intervalMs = userSettings.calendarRefreshIntervalMinutes * 60 * 1000;
 
     const interval = setInterval(() => {
       refreshEvents();
@@ -516,7 +531,7 @@ export function CalendarProvider({
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [status, userSettings.calendarRefreshIntervalMinutes]);
 
   // Filter events
   useEffect(() => {
@@ -576,6 +591,7 @@ export function CalendarProvider({
     refreshEvents,
     isLoading,
     isAuthenticated,
+    maxEventsPerDay: userSettings.calendarMaxEventsPerDay,
   };
 
   return (
