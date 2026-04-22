@@ -161,6 +161,78 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Validate calendarRefreshIntervalMinutes (5-120)
+    if (body.calendarRefreshIntervalMinutes !== undefined) {
+      if (
+        typeof body.calendarRefreshIntervalMinutes !== "number" ||
+        !Number.isInteger(body.calendarRefreshIntervalMinutes) ||
+        body.calendarRefreshIntervalMinutes < 5 ||
+        body.calendarRefreshIntervalMinutes > 120
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "calendarRefreshIntervalMinutes must be an integer between 5 and 120",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate calendarFetchMonthsAhead (1-12)
+    if (body.calendarFetchMonthsAhead !== undefined) {
+      if (
+        typeof body.calendarFetchMonthsAhead !== "number" ||
+        !Number.isInteger(body.calendarFetchMonthsAhead) ||
+        body.calendarFetchMonthsAhead < 1 ||
+        body.calendarFetchMonthsAhead > 12
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "calendarFetchMonthsAhead must be an integer between 1 and 12",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate calendarFetchMonthsBehind (0-6)
+    if (body.calendarFetchMonthsBehind !== undefined) {
+      if (
+        typeof body.calendarFetchMonthsBehind !== "number" ||
+        !Number.isInteger(body.calendarFetchMonthsBehind) ||
+        body.calendarFetchMonthsBehind < 0 ||
+        body.calendarFetchMonthsBehind > 6
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "calendarFetchMonthsBehind must be an integer between 0 and 6",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate calendarMaxEventsPerDay (1-10)
+    if (body.calendarMaxEventsPerDay !== undefined) {
+      if (
+        typeof body.calendarMaxEventsPerDay !== "number" ||
+        !Number.isInteger(body.calendarMaxEventsPerDay) ||
+        body.calendarMaxEventsPerDay < 1 ||
+        body.calendarMaxEventsPerDay > 10
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "calendarMaxEventsPerDay must be an integer between 1 and 10",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const settings = await prisma.userSettings.upsert({
       where: { userId },
       create: {

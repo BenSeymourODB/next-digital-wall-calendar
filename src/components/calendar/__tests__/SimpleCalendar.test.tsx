@@ -71,6 +71,7 @@ function createMockContext(
     refreshEvents: vi.fn(),
     isLoading: false,
     isAuthenticated: true,
+    maxEventsPerDay: 3,
     ...overrides,
   };
 }
@@ -271,6 +272,70 @@ describe("SimpleCalendar", () => {
           ).toBeTruthy();
         }
       });
+    });
+  });
+
+  describe("maxEventsPerDay", () => {
+    function buildDayEvents(day: Date, count: number): IEvent[] {
+      return Array.from({ length: count }, (_, i) =>
+        createMockEvent({
+          id: `ev-${i + 1}`,
+          title: `Event ${i + 1}`,
+          startDate: new Date(
+            day.getFullYear(),
+            day.getMonth(),
+            day.getDate(),
+            9 + i,
+            0
+          ).toISOString(),
+        })
+      );
+    }
+
+    it("renders at most maxEventsPerDay events per day", () => {
+      const selected = new Date(2026, 3, 15); // April 2026
+      const events = buildDayEvents(selected, 5);
+
+      renderWithContext({
+        selectedDate: selected,
+        events,
+        maxEventsPerDay: 2,
+      });
+
+      expect(screen.getByText("Event 1")).toBeInTheDocument();
+      expect(screen.getByText("Event 2")).toBeInTheDocument();
+      expect(screen.queryByText("Event 3")).not.toBeInTheDocument();
+      expect(screen.getByText("+3 more")).toBeInTheDocument();
+    });
+
+    it("renders all events without overflow when count <= maxEventsPerDay", () => {
+      const selected = new Date(2026, 3, 15);
+      const events = buildDayEvents(selected, 4);
+
+      renderWithContext({
+        selectedDate: selected,
+        events,
+        maxEventsPerDay: 5,
+      });
+
+      expect(screen.getByText("Event 1")).toBeInTheDocument();
+      expect(screen.getByText("Event 4")).toBeInTheDocument();
+      expect(screen.queryByText(/\+\d+ more/)).not.toBeInTheDocument();
+    });
+
+    it("falls back to a sensible default when maxEventsPerDay is not provided", () => {
+      // Simulate an older consumer that forgot to provide the field — the
+      // component should still render the overflow label correctly using
+      // whatever the current mock default is (3).
+      const selected = new Date(2026, 3, 15);
+      const events = buildDayEvents(selected, 5);
+
+      renderWithContext({ selectedDate: selected, events });
+
+      expect(screen.getByText("Event 1")).toBeInTheDocument();
+      expect(screen.getByText("Event 3")).toBeInTheDocument();
+      expect(screen.queryByText("Event 4")).not.toBeInTheDocument();
+      expect(screen.getByText("+2 more")).toBeInTheDocument();
     });
   });
 });
