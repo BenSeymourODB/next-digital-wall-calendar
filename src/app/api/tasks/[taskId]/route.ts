@@ -3,6 +3,7 @@
  * Uses server-side authentication with NextAuth.js
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -71,7 +72,7 @@ export async function PATCH(
 
     const accessToken = await getAccessToken();
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GOOGLE_TASKS_API}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`,
       {
         method: "PATCH",
