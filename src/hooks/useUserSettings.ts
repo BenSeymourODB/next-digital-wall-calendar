@@ -36,11 +36,13 @@ export function useUserSettings(): UseUserSettingsResult {
     }
 
     let cancelled = false;
-    setIsLoading(true);
 
     (async () => {
+      if (cancelled) return;
+      setIsLoading(true);
       try {
         const response = await fetch("/api/settings");
+        if (cancelled) return;
         if (!response.ok) {
           logger.log("useUserSettings: /api/settings returned error status", {
             status: response.status,

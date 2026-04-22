@@ -108,6 +108,40 @@ describe("useUserSettings", () => {
     expect(result.current.settings).toEqual(DEFAULT_USER_CALENDAR_SETTINGS);
   });
 
+  it("does not update state after unmount while fetch is in-flight", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    // Fetch that never resolves during the test window — we unmount before it does.
+    let resolveFetch: (value: Response) => void = () => {};
+    vi.mocked(global.fetch).mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    const { unmount } = renderHook(() => useUserSettings());
+    unmount();
+
+    // Now resolve the in-flight fetch — any setState here would be on an
+    // unmounted instance, which React logs via console.error.
+    resolveFetch({
+      ok: true,
+      json: async () => ({ calendarMaxEventsPerDay: 4 }),
+    } as Response);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(consoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining("unmounted component")
+    );
+    consoleError.mockRestore();
+  });
+
   it("merges partial server values over defaults", async () => {
     mockUseSession.mockReturnValue({
       data: { user: { id: "u1" } },

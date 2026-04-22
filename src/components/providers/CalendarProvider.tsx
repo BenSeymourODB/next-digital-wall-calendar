@@ -516,6 +516,13 @@ export function CalendarProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
+  // Keep a ref to the latest refreshEvents so the interval always calls the
+  // current closure (avoids stale state from earlier effect runs).
+  const refreshEventsRef = useRef(refreshEvents);
+  useEffect(() => {
+    refreshEventsRef.current = refreshEvents;
+  }, [refreshEvents]);
+
   // Auto-refresh events using the user-configurable interval
   useEffect(() => {
     // Only set up refresh interval if authenticated
@@ -526,11 +533,10 @@ export function CalendarProvider({
     const intervalMs = userSettings.calendarRefreshIntervalMinutes * 60 * 1000;
 
     const interval = setInterval(() => {
-      refreshEvents();
+      refreshEventsRef.current();
     }, intervalMs);
 
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, userSettings.calendarRefreshIntervalMinutes]);
 
   // Filter events
@@ -591,7 +597,9 @@ export function CalendarProvider({
     refreshEvents,
     isLoading,
     isAuthenticated,
-    maxEventsPerDay: userSettings.calendarMaxEventsPerDay,
+    // Clamp defensively so a rogue DB write of 0 or a negative number never
+    // collapses every non-empty day into a bare "+N more" label.
+    maxEventsPerDay: Math.max(1, userSettings.calendarMaxEventsPerDay),
   };
 
   return (
