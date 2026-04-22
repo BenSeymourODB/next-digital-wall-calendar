@@ -11,24 +11,18 @@
  * which leaves `session()` stuck on a stale refresh token.
  */
 
-type IncomingUser = {
-  id?: string | null;
-  email?: string | null;
-};
-
 type IncomingAccount = {
   provider: string;
   providerAccountId: string;
   type?: string | null;
 } | null;
 
-type StoredAccount = {
+export type StoredAccount = {
   provider: string;
   providerAccountId: string;
 };
 
 export type SignInGuardInput = {
-  user: IncomingUser;
   account: IncomingAccount;
   existingAccounts: readonly StoredAccount[];
 };
@@ -36,6 +30,16 @@ export type SignInGuardInput = {
 export type SignInGuardResult =
   | { allow: true }
   | { allow: false; reason: string; existingProviderAccountId: string };
+
+/**
+ * Return the last 6 characters of an opaque identifier (or the whole string
+ * if it is shorter). Used when logging rejected sign-in attempts so the
+ * structured event carries enough information to distinguish which of two
+ * similar account IDs was involved, without emitting the full PII payload.
+ */
+export function lastSix(id: string): string {
+  return id.length <= 6 ? id : id.slice(-6);
+}
 
 export function shouldAllowSignIn(input: SignInGuardInput): SignInGuardResult {
   const { account, existingAccounts } = input;

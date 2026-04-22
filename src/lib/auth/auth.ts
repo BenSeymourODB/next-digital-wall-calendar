@@ -3,7 +3,7 @@ import { logger } from "@/lib/logger";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import { shouldAllowSignIn } from "./sign-in-guard";
+import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -33,6 +33,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // account. Without this, the Prisma adapter creates a duplicate
       // row that the DB constraint will now reject, but we want a
       // cleaner user-facing failure than a raw Postgres error.
+      //
+      // user.id is only populated after the Prisma adapter has written
+      // the User row. If it is absent this callback is running for a
+      // fresh sign-up, so there are no existing accounts to check and
+      // we short-circuit — do NOT remove this guard, or every new
+      // sign-up will hit a prisma.account query against an undefined
+      // userId.
       if (!account || !user.id) return true;
 
       const existingAccounts = await prisma.account.findMany({
@@ -41,7 +48,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       });
 
       const decision = shouldAllowSignIn({
-        user: { id: user.id, email: user.email },
         account: {
           provider: account.provider,
           providerAccountId: account.providerAccountId,
@@ -51,11 +57,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       });
 
       if (!decision.allow) {
+        // userId alone is enough to trace the incident in the DB;
+        // providerAccountIds are Google's opaque user identifiers and
+        // qualify as PII once telemetry ships, so only emit a suffix
+        // that's useful for distinguishing which of two similar IDs
+        // was involved without leaking the full value.
         logger.event("GoogleAccountLinkRejected", {
           userId: user.id,
           provider: account.provider,
-          existingProviderAccountId: decision.existingProviderAccountId,
-          incomingProviderAccountId: account.providerAccountId,
+          existingProviderAccountIdSuffix: lastSix(
+            decision.existingProviderAccountId
+          ),
+          incomingProviderAccountIdSuffix: lastSix(account.providerAccountId),
         });
         return false;
       }
