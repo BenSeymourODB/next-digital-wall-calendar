@@ -25,8 +25,19 @@ export interface GoogleCalendarAccount {
   calendarIds: string[]; // List of calendar IDs to fetch from this account
 }
 
+/**
+ * Canonical shape of a Google Calendar event inside the app.
+ *
+ * Mirrors the public Google Calendar API v3 Events resource
+ * (https://developers.google.com/workspace/calendar/api/v3/reference/events#resource)
+ * and adds a mandatory `calendarId` that we stamp on fetch so downstream code
+ * can round-trip events through IndexedDB caches and color mappings. All
+ * upstream-optional fields remain optional here; keep additions in sync with
+ * the ambient `gapi.client.calendar.Event` type in `src/types/gapi.d.ts`.
+ */
 export interface GoogleCalendarEvent {
   id: string;
+  /** Required here for our UI; Google marks this optional, so we tolerate an empty string upstream. */
   summary: string;
   description?: string;
   start: {
@@ -41,10 +52,117 @@ export interface GoogleCalendarEvent {
   };
   colorId?: string;
   creator?: {
+    id?: string;
     email?: string;
     displayName?: string;
+    self?: boolean;
   };
+  organizer?: {
+    id?: string;
+    email?: string;
+    displayName?: string;
+    self?: boolean;
+  };
+
+  /** Lifecycle metadata preserved for caching and conflict resolution. */
+  etag?: string;
+  status?: "confirmed" | "tentative" | "cancelled";
+  htmlLink?: string;
+  created?: string;
+  updated?: string;
+  iCalUID?: string;
+  sequence?: number;
+
+  /** Location / conferencing metadata. */
+  location?: string;
+  hangoutLink?: string;
+
+  /** Visibility / scheduling flags. */
+  transparency?: "opaque" | "transparent";
+  visibility?: "default" | "public" | "private" | "confidential";
+  eventType?:
+    | "default"
+    | "outOfOffice"
+    | "focusTime"
+    | "workingLocation"
+    | "fromGmail";
+
+  /** Attendees, reminders, recurrence. */
+  attendees?: gapi.client.calendar.EventAttendee[];
+  reminders?: gapi.client.calendar.EventReminders;
+  recurrence?: string[];
+  recurringEventId?: string;
+  originalStartTime?: gapi.client.calendar.EventDateTime;
+
+  /** The calendar this event was fetched from — not a Google-API field. */
   calendarId: string;
+}
+
+/**
+ * Shape returned by `fetchUserCalendars` — mirrors the fields we pluck off
+ * `gapi.client.calendar.CalendarListEntry`. Optional fields stay optional so
+ * callers can progressively opt in.
+ */
+export interface UserCalendar {
+  id: string;
+  summary: string;
+  description?: string;
+  backgroundColor?: string;
+  foregroundColor?: string;
+  primary?: boolean;
+  /** Calendar-level colorId from the calendarList resource (not event-level). */
+  colorId?: string;
+  timeZone?: string;
+  summaryOverride?: string;
+  selected?: boolean;
+  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
+}
+
+/**
+ * Normalise a raw Google Calendar API event into our {@link GoogleCalendarEvent}
+ * shape, stamping the source `calendarId` so cached events can be looked up by
+ * calendar later.
+ *
+ * Exported for unit testing and for reuse by any code path that receives raw
+ * Google Calendar API responses (e.g. the server-side REST fetch in
+ * `src/app/api/calendar/events/route.ts`).
+ */
+export function normalizeFetchedEvent(
+  event: gapi.client.calendar.Event,
+  calendarId: string
+): GoogleCalendarEvent {
+  return {
+    ...event,
+    // Google marks `summary` optional; our UI expects a string so we fall back
+    // to the empty string and let `transformGoogleEvent` substitute a label.
+    summary: event.summary ?? "",
+    calendarId,
+  };
+}
+
+/**
+ * Normalise a raw `CalendarListEntry` into the slim shape consumed by the app.
+ *
+ * Also exported so server-side callers that fetch `calendarList.list` via
+ * plain `fetch()` can reuse the same mapping without duplicating the field
+ * selection.
+ */
+export function normalizeCalendarListEntry(
+  entry: gapi.client.calendar.CalendarListEntry
+): UserCalendar {
+  return {
+    id: entry.id,
+    summary: entry.summary,
+    description: entry.description,
+    backgroundColor: entry.backgroundColor,
+    foregroundColor: entry.foregroundColor,
+    primary: entry.primary,
+    colorId: entry.colorId,
+    timeZone: entry.timeZone,
+    summaryOverride: entry.summaryOverride,
+    selected: entry.selected,
+    accessRole: entry.accessRole,
+  };
 }
 
 const GOOGLE_CALENDAR_CONFIG: GoogleCalendarConfig = {
@@ -446,12 +564,7 @@ export async function fetchCalendarEvents(
       timeMax: timeMax.toISOString(),
     });
 
-    return events.map(
-      (event): GoogleCalendarEvent => ({
-        ...event,
-        calendarId,
-      })
-    );
+    return events.map((event) => normalizeFetchedEvent(event, calendarId));
   } catch (error: unknown) {
     const err = error as {
       result?: { error?: { code?: number; message?: string } };
@@ -510,7 +623,7 @@ export async function fetchEventsFromMultipleCalendars(
 /**
  * Fetch all calendars for the signed-in user
  */
-export async function fetchUserCalendars() {
+export async function fetchUserCalendars(): Promise<UserCalendar[]> {
   await initGoogleAPI();
 
   try {
@@ -519,23 +632,7 @@ export async function fetchUserCalendars() {
 
     logger.log("Fetched user calendars", { count: calendars.length });
 
-    return calendars.map(
-      (calendar: {
-        id: string;
-        summary: string;
-        description?: string;
-        backgroundColor?: string;
-        foregroundColor?: string;
-        primary?: boolean;
-      }) => ({
-        id: calendar.id,
-        summary: calendar.summary,
-        description: calendar.description,
-        backgroundColor: calendar.backgroundColor,
-        foregroundColor: calendar.foregroundColor,
-        primary: calendar.primary,
-      })
-    );
+    return calendars.map(normalizeCalendarListEntry);
   } catch (error) {
     logger.error(error as Error, { context: "fetchUserCalendars" });
     throw error;
@@ -558,7 +655,11 @@ export async function fetchCalendarColorMappings(): Promise<
 
       return {
         calendarId: calendar.id,
-        colorId: "", // Google Calendar API doesn't provide colorId in calendarList
+        // Intentionally empty: `CalendarColorMapping.colorId` models the
+        // event-level colorId (from `calendar#colors.event`). CalendarList
+        // entries only carry a calendar-level colorId, which we do not need
+        // because we map colors via the richer `backgroundColor` field above.
+        colorId: "",
         hexColor,
         tailwindColor,
       };
