@@ -333,5 +333,44 @@ describe("/api/tasks/[taskId]", () => {
       expect(status).toBe(200);
       expect(data.task.status).toBe("needsAction");
     });
+
+    it("retries a transient 503 on PATCH and returns the eventual 200 (issue #68)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const updatedTask = { id: taskId, title: "Test", status: "completed" };
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          headers: new Headers(),
+          json: () => Promise.resolve({ error: "Service Unavailable" }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(updatedTask),
+        });
+
+      const request = createMockRequest(
+        `/api/tasks/${taskId}?listId=${listId}`,
+        { method: "PATCH", body: { status: "completed" } }
+      );
+      const response = await PATCH(request, {
+        params: Promise.resolve({ taskId }),
+      });
+      const { status, data } = await parseResponse<{
+        task: typeof updatedTask;
+      }>(response);
+
+      expect(status).toBe(200);
+      expect(data.task).toEqual(updatedTask);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      // PATCH body is a string (JSON.stringify) — retry re-sends it verbatim.
+      const [[, firstInit], [, secondInit]] = mockFetch.mock.calls;
+      expect(firstInit?.body).toBe(secondInit?.body);
+      expect(firstInit?.method).toBe("PATCH");
+    });
   });
 });

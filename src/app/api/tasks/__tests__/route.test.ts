@@ -417,5 +417,42 @@ describe("/api/tasks", () => {
       expect(status).toBe(401);
       expect(data.requiresReauth).toBe(true);
     });
+
+    it("retries a transient 503 on create and returns the eventual 201 (issue #68)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const createdTask = { id: "t1", title: "New Task" };
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          headers: new Headers(),
+          json: () => Promise.resolve({ error: "Service Unavailable" }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(createdTask),
+        });
+
+      const request = createMockRequest("/api/tasks", {
+        method: "POST",
+        body: { listId: "list-123", title: "New Task" },
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<{
+        task: typeof createdTask;
+      }>(response);
+
+      expect(status).toBe(201);
+      expect(data.task).toEqual(createdTask);
+      // Both attempts carry the same JSON body string (safe to re-send).
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      const [[, firstInit], [, secondInit]] = mockFetch.mock.calls;
+      expect(firstInit?.body).toBe(secondInit?.body);
+      expect(firstInit?.method).toBe("POST");
+    });
   });
 });

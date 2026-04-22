@@ -172,9 +172,13 @@ describe("/api/tasks/lists", () => {
         mockGoogleAccount.access_token!
       );
 
+      // 500 is transient — retries exhaust, the final response still bubbles
+      // up through the route's !ok branch unchanged. Headers must be a real
+      // Headers instance so fetchWithRetry can read Retry-After on each pass.
       mockFetch.mockResolvedValue({
         ok: false,
         status: 500,
+        headers: new Headers(),
         json: () => Promise.resolve({ error: "Internal error" }),
       });
 
@@ -194,6 +198,53 @@ describe("/api/tasks/lists", () => {
 
       expect(status).toBe(500);
       expect(data.error).toBe("An unexpected error occurred");
+    });
+
+    it("retries a transient 503 and returns the eventual 200 (issue #68)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          headers: new Headers(),
+          json: () => Promise.resolve({ error: "Service Unavailable" }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ items: [{ id: "l1", title: "List" }] }),
+        });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<{
+        lists: { id: string; title: string }[];
+      }>(response);
+
+      expect(status).toBe(200);
+      expect(data.lists).toHaveLength(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("does NOT retry a 401 from upstream (non-transient, issue #68)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        json: () => Promise.resolve({ error: "Unauthorized" }),
+      });
+
+      const response = await GET();
+      await parseResponse<ApiErrorResponse>(response);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 });

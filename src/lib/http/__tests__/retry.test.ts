@@ -89,8 +89,30 @@ describe("isTransientHttpError", () => {
   });
 
   it("treats network errors (TypeError from fetch) as transient", () => {
-    // `fetch` throws TypeError for DNS / TCP / CORS / abort-free network failures.
+    // `fetch` throws TypeError for DNS / TCP / CORS / abort-free network
+    // failures. Node emits "fetch failed", Chrome "Failed to fetch", Firefox
+    // "NetworkError when attempting to fetch resource" — all contain "fetch".
     expect(isTransientHttpError(new TypeError("fetch failed"))).toBe(true);
+    expect(isTransientHttpError(new TypeError("Failed to fetch"))).toBe(true);
+    expect(
+      isTransientHttpError(
+        new TypeError("NetworkError when attempting to fetch resource.")
+      )
+    ).toBe(true);
+  });
+
+  it("does NOT treat programming TypeErrors (bad URL / bad header) as transient", () => {
+    // Regression guard for review feedback: `fetch` also throws TypeError for
+    // synchronous programming errors — invalid URLs, malformed header values.
+    // Those are bugs, not transient failures; retrying wastes quota and masks
+    // the defect.
+    expect(isTransientHttpError(new TypeError("Invalid URL"))).toBe(false);
+    expect(
+      isTransientHttpError(new TypeError("Header value contains invalid bytes"))
+    ).toBe(false);
+    expect(isTransientHttpError(new TypeError("foo is not a function"))).toBe(
+      false
+    );
   });
 
   it("does not treat AbortError as transient (caller requested abort)", () => {
@@ -540,6 +562,64 @@ describe("fetchWithRetry", () => {
       "https://example.com/x",
       expect.objectContaining({ signal: controller.signal })
     );
+  });
+
+  it("re-throws a network error even when a prior attempt returned a transient response (no stale fallback)", async () => {
+    // Regression guard for review feedback: if attempts mix transient 5xx
+    // responses and network failures and the FINAL attempt throws a network
+    // error, `fetchWithRetry` must surface the thrown error — not the stale
+    // Response object left over from an earlier transient attempt.
+    const netError = new TypeError("fetch failed");
+    mockFetch
+      .mockResolvedValueOnce(errorResponse(503))
+      .mockRejectedValueOnce(netError)
+      .mockRejectedValueOnce(netError);
+    const { sleep } = createSleep();
+
+    await expect(
+      fetchWithRetry("https://example.com/x", undefined, {
+        maxAttempts: 3,
+        baseDelayMs: 1,
+        jitter: "none",
+        sleep,
+        random: midpointRandom,
+      })
+    ).rejects.toBe(netError);
+
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("clones a Request input before retrying (body stream is single-shot)", async () => {
+    // A Request body is a ReadableStream that is consumed on the first fetch.
+    // Retrying with the same Request would send an empty body. `fetchWithRetry`
+    // must clone per attempt.
+    const request = new Request("https://example.com/x", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: "payload",
+    });
+
+    mockFetch
+      .mockResolvedValueOnce(errorResponse(503))
+      .mockResolvedValueOnce(okResponse());
+    const { sleep } = createSleep();
+
+    await fetchWithRetry(request, undefined, {
+      maxAttempts: 2,
+      baseDelayMs: 1,
+      jitter: "none",
+      sleep,
+      random: midpointRandom,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // Each call must receive a distinct Request instance so body reads
+    // succeed on the retry.
+    const firstArg = mockFetch.mock.calls[0]![0];
+    const secondArg = mockFetch.mock.calls[1]![0];
+    expect(firstArg).toBeInstanceOf(Request);
+    expect(secondArg).toBeInstanceOf(Request);
+    expect(firstArg).not.toBe(secondArg);
   });
 
   it("does not clobber a pre-existing init.signal (caller signal wins)", async () => {

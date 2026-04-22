@@ -96,15 +96,20 @@ export function isTransientHttpError(error: unknown): boolean {
     if (error.status === 429) return true;
     return error.status >= 500 && error.status < 600;
   }
-  // `fetch` throws TypeError for DNS / TCP / CORS / offline failures. Abort is
-  // explicitly NOT transient — the caller asked to stop.
-  if (error instanceof TypeError) return true;
   if (
     error instanceof Error &&
     (error.name === "AbortError" || error.name === "TimeoutError")
   ) {
     return false;
   }
+  // `fetch` throws TypeError for DNS / TCP / CORS / offline failures — and
+  // also for programming errors like invalid URLs or bad header values. The
+  // network cases all mention "fetch" in the message across Node ("fetch
+  // failed"), Chrome ("Failed to fetch"), and Firefox ("NetworkError when
+  // attempting to fetch resource"); programming errors say things like
+  // "Invalid URL" and should fail fast, not retry. Narrow the match so bugs
+  // surface instead of burning retry budget.
+  if (error instanceof TypeError && /fetch/i.test(error.message)) return true;
   return false;
 }
 
@@ -255,13 +260,24 @@ export async function fetchWithRetry(
     effectiveInit.signal = options.signal;
   }
 
+  // `fetchWithRetry` reads its own copy of maxAttempts so the inner function
+  // can decide between "throw HttpRetryError" (ask `withRetry` to retry) and
+  // "return the transient response as-is" (we're out of budget, let the
+  // caller's existing !ok branch run). `withRetry` reads the same option too;
+  // sharing the options object keeps them in lock-step.
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
 
   let lastResponse: Response | undefined;
 
   try {
     await withRetry<Response>(async (attempt) => {
-      const response = await fetch(input, effectiveInit);
+      // A Request body is a ReadableStream that is consumed on first read;
+      // calling `fetch(request)` twice would send an empty body on retry.
+      // Clone per attempt when the caller passed a Request so retries carry
+      // the original payload. String/URL inputs are not consumable and do
+      // not need cloning.
+      const perAttemptInput = input instanceof Request ? input.clone() : input;
+      const response = await fetch(perAttemptInput, effectiveInit);
       if (response.ok || !shouldRetryResponse(response)) {
         lastResponse = response;
         return response;
@@ -283,10 +299,18 @@ export async function fetchWithRetry(
       );
     }, options);
   } catch (error) {
-    // If the final attempt produced a transient Response we want to surface
-    // it rather than throw — matches the pre-retry contract. A thrown
-    // network error, by contrast, must propagate.
-    if (lastResponse && !lastResponse.ok && shouldRetryResponse(lastResponse)) {
+    // Only substitute the stored transient response when the retry loop
+    // escalated *this* attempt via HttpRetryError. If the final attempt
+    // threw a network error (TypeError) or AbortError, lastResponse may be
+    // a stale Response from an earlier attempt whose body is already
+    // consumed — returning it would silently corrupt the caller's error
+    // handling. Propagate the thrown error instead.
+    if (
+      error instanceof HttpRetryError &&
+      lastResponse &&
+      !lastResponse.ok &&
+      shouldRetryResponse(lastResponse)
+    ) {
       return lastResponse;
     }
     throw error;
