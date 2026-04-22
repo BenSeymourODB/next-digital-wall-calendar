@@ -2,8 +2,9 @@
 
 import { AccountManager } from "@/components/calendar/AccountManager";
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
-import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
+import { AnimatedSwap } from "@/components/calendar/animated-swap";
+import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
@@ -20,6 +21,8 @@ import { Toaster } from "@/components/ui/sonner";
 import type { TCalendarView } from "@/types/calendar";
 import { useState } from "react";
 import { Settings } from "lucide-react";
+
+const VIEW_FADE_DURATION_MS = 250;
 
 function CalendarView({ view }: { view: TCalendarView }) {
   switch (view) {
@@ -50,7 +53,7 @@ function CalendarContent() {
   // Views that surface the mini-calendar sidebar. Month duplicates the main
   // grid (issue #146) and the Clock view ships its own all-day events aside,
   // so neither needs the shared sidebar.
-  const showSidebar = view !== "month" && view !== "clock" && view !== "year" ;
+  const showSidebar = view !== "month" && view !== "clock" && view !== "year";
 
   return (
     <div className="bg-background min-h-screen p-4 sm:p-8">
@@ -97,7 +100,14 @@ function CalendarContent() {
           }
         >
           <div className="border-border bg-card rounded-lg border p-6">
-            <CalendarView view={view} />
+            <AnimatedSwap
+              swapKey={view}
+              type="fade"
+              direction="forward"
+              durationMs={VIEW_FADE_DURATION_MS}
+            >
+              <CalendarView view={view} />
+            </AnimatedSwap>
           </div>
           {showSidebar && <MiniCalendarSidebar />}
         </div>

@@ -770,4 +770,78 @@ describe("SimpleCalendar", () => {
       );
     });
   });
+
+  describe("Month navigation slide direction", () => {
+    it("slides the outgoing grid left (translateX(-100%)) on Next month", async () => {
+      const user = userEvent.setup();
+      const initialDate = new Date(2026, 3, 15); // April 2026
+
+      const { rerender, contextValue } = renderWithContext({
+        selectedDate: initialDate,
+      });
+
+      // Click Next; the parent provider then commits the new selectedDate
+      // and the AnimatedSwap derives slide direction from the month delta.
+      await user.click(screen.getByTestId("calendar-next-month"));
+
+      // Simulate the provider committing the new selectedDate.
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...contextValue, selectedDate: new Date(2026, 4, 15) }}
+        >
+          <SimpleCalendar />
+        </CalendarContext.Provider>
+      );
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(-100%)");
+    });
+
+    it("slides the outgoing grid right (translateX(100%)) on Previous month", async () => {
+      const user = userEvent.setup();
+      const initialDate = new Date(2026, 3, 15); // April 2026
+
+      const { rerender, contextValue } = renderWithContext({
+        selectedDate: initialDate,
+      });
+
+      await user.click(screen.getByTestId("calendar-prev-month"));
+
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...contextValue, selectedDate: new Date(2026, 2, 15) }}
+        >
+          <SimpleCalendar />
+        </CalendarContext.Provider>
+      );
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(100%)");
+    });
+
+    it("keeps the role='grid' element stable across month changes (no remount)", async () => {
+      const user = userEvent.setup();
+      const initialDate = new Date(2026, 3, 15);
+
+      const { rerender, contextValue } = renderWithContext({
+        selectedDate: initialDate,
+      });
+
+      const gridBefore = screen.getByRole("grid", { name: /April 2026/ });
+
+      await user.click(screen.getByTestId("calendar-next-month"));
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...contextValue, selectedDate: new Date(2026, 4, 15) }}
+        >
+          <SimpleCalendar />
+        </CalendarContext.Provider>
+      );
+
+      // The grid root stays mounted (same DOM node) so screen readers
+      // retain context — only the inner day-cells rowgroup is animated.
+      const gridAfter = screen.getByRole("grid", { name: /May 2026/ });
+      expect(gridAfter).toBe(gridBefore);
+    });
+  });
 });

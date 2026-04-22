@@ -1,8 +1,9 @@
 "use client";
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
-import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
+import { AnimatedSwap } from "@/components/calendar/animated-swap";
+import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
@@ -304,12 +305,19 @@ function CalendarDisplay() {
 
   return (
     <div data-testid="calendar-display">
-      {view === "day" && <DayCalendar />}
-      {view === "week" && <WeekCalendar />}
-      {view === "month" && <SimpleCalendar />}
-      {view === "year" && <YearCalendar />}
-      {view === "agenda" && <AgendaCalendar />}
-      {view === "clock" && <AnalogClockView />}
+      <AnimatedSwap
+        swapKey={view}
+        type="fade"
+        direction="forward"
+        durationMs={250}
+      >
+        {view === "day" && <DayCalendar />}
+        {view === "week" && <WeekCalendar />}
+        {view === "month" && <SimpleCalendar />}
+        {view === "year" && <YearCalendar />}
+        {view === "agenda" && <AgendaCalendar />}
+        {view === "clock" && <AnalogClockView />}
+      </AnimatedSwap>
     </div>
   );
 }
