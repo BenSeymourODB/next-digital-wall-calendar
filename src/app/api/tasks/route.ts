@@ -3,6 +3,7 @@
  * Uses server-side authentication with NextAuth.js
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
     apiUrl.searchParams.set("maxResults", maxResults);
     apiUrl.searchParams.set("showCompleted", String(showCompleted));
 
-    const response = await fetch(apiUrl.toString(), {
+    const response = await fetchWithRetry(apiUrl.toString(), {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
 
     const accessToken = await getAccessToken();
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GOOGLE_TASKS_API}/lists/${encodeURIComponent(listId)}/tasks`,
       {
         method: "POST",

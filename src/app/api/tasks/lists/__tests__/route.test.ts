@@ -37,6 +37,27 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
+// Replace the real `sleep` inside fetchWithRetry with a no-op so transient-
+// status tests (5xx, 429) don't wait for real backoff delays.
+vi.mock("@/lib/http/retry", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/http/retry")>(
+      "@/lib/http/retry"
+    );
+  return {
+    ...actual,
+    fetchWithRetry: (
+      input: Parameters<typeof actual.fetchWithRetry>[0],
+      init?: Parameters<typeof actual.fetchWithRetry>[1],
+      options: Parameters<typeof actual.fetchWithRetry>[2] = {}
+    ) =>
+      actual.fetchWithRetry(input, init, {
+        ...options,
+        sleep: () => Promise.resolve(),
+      }),
+  };
+});
+
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;

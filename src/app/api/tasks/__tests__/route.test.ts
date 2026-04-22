@@ -38,6 +38,28 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
+// Replace the real `sleep` inside fetchWithRetry with a no-op so transient-
+// status tests (5xx, 429) don't wait for real backoff delays. All other
+// retry behaviour stays untouched.
+vi.mock("@/lib/http/retry", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/http/retry")>(
+      "@/lib/http/retry"
+    );
+  return {
+    ...actual,
+    fetchWithRetry: (
+      input: Parameters<typeof actual.fetchWithRetry>[0],
+      init?: Parameters<typeof actual.fetchWithRetry>[1],
+      options: Parameters<typeof actual.fetchWithRetry>[2] = {}
+    ) =>
+      actual.fetchWithRetry(input, init, {
+        ...options,
+        sleep: () => Promise.resolve(),
+      }),
+  };
+});
+
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -193,6 +215,92 @@ describe("/api/tasks", () => {
 
       expect(status).toBe(500);
       expect(data.error).toBe("An unexpected error occurred");
+    });
+
+    it("retries a transient 503 and returns the eventual 200 (issue #68)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      // First two calls fail with 503; the third succeeds. The route should
+      // surface the final success, not the transient failures.
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          headers: new Headers(),
+          json: () => Promise.resolve({ error: "Service Unavailable" }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          headers: new Headers(),
+          json: () => Promise.resolve({ error: "Service Unavailable" }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ items: [{ id: "t1", title: "T1" }] }),
+        });
+
+      const request = createMockRequest("/api/tasks?listId=list-123");
+      const response = await GET(request);
+      const { status, data } = await parseResponse<{
+        tasks: { id: string; title: string }[];
+      }>(response);
+
+      expect(status).toBe(200);
+      expect(data.tasks).toHaveLength(1);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it("retries a 429 honouring Retry-After and returns the eventual 200 (issue #68)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          headers: new Headers({ "Retry-After": "1" }),
+          json: () => Promise.resolve({ error: "rate limited" }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ items: [] }),
+        });
+
+      const request = createMockRequest("/api/tasks?listId=list-123");
+      const response = await GET(request);
+      const { status } = await parseResponse<{ tasks: unknown[] }>(response);
+
+      expect(status).toBe(200);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("does NOT retry a 401 from the upstream API (non-transient, issue #68)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        json: () => Promise.resolve({ error: "Unauthorized" }),
+      });
+
+      const request = createMockRequest("/api/tasks?listId=list-123");
+      const response = await GET(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(401);
+      expect(data.requiresReauth).toBe(true);
+      // 401 is not transient — the route must not retry.
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 
