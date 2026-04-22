@@ -3,6 +3,7 @@ import { logger } from "@/lib/logger";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import { shouldAllowSignIn } from "./sign-in-guard";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -26,6 +27,41 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      // Guard against issue #61: reject attempts to link a second
+      // Google identity to a user that already has a different Google
+      // account. Without this, the Prisma adapter creates a duplicate
+      // row that the DB constraint will now reject, but we want a
+      // cleaner user-facing failure than a raw Postgres error.
+      if (!account || !user.id) return true;
+
+      const existingAccounts = await prisma.account.findMany({
+        where: { userId: user.id, provider: account.provider },
+        select: { provider: true, providerAccountId: true },
+      });
+
+      const decision = shouldAllowSignIn({
+        user: { id: user.id, email: user.email },
+        account: {
+          provider: account.provider,
+          providerAccountId: account.providerAccountId,
+          type: account.type,
+        },
+        existingAccounts,
+      });
+
+      if (!decision.allow) {
+        logger.event("GoogleAccountLinkRejected", {
+          userId: user.id,
+          provider: account.provider,
+          existingProviderAccountId: decision.existingProviderAccountId,
+          incomingProviderAccountId: account.providerAccountId,
+        });
+        return false;
+      }
+
+      return true;
+    },
     async session({ session, user }) {
       // Get the Google account for this user
       const [googleAccount] = await prisma.account.findMany({
