@@ -182,6 +182,18 @@ describe("token-cipher", () => {
       expect(() => encryptToken("x")).toThrow(/TOKEN_ENCRYPTION_KEY/);
     });
 
+    it("throws a dev-appropriate error when neither key nor NEXTAUTH_SECRET is set in non-production", async () => {
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv("NODE_ENV", "development");
+
+      const { encryptToken } = await loadCipher();
+      // Error should NOT say "required in production" — it misleads devs whose
+      // real problem is that NEXTAUTH_SECRET is also missing.
+      expect(() => encryptToken("x")).toThrow(/NEXTAUTH_SECRET/);
+      expect(() => encryptToken("x")).not.toThrow(/required in production/);
+    });
+
     it("throws when TOKEN_ENCRYPTION_KEY decodes to the wrong length", async () => {
       // 16 bytes is not 32 — should be rejected
       vi.stubEnv("TOKEN_ENCRYPTION_KEY", randomBytes(16).toString("base64"));
@@ -193,6 +205,51 @@ describe("token-cipher", () => {
       vi.stubEnv("TOKEN_ENCRYPTION_KEY", "!!!not-base64!!!");
       const { encryptToken } = await loadCipher();
       expect(() => encryptToken("x")).toThrow();
+    });
+
+    it("accepts a base64url-encoded TOKEN_ENCRYPTION_KEY (with - and _ chars)", async () => {
+      // A 32-byte key whose standard-base64 encoding contains '+' or '/';
+      // loop until we find one so the test always exercises the alphabet diff.
+      let raw: Buffer;
+      let standardB64: string;
+      do {
+        raw = randomBytes(32);
+        standardB64 = raw.toString("base64");
+      } while (!/[+/]/.test(standardB64));
+
+      const url = raw.toString("base64url");
+      expect(url).not.toBe(standardB64); // sanity — they differ in alphabet
+
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", url);
+      const { encryptToken, decryptToken } = await loadCipher();
+      const envelope = encryptToken("base64url-keyed-secret");
+      expect(envelope).not.toBeNull();
+      expect(decryptToken(envelope)).toBe("base64url-keyed-secret");
+    });
+
+    it("warns once when deriving a key from NEXTAUTH_SECRET", async () => {
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv(
+        "NEXTAUTH_SECRET",
+        "dev-only-secret-for-testing-xxxxxxxxxxxxxxxxxx"
+      );
+      vi.stubEnv("NODE_ENV", "development");
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { encryptToken } = await loadCipher();
+      encryptToken("a");
+      encryptToken("b");
+      encryptToken("c");
+
+      const derivationWarns = warnSpy.mock.calls.filter(
+        (args) =>
+          typeof args[0] === "string" &&
+          args[0].includes("TOKEN_ENCRYPTION_KEY")
+      );
+      expect(derivationWarns.length).toBe(1);
+
+      warnSpy.mockRestore();
     });
   });
 });

@@ -36,13 +36,28 @@ algorithm or key format without breaking reads.
 ## Writing flow
 
 1. **Initial OAuth link** — `@auth/prisma-adapter` creates the row with
-   plaintext tokens, then `events.linkAccount` in
-   `src/lib/auth/auth.ts` runs and `UPDATE`s the row with `v1:...`
-   envelopes. The plaintext window is one Prisma round trip.
+   plaintext tokens, then the `events.linkAccount` hook in
+   `src/lib/auth/auth.ts` (delegating to
+   `src/lib/auth/link-account.ts`) runs and `UPDATE`s the row with `v1:...`
+   envelopes.
+   - **Happy-path plaintext window**: one Prisma round trip (tens of ms).
+   - **Worst-case plaintext window**: if `encryptLinkedAccount` itself
+     fails (DB hiccup, transient connection error), the failure is logged
+     with context `LinkAccountEncryptionFailed` and sign-in is **not**
+     blocked. Plaintext remains in the row until the next successful
+     session-callback refresh re-encrypts it — up to the access token's
+     lifetime (~1h for Google's default `expires_in`). Callers reading via
+     `getAccessToken` / `getGoogleAccount` continue to work throughout
+     because they accept legacy plaintext transparently.
 2. **Token refresh** — when the session callback detects an expired access
    token, the stored refresh token is decrypted, Google's token endpoint is
    called, and the new access + refresh tokens are encrypted before
    `prisma.account.update`.
+   - Decryption failures here (tampered envelope, GCM auth-tag mismatch,
+     unknown envelope version after a key rotation) log with context
+     `RefreshTokenDecryptFailed` before the outer catch marks the session
+     with `RefreshTokenError`. Operators can tell a cipher-side problem
+     apart from a Google-side refresh failure.
 
 ## Reading flow
 

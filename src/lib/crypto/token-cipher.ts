@@ -26,6 +26,28 @@ const HKDF_INFO = "token-cipher/v1";
 
 let cachedKey: Buffer | null = null;
 let cachedKeySource: string | null = null;
+let loggedDerivationWarning = false;
+
+/**
+ * Decode a base64 or base64url-encoded string into a Buffer, returning null
+ * if the input is not valid in either alphabet. We accept both because the
+ * docs suggest `openssl rand -base64 32` (standard alphabet) but Node's
+ * built-in `randomBytes(32).toString('base64url')` and many secret managers
+ * emit base64url (`-`/`_` instead of `+`/`/`), which should not be rejected.
+ */
+function decodeBase64Key(input: string): Buffer | null {
+  const stripped = input.replace(/=+$/, "");
+  const normalised = stripped.replace(/-/g, "+").replace(/_/g, "/");
+  if (!/^[A-Za-z0-9+/]+$/.test(normalised)) {
+    return null;
+  }
+  const decoded = Buffer.from(normalised, "base64");
+  // Round-trip to catch rare cases where Buffer.from accepts garbage.
+  if (decoded.toString("base64").replace(/=+$/, "") !== normalised) {
+    return null;
+  }
+  return decoded;
+}
 
 function resolveKey(): Buffer {
   const envKey = process.env.TOKEN_ENCRYPTION_KEY;
@@ -41,15 +63,10 @@ function resolveKey(): Buffer {
 
   let key: Buffer;
   if (envKey && envKey.length > 0) {
-    const decoded = Buffer.from(envKey, "base64");
-    // Buffer.from silently tolerates invalid base64 by producing a shorter
-    // buffer, so re-encode and compare to detect malformed input.
-    if (
-      decoded.toString("base64").replace(/=+$/, "") !==
-      envKey.replace(/=+$/, "")
-    ) {
+    const decoded = decodeBase64Key(envKey);
+    if (!decoded) {
       throw new Error(
-        "TOKEN_ENCRYPTION_KEY is not valid base64 (generate with `openssl rand -base64 32`)."
+        "TOKEN_ENCRYPTION_KEY is not valid base64/base64url (generate with `openssl rand -base64 32`)."
       );
     }
     if (decoded.length !== KEY_LENGTH) {
@@ -61,6 +78,16 @@ function resolveKey(): Buffer {
   } else if (nodeEnv !== "production" && nextAuthSecret) {
     // Dev / test convenience: derive a stable 32-byte key from NEXTAUTH_SECRET
     // so developers don't need to generate and distribute a second secret.
+    // Warn once per process so shared dev/staging environments don't silently
+    // rely on the fallback — rotating NEXTAUTH_SECRET would otherwise
+    // unexpectedly invalidate every encrypted token.
+    if (!loggedDerivationWarning) {
+      console.warn(
+        "[token-cipher] TOKEN_ENCRYPTION_KEY not set; deriving key from NEXTAUTH_SECRET. " +
+          "Set TOKEN_ENCRYPTION_KEY explicitly for any shared or persistent environment."
+      );
+      loggedDerivationWarning = true;
+    }
     const derived = hkdfSync(
       "sha256",
       Buffer.from(nextAuthSecret, "utf8"),
@@ -69,10 +96,15 @@ function resolveKey(): Buffer {
       KEY_LENGTH
     );
     key = Buffer.from(derived);
-  } else {
+  } else if (nodeEnv === "production") {
     throw new Error(
       "TOKEN_ENCRYPTION_KEY is required in production. " +
         "Generate with `openssl rand -base64 32` and set it on the server."
+    );
+  } else {
+    throw new Error(
+      "Cannot resolve token encryption key: set TOKEN_ENCRYPTION_KEY " +
+        "(base64, 32 bytes) or NEXTAUTH_SECRET for the development fallback."
     );
   }
 
