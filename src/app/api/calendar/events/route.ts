@@ -4,26 +4,14 @@
  * Supports fetching from multiple calendars
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import {
+  type GoogleCalendarEvent,
+  normalizeFetchedEvent,
+} from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
-
-interface GoogleCalendarEvent {
-  id: string;
-  summary?: string;
-  description?: string;
-  start: { dateTime?: string; date?: string };
-  end: { dateTime?: string; date?: string };
-  colorId?: string;
-  creator?: { email?: string; displayName?: string };
-  organizer?: { email?: string; displayName?: string };
-  [key: string]: unknown;
-}
-
-interface CalendarEventWithId extends GoogleCalendarEvent {
-  calendarId: string;
-}
 
 interface CalendarFetchError {
   calendarId: string;
@@ -42,7 +30,7 @@ async function fetchEventsFromCalendar(
   maxResults: string,
   singleEvents: boolean
 ): Promise<{
-  events: CalendarEventWithId[];
+  events: GoogleCalendarEvent[];
   error?: CalendarFetchError;
   summary?: string;
   timeZone?: string;
@@ -76,11 +64,9 @@ async function fetchEventsFromCalendar(
   }
 
   const data = await response.json();
-  const events: CalendarEventWithId[] = (data.items || []).map(
-    (event: GoogleCalendarEvent) => ({
-      ...event,
-      calendarId,
-    })
+  const events: GoogleCalendarEvent[] = (data.items || []).map(
+    (event: gapi.client.calendar.Event) =>
+      normalizeFetchedEvent(event, calendarId)
   );
 
   return {
@@ -141,7 +127,7 @@ export async function GET(request: NextRequest) {
     );
 
     // Collect events and errors
-    const allEvents: CalendarEventWithId[] = [];
+    const allEvents: GoogleCalendarEvent[] = [];
     const errors: CalendarFetchError[] = [];
     let summary: string | undefined;
     let timeZone: string | undefined;
@@ -194,7 +180,7 @@ export async function GET(request: NextRequest) {
     });
 
     const response: {
-      events: CalendarEventWithId[];
+      events: GoogleCalendarEvent[];
       nextPageToken?: string;
       summary?: string;
       timeZone?: string;

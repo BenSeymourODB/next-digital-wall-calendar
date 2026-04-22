@@ -28,19 +28,6 @@ export interface CalendarsResponse {
   calendars: CalendarInfo[];
 }
 
-/**
- * Raw Google Calendar API calendarList item
- */
-interface GoogleCalendarListItem {
-  id: string;
-  summary: string;
-  description?: string;
-  backgroundColor?: string;
-  foregroundColor?: string;
-  primary?: boolean;
-  selected?: boolean;
-}
-
 export async function GET() {
   try {
     // Check authentication
@@ -100,7 +87,7 @@ export async function GET() {
     }
 
     const data = await response.json();
-    const items: GoogleCalendarListItem[] = data.items || [];
+    const items: gapi.client.calendar.CalendarListEntry[] = data.items || [];
 
     // Transform to our CalendarInfo format
     const calendars: CalendarInfo[] = items.map((item) => ({
