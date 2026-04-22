@@ -81,6 +81,12 @@ model UserSettings {
   schedulerIntervalSeconds           Int @default(10)
   schedulerPauseOnInteractionSeconds Int @default(30)
 
+  // Calendar data-loading settings
+  calendarRefreshIntervalMinutes Int @default(15)
+  calendarFetchMonthsAhead       Int @default(6)
+  calendarFetchMonthsBehind      Int @default(1)
+  calendarMaxEventsPerDay        Int @default(3)
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
