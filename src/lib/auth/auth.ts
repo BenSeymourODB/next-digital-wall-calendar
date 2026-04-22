@@ -1,8 +1,10 @@
+import { decryptToken, encryptToken } from "@/lib/crypto/token-cipher";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import { encryptLinkedAccount } from "./link-account";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -49,6 +51,28 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             throw new Error("No refresh token available");
           }
 
+          // Stored refresh_token may be a v1 envelope (encrypted) or a legacy
+          // plaintext value written before this PR; decryptToken handles both.
+          // Decryption can throw on tamper / GCM auth-tag mismatch / unknown
+          // envelope version (e.g. after a key rotation). Surface that with a
+          // distinct log context so operators can tell a cipher failure apart
+          // from a Google-side refresh failure.
+          let refreshTokenPlaintext: string | null;
+          try {
+            refreshTokenPlaintext = decryptToken(googleAccount.refresh_token);
+          } catch (error) {
+            logger.error(error as Error, {
+              context: "RefreshTokenDecryptFailed",
+              userId: user.id,
+            });
+            throw new Error(
+              "Failed to decrypt stored refresh token (possible key rotation or tampering)"
+            );
+          }
+          if (!refreshTokenPlaintext) {
+            throw new Error("No refresh token available");
+          }
+
           const response = await fetch("https://oauth2.googleapis.com/token", {
             method: "POST",
             headers: {
@@ -58,7 +82,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               client_id: process.env.GOOGLE_CLIENT_ID!,
               client_secret: process.env.GOOGLE_CLIENT_SECRET!,
               grant_type: "refresh_token",
-              refresh_token: googleAccount.refresh_token,
+              refresh_token: refreshTokenPlaintext,
             }),
           });
 
@@ -74,13 +98,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             refresh_token?: string;
           };
 
-          // Update tokens in database
+          // Update tokens in database, encrypting at rest. Google only returns
+          // a new refresh_token on the first consent or after revocation, so
+          // fall back to re-encrypting the existing plaintext refresh token
+          // when one isn't included in the response.
           await prisma.account.update({
             data: {
-              access_token: newTokens.access_token,
+              access_token: encryptToken(newTokens.access_token),
               expires_at: Math.floor(Date.now() / 1000 + newTokens.expires_in),
-              refresh_token:
-                newTokens.refresh_token ?? googleAccount.refresh_token,
+              refresh_token: encryptToken(
+                newTokens.refresh_token ?? refreshTokenPlaintext
+              ),
             },
             where: {
               provider_providerAccountId: {
@@ -126,6 +154,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         provider: account?.provider ?? "unknown",
         isNewUser: isNewUser ?? false,
       });
+    },
+    // When @auth/prisma-adapter writes a newly linked OAuth account it stores
+    // tokens in plaintext. `encryptLinkedAccount` re-encrypts them in place.
+    // Extracted into its own module so it's unit-testable without booting
+    // NextAuth (see src/lib/auth/__tests__/link-account.test.ts).
+    async linkAccount({ account }) {
+      await encryptLinkedAccount(account);
     },
     async signOut(message) {
       // Handle both session and token based signOut
