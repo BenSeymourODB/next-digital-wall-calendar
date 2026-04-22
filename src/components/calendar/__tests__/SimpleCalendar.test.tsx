@@ -273,4 +273,53 @@ describe("SimpleCalendar", () => {
       });
     });
   });
+
+  describe("Month navigation slide direction", () => {
+    it("slides the outgoing grid left (translateX(-100%)) on Next month", async () => {
+      const user = userEvent.setup();
+      const initialDate = new Date(2026, 3, 15); // April 2026
+
+      const { rerender, contextValue } = renderWithContext({
+        selectedDate: initialDate,
+      });
+
+      // Click Next; the calendar updates its internal direction state
+      // before the parent's selectedDate change is committed.
+      await user.click(screen.getByTestId("calendar-next-month"));
+
+      // Simulate the provider committing the new selectedDate.
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...contextValue, selectedDate: new Date(2026, 4, 15) }}
+        >
+          <SimpleCalendar />
+        </CalendarContext.Provider>
+      );
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(-100%)");
+    });
+
+    it("slides the outgoing grid right (translateX(100%)) on Previous month", async () => {
+      const user = userEvent.setup();
+      const initialDate = new Date(2026, 3, 15); // April 2026
+
+      const { rerender, contextValue } = renderWithContext({
+        selectedDate: initialDate,
+      });
+
+      await user.click(screen.getByTestId("calendar-prev-month"));
+
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...contextValue, selectedDate: new Date(2026, 2, 15) }}
+        >
+          <SimpleCalendar />
+        </CalendarContext.Provider>
+      );
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(100%)");
+    });
+  });
 });

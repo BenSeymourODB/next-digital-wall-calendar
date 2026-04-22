@@ -1,8 +1,10 @@
 "use client";
 
+import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import { useState } from "react";
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -16,8 +18,13 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+const MONTH_SLIDE_DURATION_MS = 300;
+
 export function SimpleCalendar() {
   const { selectedDate, setSelectedDate, events, isLoading } = useCalendar();
+  const [slideDirection, setSlideDirection] = useState<"forward" | "backward">(
+    "forward"
+  );
 
   // Computed per render so a future user-configurable WEEK_STARTS_ON
   // flows through without a module reload. React Compiler memoizes.
@@ -32,12 +39,14 @@ export function SimpleCalendar() {
   const paddingDays = Array.from({ length: leadingPadding }, (_, i) => i);
 
   const previousMonth = () => {
+    setSlideDirection("backward");
     const newDate = new Date(selectedDate);
     newDate.setMonth(newDate.getMonth() - 1);
     setSelectedDate(newDate);
   };
 
   const nextMonth = () => {
+    setSlideDirection("forward");
     const newDate = new Date(selectedDate);
     newDate.setMonth(newDate.getMonth() + 1);
     setSelectedDate(newDate);
@@ -132,85 +141,92 @@ export function SimpleCalendar() {
         </div>
       )}
 
-      {/* Calendar Grid */}
-      <div className="border-border bg-card rounded-lg border">
-        {/* Day headers */}
-        <div className="border-border bg-muted grid grid-cols-7 border-b">
-          {weekdayHeaders.map((day) => (
-            <div
-              key={day}
-              className="text-muted-foreground p-3 text-center text-sm font-semibold"
-            >
-              {day}
-            </div>
-          ))}
-        </div>
-
-        {/* Calendar days */}
-        <div className="grid grid-cols-7">
-          {/* Padding cells for days before the first day of the month */}
-          {paddingDays.map((index) => (
-            <div
-              key={`padding-${index}`}
-              className="border-border bg-muted min-h-[100px] border-r border-b"
-            />
-          ))}
-
-          {/* Actual days of the month */}
-          {daysInMonth.map((day) => {
-            const dayEvents = getEventsForDay(day);
-            const isToday = isSameDay(day, today);
-
-            return (
+      {/* Calendar Grid (animated by month) */}
+      <AnimatedSwap
+        swapKey={format(monthStart, "yyyy-MM")}
+        type="slide"
+        direction={slideDirection}
+        durationMs={MONTH_SLIDE_DURATION_MS}
+      >
+        <div className="border-border bg-card rounded-lg border">
+          {/* Day headers */}
+          <div className="border-border bg-muted grid grid-cols-7 border-b">
+            {weekdayHeaders.map((day) => (
               <div
-                key={day.toISOString()}
-                className={`border-border min-h-[100px] border-r border-b p-2 ${
-                  isToday ? "bg-blue-50 dark:bg-blue-950" : "bg-card"
-                }`}
+                key={day}
+                className="text-muted-foreground p-3 text-center text-sm font-semibold"
               >
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar days */}
+          <div className="grid grid-cols-7">
+            {/* Padding cells for days before the first day of the month */}
+            {paddingDays.map((index) => (
+              <div
+                key={`padding-${index}`}
+                className="border-border bg-muted min-h-[100px] border-r border-b"
+              />
+            ))}
+
+            {/* Actual days of the month */}
+            {daysInMonth.map((day) => {
+              const dayEvents = getEventsForDay(day);
+              const isToday = isSameDay(day, today);
+
+              return (
                 <div
-                  className={`mb-1 text-sm ${
-                    isToday
-                      ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white"
-                      : "text-muted-foreground"
+                  key={day.toISOString()}
+                  className={`border-border min-h-[100px] border-r border-b p-2 ${
+                    isToday ? "bg-blue-50 dark:bg-blue-950" : "bg-card"
                   }`}
                 >
-                  {format(day, "d")}
-                </div>
+                  <div
+                    className={`mb-1 text-sm ${
+                      isToday
+                        ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {format(day, "d")}
+                  </div>
 
-                {/* Events for this day */}
-                <div className="space-y-1">
-                  {dayEvents.slice(0, 3).map((event) => (
-                    <div
-                      key={event.id}
-                      className={`rounded px-2 py-1 text-xs ${
-                        event.color === "blue"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                          : event.color === "green"
-                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                            : event.color === "red"
-                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                              : event.color === "yellow"
-                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                                : event.color === "purple"
-                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-                                  : "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
-                      }`}
-                    >
-                      {event.title}
-                    </div>
-                  ))}
-                  {dayEvents.length > 3 && (
-                    <div className="text-muted-foreground text-xs">
-                      +{dayEvents.length - 3} more
-                    </div>
-                  )}
+                  {/* Events for this day */}
+                  <div className="space-y-1">
+                    {dayEvents.slice(0, 3).map((event) => (
+                      <div
+                        key={event.id}
+                        className={`rounded px-2 py-1 text-xs ${
+                          event.color === "blue"
+                            ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                            : event.color === "green"
+                              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                              : event.color === "red"
+                                ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                                : event.color === "yellow"
+                                  ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                                  : event.color === "purple"
+                                    ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
+                                    : "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
+                        }`}
+                      >
+                        {event.title}
+                      </div>
+                    ))}
+                    {dayEvents.length > 3 && (
+                      <div className="text-muted-foreground text-xs">
+                        +{dayEvents.length - 3} more
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </AnimatedSwap>
     </div>
   );
 }
