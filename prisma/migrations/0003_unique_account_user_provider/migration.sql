@@ -15,6 +15,13 @@
 --     AND a.id <> b.id
 --     AND (a.expires_at IS NULL
 --          OR (b.expires_at IS NOT NULL AND a.expires_at < b.expires_at));
+--
+-- Edge case: the predicate treats a row with expires_at IS NULL as the one
+-- to discard. That matches the stale-token scenario #48 was triaging, but
+-- a null expires_at can also legitimately mean a non-expiring offline
+-- token. If you are running this against an unfamiliar dataset, inspect
+-- `SELECT ... FROM "Account" WHERE "userId", "provider" IN (...)` first
+-- before running the DELETE so you don't silently drop a valid token.
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Account_userId_provider_key" ON "Account"("userId", "provider");
