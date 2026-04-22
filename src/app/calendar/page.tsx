@@ -5,6 +5,7 @@ import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
+import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import {
   CalendarProvider,
   useCalendar,
@@ -14,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { useState } from "react";
 import { Settings } from "lucide-react";
+
+const VIEW_FADE_DURATION_MS = 250;
 
 /**
  * Calendar content component
@@ -61,7 +64,14 @@ function CalendarContent() {
         {/* Calendar + mini-calendar sidebar */}
         <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
           <div className="border-border bg-card rounded-lg border p-6">
-            {view === "month" ? <SimpleCalendar /> : <AgendaCalendar />}
+            <AnimatedSwap
+              swapKey={view}
+              type="fade"
+              direction="forward"
+              durationMs={VIEW_FADE_DURATION_MS}
+            >
+              {view === "month" ? <SimpleCalendar /> : <AgendaCalendar />}
+            </AnimatedSwap>
           </div>
           <MiniCalendarSidebar />
         </div>

@@ -4,6 +4,7 @@ import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
+import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import {
   MockCalendarProvider,
   useCalendar,
@@ -276,8 +277,14 @@ function CalendarDisplay() {
 
   return (
     <div data-testid="calendar-display">
-      {view === "month" && <SimpleCalendar />}
-      {view === "agenda" && <AgendaCalendar />}
+      <AnimatedSwap
+        swapKey={view}
+        type="fade"
+        direction="forward"
+        durationMs={250}
+      >
+        {view === "month" ? <SimpleCalendar /> : <AgendaCalendar />}
+      </AnimatedSwap>
     </div>
   );
 }
