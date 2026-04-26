@@ -2,6 +2,7 @@
 
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { useTheme } from "next-themes";
 import { SettingsSection } from "./settings-section";
 
 interface DisplayValues {
@@ -16,8 +17,19 @@ interface DisplaySectionProps {
   onChange: (values: Partial<DisplayValues>) => void;
 }
 
+const THEME_OPTIONS = ["light", "dark", "system"] as const;
+
 export function DisplaySection({ values, onChange }: DisplaySectionProps) {
+  const { setTheme } = useTheme();
   const zoomPercentage = Math.round(values.defaultZoomLevel * 100);
+
+  // Map legacy "auto" to "system" for display
+  const currentTheme = values.theme === "auto" ? "system" : values.theme;
+
+  const handleThemeChange = (theme: string) => {
+    setTheme(theme);
+    onChange({ theme });
+  };
 
   return (
     <SettingsSection
@@ -27,16 +39,16 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
       <div className="space-y-6">
         {/* Theme selection */}
         <fieldset>
-          <legend className="text-sm font-medium text-gray-700">Theme</legend>
+          <legend className="text-foreground text-sm font-medium">Theme</legend>
           <div className="mt-2 flex gap-4">
-            {(["light", "dark", "auto"] as const).map((theme) => (
+            {THEME_OPTIONS.map((theme) => (
               <Label key={theme} className="flex items-center gap-2">
                 <input
                   type="radio"
                   name="theme"
                   value={theme}
-                  checked={values.theme === theme}
-                  onChange={() => onChange({ theme })}
+                  checked={currentTheme === theme}
+                  onChange={() => handleThemeChange(theme)}
                   className="text-blue-600"
                 />
                 <span className="capitalize">{theme}</span>
@@ -47,7 +59,7 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
 
         {/* Time format */}
         <fieldset>
-          <legend className="text-sm font-medium text-gray-700">
+          <legend className="text-foreground text-sm font-medium">
             Time Format
           </legend>
           <div className="mt-2 flex gap-4">
@@ -80,7 +92,9 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label>Zoom Level</Label>
-            <span className="text-sm text-gray-500">{zoomPercentage}%</span>
+            <span className="text-muted-foreground text-sm">
+              {zoomPercentage}%
+            </span>
           </div>
           <Slider
             value={[values.defaultZoomLevel]}

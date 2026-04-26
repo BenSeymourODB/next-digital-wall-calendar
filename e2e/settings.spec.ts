@@ -91,15 +91,15 @@ test.describe("Settings Page (/test/settings)", () => {
     }) => {
       const lightRadio = page.getByRole("radio", { name: "light" });
       const darkRadio = page.getByRole("radio", { name: "dark" });
-      const autoRadio = page.getByRole("radio", { name: "auto" });
+      const systemRadio = page.getByRole("radio", { name: "system" });
 
       await expect(lightRadio).toBeVisible();
       await expect(darkRadio).toBeVisible();
-      await expect(autoRadio).toBeVisible();
+      await expect(systemRadio).toBeVisible();
 
       await expect(lightRadio).toBeChecked();
       await expect(darkRadio).not.toBeChecked();
-      await expect(autoRadio).not.toBeChecked();
+      await expect(systemRadio).not.toBeChecked();
     });
 
     test("can change theme selection", async ({ page }) => {

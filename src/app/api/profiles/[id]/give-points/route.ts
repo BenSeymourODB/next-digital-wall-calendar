@@ -5,6 +5,7 @@
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { awardPoints } from "@/lib/services/reward-points";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -107,46 +108,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    // Award points in transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Upsert reward points (create if doesn't exist, update if exists)
-      const rewardPoints = await tx.profileRewardPoints.upsert({
-        where: { profileId: id },
-        update: {
-          totalPoints: {
-            increment: points,
-          },
-        },
-        create: {
-          profileId: id,
-          totalPoints: points,
-        },
-      });
-
-      // Create transaction record
-      await tx.pointTransaction.create({
-        data: {
-          profileId: id,
-          points,
-          reason: "manual",
-          awardedBy: awardedByProfileId,
-          note,
-        },
-      });
-
-      return rewardPoints;
-    });
+    const { totalPoints } = await awardPoints(
+      id,
+      points,
+      awardedByProfileId,
+      note
+    );
 
     logger.event("BonusPointsAwarded", {
       profileId: id,
       awardedBy: awardedByProfileId,
       points,
-      newTotal: result.totalPoints,
+      newTotal: totalPoints,
     });
 
     return NextResponse.json({
       success: true,
-      newTotal: result.totalPoints,
+      newTotal: totalPoints,
     });
   } catch (error) {
     const { id } = await params;

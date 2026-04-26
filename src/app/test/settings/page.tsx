@@ -11,13 +11,13 @@ import { Toaster } from "sonner";
  */
 export default function TestSettingsPage() {
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="bg-background min-h-screen p-8">
       <div className="mx-auto max-w-2xl">
-        <div className="mb-6 rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800">
+        <div className="mb-6 rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-600 dark:bg-yellow-950 dark:text-yellow-200">
           Test page — rendering SettingsForm with mock data (no auth required)
         </div>
 
-        <h1 className="mb-6 text-3xl font-bold text-gray-900">Settings</h1>
+        <h1 className="text-foreground mb-6 text-3xl font-bold">Settings</h1>
 
         <SettingsForm
           user={{

@@ -165,6 +165,24 @@ describe("/api/settings", () => {
       expect(data.error).toContain("Invalid theme");
     });
 
+    it("accepts 'system' as a valid theme value", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      const updatedSettings = { ...mockSettings, theme: "system" };
+      mockPrisma.userSettings.upsert.mockResolvedValue(updatedSettings);
+
+      const request = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { theme: "system" },
+      });
+
+      const response = await PUT(request);
+      const { status, data } =
+        await parseResponse<typeof mockSettings>(response);
+
+      expect(status).toBe(200);
+      expect(data.theme).toBe("system");
+    });
+
     it("validates defaultTaskPoints is positive", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
 

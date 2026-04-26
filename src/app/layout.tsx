@@ -1,5 +1,6 @@
 import { AppInsightsProvider } from "@/components/providers/AppInsightsProvider";
 import { SessionProvider } from "@/components/providers/SessionProvider";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import type { Metadata } from "next";
 import "./globals.css";
 
@@ -20,10 +21,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">
         <SessionProvider>
-          <AppInsightsProvider>{children}</AppInsightsProvider>
+          <ThemeProvider>
+            <AppInsightsProvider>{children}</AppInsightsProvider>
+          </ThemeProvider>
         </SessionProvider>
       </body>
     </html>
