@@ -1,4 +1,5 @@
 export { AccountSection } from "./account-section";
+export { CalendarSection } from "./calendar-section";
 export { DisplaySection } from "./display-section";
 export { PrivacySection } from "./privacy-section";
 export { RewardSection } from "./reward-section";

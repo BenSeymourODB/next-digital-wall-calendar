@@ -74,6 +74,7 @@ function createMockContext(
     refreshEvents: vi.fn(),
     isLoading: false,
     isAuthenticated: true,
+    maxEventsPerDay: 3,
     ...overrides,
   };
 }

@@ -33,7 +33,8 @@ function toDateKey(date: Date): string {
 }
 
 export function SimpleCalendar() {
-  const { selectedDate, setSelectedDate, events, isLoading } = useCalendar();
+  const { selectedDate, setSelectedDate, events, isLoading, maxEventsPerDay } =
+    useCalendar();
 
   // Computed per render so a future user-configurable WEEK_STARTS_ON
   // flows through without a module reload. React Compiler memoizes.
@@ -316,7 +317,7 @@ export function SimpleCalendar() {
 
                     {/* Events for this day */}
                     <div className="space-y-1">
-                      {dayEvents.slice(0, 3).map((event) => (
+                      {dayEvents.slice(0, maxEventsPerDay).map((event) => (
                         <div
                           key={event.id}
                           className={`rounded px-2 py-1 text-xs ${
@@ -336,9 +337,9 @@ export function SimpleCalendar() {
                           {event.title}
                         </div>
                       ))}
-                      {dayEvents.length > 3 && (
+                      {dayEvents.length > maxEventsPerDay && (
                         <div className="text-muted-foreground text-xs">
-                          +{dayEvents.length - 3} more
+                          +{dayEvents.length - maxEventsPerDay} more
                         </div>
                       )}
                     </div>

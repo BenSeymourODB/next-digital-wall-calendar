@@ -9,6 +9,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AccountSection } from "./account-section";
+import { CalendarSection } from "./calendar-section";
 import { DisplaySection } from "./display-section";
 import { PrivacySection } from "./privacy-section";
 import { RewardSection } from "./reward-section";
@@ -26,6 +27,10 @@ interface UserSettingsData {
   showPointsOnCompletion: boolean;
   schedulerIntervalSeconds: number;
   schedulerPauseOnInteractionSeconds: number;
+  calendarRefreshIntervalMinutes: number;
+  calendarFetchMonthsAhead: number;
+  calendarFetchMonthsBehind: number;
+  calendarMaxEventsPerDay: number;
 }
 
 interface SettingsFormProps {
@@ -130,6 +135,17 @@ export function SettingsForm({
           schedulerIntervalSeconds: settings.schedulerIntervalSeconds,
           schedulerPauseOnInteractionSeconds:
             settings.schedulerPauseOnInteractionSeconds,
+        }}
+        onChange={updateSettings}
+      />
+
+      <CalendarSection
+        values={{
+          calendarRefreshIntervalMinutes:
+            settings.calendarRefreshIntervalMinutes,
+          calendarFetchMonthsAhead: settings.calendarFetchMonthsAhead,
+          calendarFetchMonthsBehind: settings.calendarFetchMonthsBehind,
+          calendarMaxEventsPerDay: settings.calendarMaxEventsPerDay,
         }}
         onChange={updateSettings}
       />
