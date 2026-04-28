@@ -6,6 +6,7 @@ import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
 import { WeekCalendar } from "@/components/calendar/WeekCalendar";
+import { YearCalendar } from "@/components/calendar/YearCalendar";
 import {
   MockCalendarProvider,
   useCalendar,
@@ -296,14 +297,6 @@ const mockEventSets: Record<string, IEvent[]> = {
   ],
 };
 
-/**
- * Calendar display component that renders based on current view.
- *
- * `day`, `week`, and `year` views do not yet have production components
- * (tracked in #70 / #83 and friends). For those we render a labelled
- * placeholder so layout-rule tests (e.g. sidebar visibility on #146) can
- * still exercise the view while the main-panel content isn't yet wired up.
- */
 function CalendarDisplay() {
   const { view } = useCalendar();
 
@@ -312,15 +305,8 @@ function CalendarDisplay() {
       {view === "day" && <DayCalendar />}
       {view === "week" && <WeekCalendar />}
       {view === "month" && <SimpleCalendar />}
+      {view === "year" && <YearCalendar />}
       {view === "agenda" && <AgendaCalendar />}
-      {(view === "day" || view === "week" || view === "year") && (
-        <div
-          data-testid={`calendar-placeholder-${view}`}
-          className="text-muted-foreground rounded border border-dashed p-8 text-center"
-        >
-          {view.charAt(0).toUpperCase() + view.slice(1)} view placeholder
-        </div>
-      )}
     </div>
   );
 }
