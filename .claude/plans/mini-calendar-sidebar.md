@@ -48,7 +48,7 @@ changes are required in this ticket — that remains the follow-up scope of #114
 **Out of scope (deferred)**
 
 - Wiring the sidebar's date-navigation into a day/week view (depends on #70 / #114)
-- Per-event-color dot *clusters* (one dot per event-color up to N) — we ship a
+- Per-event-color dot _clusters_ (one dot per event-color up to N) — we ship a
   single dot colored by the first event, which is enough to signal "something
   is happening that day"; cluster visuals can come in #114 if desired
 - Full provider extensions for per-day event-indicator aggregation (tracked in #114)
@@ -68,7 +68,7 @@ non-empty. The dot color uses a lookup table
 Local `viewMonth` state is seeded from `startOfMonth(selectedDate)`. Chevron
 navigation mutates `viewMonth` only. Clicking a day cell calls
 `setSelectedDate(day)`; if that day is outside the currently viewed month
-(a padding cell), we *also* update `viewMonth` so the highlighted selection
+(a padding cell), we _also_ update `viewMonth` so the highlighted selection
 stays visible.
 
 We intentionally do **not** auto-sync `viewMonth` to follow external

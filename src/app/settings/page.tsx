@@ -52,6 +52,11 @@ export default async function SettingsPage() {
           schedulerIntervalSeconds: settings.schedulerIntervalSeconds,
           schedulerPauseOnInteractionSeconds:
             settings.schedulerPauseOnInteractionSeconds,
+          calendarRefreshIntervalMinutes:
+            settings.calendarRefreshIntervalMinutes,
+          calendarFetchMonthsAhead: settings.calendarFetchMonthsAhead,
+          calendarFetchMonthsBehind: settings.calendarFetchMonthsBehind,
+          calendarMaxEventsPerDay: settings.calendarMaxEventsPerDay,
         }}
       />
     </div>

@@ -1,9 +1,11 @@
 "use client";
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
+import { WeekCalendar } from "@/components/calendar/WeekCalendar";
 import {
   MockCalendarProvider,
   useCalendar,
@@ -205,6 +207,32 @@ const mockEventSets: Record<string, IEvent[]> = {
     })
   ),
 
+  // Multi-day event scenario for week-view spanning bars
+  multiDay: [
+    createMockEvent({
+      id: "trip",
+      title: "Family Trip",
+      startDate: getRelativeDate(1, 0, 0),
+      endDate: getRelativeDate(4, 23, 59),
+      color: "purple",
+    }),
+    createMockEvent({
+      id: "all-day-holiday",
+      title: "Holiday",
+      startDate: getRelativeDate(0, 0, 0),
+      endDate: getRelativeDate(0, 23, 59),
+      color: "red",
+      isAllDay: true,
+    }),
+    createMockEvent({
+      id: "morning-meeting",
+      title: "Morning Standup",
+      startDate: getRelativeDate(0, 9, 0),
+      endDate: getRelativeDate(0, 9, 30),
+      color: "blue",
+    }),
+  ],
+
   // Family calendar scenario
   family: [
     createMockEvent({
@@ -281,6 +309,8 @@ function CalendarDisplay() {
 
   return (
     <div data-testid="calendar-display">
+      {view === "day" && <DayCalendar />}
+      {view === "week" && <WeekCalendar />}
       {view === "month" && <SimpleCalendar />}
       {view === "agenda" && <AgendaCalendar />}
       {(view === "day" || view === "week" || view === "year") && (

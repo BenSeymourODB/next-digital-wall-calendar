@@ -43,9 +43,14 @@ pnpm bump-ui             # Update shadcn components
 
 ### Starting a Task
 
-Work is tracked in **GitHub Issues**. At the start of every session:
+Work is tracked in **GitHub Issues** and the
+[project board](https://github.com/users/BenSeymourODB/projects/1)
+("Features Before Claude Subscription Close"). The project's `Day`,
+`Phase`, `Cluster`, and `Priority` fields plus GitHub's native
+`Blocked by` links are the source of truth for sequencing. At the start
+of every session:
 
-1. **Identify the issue** — read the linked GitHub issue (if provided) to understand requirements and acceptance criteria
+1. **Identify the issue** — read the linked GitHub issue (if provided) to understand requirements and acceptance criteria, and check its `Blocked by` list on github.com
 2. **Check for an existing plan** — look in `.claude/plans/` for a file matching the feature/issue
 3. **If a plan exists** — read it before writing any code; it contains specs, schemas, and testing strategies
 4. **If no plan exists** — enter planning mode first. Produce a plan based on the GitHub issue (or the session prompt if no issue is linked) and save it to `.claude/plans/` before implementing
@@ -88,6 +93,7 @@ All new features follow TDD (red-green-refactor):
 4. **Verify** — `pnpm test && pnpm lint:fix && pnpm format:fix && pnpm check-types`
 
 **Critical rules:**
+
 - NEVER remove or weaken tests without explicit user authorization
 - ALWAYS write tests before implementation
 - No feature is complete until all tests pass
@@ -101,6 +107,7 @@ When making UI changes, start the dev server and verify the feature in a browser
 ### Client-Side Storage
 
 **Backend (PostgreSQL) is the source of truth.** Client-side storage is for performance optimization only:
+
 - **IndexedDB** — cache API responses (calendar events, tasks, profiles)
 - **LocalStorage** — user preferences (theme, UI settings)
 - **Session Storage** — temporary UI state (form drafts, modals)
@@ -159,6 +166,7 @@ Automatically loaded: **Next.js DevTools** (runtime state, docs) | **Context7** 
 ## Checklist — Task Completion
 
 A task is **not complete** until:
+
 1. All tests pass (`pnpm test`)
 2. All code quality checks pass (`pnpm lint:fix && pnpm format:fix && pnpm check-types`)
 3. Feature matches the plan spec (if implementing from `.claude/plans/`)
