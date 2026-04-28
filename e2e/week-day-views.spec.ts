@@ -35,9 +35,28 @@ test.describe("Week Calendar", () => {
     await expect(page.getByText("Client Call")).toBeVisible();
   });
 
-  test("shows '+X more' overflow indicator", async ({ page }) => {
+  test("renders all events on a busy day in side-by-side columns", async ({
+    page,
+  }) => {
+    // The time-grid layout positions overlapping events in adjacent
+    // sub-columns rather than truncating with "+X more".
     await page.goto("/test/calendar?events=overflow&view=week");
-    await expect(page.getByText(/\+\d+ more/).first()).toBeVisible();
+    await expect(page.getByTestId("week-calendar-event").first()).toBeVisible();
+    const count = await page.getByTestId("week-calendar-event").count();
+    expect(count).toBeGreaterThanOrEqual(5);
+  });
+
+  test("renders multi-day events as a single spanning bar", async ({
+    page,
+  }) => {
+    await page.goto("/test/calendar?events=multiDay&view=week");
+    const bars = page.getByTestId("week-calendar-multi-day-bar");
+    await expect(bars.filter({ hasText: "Family Trip" })).toHaveCount(1);
+  });
+
+  test("shows the now-line indicator on today", async ({ page }) => {
+    await page.goto("/test/calendar?events=default&view=week");
+    await expect(page.getByTestId("week-calendar-now-line")).toBeVisible();
   });
 });
 
@@ -77,6 +96,24 @@ test.describe("Day Calendar", () => {
     page,
   }) => {
     await expect(page.getByText("Morning Standup")).toBeVisible();
+  });
+
+  test("positions a timed event in the time grid", async ({ page }) => {
+    await page.goto("/test/calendar?events=default&view=day");
+    await expect(page.getByTestId("day-calendar-event").first()).toBeVisible();
+  });
+
+  test("shows the now-line on today", async ({ page }) => {
+    await page.goto("/test/calendar?events=default&view=day");
+    await expect(page.getByTestId("day-calendar-now-line")).toBeVisible();
+  });
+
+  test("does not show the now-line on a non-today day", async ({ page }) => {
+    await page.goto("/test/calendar?events=default&view=day");
+    // Navigate forward 2 days
+    await page.getByTestId("day-calendar-next").click();
+    await page.getByTestId("day-calendar-next").click();
+    await expect(page.getByTestId("day-calendar-now-line")).toHaveCount(0);
   });
 });
 

@@ -207,6 +207,32 @@ const mockEventSets: Record<string, IEvent[]> = {
     })
   ),
 
+  // Multi-day event scenario for week-view spanning bars
+  multiDay: [
+    createMockEvent({
+      id: "trip",
+      title: "Family Trip",
+      startDate: getRelativeDate(1, 0, 0),
+      endDate: getRelativeDate(4, 23, 59),
+      color: "purple",
+    }),
+    createMockEvent({
+      id: "all-day-holiday",
+      title: "Holiday",
+      startDate: getRelativeDate(0, 0, 0),
+      endDate: getRelativeDate(0, 23, 59),
+      color: "red",
+      isAllDay: true,
+    }),
+    createMockEvent({
+      id: "morning-meeting",
+      title: "Morning Standup",
+      startDate: getRelativeDate(0, 9, 0),
+      endDate: getRelativeDate(0, 9, 30),
+      color: "blue",
+    }),
+  ],
+
   // Family calendar scenario
   family: [
     createMockEvent({
