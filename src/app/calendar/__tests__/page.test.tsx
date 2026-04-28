@@ -26,6 +26,18 @@ vi.mock("@/components/calendar/SimpleCalendar", () => ({
   SimpleCalendar: () => <div data-testid="mock-simple-calendar" />,
 }));
 
+vi.mock("@/components/calendar/DayCalendar", () => ({
+  DayCalendar: () => <div data-testid="mock-day-calendar" />,
+}));
+
+vi.mock("@/components/calendar/WeekCalendar", () => ({
+  WeekCalendar: () => <div data-testid="mock-week-calendar" />,
+}));
+
+vi.mock("@/components/calendar/YearCalendar", () => ({
+  YearCalendar: () => <div data-testid="mock-year-calendar" />,
+}));
+
 vi.mock("@/components/calendar/AgendaCalendar", () => ({
   AgendaCalendar: () => <div data-testid="mock-agenda-calendar" />,
 }));

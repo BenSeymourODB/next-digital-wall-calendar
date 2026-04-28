@@ -262,7 +262,7 @@ describe("SimpleCalendar", () => {
       expect(screen.getByTestId("calendar-add-event-btn")).toBeInTheDocument();
     });
   });
-  
+
   describe("Weekday headers", () => {
     it("renders weekday headers in WEEK_STARTS_ON order", () => {
       renderWithContext();

@@ -6,8 +6,8 @@ import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
-import { YearCalendar } from "@/components/calendar/YearCalendar";
 import { WeekCalendar } from "@/components/calendar/WeekCalendar";
+import { YearCalendar } from "@/components/calendar/YearCalendar";
 import {
   CalendarProvider,
   useCalendar,
@@ -19,20 +19,17 @@ import type { TCalendarView } from "@/types/calendar";
 import { useState } from "react";
 import { Settings } from "lucide-react";
 
-/**
- * Route to the correct calendar view. Year falls back to month until
- * #83 / #117 ship a dedicated year view.
- */
 function CalendarView({ view }: { view: TCalendarView }) {
   switch (view) {
     case "day":
       return <DayCalendar />;
     case "week":
       return <WeekCalendar />;
+    case "year":
+      return <YearCalendar />;
     case "agenda":
       return <AgendaCalendar />;
     case "month":
-    case "year":
     default:
       return <SimpleCalendar />;
   }
@@ -81,16 +78,22 @@ function CalendarContent() {
         {/* View Switcher */}
         <ViewSwitcher />
 
-        {/* Calendar - Conditional rendering based on view
+        {/* Calendar + mini-calendar sidebar.
          * The mini-calendar is hidden on month view where it duplicates the
-         * main grid; on day/week/agenda it acts as a date-picker / at-a-glance
-         * overview. See issue #146. */}
-        <div className="border-border bg-card rounded-lg border p-6">
-          {view === "month" && <SimpleCalendar />}
-          {view === "year" && <YearCalendar />}
-          {view === "agenda" && <AgendaCalendar />}
+         * main grid; on day/week/year/agenda it acts as a date-picker /
+         * at-a-glance overview. See issue #146. */}
+        <div
+          className={
+            view === "month"
+              ? "grid gap-6"
+              : "grid gap-6 lg:grid-cols-[1fr_280px]"
+          }
+        >
+          <div className="border-border bg-card rounded-lg border p-6">
+            <CalendarView view={view} />
+          </div>
+          {view !== "month" && <MiniCalendarSidebar />}
         </div>
-        {view !== "month" && view !== "year" && <MiniCalendarSidebar />}
       </div>
     </div>
   );
