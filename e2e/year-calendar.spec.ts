@@ -102,4 +102,53 @@ test.describe("Year calendar view", () => {
     await expect(page.getByTestId("year-calendar-grid")).toBeVisible();
     await expect(page.getByTestId("year-calendar-month-0")).toBeVisible();
   });
+
+  test("shows 0 events and no dots for the empty fixture", async ({ page }) => {
+    await page.goto("/test/calendar?events=empty&view=year");
+    await expect(page.getByTestId("year-calendar-event-count")).toHaveText(
+      "0 events"
+    );
+    await expect(page.getByTestId("year-calendar-dot")).toHaveCount(0);
+  });
+
+  test("uses singular grammar for one event", async ({ page }) => {
+    await page.goto("/test/calendar?events=single&view=year");
+    await expect(page.getByTestId("year-calendar-event-count")).toHaveText(
+      "1 event"
+    );
+  });
+
+  test("shows the loading indicator while events are loading", async ({
+    page,
+  }) => {
+    await page.goto(
+      "/test/calendar?events=default&view=year&loading=true&loadingDelay=4000"
+    );
+    await expect(page.getByText("Loading events...")).toBeVisible();
+  });
+
+  test("pressing Enter on a focused day cell drills into month view", async ({
+    page,
+  }) => {
+    const today = new Date();
+    const key = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const cell = page.getByTestId(`year-calendar-day-${key}`);
+    await cell.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("tab", { name: /month/i })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+  });
+
+  test("Today button label shows the current calendar year even after navigating away", async ({
+    page,
+  }) => {
+    const currentYear = String(new Date().getFullYear());
+    await page.getByTestId("year-calendar-next-year").click();
+    await page.getByTestId("year-calendar-next-year").click();
+    await expect(page.getByTestId("year-calendar-today-btn")).toHaveText(
+      currentYear
+    );
+  });
 });
