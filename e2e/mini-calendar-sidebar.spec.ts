@@ -12,7 +12,7 @@ test.use({ video: "on" });
 
 test.describe("MiniCalendarSidebar", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/test/calendar?events=default&view=month&sidebar=true");
+    await page.goto("/test/calendar?events=default&view=agenda&sidebar=true");
   });
 
   test("renders the sidebar with a month header and day grid", async ({
@@ -100,7 +100,7 @@ test.describe("MiniCalendarSidebar", () => {
   test("shows an empty state when the selected day has no events", async ({
     page,
   }) => {
-    await page.goto("/test/calendar?events=empty&view=month&sidebar=true");
+    await page.goto("/test/calendar?events=empty&view=agenda&sidebar=true");
 
     const list = page.getByTestId("mini-calendar-events-list");
     await expect(list).toBeVisible();
