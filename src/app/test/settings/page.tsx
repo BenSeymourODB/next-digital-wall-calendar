@@ -37,6 +37,10 @@ export default function TestSettingsPage() {
             showPointsOnCompletion: true,
             schedulerIntervalSeconds: 10,
             schedulerPauseOnInteractionSeconds: 30,
+            calendarRefreshIntervalMinutes: 15,
+            calendarFetchMonthsAhead: 6,
+            calendarFetchMonthsBehind: 1,
+            calendarMaxEventsPerDay: 3,
           }}
         />
       </div>

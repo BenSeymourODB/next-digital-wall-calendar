@@ -48,3 +48,6 @@ next-env.d.ts
 
 # Playwright MCP artifacts
 .playwright-mcp/
+
+# QA agent worktrees (git worktree add targets — managed by browser-qa skill)
+.claude/worktrees/

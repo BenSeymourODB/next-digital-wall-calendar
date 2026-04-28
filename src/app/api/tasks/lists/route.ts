@@ -3,6 +3,7 @@
  * Uses server-side authentication with NextAuth.js
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
 
@@ -30,12 +31,15 @@ export async function GET() {
 
     const accessToken = await getAccessToken();
 
-    const response = await fetch(`${GOOGLE_TASKS_API}/users/@me/lists`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
+    const response = await fetchWithRetry(
+      `${GOOGLE_TASKS_API}/users/@me/lists`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

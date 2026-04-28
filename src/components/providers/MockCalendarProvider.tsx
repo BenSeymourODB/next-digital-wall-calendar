@@ -34,6 +34,8 @@ interface MockCalendarProviderProps {
   loadingDelay?: number;
   /** Whether user is authenticated (for testing) */
   isAuthenticated?: boolean;
+  /** Max events rendered per day cell before the "+N more" overflow */
+  maxEventsPerDay?: number;
 }
 
 /**
@@ -59,6 +61,7 @@ export function MockCalendarProvider({
   use24HourFormat: initial24Hour = true,
   loadingDelay = 0,
   isAuthenticated = true,
+  maxEventsPerDay = 3,
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -199,6 +202,7 @@ export function MockCalendarProvider({
     refreshEvents,
     isLoading,
     isAuthenticated,
+    maxEventsPerDay,
   };
 
   return (

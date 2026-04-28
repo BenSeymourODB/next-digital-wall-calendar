@@ -1,7 +1,23 @@
+import type { IEvent } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { AnalogClock } from "../analog-clock";
 import type { ClockEvent } from "../types";
+
+function makeRawEvent(overrides: Partial<IEvent> = {}): IEvent {
+  return {
+    id: "raw-1",
+    title: "Raw Event",
+    startDate: new Date(2026, 3, 12, 3, 0, 0).toISOString(),
+    endDate: new Date(2026, 3, 12, 4, 0, 0).toISOString(),
+    color: "blue",
+    description: "",
+    user: { id: "u1", name: "U", picturePath: null },
+    isAllDay: false,
+    calendarId: "c1",
+    ...overrides,
+  };
+}
 
 const mockEvents: ClockEvent[] = [
   {
@@ -100,6 +116,60 @@ describe("AnalogClock", () => {
     const svg = screen.getByTestId("analog-clock");
     expect(svg.getAttribute("role")).toBe("img");
     expect(svg.getAttribute("aria-label")).toContain("clock");
+  });
+
+  it("accepts raw IEvent[] via rawEvents prop and renders arcs for current period", () => {
+    const now = new Date(2026, 3, 12, 9, 0, 0); // AM
+    const rawEvents: IEvent[] = [
+      makeRawEvent({
+        id: "raw-morning",
+        startDate: new Date(2026, 3, 12, 3, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 4, 0, 0).toISOString(),
+      }),
+    ];
+    render(<AnalogClock rawEvents={rawEvents} currentTime={now} />);
+    expect(screen.getByTestId("event-arc-raw-morning")).toBeInTheDocument();
+  });
+
+  it("filters out all-day events when using rawEvents", () => {
+    const now = new Date(2026, 3, 12, 9, 0, 0);
+    const rawEvents: IEvent[] = [
+      makeRawEvent({
+        id: "raw-all-day",
+        isAllDay: true,
+        startDate: new Date(2026, 3, 12, 0, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 13, 0, 0, 0).toISOString(),
+      }),
+      makeRawEvent({
+        id: "raw-timed",
+        startDate: new Date(2026, 3, 12, 9, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 10, 0, 0).toISOString(),
+      }),
+    ];
+    render(<AnalogClock rawEvents={rawEvents} currentTime={now} />);
+    expect(
+      screen.queryByTestId("event-arc-raw-all-day")
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("event-arc-raw-timed")).toBeInTheDocument();
+  });
+
+  it("filters out events outside the current 12-hour period when using rawEvents", () => {
+    const now = new Date(2026, 3, 12, 9, 0, 0); // AM
+    const rawEvents: IEvent[] = [
+      makeRawEvent({
+        id: "raw-am",
+        startDate: new Date(2026, 3, 12, 3, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 4, 0, 0).toISOString(),
+      }),
+      makeRawEvent({
+        id: "raw-pm",
+        startDate: new Date(2026, 3, 12, 14, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 15, 0, 0).toISOString(),
+      }),
+    ];
+    render(<AnalogClock rawEvents={rawEvents} currentTime={now} />);
+    expect(screen.getByTestId("event-arc-raw-am")).toBeInTheDocument();
+    expect(screen.queryByTestId("event-arc-raw-pm")).not.toBeInTheDocument();
   });
 
   it("handles overlapping events by stacking at different radii", () => {

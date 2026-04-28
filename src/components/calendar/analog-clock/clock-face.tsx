@@ -2,6 +2,7 @@
  * ClockFace component - renders SVG clock face with hour markers, numbers, and hands.
  * Designed as a child of an SVG element.
  */
+import { roundCoord } from "./clock-utils";
 import type { ClockFaceProps } from "./types";
 
 /** Hour marker positions (1-12) at 30-degree intervals */
@@ -68,10 +69,10 @@ export function ClockFace({
       {MINUTE_TICKS.map((minute) => {
         const angle = minute * 6;
         const angleRad = ((angle - 90) * Math.PI) / 180;
-        const outerX = cx + minuteTickOuter * Math.cos(angleRad);
-        const outerY = cy + minuteTickOuter * Math.sin(angleRad);
-        const innerX = cx + minuteTickInner * Math.cos(angleRad);
-        const innerY = cy + minuteTickInner * Math.sin(angleRad);
+        const outerX = roundCoord(cx + minuteTickOuter * Math.cos(angleRad));
+        const outerY = roundCoord(cy + minuteTickOuter * Math.sin(angleRad));
+        const innerX = roundCoord(cx + minuteTickInner * Math.cos(angleRad));
+        const innerY = roundCoord(cy + minuteTickInner * Math.sin(angleRad));
 
         return (
           <line
@@ -92,16 +93,16 @@ export function ClockFace({
         const angleRad = ((angle - 90) * Math.PI) / 180;
         const isQuarter = hour % 3 === 0;
 
-        const outerX = cx + markerOuterRadius * Math.cos(angleRad);
-        const outerY = cy + markerOuterRadius * Math.sin(angleRad);
+        const outerX = roundCoord(cx + markerOuterRadius * Math.cos(angleRad));
+        const outerY = roundCoord(cy + markerOuterRadius * Math.sin(angleRad));
         const innerR = isQuarter
           ? markerInnerRadiusMajor
           : markerInnerRadiusMinor;
-        const innerX = cx + innerR * Math.cos(angleRad);
-        const innerY = cy + innerR * Math.sin(angleRad);
+        const innerX = roundCoord(cx + innerR * Math.cos(angleRad));
+        const innerY = roundCoord(cy + innerR * Math.sin(angleRad));
 
-        const numberX = cx + numberRadius * Math.cos(angleRad);
-        const numberY = cy + numberRadius * Math.sin(angleRad);
+        const numberX = roundCoord(cx + numberRadius * Math.cos(angleRad));
+        const numberY = roundCoord(cy + numberRadius * Math.sin(angleRad));
 
         return (
           <g key={hour}>
@@ -121,7 +122,7 @@ export function ClockFace({
               y={numberY}
               textAnchor="middle"
               dominantBaseline="central"
-              fontSize={faceRadius * 0.14}
+              fontSize={roundCoord(faceRadius * 0.14)}
               fontWeight={isQuarter ? 700 : 500}
               fill="#1f2937"
               fontFamily="system-ui, -apple-system, sans-serif"
@@ -136,10 +137,10 @@ export function ClockFace({
       <text
         data-testid="period-indicator"
         x={cx}
-        y={cy + faceRadius * 0.35}
+        y={roundCoord(cy + faceRadius * 0.35)}
         textAnchor="middle"
         dominantBaseline="central"
-        fontSize={faceRadius * 0.09}
+        fontSize={roundCoord(faceRadius * 0.09)}
         fontWeight={600}
         fill="#9ca3af"
         fontFamily="system-ui, -apple-system, sans-serif"
@@ -153,9 +154,9 @@ export function ClockFace({
         x1={cx}
         y1={cy}
         x2={cx}
-        y2={cy - hourHandLength}
+        y2={roundCoord(cy - hourHandLength)}
         stroke="#1f2937"
-        strokeWidth={faceRadius * 0.045}
+        strokeWidth={roundCoord(faceRadius * 0.045)}
         strokeLinecap="round"
         transform={`rotate(${hourAngle}, ${cx}, ${cy})`}
       />
@@ -166,9 +167,9 @@ export function ClockFace({
         x1={cx}
         y1={cy}
         x2={cx}
-        y2={cy - minuteHandLength}
+        y2={roundCoord(cy - minuteHandLength)}
         stroke="#374151"
-        strokeWidth={faceRadius * 0.028}
+        strokeWidth={roundCoord(faceRadius * 0.028)}
         strokeLinecap="round"
         transform={`rotate(${minuteAngle}, ${cx}, ${cy})`}
       />
@@ -178,9 +179,9 @@ export function ClockFace({
         <line
           data-testid="second-hand"
           x1={cx}
-          y1={cy + faceRadius * 0.12}
+          y1={roundCoord(cy + faceRadius * 0.12)}
           x2={cx}
-          y2={cy - secondHandLength}
+          y2={roundCoord(cy - secondHandLength)}
           stroke="#ef4444"
           strokeWidth={1.5}
           strokeLinecap="round"
@@ -193,7 +194,7 @@ export function ClockFace({
         data-testid="clock-center-dot"
         cx={cx}
         cy={cy}
-        r={faceRadius * 0.035}
+        r={roundCoord(faceRadius * 0.035)}
         fill="#1f2937"
       />
     </g>

@@ -1,16 +1,18 @@
 "use client";
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { DayCalendar } from "@/components/calendar/DayCalendar";
+import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
-import { YearCalendar } from "@/components/calendar/YearCalendar";
+import { WeekCalendar } from "@/components/calendar/WeekCalendar";
 import {
   MockCalendarProvider,
   useCalendar,
 } from "@/components/providers/MockCalendarProvider";
 import { Button } from "@/components/ui/button";
-import type { IEvent, TEventColor } from "@/types/calendar";
-import { Suspense } from "react";
+import type { IEvent, TCalendarView, TEventColor } from "@/types/calendar";
+import { type ReactNode, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 /**
@@ -205,6 +207,32 @@ const mockEventSets: Record<string, IEvent[]> = {
     })
   ),
 
+  // Multi-day event scenario for week-view spanning bars
+  multiDay: [
+    createMockEvent({
+      id: "trip",
+      title: "Family Trip",
+      startDate: getRelativeDate(1, 0, 0),
+      endDate: getRelativeDate(4, 23, 59),
+      color: "purple",
+    }),
+    createMockEvent({
+      id: "all-day-holiday",
+      title: "Holiday",
+      startDate: getRelativeDate(0, 0, 0),
+      endDate: getRelativeDate(0, 23, 59),
+      color: "red",
+      isAllDay: true,
+    }),
+    createMockEvent({
+      id: "morning-meeting",
+      title: "Morning Standup",
+      startDate: getRelativeDate(0, 9, 0),
+      endDate: getRelativeDate(0, 9, 30),
+      color: "blue",
+    }),
+  ],
+
   // Family calendar scenario
   family: [
     createMockEvent({
@@ -269,16 +297,51 @@ const mockEventSets: Record<string, IEvent[]> = {
 };
 
 /**
- * Calendar display component that renders based on current view
+ * Calendar display component that renders based on current view.
+ *
+ * `day`, `week`, and `year` views do not yet have production components
+ * (tracked in #70 / #83 and friends). For those we render a labelled
+ * placeholder so layout-rule tests (e.g. sidebar visibility on #146) can
+ * still exercise the view while the main-panel content isn't yet wired up.
  */
 function CalendarDisplay() {
   const { view } = useCalendar();
 
   return (
     <div data-testid="calendar-display">
+      {view === "day" && <DayCalendar />}
+      {view === "week" && <WeekCalendar />}
       {view === "month" && <SimpleCalendar />}
       {view === "year" && <YearCalendar />}
       {view === "agenda" && <AgendaCalendar />}
+      {(view === "day" || view === "week" || view === "year") && (
+        <div
+          data-testid={`calendar-placeholder-${view}`}
+          className="text-muted-foreground rounded border border-dashed p-8 text-center"
+        >
+          {view.charAt(0).toUpperCase() + view.slice(1)} view placeholder
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Layout that mirrors the production /calendar page: the mini-calendar sidebar
+ * is hidden when the active view is month (where it duplicates the main grid)
+ * and shown on day, week, year, and agenda views. See issue #146.
+ */
+function SidebarAwareLayout({ children }: { children: ReactNode }) {
+  const { view } = useCalendar();
+
+  if (view === "month") {
+    return <div className="grid gap-4">{children}</div>;
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+      {children}
+      <MiniCalendarSidebar />
     </div>
   );
 }
@@ -359,12 +422,12 @@ function TestCalendarContent() {
 
   // Get test configuration from URL params
   const eventSet = searchParams.get("events") || "default";
-  const view =
-    (searchParams.get("view") as "month" | "year" | "agenda") || "month";
+  const view = (searchParams.get("view") as TCalendarView) || "month";
   const loading = searchParams.get("loading") === "true";
   const loadingDelay = parseInt(searchParams.get("loadingDelay") || "0", 10);
   const showControls = searchParams.get("controls") !== "false";
   const use24Hour = searchParams.get("24hour") !== "false";
+  const showSidebar = searchParams.get("sidebar") === "true";
 
   // Get events for the specified set
   const events = mockEventSets[eventSet] || mockEventSets.default;
@@ -393,7 +456,13 @@ function TestCalendarContent() {
           <ViewSwitcher />
         </div>
 
-        <CalendarDisplay />
+        {showSidebar ? (
+          <SidebarAwareLayout>
+            <CalendarDisplay />
+          </SidebarAwareLayout>
+        ) : (
+          <CalendarDisplay />
+        )}
       </div>
     </MockCalendarProvider>
   );
@@ -409,6 +478,7 @@ function TestCalendarContent() {
  * - loadingDelay: Simulate loading delay in ms
  * - controls: Show test controls (true/false)
  * - 24hour: Use 24-hour format (true/false)
+ * - sidebar: Show the mini-calendar sidebar (true/false)
  *
  * Examples:
  * - /test/calendar - Default events, month view
