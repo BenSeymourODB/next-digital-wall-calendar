@@ -54,7 +54,10 @@
       "Bash(git -C /home/bseymour/next-digital-wall-calendar log --oneline -10)",
       "Bash(git -C /home/bseymour/next-digital-wall-calendar diff --stat)",
       "Bash(pnpm dev:*)",
-      "mcp__next-devtools__browser_eval"
+      "mcp__next-devtools__browser_eval",
+      "Bash(gh issue *)",
+      "Bash(gh project *)",
+      "Bash(gh repo *)"
     ]
   },
   "enableAllProjectMcpServers": true,
