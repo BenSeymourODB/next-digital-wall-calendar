@@ -4,6 +4,15 @@ import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import {
+  applyCalendarKeyboardAction,
+  keyboardEventToAction,
+} from "@/lib/calendar-keyboard";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useRef,
+} from "react";
+import {
   eachDayOfInterval,
   endOfMonth,
   format,
@@ -15,6 +24,12 @@ import {
   startOfMonth,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+
+const CELL_DATE_ATTR = "data-date";
+
+function toDateKey(date: Date): string {
+  return format(date, "yyyy-MM-dd");
+}
 
 export function SimpleCalendar() {
   const { selectedDate, setSelectedDate, events, isLoading, maxEventsPerDay } =
@@ -28,9 +43,39 @@ export function SimpleCalendar() {
   const monthEnd = endOfMonth(selectedDate);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-  // Leading padding cells before the 1st, measured from WEEK_STARTS_ON.
+  // Leading padding: days from the previous month that fill the first row
+  // before the 1st, measured from WEEK_STARTS_ON.
   const leadingPadding = (getDay(monthStart) - WEEK_STARTS_ON + 7) % 7;
-  const paddingDays = Array.from({ length: leadingPadding }, (_, i) => i);
+  const leadingPaddingDays = Array.from({ length: leadingPadding }, (_, i) => {
+    const date = new Date(monthStart);
+    date.setDate(date.getDate() - (leadingPadding - i));
+    return date;
+  });
+
+  // Trailing padding: days from the next month that complete the final row,
+  // so every row has exactly 7 cells. The grid pattern expects uniform rows.
+  const totalSoFar = leadingPadding + daysInMonth.length;
+  const trailingPadding = (7 - (totalSoFar % 7)) % 7;
+  const trailingPaddingDays = Array.from(
+    { length: trailingPadding },
+    (_, i) => {
+      const date = new Date(monthEnd);
+      date.setDate(date.getDate() + (i + 1));
+      return date;
+    }
+  );
+
+  // Flatten then chunk into rows of 7 so we can render role="row" wrappers
+  // cleanly.
+  const allCells: Array<{ date: Date; isCurrentMonth: boolean }> = [
+    ...leadingPaddingDays.map((date) => ({ date, isCurrentMonth: false })),
+    ...daysInMonth.map((date) => ({ date, isCurrentMonth: true })),
+    ...trailingPaddingDays.map((date) => ({ date, isCurrentMonth: false })),
+  ];
+  const weekRows: Array<Array<{ date: Date; isCurrentMonth: boolean }>> = [];
+  for (let i = 0; i < allCells.length; i += 7) {
+    weekRows.push(allCells.slice(i, i + 7));
+  }
 
   const previousMonth = () => {
     const newDate = new Date(selectedDate);
@@ -67,6 +112,48 @@ export function SimpleCalendar() {
 
   const goToToday = () => {
     setSelectedDate(new Date());
+  };
+
+  // Roving-tabindex focus sync: when the user navigates with the keyboard,
+  // selectedDate updates and the DOM re-renders. After render, if the
+  // previously-focused element was inside the grid, move focus to the cell
+  // matching the new selectedDate so the user's focus never gets stranded.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const pendingFocusRef = useRef(false);
+  useEffect(() => {
+    if (!pendingFocusRef.current || !gridRef.current) return;
+    pendingFocusRef.current = false;
+    const target = gridRef.current.querySelector<HTMLElement>(
+      `[${CELL_DATE_ATTR}="${toDateKey(selectedDate)}"]`
+    );
+    target?.focus();
+  }, [selectedDate]);
+
+  const handleGridKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    // Only handle keys originating from a focusable gridcell — filtering by
+    // role keeps stray events (e.g., bubbling from nested buttons) from
+    // hijacking navigation.
+    const targetRole = (event.target as HTMLElement).getAttribute?.("role");
+    if (targetRole !== "gridcell") return;
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      const dateKey = (event.target as HTMLElement).getAttribute(
+        CELL_DATE_ATTR
+      );
+      if (!dateKey) return;
+      const [y, m, d] = dateKey.split("-").map(Number);
+      pendingFocusRef.current = true;
+      setSelectedDate(new Date(y, m - 1, d));
+      return;
+    }
+
+    const action = keyboardEventToAction(event);
+    if (!action) return;
+    event.preventDefault();
+    const nextDate = applyCalendarKeyboardAction(selectedDate, action);
+    pendingFocusRef.current = true;
+    setSelectedDate(nextDate);
   };
 
   return (
@@ -133,83 +220,132 @@ export function SimpleCalendar() {
         </div>
       )}
 
-      {/* Calendar Grid */}
-      <div className="border-border bg-card rounded-lg border">
+      {/* Calendar Grid — role="grid" wraps both the header rowgroup and the
+       * body rowgroup so all rows and columnheaders are true descendants of
+       * the grid per WAI-ARIA ownership rules.
+       */}
+      <div
+        ref={gridRef}
+        role="grid"
+        aria-label={`${format(selectedDate, "MMMM yyyy")} calendar`}
+        aria-multiselectable="false"
+        aria-rowcount={weekRows.length + 1}
+        aria-colcount={7}
+        onKeyDown={handleGridKeyDown}
+        className="border-border bg-card rounded-lg border"
+      >
         {/* Day headers */}
-        <div className="border-border bg-muted grid grid-cols-7 border-b">
-          {weekdayHeaders.map((day) => (
-            <div
-              key={day}
-              className="text-muted-foreground p-3 text-center text-sm font-semibold"
-            >
-              {day}
-            </div>
-          ))}
+        <div role="rowgroup">
+          <div
+            role="row"
+            className="border-border bg-muted grid grid-cols-7 border-b"
+          >
+            {weekdayHeaders.map((day) => (
+              <div
+                key={day}
+                role="columnheader"
+                className="text-muted-foreground p-3 text-center text-sm font-semibold"
+              >
+                {day}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Calendar days */}
-        <div className="grid grid-cols-7">
-          {/* Padding cells for days before the first day of the month */}
-          {paddingDays.map((index) => (
+        <div role="rowgroup">
+          {weekRows.map((row, rowIndex) => (
             <div
-              key={`padding-${index}`}
-              className="border-border bg-muted min-h-[100px] border-r border-b"
-            />
-          ))}
+              key={`row-${rowIndex}`}
+              role="row"
+              className="grid grid-cols-7"
+            >
+              {row.map(({ date, isCurrentMonth: inMonth }) => {
+                const dayEvents = inMonth ? getEventsForDay(date) : [];
+                const isToday = isSameDay(date, today);
+                const isSelected = isSameDay(date, selectedDate);
+                const dateKey = toDateKey(date);
+                const longLabel = format(date, "EEEE, MMMM d, yyyy");
+                const ariaLabel =
+                  dayEvents.length === 0
+                    ? longLabel
+                    : `${longLabel}, ${dayEvents.length} ${
+                        dayEvents.length === 1 ? "event" : "events"
+                      }`;
 
-          {/* Actual days of the month */}
-          {daysInMonth.map((day) => {
-            const dayEvents = getEventsForDay(day);
-            const isToday = isSameDay(day, today);
-
-            return (
-              <div
-                key={day.toISOString()}
-                className={`border-border min-h-[100px] border-r border-b p-2 ${
-                  isToday ? "bg-blue-50 dark:bg-blue-950" : "bg-card"
-                }`}
-              >
-                <div
-                  className={`mb-1 text-sm ${
-                    isToday
-                      ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {format(day, "d")}
-                </div>
-
-                {/* Events for this day */}
-                <div className="space-y-1">
-                  {dayEvents.slice(0, maxEventsPerDay).map((event) => (
+                if (!inMonth) {
+                  // Padding cells are decorative — screen readers shouldn't
+                  // navigate them, so we hide them from the a11y tree. They
+                  // remain gridcells for layout/ARIA row-ownership purposes.
+                  return (
                     <div
-                      key={event.id}
-                      className={`rounded px-2 py-1 text-xs ${
-                        event.color === "blue"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                          : event.color === "green"
-                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                            : event.color === "red"
-                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                              : event.color === "yellow"
-                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                                : event.color === "purple"
-                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-                                  : "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
+                      key={dateKey}
+                      role="gridcell"
+                      aria-hidden="true"
+                      tabIndex={-1}
+                      {...{ [CELL_DATE_ATTR]: dateKey }}
+                      className="border-border bg-muted min-h-[100px] border-r border-b"
+                    />
+                  );
+                }
+
+                return (
+                  <div
+                    key={dateKey}
+                    role="gridcell"
+                    aria-label={ariaLabel}
+                    {...{ [CELL_DATE_ATTR]: dateKey }}
+                    aria-selected={isSelected}
+                    aria-current={isToday ? "date" : undefined}
+                    tabIndex={isSelected ? 0 : -1}
+                    onClick={() => setSelectedDate(date)}
+                    className={`border-border min-h-[100px] cursor-pointer border-r border-b p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${
+                      isToday ? "bg-blue-50 dark:bg-blue-950" : "bg-card"
+                    } ${isSelected ? "ring-2 ring-blue-500 ring-inset" : ""}`}
+                  >
+                    <div
+                      className={`mb-1 text-sm ${
+                        isToday
+                          ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white"
+                          : "text-muted-foreground"
                       }`}
                     >
-                      {event.title}
+                      {format(date, "d")}
                     </div>
-                  ))}
-                  {dayEvents.length > maxEventsPerDay && (
-                    <div className="text-muted-foreground text-xs">
-                      +{dayEvents.length - maxEventsPerDay} more
+
+                    {/* Events for this day */}
+                    <div className="space-y-1">
+                      {dayEvents.slice(0, maxEventsPerDay).map((event) => (
+                        <div
+                          key={event.id}
+                          className={`rounded px-2 py-1 text-xs ${
+                            event.color === "blue"
+                              ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                              : event.color === "green"
+                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                : event.color === "red"
+                                  ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                                  : event.color === "yellow"
+                                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                                    : event.color === "purple"
+                                      ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
+                                      : "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
+                          }`}
+                        >
+                          {event.title}
+                        </div>
+                      ))}
+                      {dayEvents.length > maxEventsPerDay && (
+                        <div className="text-muted-foreground text-xs">
+                          +{dayEvents.length - maxEventsPerDay} more
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
     </div>

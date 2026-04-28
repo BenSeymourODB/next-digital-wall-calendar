@@ -8,6 +8,7 @@ import type {
   TCalendarView,
   TEventColor,
 } from "@/types/calendar";
+import type React from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { addMonths, format, isSameDay, subMonths } from "date-fns";
@@ -70,13 +71,17 @@ function createMockContext(
 
 function renderWithContext(contextOverrides: Partial<ICalendarContext> = {}) {
   const contextValue = createMockContext(contextOverrides);
+  const tree = (value: ICalendarContext): React.ReactElement => (
+    <CalendarContext.Provider value={value}>
+      <MiniCalendarSidebar />
+    </CalendarContext.Provider>
+  );
+  const utils = render(tree(contextValue));
   return {
-    ...render(
-      <CalendarContext.Provider value={contextValue}>
-        <MiniCalendarSidebar />
-      </CalendarContext.Provider>
-    ),
+    ...utils,
     contextValue,
+    rerenderWithContext: (next: Partial<ICalendarContext>) =>
+      utils.rerender(tree(createMockContext(next))),
   };
 }
 
@@ -211,6 +216,56 @@ describe("MiniCalendarSidebar", () => {
       expect(isSameDay(calledWith, target)).toBe(true);
     });
 
+    it("auto-advances the view month when selectedDate changes externally to a different month", () => {
+      // Sidebar starts in May 2025; CalendarProvider then navigates to July 10.
+      const may = new Date(2025, 4, 15);
+      const july = new Date(2025, 6, 10);
+      const { rerenderWithContext } = renderWithContext({ selectedDate: may });
+
+      expect(screen.getByTestId("mini-calendar-header")).toHaveTextContent(
+        "May 2025"
+      );
+
+      rerenderWithContext({ selectedDate: july });
+
+      expect(screen.getByTestId("mini-calendar-header")).toHaveTextContent(
+        "July 2025"
+      );
+      // The newly selected day should be visible (in-month) so the highlight
+      // is not orphaned outside the rendered grid.
+      const julyCell = screen.getByTestId(
+        `mini-calendar-day-${format(july, "yyyy-MM-dd")}`
+      );
+      expect(julyCell).toHaveAttribute("data-in-month", "true");
+      expect(julyCell).toHaveAttribute("data-selected", "true");
+    });
+
+    it("does not change the view month when selectedDate moves within the same month", async () => {
+      // User browses the sidebar to June via the chevron, then the main view
+      // updates selectedDate within the originally-selected month (May). The
+      // sidebar's local browsing should not be reset.
+      const user = userEvent.setup();
+      const may15 = new Date(2025, 4, 15);
+      const may20 = new Date(2025, 4, 20);
+      const { rerenderWithContext } = renderWithContext({
+        selectedDate: may15,
+      });
+
+      // Browse forward to June.
+      await user.click(screen.getByTestId("mini-calendar-next-month"));
+      expect(screen.getByTestId("mini-calendar-header")).toHaveTextContent(
+        "June 2025"
+      );
+
+      // External selectedDate update inside May (same month as the original).
+      rerenderWithContext({ selectedDate: may20 });
+
+      // The sidebar should keep its locally-browsed June view.
+      expect(screen.getByTestId("mini-calendar-header")).toHaveTextContent(
+        "June 2025"
+      );
+    });
+
     it("advances the view month when an out-of-month padding cell is clicked", async () => {
       // May 2025 starts Thursday May 1; grid pads with Apr 27-30.
       const user = userEvent.setup();
@@ -269,6 +324,75 @@ describe("MiniCalendarSidebar", () => {
       );
       const dot = within(cell).queryByTestId("mini-calendar-event-dot");
       expect(dot).not.toBeInTheDocument();
+    });
+
+    it("renders one dot per distinct event color on a busy day", () => {
+      const anchor = new Date(2025, 4, 15);
+      const eventDay = new Date(2025, 4, 20);
+      const events = [
+        createMockEvent({
+          id: "e1",
+          startDate: new Date(2025, 4, 20, 9, 0).toISOString(),
+          endDate: new Date(2025, 4, 20, 10, 0).toISOString(),
+          color: "blue",
+        }),
+        createMockEvent({
+          id: "e2",
+          startDate: new Date(2025, 4, 20, 11, 0).toISOString(),
+          endDate: new Date(2025, 4, 20, 12, 0).toISOString(),
+          color: "green",
+        }),
+        createMockEvent({
+          id: "e3",
+          startDate: new Date(2025, 4, 20, 13, 0).toISOString(),
+          endDate: new Date(2025, 4, 20, 14, 0).toISOString(),
+          color: "blue", // duplicate color — should NOT add a second dot
+        }),
+        createMockEvent({
+          id: "e4",
+          startDate: new Date(2025, 4, 20, 15, 0).toISOString(),
+          endDate: new Date(2025, 4, 20, 16, 0).toISOString(),
+          color: "red",
+        }),
+      ];
+      renderWithContext({ selectedDate: anchor, events });
+
+      const cell = screen.getByTestId(
+        `mini-calendar-day-${format(eventDay, "yyyy-MM-dd")}`
+      );
+      const dots = within(cell).getAllByTestId("mini-calendar-event-dot");
+      expect(dots).toHaveLength(3); // blue, green, red — duplicate blue collapsed
+      // Order should follow first-occurrence in event list.
+      expect(dots[0].className).toMatch(/bg-blue-500/);
+      expect(dots[1].className).toMatch(/bg-green-500/);
+      expect(dots[2].className).toMatch(/bg-red-500/);
+    });
+
+    it("caps dot count at 3 distinct colors per day", () => {
+      const anchor = new Date(2025, 4, 15);
+      const eventDay = new Date(2025, 4, 20);
+      const colors: TEventColor[] = [
+        "blue",
+        "green",
+        "red",
+        "yellow",
+        "purple",
+      ];
+      const events = colors.map((c, i) =>
+        createMockEvent({
+          id: `e${i}`,
+          startDate: new Date(2025, 4, 20, 9 + i, 0).toISOString(),
+          endDate: new Date(2025, 4, 20, 10 + i, 0).toISOString(),
+          color: c,
+        })
+      );
+      renderWithContext({ selectedDate: anchor, events });
+
+      const cell = screen.getByTestId(
+        `mini-calendar-day-${format(eventDay, "yyyy-MM-dd")}`
+      );
+      const dots = within(cell).getAllByTestId("mini-calendar-event-dot");
+      expect(dots).toHaveLength(3);
     });
 
     it("shows event dots on every day spanned by a multi-day event", () => {
