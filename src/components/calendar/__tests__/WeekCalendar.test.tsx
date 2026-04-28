@@ -277,25 +277,36 @@ describe("WeekCalendar", () => {
       expect(screen.getByText("Standup")).toBeInTheDocument();
     });
 
-    it("shows '+X more' when a day has more than 3 events", () => {
+    it("renders all timed events on a busy day in side-by-side columns", () => {
+      // Time-grid layout positions events absolutely, so there is no
+      // "+X more" overflow — overlapping events stack into adjacent
+      // sub-columns within the day cell. This replaces the row-list
+      // overflow assertion that was removed when WeekCalendar moved
+      // from a stacked list to a time grid.
       const selectedDate = midday(new Date(2026, 3, 15));
       const weekStart = startOfWeek(selectedDate, {
         weekStartsOn: WEEK_STARTS_ON,
       });
       const day = addDays(weekStart, 1);
 
-      const events = Array.from({ length: 5 }, (_, i) =>
-        createMockEvent({
+      const events = Array.from({ length: 5 }, (_, i) => {
+        const start = new Date(day);
+        start.setHours(10 + i, 0, 0, 0);
+        const end = new Date(day);
+        end.setHours(11 + i, 0, 0, 0);
+        return createMockEvent({
           id: `m-${i}`,
           title: `Event ${i + 1}`,
-          startDate: midday(day).toISOString(),
-          endDate: midday(day).toISOString(),
-        })
-      );
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+        });
+      });
 
       renderWithContext({ selectedDate, events });
 
-      expect(screen.getByText("+2 more")).toBeInTheDocument();
+      for (let i = 1; i <= 5; i++) {
+        expect(screen.getByText(`Event ${i}`)).toBeInTheDocument();
+      }
     });
 
     it("shows all-day events with an 'All day' label", () => {
@@ -325,6 +336,106 @@ describe("WeekCalendar", () => {
     it("shows loading indicator when isLoading is true", () => {
       renderWithContext({ isLoading: true });
       expect(screen.getByText("Loading events...")).toBeInTheDocument();
+    });
+  });
+
+  describe("Time grid", () => {
+    it("positions a timed event at the correct top within its day column", () => {
+      const selectedDate = midday(new Date(2026, 3, 15));
+      const weekStart = startOfWeek(selectedDate, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const day = addDays(weekStart, 2);
+      const start = new Date(day);
+      start.setHours(9, 0, 0, 0);
+      const end = new Date(day);
+      end.setHours(10, 0, 0, 0);
+
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "morning",
+            title: "Morning",
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+          }),
+        ],
+      });
+
+      const event = screen.getByTestId("week-calendar-event");
+      const style = event.getAttribute("style") || "";
+      expect(style).toMatch(/top:\s*37\.5%/);
+      expect(style).toMatch(/height:\s*4\.16/);
+    });
+
+    it("renders the now line for today", () => {
+      renderWithContext({ selectedDate: new Date() });
+      expect(screen.getByTestId("week-calendar-now-line")).toBeInTheDocument();
+    });
+
+    it("does not render the now line for a past or future week", () => {
+      renderWithContext({ selectedDate: subWeeks(new Date(), 4) });
+      expect(
+        screen.queryByTestId("week-calendar-now-line")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Multi-day spanning bars", () => {
+    it("renders a single bar for an event spanning multiple days", () => {
+      const selectedDate = midday(new Date(2026, 3, 15));
+      const weekStart = startOfWeek(selectedDate, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "trip",
+            title: "Family Trip",
+            startDate: addDays(weekStart, 1).toISOString(),
+            endDate: addDays(weekStart, 4).toISOString(),
+          }),
+        ],
+      });
+
+      const bars = screen.getAllByTestId("week-calendar-multi-day-bar");
+      expect(bars).toHaveLength(1);
+      expect(bars[0]).toHaveTextContent("Family Trip");
+    });
+
+    it("treats all-day events as multi-day bars", () => {
+      const selectedDate = midday(new Date(2026, 3, 15));
+      const weekStart = startOfWeek(selectedDate, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const day = addDays(weekStart, 3);
+
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "holiday",
+            title: "Holiday",
+            startDate: day.toISOString(),
+            endDate: day.toISOString(),
+            isAllDay: true,
+          }),
+        ],
+      });
+
+      const bars = screen.getAllByTestId("week-calendar-multi-day-bar");
+      expect(bars).toHaveLength(1);
+      expect(bars[0]).toHaveTextContent("Holiday");
+    });
+
+    it("does not render the multi-day row when no spanning events exist", () => {
+      renderWithContext({ selectedDate: new Date(2026, 3, 15), events: [] });
+      expect(
+        screen.queryByTestId("week-calendar-multi-day-row")
+      ).not.toBeInTheDocument();
     });
   });
 });

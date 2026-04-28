@@ -321,4 +321,91 @@ describe("DayCalendar", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  describe("Time grid", () => {
+    it("renders timed events as positioned blocks with top/height", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "morning",
+            title: "Morning Meeting",
+            startDate: at(selectedDate, 9),
+            endDate: at(selectedDate, 10),
+          }),
+        ],
+      });
+
+      const eventBlock = screen.getByTestId("day-calendar-event");
+      const style = eventBlock.getAttribute("style") || "";
+      // 9:00 / 24h = 37.5%
+      expect(style).toMatch(/top:\s*37\.5%/);
+      // 1h / 24h ≈ 4.166%
+      expect(style).toMatch(/height:\s*4\.16/);
+    });
+
+    it("places adjacent overlapping events into separate sub-columns", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "a",
+            title: "A",
+            startDate: at(selectedDate, 10),
+            endDate: at(selectedDate, 11),
+          }),
+          createMockEvent({
+            id: "b",
+            title: "B",
+            startDate: at(selectedDate, 10, 30),
+            endDate: at(selectedDate, 11, 30),
+          }),
+        ],
+      });
+
+      const blocks = screen.getAllByTestId("day-calendar-event");
+      expect(blocks).toHaveLength(2);
+      const lefts = blocks.map((b) => {
+        const m = (b.getAttribute("style") || "").match(/left:\s*([0-9.]+)%/);
+        return m ? Number(m[1]) : Number.NaN;
+      });
+      // Two distinct column origins (0% and 50%)
+      expect(new Set(lefts).size).toBe(2);
+    });
+
+    it("renders the now line on today's view", () => {
+      renderWithContext({ selectedDate: new Date() });
+      expect(screen.getByTestId("day-calendar-now-line")).toBeInTheDocument();
+    });
+
+    it("does not render the now line on a non-today day", () => {
+      renderWithContext({ selectedDate: subDays(new Date(), 3) });
+      expect(
+        screen.queryByTestId("day-calendar-now-line")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Filters", () => {
+    it("renders only events the provider has not filtered out", () => {
+      // Provider's `events` is already post-filter — DayCalendar must just
+      // render what it receives.
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "kept",
+            title: "Visible",
+            startDate: at(selectedDate, 10),
+            endDate: at(selectedDate, 11),
+          }),
+        ],
+      });
+      expect(screen.getByText("Visible")).toBeInTheDocument();
+      expect(screen.queryByText("Hidden")).not.toBeInTheDocument();
+    });
+  });
 });
