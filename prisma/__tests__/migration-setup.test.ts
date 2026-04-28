@@ -143,6 +143,46 @@ describe("package.json migration scripts", () => {
   });
 });
 
+describe("Account uniqueness constraints (issue #61)", () => {
+  it("schema enforces @@unique([userId, provider]) on Account", () => {
+    const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");
+
+    const accountBlockMatch = schemaContent.match(
+      /model Account \{[\s\S]*?\n\}/
+    );
+    expect(
+      accountBlockMatch,
+      "Account model not found in schema"
+    ).not.toBeNull();
+
+    const accountBlock = accountBlockMatch![0];
+    expect(accountBlock).toMatch(/@@unique\(\[userId,\s*provider\]\)/);
+  });
+
+  it("migration creates a unique index on Account(userId, provider)", () => {
+    const entries = fs.readdirSync(MIGRATIONS_DIR, { withFileTypes: true });
+    const migrationDirs = entries
+      .filter((e) => e.isDirectory() && e.name !== "__tests__")
+      .map((e) => e.name);
+
+    const combinedSql = migrationDirs
+      .map((dir) =>
+        fs.readFileSync(
+          path.join(MIGRATIONS_DIR, dir, "migration.sql"),
+          "utf-8"
+        )
+      )
+      .join("\n");
+
+    const uniqueIndexPattern =
+      /CREATE UNIQUE INDEX\s+"[^"]+"\s+ON\s+"Account"\s*\(\s*"userId"\s*,\s*"provider"\s*\)/;
+    expect(
+      combinedSql,
+      "Expected a CREATE UNIQUE INDEX on Account(userId, provider) across migrations"
+    ).toMatch(uniqueIndexPattern);
+  });
+});
+
 describe("schema and migration consistency", () => {
   it("should reference the same models in schema and migration", () => {
     const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");

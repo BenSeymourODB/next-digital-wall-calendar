@@ -1,9 +1,31 @@
+import type { IEvent } from "@/types/calendar";
 import { describe, expect, it } from "vitest";
 import {
   calculateArcAngles,
+  describeArc,
+  eventsToClockEvents,
+  filterEventsForPeriod,
+  getPeriodBounds,
   getPeriodStart,
   parseEventTitle,
+  polarToCartesian,
+  roundCoord,
 } from "../clock-utils";
+
+function makeEvent(overrides: Partial<IEvent> = {}): IEvent {
+  return {
+    id: "e1",
+    title: "Event",
+    startDate: new Date(2026, 3, 12, 9, 0, 0).toISOString(),
+    endDate: new Date(2026, 3, 12, 10, 0, 0).toISOString(),
+    color: "blue",
+    description: "",
+    user: { id: "u1", name: "U", picturePath: null },
+    isAllDay: false,
+    calendarId: "c1",
+    ...overrides,
+  };
+}
 
 describe("parseEventTitle", () => {
   it("extracts color emoji and returns matching hex color", () => {
@@ -215,5 +237,241 @@ describe("calculateArcAngles", () => {
     const angles = calculateArcAngles(eventStart, eventEnd, periodStart);
     // Should be at least 7.5 degrees wide
     expect(angles.endAngle - angles.startAngle).toBeGreaterThanOrEqual(7.5);
+  });
+});
+
+describe("getPeriodBounds", () => {
+  it("returns AM start and end for morning times", () => {
+    const time = new Date(2026, 3, 12, 9, 30, 0);
+    const { periodStart, periodEnd } = getPeriodBounds(time);
+    expect(periodStart.getHours()).toBe(0);
+    expect(periodEnd.getHours()).toBe(12);
+    expect(periodEnd.getMinutes()).toBe(0);
+    expect(periodEnd.getSeconds()).toBe(0);
+  });
+
+  it("returns PM start and end for afternoon times", () => {
+    const time = new Date(2026, 3, 12, 14, 30, 0);
+    const { periodStart, periodEnd } = getPeriodBounds(time);
+    expect(periodStart.getHours()).toBe(12);
+    // PM period ends at midnight of the next day
+    expect(periodEnd.getDate()).toBe(13);
+    expect(periodEnd.getHours()).toBe(0);
+    expect(periodEnd.getMinutes()).toBe(0);
+  });
+
+  it("periodEnd is exactly 12 hours after periodStart", () => {
+    const time = new Date(2026, 3, 12, 14, 30, 0);
+    const { periodStart, periodEnd } = getPeriodBounds(time);
+    expect(periodEnd.getTime() - periodStart.getTime()).toBe(
+      12 * 60 * 60 * 1000
+    );
+  });
+
+  it("agrees with getPeriodStart for the start value", () => {
+    const time = new Date(2026, 3, 12, 7, 0, 0);
+    const { periodStart } = getPeriodBounds(time);
+    expect(periodStart.getTime()).toBe(getPeriodStart(time).getTime());
+  });
+});
+
+describe("filterEventsForPeriod", () => {
+  const periodStart = new Date(2026, 3, 12, 0, 0, 0);
+  const periodEnd = new Date(2026, 3, 12, 12, 0, 0);
+
+  it("excludes all-day events", () => {
+    const events: IEvent[] = [
+      makeEvent({
+        id: "a",
+        isAllDay: true,
+        startDate: new Date(2026, 3, 12, 9, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 10, 0, 0).toISOString(),
+      }),
+      makeEvent({
+        id: "b",
+        isAllDay: false,
+        startDate: new Date(2026, 3, 12, 9, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 10, 0, 0).toISOString(),
+      }),
+    ];
+    const result = filterEventsForPeriod(events, periodStart, periodEnd);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("b");
+  });
+
+  it("includes events that fully overlap the period", () => {
+    const events = [
+      makeEvent({
+        id: "inside",
+        startDate: new Date(2026, 3, 12, 3, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 4, 0, 0).toISOString(),
+      }),
+    ];
+    expect(filterEventsForPeriod(events, periodStart, periodEnd)).toHaveLength(
+      1
+    );
+  });
+
+  it("includes events that start before the period but end inside it", () => {
+    const events = [
+      makeEvent({
+        id: "spans-start",
+        startDate: new Date(2026, 3, 11, 23, 30, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 1, 0, 0).toISOString(),
+      }),
+    ];
+    expect(filterEventsForPeriod(events, periodStart, periodEnd)).toHaveLength(
+      1
+    );
+  });
+
+  it("includes events that start inside the period but end after", () => {
+    const events = [
+      makeEvent({
+        id: "spans-end",
+        startDate: new Date(2026, 3, 12, 11, 30, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 13, 0, 0).toISOString(),
+      }),
+    ];
+    expect(filterEventsForPeriod(events, periodStart, periodEnd)).toHaveLength(
+      1
+    );
+  });
+
+  it("excludes events that end exactly at period start", () => {
+    const events = [
+      makeEvent({
+        id: "ends-at-start",
+        startDate: new Date(2026, 3, 11, 22, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 0, 0, 0).toISOString(),
+      }),
+    ];
+    expect(filterEventsForPeriod(events, periodStart, periodEnd)).toHaveLength(
+      0
+    );
+  });
+
+  it("excludes events entirely before or after the period", () => {
+    const events = [
+      makeEvent({
+        id: "before",
+        startDate: new Date(2026, 3, 11, 20, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 11, 21, 0, 0).toISOString(),
+      }),
+      makeEvent({
+        id: "after",
+        startDate: new Date(2026, 3, 12, 14, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 15, 0, 0).toISOString(),
+      }),
+    ];
+    expect(filterEventsForPeriod(events, periodStart, periodEnd)).toHaveLength(
+      0
+    );
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(filterEventsForPeriod([], periodStart, periodEnd)).toEqual([]);
+  });
+});
+
+describe("eventsToClockEvents", () => {
+  const periodStart = new Date(2026, 3, 12, 0, 0, 0);
+
+  it("converts IEvents to ClockEvents with arc angles", () => {
+    const events = [
+      makeEvent({
+        id: "evt-1",
+        title: "🟢 🎮 Game Night",
+        color: "green",
+        startDate: new Date(2026, 3, 12, 3, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 4, 0, 0).toISOString(),
+      }),
+    ];
+    const result = eventsToClockEvents(events, periodStart);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("evt-1");
+    expect(result[0].cleanTitle).toBe("Game Night");
+    expect(result[0].eventEmoji).toBe("🎮");
+    expect(result[0].color).toBe("#22C55E");
+    expect(result[0].startAngle).toBeCloseTo(90);
+    expect(result[0].endAngle).toBeCloseTo(120);
+    expect(result[0].isAllDay).toBe(false);
+  });
+
+  it("uses Tailwind fallback color when no color emoji is present", () => {
+    const events = [
+      makeEvent({
+        id: "evt-2",
+        title: "Team Standup",
+        color: "blue",
+        startDate: new Date(2026, 3, 12, 9, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 12, 9, 30, 0).toISOString(),
+      }),
+    ];
+    const result = eventsToClockEvents(events, periodStart);
+    // Tailwind blue-500 (from color-utils TAILWIND_COLORS)
+    expect(result[0].color.toLowerCase()).toBe("#3b82f6");
+  });
+
+  it("preserves all-day flag on output", () => {
+    const events = [
+      makeEvent({
+        id: "evt-3",
+        isAllDay: true,
+        startDate: new Date(2026, 3, 12, 0, 0, 0).toISOString(),
+        endDate: new Date(2026, 3, 13, 0, 0, 0).toISOString(),
+      }),
+    ];
+    const result = eventsToClockEvents(events, periodStart);
+    expect(result[0].isAllDay).toBe(true);
+  });
+});
+
+describe("roundCoord", () => {
+  it("rounds to 4 decimals by default", () => {
+    expect(roundCoord(160.74060486414018)).toBe(160.7406);
+    expect(roundCoord(160.74060486414015)).toBe(160.7406);
+  });
+
+  it("is deterministic for the same input", () => {
+    const a = roundCoord(27.328000000000007);
+    const b = roundCoord(27.328000000000007);
+    expect(a).toBe(b);
+  });
+
+  it("produces identical output for inputs that differ only in floating-point noise", () => {
+    // These are the exact values from the hydration error
+    expect(roundCoord(160.74060486414018)).toBe(roundCoord(160.74060486414015));
+    expect(roundCoord(148.39668739008982)).toBe(roundCoord(148.39668739008985));
+  });
+
+  it("accepts a custom precision", () => {
+    expect(roundCoord(1.23456789, 2)).toBe(1.23);
+    expect(roundCoord(1.23456789, 0)).toBe(1);
+  });
+});
+
+describe("polarToCartesian output stability", () => {
+  it("returns coordinates rounded to a stable precision", () => {
+    // Use an angle that typically produces long floating-point tails
+    const p = polarToCartesian(300, 300, 244, 137);
+    // String round-trip should not change the value (no hidden trailing digits)
+    expect(Number(p.x.toString())).toBe(p.x);
+    expect(Number(p.y.toString())).toBe(p.y);
+    // Max 4 decimal places
+    expect(p.x.toString().split(".")[1]?.length ?? 0).toBeLessThanOrEqual(4);
+    expect(p.y.toString().split(".")[1]?.length ?? 0).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("describeArc output stability", () => {
+  it("produces a path string with bounded decimal precision per coordinate", () => {
+    const path = describeArc(300, 300, 292, 244, 90, 120);
+    // Extract all numeric tokens and verify each has <=4 decimals
+    const numbers = path.match(/-?\d+(\.\d+)?/g) ?? [];
+    for (const n of numbers) {
+      const decimals = n.split(".")[1]?.length ?? 0;
+      expect(decimals).toBeLessThanOrEqual(4);
+    }
   });
 });

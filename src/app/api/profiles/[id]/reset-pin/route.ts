@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { verifyAdminWithPin } from "@/lib/services/admin-verification";
+import { validatePinFormat } from "@/lib/pin-utils";
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
 
@@ -48,12 +49,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Validate new PIN format (4-6 digits)
-    if (!/^\d{4,6}$/.test(newPin)) {
-      return NextResponse.json(
-        { error: "New PIN must be 4-6 digits" },
-        { status: 400 }
-      );
+    const newPinCheck = validatePinFormat(newPin, { fieldLabel: "New PIN" });
+    if (!newPinCheck.valid) {
+      return NextResponse.json({ error: newPinCheck.error }, { status: 400 });
     }
 
     // Verify admin profile + PIN (lookup, type check, bcrypt compare)

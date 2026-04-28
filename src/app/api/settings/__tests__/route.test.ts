@@ -56,6 +56,10 @@ const mockSettings = {
   showPointsOnCompletion: true,
   schedulerIntervalSeconds: 10,
   schedulerPauseOnInteractionSeconds: 30,
+  calendarRefreshIntervalMinutes: 15,
+  calendarFetchMonthsAhead: 6,
+  calendarFetchMonthsBehind: 1,
+  calendarMaxEventsPerDay: 3,
 };
 
 describe("/api/settings", () => {
@@ -347,6 +351,149 @@ describe("/api/settings", () => {
       expect(status).toBe(200);
       expect(data.schedulerIntervalSeconds).toBe(30);
       expect(data.schedulerPauseOnInteractionSeconds).toBe(60);
+    });
+
+    it("validates calendarRefreshIntervalMinutes range (5-120)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const requestLow = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarRefreshIntervalMinutes: 1 },
+      });
+      const responseLow = await PUT(requestLow);
+      const { status: statusLow, data: dataLow } =
+        await parseResponse<ApiErrorResponse>(responseLow);
+      expect(statusLow).toBe(400);
+      expect(dataLow.error).toContain("calendarRefreshIntervalMinutes");
+
+      const requestHigh = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarRefreshIntervalMinutes: 200 },
+      });
+      const responseHigh = await PUT(requestHigh);
+      const { status: statusHigh, data: dataHigh } =
+        await parseResponse<ApiErrorResponse>(responseHigh);
+      expect(statusHigh).toBe(400);
+      expect(dataHigh.error).toContain("calendarRefreshIntervalMinutes");
+
+      const requestFloat = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarRefreshIntervalMinutes: 15.5 },
+      });
+      const responseFloat = await PUT(requestFloat);
+      const { status: statusFloat } =
+        await parseResponse<ApiErrorResponse>(responseFloat);
+      expect(statusFloat).toBe(400);
+    });
+
+    it("validates calendarFetchMonthsAhead range (1-12)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const requestLow = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarFetchMonthsAhead: 0 },
+      });
+      const responseLow = await PUT(requestLow);
+      const { status: statusLow, data: dataLow } =
+        await parseResponse<ApiErrorResponse>(responseLow);
+      expect(statusLow).toBe(400);
+      expect(dataLow.error).toContain("calendarFetchMonthsAhead");
+
+      const requestHigh = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarFetchMonthsAhead: 24 },
+      });
+      const responseHigh = await PUT(requestHigh);
+      const { status: statusHigh } =
+        await parseResponse<ApiErrorResponse>(responseHigh);
+      expect(statusHigh).toBe(400);
+    });
+
+    it("validates calendarFetchMonthsBehind range (0-6)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const requestLow = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarFetchMonthsBehind: -1 },
+      });
+      const responseLow = await PUT(requestLow);
+      const { status: statusLow, data: dataLow } =
+        await parseResponse<ApiErrorResponse>(responseLow);
+      expect(statusLow).toBe(400);
+      expect(dataLow.error).toContain("calendarFetchMonthsBehind");
+
+      const requestHigh = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarFetchMonthsBehind: 12 },
+      });
+      const responseHigh = await PUT(requestHigh);
+      const { status: statusHigh } =
+        await parseResponse<ApiErrorResponse>(responseHigh);
+      expect(statusHigh).toBe(400);
+    });
+
+    it("validates calendarMaxEventsPerDay range (1-10)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const requestLow = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarMaxEventsPerDay: 0 },
+      });
+      const responseLow = await PUT(requestLow);
+      const { status: statusLow, data: dataLow } =
+        await parseResponse<ApiErrorResponse>(responseLow);
+      expect(statusLow).toBe(400);
+      expect(dataLow.error).toContain("calendarMaxEventsPerDay");
+
+      const requestHigh = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarMaxEventsPerDay: 50 },
+      });
+      const responseHigh = await PUT(requestHigh);
+      const { status: statusHigh } =
+        await parseResponse<ApiErrorResponse>(responseHigh);
+      expect(statusHigh).toBe(400);
+
+      const requestFloat = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarMaxEventsPerDay: 3.5 },
+      });
+      const responseFloat = await PUT(requestFloat);
+      const { status: statusFloat } =
+        await parseResponse<ApiErrorResponse>(responseFloat);
+      expect(statusFloat).toBe(400);
+    });
+
+    it("accepts valid calendar settings", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      const updatedSettings = {
+        ...mockSettings,
+        calendarRefreshIntervalMinutes: 30,
+        calendarFetchMonthsAhead: 3,
+        calendarFetchMonthsBehind: 2,
+        calendarMaxEventsPerDay: 5,
+      };
+      mockPrisma.userSettings.upsert.mockResolvedValue(updatedSettings);
+
+      const request = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: {
+          calendarRefreshIntervalMinutes: 30,
+          calendarFetchMonthsAhead: 3,
+          calendarFetchMonthsBehind: 2,
+          calendarMaxEventsPerDay: 5,
+        },
+      });
+
+      const response = await PUT(request);
+      const { status, data } =
+        await parseResponse<typeof mockSettings>(response);
+
+      expect(status).toBe(200);
+      expect(data.calendarRefreshIntervalMinutes).toBe(30);
+      expect(data.calendarFetchMonthsAhead).toBe(3);
+      expect(data.calendarFetchMonthsBehind).toBe(2);
+      expect(data.calendarMaxEventsPerDay).toBe(5);
     });
 
     it("returns 500 on database error", async () => {
