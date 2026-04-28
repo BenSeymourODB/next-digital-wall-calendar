@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import path from "path";
 
 /**
  * E2E tests for the event creation flow introduced in #82.
@@ -10,9 +11,20 @@ import { expect, test } from "@playwright/test";
  *
  * Video capture is enabled for this suite so the PR can visually document
  * the feature. Screenshots from the test run should be attached to the PR.
+ *
+ * Color picker note: the radio inputs use `sr-only` (visually hidden) with a
+ * colored `<span aria-hidden>` as the visual affordance inside a wrapping
+ * `<label>`. Clicking the label (via `.filter({ hasText })`) is the correct
+ * user-level interaction and avoids the swatch span intercepting pointer
+ * events when `.check()` targets the 1 px sr-only input directly.
  */
 
 test.use({ video: "retain-on-failure" });
+
+const SCREENSHOTS_DIR = path.join(
+  __dirname,
+  "../docs/screenshots/event-create"
+);
 
 test.describe("Event creation dialog", () => {
   test("opens the dialog from the toolbar button", async ({ page }) => {
@@ -28,6 +40,11 @@ test.describe("Event creation dialog", () => {
     await expect(
       dialog.getByRole("heading", { name: /create event/i })
     ).toBeVisible();
+
+    await page.screenshot({
+      path: path.join(SCREENSHOTS_DIR, "01-dialog-open.png"),
+      fullPage: true,
+    });
   });
 
   test("Create button is disabled until a title is entered", async ({
@@ -65,6 +82,11 @@ test.describe("Event creation dialog", () => {
     await expect(
       dialog.getByRole("button", { name: /create event/i })
     ).toBeDisabled();
+
+    await page.screenshot({
+      path: path.join(SCREENSHOTS_DIR, "04-validation-error.png"),
+      fullPage: true,
+    });
   });
 
   test("creates an event and renders it on the calendar", async ({ page }) => {
@@ -75,17 +97,37 @@ test.describe("Event creation dialog", () => {
 
     await dialog.getByLabel(/title/i).fill("Team offsite");
     await dialog.getByLabel(/description/i).fill("All-hands in the mountains");
-    await dialog.getByRole("radio", { name: /purple/i }).check();
+
+    // The color picker uses sr-only radio inputs inside <label> wrappers with
+    // a colored <span aria-hidden> swatch. Clicking the label (by text) is the
+    // correct user-level interaction — direct .check() on the sr-only input
+    // fails because the swatch span intercepts pointer events at that position.
+    await dialog
+      .locator("label")
+      .filter({ hasText: /^Purple$/ })
+      .click();
+    await expect(dialog.getByRole("radio", { name: /purple/i })).toBeChecked();
+
+    await page.screenshot({
+      path: path.join(SCREENSHOTS_DIR, "02-dialog-filled.png"),
+      fullPage: true,
+    });
+
     await dialog.getByRole("button", { name: /create event/i }).click();
 
     // Dialog should close
-    await expect(dialog).not.toBeVisible();
+    await expect(dialog).not.toBeAttached();
 
     // Event should be visible in the calendar grid exactly once. The dialog
     // seeds from the currently selected date (today) so the new event lands
     // somewhere in the current month view.
     await expect(page.getByText("Team offsite")).toHaveCount(1);
     await expect(page.getByText("Team offsite")).toBeVisible();
+
+    await page.screenshot({
+      path: path.join(SCREENSHOTS_DIR, "03-event-on-calendar.png"),
+      fullPage: true,
+    });
   });
 
   test("Cancel closes the dialog without creating an event", async ({
