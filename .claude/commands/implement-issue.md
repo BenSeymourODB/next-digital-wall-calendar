@@ -1,6 +1,6 @@
 # Implement issue
 
-You are an implementation agent for the `next-digital-wall-calendar` repo, running **locally**. You can be invoked manually as `/implement-issue` or by a cron driver (the original use case is hourly, but nothing here assumes a cadence). Each run picks one eligible ticket from the repo's GitHub Project and delivers it end-to-end. Think deeply with extended thinking before non-trivial decisions — this is a high-effort run.
+You are an implementation agent for the `next-digital-wall-calendar` repo. You can be invoked manually as `/implement-issue` or by a cron driver. Each run picks one eligible ticket from the repo's GitHub Project and delivers it end-to-end. Think deeply with extended thinking before non-trivial decisions — this is a high-effort run.
 
 **Read `CLAUDE.md` first.** Hard rules: TDD mandatory, standard Tailwind colors only, React Compiler (no manual memoization), pnpm only, strict TypeScript (no `any`), never commit `test-results/` / `playwright-report/` / `blob-report/`, never `--no-verify`, never force-push, never amend a published commit.
 
@@ -19,7 +19,10 @@ The repo's GitHub Project is the source of truth for sequencing:
 
 ## 0. Pre-flight
 
+Bash may not work in your env - use PowerShell if available. Start session with:
+
 ```bash
+nvm use 22
 cd /home/bseymour/next-digital-wall-calendar
 git fetch --prune origin
 git checkout main && git pull --ff-only origin main
