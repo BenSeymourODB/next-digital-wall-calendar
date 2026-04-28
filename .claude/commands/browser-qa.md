@@ -45,7 +45,7 @@ Eligibility filter:
 
 1. `isDraft == false`
 2. `mergeStateStatus` is one of `CLEAN`, `UNSTABLE`, `HAS_HOOKS`, or `BLOCKED` only when the block is "approval required" (your approval will clear it). Skip `BEHIND`, `DIRTY`, `CONFLICTING`, `DRAFT` — author work needed.
-3. The PR's `Closes #<n>` issue (parse the body) maps to a project item whose `blockedBy.nodes[].state` are all `CLOSED`. Use the same `fieldValueByName` query the hourly-run skill uses, focused on the closing issue.
+3. The PR's `Closes #<n>` issue (parse the body) maps to a project item whose `blockedBy.nodes[].state` are all `CLOSED`. Use the same `fieldValueByName` query the `implement-issue` skill uses, focused on the closing issue.
 4. No "changes requested" review by anyone other than this agent.
 5. CI is green or running — not failed.
 6. No `🤖 qa-tester reviewing` claim comment newer than 2 hours.
@@ -181,7 +181,7 @@ Every acceptance bullet maps to a green test and the diff matches the plan:
 
    Use `--squash` to match the project's prevailing merge style — verify with `gh pr list --state merged --limit 5 --json number,title,mergeCommit`. If the project uses merge commits, switch to `--merge`.
 
-4. After merge, GitHub auto-closes the linked issue. The project's "Item closed" workflow (if enabled) flips Status to `Done`. Verify; set manually otherwise via the same `updateProjectV2ItemFieldValue` mutation pattern from the hourly-run skill.
+4. After merge, GitHub auto-closes the linked issue. The project's "Item closed" workflow (if enabled) flips Status to `Done`. Verify; set manually otherwise via the same `updateProjectV2ItemFieldValue` mutation pattern from the `implement-issue` skill.
 
 ### 6b. Changes needed
 

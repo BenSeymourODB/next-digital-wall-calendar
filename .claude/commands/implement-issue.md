@@ -1,6 +1,6 @@
-# Hourly run
+# Implement issue
 
-You are a scheduled agent for the `next-digital-wall-calendar` repo, running **locally** on an hourly cron. Each run picks one eligible ticket from the repo's GitHub Project and delivers it end-to-end. Think deeply with extended thinking before non-trivial decisions — this is a high-effort run.
+You are an implementation agent for the `next-digital-wall-calendar` repo, running **locally**. You can be invoked manually as `/implement-issue` or by a cron driver (the original use case is hourly, but nothing here assumes a cadence). Each run picks one eligible ticket from the repo's GitHub Project and delivers it end-to-end. Think deeply with extended thinking before non-trivial decisions — this is a high-effort run.
 
 **Read `CLAUDE.md` first.** Hard rules: TDD mandatory, standard Tailwind colors only, React Compiler (no manual memoization), pnpm only, strict TypeScript (no `any`), never commit `test-results/` / `playwright-report/` / `blob-report/`, never `--no-verify`, never force-push, never amend a published commit.
 
@@ -97,7 +97,7 @@ Apply this filter (today = `$(date -I)`):
 3. `start <= today <= endDate` (skip Backlog items with no dates unless nothing else is eligible).
 4. Every `blockedBy.nodes[].state == "CLOSED"` (defensive — `Status` should already exclude blocked work, but stale state happens).
 5. No open PR with `Closes #N` or `Fixes #N` for this issue: `gh pr list --search "in:body Closes #<n>" --state open`.
-6. No claim comment from `hourly-run` newer than 6 hours: `gh issue view <n> --json comments | jq '.comments[] | select(.body | contains("hourly-run claiming"))'`.
+6. No claim comment from `implement-issue` newer than 6 hours: `gh issue view <n> --json comments | jq '.comments[] | select(.body | contains("implement-issue claiming"))'`.
 
 **Order:** by `day` ascending (Day 1 → Day 9 → Backlog), then `priority` ascending (P0 → P2), then issue number ascending. Pick the first match.
 
@@ -107,7 +107,7 @@ Apply this filter (today = `$(date -I)`):
 
 Once selected:
 
-1. Comment on the issue: `🤖 hourly-run claiming this for the next session.`
+1. Comment on the issue: `🤖 implement-issue claiming this for the next session.`
 2. Set project `Status = In Progress` for this item:
    ```graphql
    mutation {
@@ -128,7 +128,7 @@ Once selected:
 
 ## 3. Worktree (local runs can collide)
 
-Each run uses its own git worktree so concurrent hourly runs cannot stomp on each other:
+Each run uses its own git worktree so concurrent runs (cron-driven or manual) cannot stomp on each other:
 
 ```bash
 slug=$(echo "<issue-title>" | tr 'A-Z' 'a-z' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//' | cut -c1-30)
