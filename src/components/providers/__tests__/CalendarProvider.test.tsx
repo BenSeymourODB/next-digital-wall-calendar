@@ -42,8 +42,16 @@ vi.mock("@/lib/calendar-storage", () => ({
 }));
 
 vi.mock("@/lib/calendar-transform", () => ({
+  // Honour `colorOverride` on the test fixture so the filter test
+  // can assert that filtering by color actually drops the right
+  // events. Defaults to "blue" when no override is given.
   transformGoogleEvent: (
-    event: { id: string; summary?: string; start?: { dateTime?: string } },
+    event: {
+      id: string;
+      summary?: string;
+      start?: { dateTime?: string };
+      colorOverride?: string;
+    },
     _mappings: unknown
   ) => ({
     id: event.id,
@@ -51,7 +59,7 @@ vi.mock("@/lib/calendar-transform", () => ({
     description: "",
     startDate: event.start?.dateTime ?? new Date().toISOString(),
     endDate: event.start?.dateTime ?? new Date().toISOString(),
-    color: "blue",
+    color: event.colorOverride ?? "blue",
     isAllDay: false,
     calendarId: "primary",
     user: { id: "u1", name: "Mock", picturePath: null },
@@ -139,10 +147,12 @@ describe("CalendarProvider", () => {
     });
   });
 
-  it("triggers loadEventsForDate when selectedDate moves outside the loaded range", async () => {
+  it("triggers loadEventsForDate with timeMin/timeMax for the navigation target", async () => {
+    const target = addMonths(new Date(), 9);
+
     render(
       <CalendarProvider>
-        <ProbeNav targetDate={addMonths(new Date(), 9)} />
+        <ProbeNav targetDate={target} />
       </CalendarProvider>
     );
 
@@ -151,17 +161,107 @@ describe("CalendarProvider", () => {
       expect(calls.some((u) => u.includes("/api/calendar/events"))).toBe(true);
     });
 
-    const initialEventFetches = fetchMock.mock.calls
+    const initialEventCalls = fetchMock.mock.calls
       .map((c) => String(c[0]))
       .filter((u) => u.includes("/api/calendar/events")).length;
 
     await userEvent.setup().click(screen.getByText("jump"));
 
     await waitFor(() => {
-      const eventFetches = fetchMock.mock.calls
+      const eventCalls = fetchMock.mock.calls
         .map((c) => String(c[0]))
-        .filter((u) => u.includes("/api/calendar/events")).length;
-      expect(eventFetches).toBeGreaterThan(initialEventFetches);
+        .filter((u) => u.includes("/api/calendar/events"));
+      expect(eventCalls.length).toBeGreaterThan(initialEventCalls);
+
+      // The most recent fetch must include the target month in its
+      // timeMin/timeMax — confirms the provider isn't just spamming
+      // the same range.
+      const lastUrl = eventCalls.at(-1) ?? "";
+      const params = new URLSearchParams(lastUrl.split("?")[1] ?? "");
+      const timeMin = params.get("timeMin") ?? "";
+      const timeMax = params.get("timeMax") ?? "";
+      expect(timeMin).toMatch(/^\d{4}-\d{2}-\d{2}/);
+      expect(timeMax).toMatch(/^\d{4}-\d{2}-\d{2}/);
+
+      const tMin = new Date(timeMin).getTime();
+      const tMax = new Date(timeMax).getTime();
+      expect(tMin).toBeLessThanOrEqual(target.getTime());
+      expect(tMax).toBeGreaterThanOrEqual(target.getTime());
+    });
+  });
+
+  it("filters events by selectedColors", async () => {
+    function ColorProbe() {
+      const { events, filterEventsBySelectedColors } = useCalendar();
+      return (
+        <div>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedColors("blue")}
+          >
+            filter-blue
+          </button>
+          <ul data-testid="probe-events">
+            {events.map((e) => (
+              <li key={e.id}>{e.title}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    fetchMock.mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(
+          fetchOk({
+            events: [
+              {
+                id: "blue-event",
+                summary: "Blue Event",
+                start: { dateTime: new Date().toISOString() },
+                end: { dateTime: new Date().toISOString() },
+                colorOverride: "blue",
+              },
+              {
+                id: "red-event",
+                summary: "Red Event",
+                start: { dateTime: new Date().toISOString() },
+                end: { dateTime: new Date().toISOString() },
+                colorOverride: "red",
+              },
+            ],
+          })
+        );
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+
+    render(
+      <CalendarProvider>
+        <ColorProbe />
+      </CalendarProvider>
+    );
+
+    // Both events render initially.
+    await waitFor(() => {
+      expect(screen.getByText("Blue Event")).toBeInTheDocument();
+      expect(screen.getByText("Red Event")).toBeInTheDocument();
+    });
+
+    // Activate the blue filter.
+    await userEvent.setup().click(screen.getByText("filter-blue"));
+
+    // Red drops, blue stays.
+    await waitFor(() => {
+      expect(screen.getByText("Blue Event")).toBeInTheDocument();
+      expect(screen.queryByText("Red Event")).not.toBeInTheDocument();
     });
   });
 });

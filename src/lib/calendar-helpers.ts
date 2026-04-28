@@ -157,24 +157,6 @@ export function groupEvents(dayEvents: IEvent[]): IEvent[][] {
   return groups;
 }
 
-export function getEventBlockStyle(
-  event: IEvent,
-  day: Date,
-  groupIndex: number,
-  groupSize: number
-) {
-  const startDate = parseISO(event.startDate);
-  const dayStart = startOfDay(day); // Use startOfDay instead of manual reset
-  const eventStart = startDate < dayStart ? dayStart : startDate;
-  const startMinutes = differenceInMinutes(eventStart, dayStart);
-
-  const top = (startMinutes / 1440) * 100; // 1440 minutes in a day
-  const width = 100 / groupSize;
-  const left = groupIndex * width;
-
-  return { top: `${top}%`, width: `${width}%`, left: `${left}%` };
-}
-
 export function getCalendarCells(selectedDate: Date): ICalendarCell[] {
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth();
@@ -519,6 +501,51 @@ export const getCurrentTimePosition = (
 ): { top: number } => {
   const minutes = now.getHours() * 60 + now.getMinutes();
   return { top: (minutes / MINUTES_PER_DAY) * 100 };
+};
+
+/**
+ * Lay out timed events in a single-day time grid. Returns a map of
+ * `eventId → { column, columns }` where `columns` is the *local*
+ * concurrency at this event's slot — i.e. the maximum number of
+ * events present at any moment during this event's duration — and
+ * `column` is the lane assigned by `groupEvents`.
+ *
+ * Local concurrency keeps an event full-width when it has no
+ * overlapping neighbour, even if other events later in the day
+ * stack two-deep elsewhere.
+ */
+export const computeEventColumns = (
+  events: IEvent[]
+): Record<string, { column: number; columns: number }> => {
+  const groups = groupEvents([...events]);
+  const lane: Record<string, number> = {};
+  groups.forEach((group, groupIndex) => {
+    group.forEach((event) => {
+      lane[event.id] = groupIndex;
+    });
+  });
+
+  const result: Record<string, { column: number; columns: number }> = {};
+
+  for (const event of events) {
+    const eventStart = parseISO(event.startDate).getTime();
+    const eventEnd = parseISO(event.endDate).getTime();
+    let maxLane = lane[event.id];
+
+    for (const other of events) {
+      if (other.id === event.id) continue;
+      const otherStart = parseISO(other.startDate).getTime();
+      const otherEnd = parseISO(other.endDate).getTime();
+      if (otherStart < eventEnd && otherEnd > eventStart) {
+        const otherLane = lane[other.id];
+        if (otherLane > maxLane) maxLane = otherLane;
+      }
+    }
+
+    result[event.id] = { column: lane[event.id], columns: maxLane + 1 };
+  }
+
+  return result;
 };
 
 /**

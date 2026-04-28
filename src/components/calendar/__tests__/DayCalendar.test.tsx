@@ -388,6 +388,74 @@ describe("DayCalendar", () => {
     });
   });
 
+  describe("Multi-day events", () => {
+    it("shows a multi-day all-day event in the all-day section even when the user is mid-span", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15)); // Wed
+      const start = subDays(selectedDate, 2); // Mon
+      const end = addDays(selectedDate, 2); // Fri
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "trip",
+            title: "Family Trip",
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+            isAllDay: true,
+          }),
+        ],
+      });
+      expect(screen.getByText("Family Trip")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("day-calendar-event-span-hint")
+      ).toHaveTextContent(`(through ${format(end, "MMM d")})`);
+    });
+
+    it("omits the span hint when the multi-day event ends on the viewed day", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      const start = subDays(selectedDate, 1);
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "ending",
+            title: "Wraps Today",
+            startDate: start.toISOString(),
+            endDate: selectedDate.toISOString(),
+            isAllDay: true,
+          }),
+        ],
+      });
+      expect(
+        screen.queryByTestId("day-calendar-event-span-hint")
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not render multi-day events as full-height blocks on the time grid", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      const start = subDays(selectedDate, 1);
+      const end = addDays(selectedDate, 1);
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "trip",
+            title: "Trip",
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+            isAllDay: false,
+          }),
+        ],
+      });
+      // The multi-day event must appear once (in the all-day section)
+      // and not also on the time grid as a positioned block.
+      expect(
+        screen.queryByTestId("day-calendar-event")
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("Trip")).toBeInTheDocument();
+    });
+  });
+
   describe("Filters", () => {
     it("renders only events the provider has not filtered out", () => {
       // Provider's `events` is already post-filter — DayCalendar must just

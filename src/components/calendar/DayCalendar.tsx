@@ -3,10 +3,10 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import {
+  computeEventColumns,
   formatTime,
   getCurrentTimePosition,
   getEventTimePosition,
-  groupEvents,
 } from "@/lib/calendar-helpers";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useState } from "react";
@@ -59,13 +59,18 @@ function getAllDayPillClasses(color: TEventColor): string {
 
 function NowLine({ day }: { day: Date }) {
   const [now, setNow] = useState<Date>(() => new Date());
+  const visible = isSameDay(now, day);
 
+  // Only tick when this day is the wall-clock day. When the user
+  // navigates to a non-today view we tear down the timer; when they
+  // come back the initial `useState` re-seeds with the current time.
   useEffect(() => {
+    if (!visible) return;
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [visible]);
 
-  if (!isSameDay(now, day)) return null;
+  if (!visible) return null;
 
   const { top } = getCurrentTimePosition(now);
 
@@ -82,8 +87,17 @@ function NowLine({ day }: { day: Date }) {
   );
 }
 
-function eventStartsOnDay(event: IEvent, day: Date): boolean {
-  return isSameDay(parseISO(event.startDate), day);
+function eventCoversDay(event: IEvent, day: Date): boolean {
+  const dayStart = startOfDay(day);
+  const dayEnd = addDays(dayStart, 1);
+  const start = parseISO(event.startDate);
+  const end = parseISO(event.endDate);
+  return start < dayEnd && end >= dayStart;
+}
+
+function isMultiDay(event: IEvent): boolean {
+  if (event.isAllDay) return true;
+  return !isSameDay(parseISO(event.startDate), parseISO(event.endDate));
 }
 
 export function DayCalendar() {
@@ -93,27 +107,31 @@ export function DayCalendar() {
   const isToday = isSameDay(selectedDate, today);
 
   const dayEvents = events.filter((event) =>
-    eventStartsOnDay(event, selectedDate)
+    eventCoversDay(event, selectedDate)
   );
-  const allDayEvents = dayEvents.filter((event) => event.isAllDay);
+  // All-day section: every all-day event covering this day, plus any
+  // multi-day timed event so the user sees the broader span hint
+  // (e.g. a multi-day trip is acknowledged on each day it touches).
+  const allDayEvents = dayEvents.filter(
+    (event) => event.isAllDay || isMultiDay(event)
+  );
+  // Timed grid: only single-day timed events (multi-day are already
+  // covered above). This avoids drawing a 24-hour-tall block on the
+  // grid for an event that isn't actually scheduled at a specific
+  // hour on this day.
   const timedEvents = dayEvents
-    .filter((event) => !event.isAllDay)
+    .filter((event) => !event.isAllDay && !isMultiDay(event))
     .sort(
       (a, b) =>
         parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime()
     );
   const total = dayEvents.length;
 
-  // Compute side-by-side columns for overlapping events using the existing
-  // `groupEvents` helper. Each group is one "column" of time-stacked events;
-  // events in different groups occupy adjacent sub-columns.
-  const groups = groupEvents(timedEvents);
-  const eventColumn: Record<string, { column: number; columns: number }> = {};
-  groups.forEach((group, groupIndex) => {
-    group.forEach((event) => {
-      eventColumn[event.id] = { column: groupIndex, columns: groups.length };
-    });
-  });
+  // Compute side-by-side columns for overlapping events. Concurrency
+  // is computed *per event* so an event with no overlapping neighbour
+  // gets full width even when other events stack two-deep elsewhere
+  // in the day.
+  const eventColumn = computeEventColumns(timedEvents);
 
   const previousDay = () => setSelectedDate(subDays(selectedDate, 1));
   const nextDay = () => setSelectedDate(addDays(selectedDate, 1));
@@ -203,19 +221,32 @@ export function DayCalendar() {
             All day
           </h3>
           <ul className="flex flex-wrap gap-2">
-            {allDayEvents.map((event) => (
-              <li
-                key={event.id}
-                className={`rounded px-2 py-1 text-xs ${getAllDayPillClasses(event.color)}`}
-              >
-                <span
-                  className="font-medium"
-                  data-testid="day-calendar-event-title"
+            {allDayEvents.map((event) => {
+              const eventEnd = parseISO(event.endDate);
+              const showSpanHint =
+                isMultiDay(event) && !isSameDay(eventEnd, selectedDate);
+              return (
+                <li
+                  key={event.id}
+                  className={`rounded px-2 py-1 text-xs ${getAllDayPillClasses(event.color)}`}
                 >
-                  {event.title}
-                </span>
-              </li>
-            ))}
+                  <span
+                    className="font-medium"
+                    data-testid="day-calendar-event-title"
+                  >
+                    {event.title}
+                  </span>
+                  {showSpanHint && (
+                    <span
+                      className="ml-1 text-[10px] opacity-70"
+                      data-testid="day-calendar-event-span-hint"
+                    >
+                      (through {format(eventEnd, "MMM d")})
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

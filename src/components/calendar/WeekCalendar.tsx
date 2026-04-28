@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import {
   WEEK_STARTS_ON,
   assignBarRows,
+  computeEventColumns,
   formatTime,
   getCurrentTimePosition,
   getEventTimePosition,
   getEventsForWeek,
   getShortWeekdayLabels,
   getWeekDates,
-  groupEvents,
 } from "@/lib/calendar-helpers";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useState } from "react";
@@ -68,13 +68,17 @@ function getBarPillClasses(color: TEventColor): string {
 
 function NowLine({ weekStart, weekEnd }: { weekStart: Date; weekEnd: Date }) {
   const [now, setNow] = useState<Date>(() => new Date());
+  const visible = !isBefore(now, weekStart) && !isAfter(now, weekEnd);
 
+  // Only tick when "now" is inside the displayed week. Past/future
+  // weeks don't need the indicator and shouldn't burn a timer.
   useEffect(() => {
+    if (!visible) return;
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [visible]);
 
-  if (isBefore(now, weekStart) || isAfter(now, weekEnd)) return null;
+  if (!visible) return null;
 
   const dayIndex = differenceInCalendarDays(now, weekStart);
   if (dayIndex < 0 || dayIndex > 6) return null;
@@ -324,19 +328,7 @@ export function WeekCalendar() {
                     parseISO(a.startDate).getTime() -
                     parseISO(b.startDate).getTime()
                 );
-              const dayGroups = groupEvents(dayTimedEvents);
-              const eventColumn: Record<
-                string,
-                { column: number; columns: number }
-              > = {};
-              dayGroups.forEach((group, groupIndex) => {
-                group.forEach((event) => {
-                  eventColumn[event.id] = {
-                    column: groupIndex,
-                    columns: dayGroups.length,
-                  };
-                });
-              });
+              const eventColumn = computeEventColumns(dayTimedEvents);
 
               return (
                 <div

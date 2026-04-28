@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   WEEK_STARTS_ON,
   assignBarRows,
+  computeEventColumns,
   formatTime,
   getBgColor,
   getCalendarCells,
@@ -535,6 +536,68 @@ describe("getCurrentTimePosition", () => {
       (23 * 60 + 59) / 14.4,
       5
     );
+  });
+});
+
+describe("computeEventColumns", () => {
+  const day = new Date(2026, 3, 15);
+
+  function eventAt(id: string, startHour: number, endHour: number): IEvent {
+    const start = new Date(day);
+    start.setHours(startHour, 0, 0, 0);
+    const end = new Date(day);
+    end.setHours(endHour, 0, 0, 0);
+    return createMockEvent({
+      id,
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+    });
+  }
+
+  it("gives a single event 1 column at column 0", () => {
+    const result = computeEventColumns([eventAt("a", 9, 10)]);
+    expect(result["a"]).toEqual({ column: 0, columns: 1 });
+  });
+
+  it("gives an event with no time-overlapping neighbour full width even if other events stack elsewhere", () => {
+    // A(9-10) and B(9:30-10:30) overlap. C(11-12) is alone.
+    const events = [
+      eventAt("a", 9, 10),
+      eventAt("b", 9, 11),
+      eventAt("c", 11, 12),
+    ];
+    const result = computeEventColumns(events);
+    // A and B overlap each other but not C. C gets full width.
+    expect(result["c"]).toEqual({ column: 0, columns: 1 });
+  });
+
+  it("widens to the local concurrency for overlapping events", () => {
+    const events = [
+      eventAt("a", 9, 10),
+      eventAt("b", 9, 11), // overlaps a
+    ];
+    const result = computeEventColumns(events);
+    expect(result["a"].columns).toBe(2);
+    expect(result["b"].columns).toBe(2);
+    expect(result["a"].column).not.toBe(result["b"].column);
+  });
+
+  it("handles three concurrent events", () => {
+    const events = [
+      eventAt("a", 9, 10),
+      eventAt("b", 9, 10),
+      eventAt("c", 9, 10),
+    ];
+    const result = computeEventColumns(events);
+    expect(result["a"].columns).toBe(3);
+    expect(result["b"].columns).toBe(3);
+    expect(result["c"].columns).toBe(3);
+    const cols = new Set([
+      result["a"].column,
+      result["b"].column,
+      result["c"].column,
+    ]);
+    expect(cols.size).toBe(3);
   });
 });
 
