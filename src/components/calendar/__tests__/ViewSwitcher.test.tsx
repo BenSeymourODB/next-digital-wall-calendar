@@ -85,7 +85,7 @@ describe("ViewSwitcher", () => {
     await user.click(screen.getByRole("tab", { name: /month/i }));
     expect(contextValue.setView).toHaveBeenCalledWith("month");
   });
-    
+
   it("renders Month, Year and Agenda tabs", () => {
     renderWithContext();
 

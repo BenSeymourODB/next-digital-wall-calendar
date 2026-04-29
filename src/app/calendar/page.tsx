@@ -2,11 +2,8 @@
 
 import { AccountManager } from "@/components/calendar/AccountManager";
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
-<<<<<<< claude/loving-faraday-OFaLJ
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
-=======
 import { DayCalendar } from "@/components/calendar/DayCalendar";
->>>>>>> main
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
@@ -23,19 +20,6 @@ import type { TCalendarView } from "@/types/calendar";
 import { useState } from "react";
 import { Settings } from "lucide-react";
 
-<<<<<<< claude/loving-faraday-OFaLJ
-function renderCalendarView(view: TCalendarView) {
-  switch (view) {
-    case "month":
-      return <SimpleCalendar />;
-    case "clock":
-      return <AnalogClockView />;
-    case "day":
-    case "week":
-    case "year":
-    case "agenda":
-      return <AgendaCalendar />;
-=======
 function CalendarView({ view }: { view: TCalendarView }) {
   switch (view) {
     case "day":
@@ -46,10 +30,11 @@ function CalendarView({ view }: { view: TCalendarView }) {
       return <YearCalendar />;
     case "agenda":
       return <AgendaCalendar />;
+    case "clock":
+      return <AnalogClockView />;
     case "month":
     default:
       return <SimpleCalendar />;
->>>>>>> main
   }
 }
 
@@ -96,29 +81,14 @@ function CalendarContent() {
         {/* View Switcher */}
         <ViewSwitcher />
 
-<<<<<<< claude/loving-faraday-OFaLJ
-        {/* Clock view brings its own all-day-events aside, so we suppress the
-            shared mini-calendar sidebar to avoid two stacked side panels. */}
-        {view === "clock" ? (
-          <div className="border-border bg-card rounded-lg border p-6">
-            {renderCalendarView(view)}
-          </div>
-        ) : (
-          <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
-            <div className="border-border bg-card rounded-lg border p-6">
-              {renderCalendarView(view)}
-            </div>
-            <MiniCalendarSidebar />
-          </div>
-        )}
-=======
         {/* Calendar + mini-calendar sidebar.
          * The mini-calendar is hidden on month view where it duplicates the
-         * main grid; on day/week/year/agenda it acts as a date-picker /
-         * at-a-glance overview. See issue #146. */}
+         * main grid (issue #146), and on clock view where AnalogClockView
+         * already ships its own all-day-events aside (issue #154). On
+         * day/week/year/agenda it acts as a date-picker / overview. */}
         <div
           className={
-            view === "month"
+            view === "month" || view === "clock"
               ? "grid gap-6"
               : "grid gap-6 lg:grid-cols-[1fr_280px]"
           }
@@ -126,9 +96,8 @@ function CalendarContent() {
           <div className="border-border bg-card rounded-lg border p-6">
             <CalendarView view={view} />
           </div>
-          {view !== "month" && <MiniCalendarSidebar />}
+          {view !== "month" && view !== "clock" && <MiniCalendarSidebar />}
         </div>
->>>>>>> main
       </div>
     </div>
   );
