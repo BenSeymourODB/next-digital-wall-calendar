@@ -49,7 +49,7 @@ function CalendarContent() {
   // Views that surface the mini-calendar sidebar. Month duplicates the main
   // grid (issue #146) and the Clock view ships its own all-day events aside,
   // so neither needs the shared sidebar.
-  const showSidebar = view !== "month" && view !== "clock";
+  const showSidebar = view !== "month" && view !== "clock" && view !== "year" ;
 
   return (
     <div className="bg-background min-h-screen p-4 sm:p-8">

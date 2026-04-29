@@ -42,6 +42,10 @@ vi.mock("@/components/calendar/AgendaCalendar", () => ({
   AgendaCalendar: () => <div data-testid="mock-agenda-calendar" />,
 }));
 
+vi.mock("@/components/calendar/AnalogClockView", () => ({
+  AnalogClockView: () => <div data-testid="mock-analog-clock-view" />,
+}));
+
 vi.mock("@/components/calendar/MiniCalendarSidebar", () => ({
   MiniCalendarSidebar: () => <aside data-testid="mini-calendar-sidebar" />,
 }));
@@ -93,5 +97,14 @@ describe("CalendarPage — mini-calendar sidebar visibility", () => {
     setView("year");
     render(<CalendarPage />);
     expect(screen.getByTestId("mini-calendar-sidebar")).toBeInTheDocument();
+  });
+
+  it("hides the mini-calendar sidebar when the active view is clock", () => {
+    setView("clock");
+    render(<CalendarPage />);
+    expect(
+      screen.queryByTestId("mini-calendar-sidebar")
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("mock-analog-clock-view")).toBeInTheDocument();
   });
 });
