@@ -46,6 +46,11 @@ function CalendarContent() {
   const { view } = useCalendar();
   const [showSettings, setShowSettings] = useState(false);
 
+  // Views that surface the mini-calendar sidebar. Month duplicates the main
+  // grid (issue #146) and the Clock view ships its own all-day events aside,
+  // so neither needs the shared sidebar.
+  const showSidebar = view !== "month" && view !== "clock" && view !== "year" ;
+
   return (
     <div className="bg-background min-h-screen p-4 sm:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -81,22 +86,16 @@ function CalendarContent() {
         {/* View Switcher */}
         <ViewSwitcher />
 
-        {/* Calendar + mini-calendar sidebar.
-         * The mini-calendar is hidden on month view where it duplicates the
-         * main grid (issue #146), and on clock view where AnalogClockView
-         * already ships its own all-day-events aside (issue #154). On
-         * day/week/year/agenda it acts as a date-picker / overview. */}
+        {/* Calendar + optional mini-calendar sidebar. */}
         <div
           className={
-            view === "month" || view === "clock"
-              ? "grid gap-6"
-              : "grid gap-6 lg:grid-cols-[1fr_280px]"
+            showSidebar ? "grid gap-6 lg:grid-cols-[1fr_280px]" : "grid gap-6"
           }
         >
           <div className="border-border bg-card rounded-lg border p-6">
             <CalendarView view={view} />
           </div>
-          {view !== "month" && view !== "clock" && <MiniCalendarSidebar />}
+          {showSidebar && <MiniCalendarSidebar />}
         </div>
       </div>
     </div>
