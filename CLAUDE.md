@@ -43,9 +43,14 @@ pnpm bump-ui             # Update shadcn components
 
 ### Starting a Task
 
-Work is tracked in **GitHub Issues**. At the start of every session:
+Work is tracked in **GitHub Issues** and the
+[project board](https://github.com/users/BenSeymourODB/projects/1)
+("Features Before Claude Subscription Close"). The project's `Day`,
+`Phase`, `Cluster`, and `Priority` fields plus GitHub's native
+`Blocked by` links are the source of truth for sequencing. At the start
+of every session:
 
-1. **Identify the issue** — read the linked GitHub issue (if provided) to understand requirements and acceptance criteria
+1. **Identify the issue** — read the linked GitHub issue (if provided) to understand requirements and acceptance criteria, and check its `Blocked by` list on github.com
 2. **Check for an existing plan** — look in `.claude/plans/` for a file matching the feature/issue
 3. **If a plan exists** — read it before writing any code; it contains specs, schemas, and testing strategies
 4. **If no plan exists** — enter planning mode first. Produce a plan based on the GitHub issue (or the session prompt if no issue is linked) and save it to `.claude/plans/` before implementing

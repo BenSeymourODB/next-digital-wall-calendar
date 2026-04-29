@@ -41,6 +41,7 @@ function createMockContext(
     refreshEvents: vi.fn(),
     isLoading: false,
     isAuthenticated: true,
+    maxEventsPerDay: 3,
     ...overrides,
   };
 }
@@ -83,5 +84,31 @@ describe("ViewSwitcher", () => {
     const { contextValue } = renderWithContext({ view: "clock" });
     await user.click(screen.getByRole("tab", { name: /month/i }));
     expect(contextValue.setView).toHaveBeenCalledWith("month");
+  });
+    
+  it("renders Month, Year and Agenda tabs", () => {
+    renderWithContext();
+
+    expect(screen.getByRole("tab", { name: /month/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /year/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /agenda/i })).toBeInTheDocument();
+  });
+
+  it("marks the current view's tab as selected", () => {
+    renderWithContext({ view: "year" });
+
+    expect(screen.getByRole("tab", { name: /year/i })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+  });
+
+  it("calls setView with 'year' when the Year tab is clicked", async () => {
+    const user = userEvent.setup();
+    const { contextValue } = renderWithContext();
+
+    await user.click(screen.getByRole("tab", { name: /year/i }));
+
+    expect(contextValue.setView).toHaveBeenCalledWith("year");
   });
 });

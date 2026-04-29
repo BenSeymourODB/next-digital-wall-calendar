@@ -2,16 +2,19 @@
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
+import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
+import { WeekCalendar } from "@/components/calendar/WeekCalendar";
+import { YearCalendar } from "@/components/calendar/YearCalendar";
 import {
   MockCalendarProvider,
   useCalendar,
 } from "@/components/providers/MockCalendarProvider";
 import { Button } from "@/components/ui/button";
 import type { IEvent, TCalendarView, TEventColor } from "@/types/calendar";
-import { Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 /**
@@ -206,6 +209,32 @@ const mockEventSets: Record<string, IEvent[]> = {
     })
   ),
 
+  // Multi-day event scenario for week-view spanning bars
+  multiDay: [
+    createMockEvent({
+      id: "trip",
+      title: "Family Trip",
+      startDate: getRelativeDate(1, 0, 0),
+      endDate: getRelativeDate(4, 23, 59),
+      color: "purple",
+    }),
+    createMockEvent({
+      id: "all-day-holiday",
+      title: "Holiday",
+      startDate: getRelativeDate(0, 0, 0),
+      endDate: getRelativeDate(0, 23, 59),
+      color: "red",
+      isAllDay: true,
+    }),
+    createMockEvent({
+      id: "morning-meeting",
+      title: "Morning Standup",
+      startDate: getRelativeDate(0, 9, 0),
+      endDate: getRelativeDate(0, 9, 30),
+      color: "blue",
+    }),
+  ],
+
   // Family calendar scenario
   family: [
     createMockEvent({
@@ -269,17 +298,37 @@ const mockEventSets: Record<string, IEvent[]> = {
   ],
 };
 
-/**
- * Calendar display component that renders based on current view
- */
 function CalendarDisplay() {
   const { view } = useCalendar();
 
   return (
     <div data-testid="calendar-display">
+      {view === "day" && <DayCalendar />}
+      {view === "week" && <WeekCalendar />}
       {view === "month" && <SimpleCalendar />}
+      {view === "year" && <YearCalendar />}
       {view === "agenda" && <AgendaCalendar />}
       {view === "clock" && <AnalogClockView />}
+    </div>
+  );
+}
+
+/**
+ * Layout that mirrors the production /calendar page: the mini-calendar sidebar
+ * is hidden when the active view is month (where it duplicates the main grid)
+ * and shown on day, week, year, and agenda views. See issue #146.
+ */
+function SidebarAwareLayout({ children }: { children: ReactNode }) {
+  const { view } = useCalendar();
+
+  if (view === "month") {
+    return <div className="grid gap-4">{children}</div>;
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+      {children}
+      <MiniCalendarSidebar />
     </div>
   );
 }
@@ -395,10 +444,9 @@ function TestCalendarContent() {
         </div>
 
         {showSidebar ? (
-          <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+          <SidebarAwareLayout>
             <CalendarDisplay />
-            <MiniCalendarSidebar />
-          </div>
+          </SidebarAwareLayout>
         ) : (
           <CalendarDisplay />
         )}
