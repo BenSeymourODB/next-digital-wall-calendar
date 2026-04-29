@@ -8,9 +8,9 @@ import {
   getBgColor,
   getCalendarCells,
   getColorClass,
-  getEventsByMode,
   getCurrentTimePosition,
   getEventTimePosition,
+  getEventsByMode,
   getEventsCount,
   getEventsForDay,
   getEventsForMonth,
@@ -511,8 +511,9 @@ describe("getEventsByMode (clock)", () => {
     const result = getEventsByMode(events, "clock", testDate);
     const ids = result.map((e) => e.id).sort();
     expect(ids).toEqual(["today-1", "today-2"]);
+  });
 });
-  
+
 describe("getEventTimePosition", () => {
   const day = new Date(2026, 3, 15); // Apr 15 2026
 
