@@ -1,6 +1,7 @@
 "use client";
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { AnalogClockView } from "@/components/calendar/AnalogClockView";
 import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
@@ -307,6 +308,7 @@ function CalendarDisplay() {
       {view === "month" && <SimpleCalendar />}
       {view === "year" && <YearCalendar />}
       {view === "agenda" && <AgendaCalendar />}
+      {view === "clock" && <AnalogClockView />}
     </div>
   );
 }
@@ -458,7 +460,7 @@ function TestCalendarContent() {
  *
  * URL Parameters:
  * - events: Event set to use (default, empty, single, colors, overflow, family)
- * - view: Initial view (month, agenda)
+ * - view: Initial view (month, agenda, clock)
  * - loading: Show loading state (true/false)
  * - loadingDelay: Simulate loading delay in ms
  * - controls: Show test controls (true/false)

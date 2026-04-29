@@ -59,6 +59,33 @@ function renderWithContext(overrides: Partial<ICalendarContext> = {}) {
 }
 
 describe("ViewSwitcher", () => {
+  it("renders Month, Agenda, and Clock tabs", () => {
+    renderWithContext();
+    expect(screen.getByRole("tab", { name: /month/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /agenda/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /clock/i })).toBeInTheDocument();
+  });
+
+  it("highlights the Clock tab when view is 'clock'", () => {
+    renderWithContext({ view: "clock" });
+    const clockTab = screen.getByRole("tab", { name: /clock/i });
+    expect(clockTab).toHaveAttribute("data-state", "active");
+  });
+
+  it("calls setView('clock') when the Clock tab is clicked", async () => {
+    const user = userEvent.setup();
+    const { contextValue } = renderWithContext({ view: "month" });
+    await user.click(screen.getByRole("tab", { name: /clock/i }));
+    expect(contextValue.setView).toHaveBeenCalledWith("clock");
+  });
+
+  it("calls setView('month') when the Month tab is clicked from clock view", async () => {
+    const user = userEvent.setup();
+    const { contextValue } = renderWithContext({ view: "clock" });
+    await user.click(screen.getByRole("tab", { name: /month/i }));
+    expect(contextValue.setView).toHaveBeenCalledWith("month");
+  });
+
   it("renders Month, Year and Agenda tabs", () => {
     renderWithContext();
 

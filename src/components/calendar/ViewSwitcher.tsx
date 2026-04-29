@@ -7,6 +7,7 @@ import {
   Calendar,
   CalendarDays,
   CalendarRange,
+  Clock,
   LayoutGrid,
   List,
 } from "lucide-react";
@@ -43,6 +44,10 @@ export function ViewSwitcher() {
         <TabsTrigger value="agenda" className="flex items-center gap-2">
           <List className="h-4 w-4" />
           <span>Agenda</span>
+        </TabsTrigger>
+        <TabsTrigger value="clock" className="flex items-center gap-2">
+          <Clock className="h-4 w-4" />
+          <span>Clock</span>
         </TabsTrigger>
       </TabsList>
     </Tabs>

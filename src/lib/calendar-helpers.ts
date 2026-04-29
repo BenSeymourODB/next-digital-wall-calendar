@@ -80,6 +80,7 @@ export function rangeText(view: TCalendarView, date: Date): string {
       end = endOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
       break;
     case "day":
+    case "clock":
       return format(date, FORMAT_STRING);
     case "year":
       start = startOfYear(date);
@@ -107,6 +108,7 @@ export function navigateDate(
     day: direction === "next" ? addDays : subDays,
     year: direction === "next" ? addYears : subYears,
     agenda: direction === "next" ? addMonths : subMonths,
+    clock: direction === "next" ? addDays : subDays,
   };
 
   return operations[view](date, 1);
@@ -123,6 +125,7 @@ export function getEventsCount(
     month: isSameMonth,
     year: isSameYear,
     agenda: isSameMonth,
+    clock: isSameDay,
   };
 
   const compareFn = compareFns[view];
@@ -437,6 +440,7 @@ export const getEventsByMode = (
 ) => {
   switch (view) {
     case "day":
+    case "clock":
       return getEventsForDay(events, selectedDate);
     case "week":
       return getEventsForWeek(events, selectedDate);

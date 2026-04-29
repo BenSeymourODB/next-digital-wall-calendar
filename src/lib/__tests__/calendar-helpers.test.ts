@@ -10,6 +10,7 @@ import {
   getColorClass,
   getCurrentTimePosition,
   getEventTimePosition,
+  getEventsByMode,
   getEventsCount,
   getEventsForDay,
   getEventsForMonth,
@@ -71,6 +72,11 @@ describe("rangeText", () => {
     expect(result).toBe("Mar 1, 2024 - Mar 31, 2024");
   });
 
+  it("returns single date for clock view (12-hour period of selected day)", () => {
+    const result = rangeText("clock", testDate);
+    expect(result).toBe("Mar 15, 2024");
+  });
+
   it("returns error for unknown view", () => {
     const result = rangeText("unknown" as TCalendarView, testDate);
     expect(result).toBe("Error while formatting");
@@ -119,6 +125,16 @@ describe("navigateDate", () => {
     const result = navigateDate(testDate, "year", "previous");
     expect(result.getFullYear()).toBe(2023);
   });
+
+  it("navigates to next day for clock view", () => {
+    const result = navigateDate(testDate, "clock", "next");
+    expect(result.getDate()).toBe(16);
+  });
+
+  it("navigates to previous day for clock view", () => {
+    const result = navigateDate(testDate, "clock", "previous");
+    expect(result.getDate()).toBe(14);
+  });
 });
 
 describe("getEventsCount", () => {
@@ -137,6 +153,11 @@ describe("getEventsCount", () => {
   it("counts events for the same month", () => {
     const count = getEventsCount(events, testDate, "month");
     expect(count).toBe(3);
+  });
+
+  it("counts events for the same day in clock view", () => {
+    const count = getEventsCount(events, testDate, "clock");
+    expect(count).toBe(2);
   });
 
   it("counts events for the same week using WEEK_STARTS_ON", () => {
@@ -463,6 +484,33 @@ describe("getBgColor", () => {
 
   it("returns empty string for unknown color", () => {
     expect(getBgColor("unknown")).toBe("");
+  });
+});
+
+describe("getEventsByMode (clock)", () => {
+  const testDate = new Date(2024, 2, 15);
+  const events: IEvent[] = [
+    createMockEvent({
+      id: "today-1",
+      startDate: "2024-03-15T10:00:00",
+      endDate: "2024-03-15T11:00:00",
+    }),
+    createMockEvent({
+      id: "today-2",
+      startDate: "2024-03-15T14:00:00",
+      endDate: "2024-03-15T15:00:00",
+    }),
+    createMockEvent({
+      id: "tomorrow",
+      startDate: "2024-03-16T10:00:00",
+      endDate: "2024-03-16T11:00:00",
+    }),
+  ];
+
+  it("returns events for the selected day in clock view", () => {
+    const result = getEventsByMode(events, "clock", testDate);
+    const ids = result.map((e) => e.id).sort();
+    expect(ids).toEqual(["today-1", "today-2"]);
   });
 });
 
