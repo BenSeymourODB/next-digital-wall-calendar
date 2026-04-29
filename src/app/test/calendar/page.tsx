@@ -1,6 +1,7 @@
 "use client";
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
 import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
@@ -415,6 +416,7 @@ function TestCalendarContent() {
   const showControls = searchParams.get("controls") !== "false";
   const use24Hour = searchParams.get("24hour") !== "false";
   const showSidebar = searchParams.get("sidebar") === "true";
+  const showFilters = searchParams.get("filters") === "true";
 
   // Get events for the specified set
   const events = mockEventSets[eventSet] || mockEventSets.default;
@@ -439,8 +441,9 @@ function TestCalendarContent() {
 
         {showControls && <TestControls />}
 
-        <div className="mb-4">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <ViewSwitcher />
+          {showFilters ? <CalendarFilterPanel /> : null}
         </div>
 
         {showSidebar ? (
@@ -466,6 +469,7 @@ function TestCalendarContent() {
  * - controls: Show test controls (true/false)
  * - 24hour: Use 24-hour format (true/false)
  * - sidebar: Show the mini-calendar sidebar (true/false)
+ * - filters: Show the calendar filter panel (true/false)
  *
  * Examples:
  * - /test/calendar - Default events, month view
