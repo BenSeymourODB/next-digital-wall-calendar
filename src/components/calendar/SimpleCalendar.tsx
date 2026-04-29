@@ -12,6 +12,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   useEffect,
   useRef,
+  useState,
 } from "react";
 import {
   eachDayOfInterval,
@@ -89,15 +90,20 @@ export function SimpleCalendar() {
 
   // Track the previously rendered month so we can derive slide direction
   // automatically as the user navigates (next/prev buttons, today, keyboard,
-  // mini-calendar). A ref avoids an extra render and lets React Compiler
-  // handle memoization without manual useMemo/useCallback.
+  // mini-calendar). Uses the React-recommended "setState during render" pattern
+  // (same as AnimatedSwap) so the direction is settled in a single pass; React
+  // Compiler handles memoization automatically — no useMemo/useCallback needed.
   const currentMonthIndex = absoluteMonthIndex(monthStart);
-  const previousMonthIndexRef = useRef(currentMonthIndex);
-  const slideDirection: "forward" | "backward" =
-    currentMonthIndex < previousMonthIndexRef.current ? "backward" : "forward";
-  useEffect(() => {
-    previousMonthIndexRef.current = currentMonthIndex;
-  }, [currentMonthIndex]);
+  const [prevMonthIndex, setPrevMonthIndex] = useState(currentMonthIndex);
+  const [slideDirection, setSlideDirection] = useState<"forward" | "backward">(
+    "forward"
+  );
+  if (prevMonthIndex !== currentMonthIndex) {
+    setSlideDirection(
+      currentMonthIndex < prevMonthIndex ? "backward" : "forward"
+    );
+    setPrevMonthIndex(currentMonthIndex);
+  }
 
   const previousMonth = () => {
     const newDate = new Date(selectedDate);

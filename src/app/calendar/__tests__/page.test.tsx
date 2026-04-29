@@ -54,6 +54,10 @@ vi.mock("@/components/calendar/ViewSwitcher", () => ({
   ViewSwitcher: () => <div data-testid="mock-view-switcher" />,
 }));
 
+vi.mock("@/components/calendar/CalendarFilterPanel", () => ({
+  CalendarFilterPanel: () => <div data-testid="mock-calendar-filter-panel" />,
+}));
+
 vi.mock("@/components/theme/theme-toggle", () => ({
   ThemeToggle: () => <div data-testid="mock-theme-toggle" />,
 }));
