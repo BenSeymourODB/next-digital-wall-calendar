@@ -2,10 +2,15 @@ import type { IEvent, TCalendarView } from "@/types/calendar";
 import { describe, expect, it } from "vitest";
 import {
   WEEK_STARTS_ON,
+  assignBarRows,
+  computeEventColumns,
   formatTime,
   getBgColor,
   getCalendarCells,
   getColorClass,
+  getCurrentTimePosition,
+  getEventTimePosition,
+  getEventsByMode,
   getEventsCount,
   getEventsForDay,
   getEventsForMonth,
@@ -67,6 +72,11 @@ describe("rangeText", () => {
     expect(result).toBe("Mar 1, 2024 - Mar 31, 2024");
   });
 
+  it("returns single date for clock view (12-hour period of selected day)", () => {
+    const result = rangeText("clock", testDate);
+    expect(result).toBe("Mar 15, 2024");
+  });
+
   it("returns error for unknown view", () => {
     const result = rangeText("unknown" as TCalendarView, testDate);
     expect(result).toBe("Error while formatting");
@@ -115,6 +125,16 @@ describe("navigateDate", () => {
     const result = navigateDate(testDate, "year", "previous");
     expect(result.getFullYear()).toBe(2023);
   });
+
+  it("navigates to next day for clock view", () => {
+    const result = navigateDate(testDate, "clock", "next");
+    expect(result.getDate()).toBe(16);
+  });
+
+  it("navigates to previous day for clock view", () => {
+    const result = navigateDate(testDate, "clock", "previous");
+    expect(result.getDate()).toBe(14);
+  });
 });
 
 describe("getEventsCount", () => {
@@ -133,6 +153,11 @@ describe("getEventsCount", () => {
   it("counts events for the same month", () => {
     const count = getEventsCount(events, testDate, "month");
     expect(count).toBe(3);
+  });
+
+  it("counts events for the same day in clock view", () => {
+    const count = getEventsCount(events, testDate, "clock");
+    expect(count).toBe(2);
   });
 
   it("counts events for the same week using WEEK_STARTS_ON", () => {
@@ -459,5 +484,224 @@ describe("getBgColor", () => {
 
   it("returns empty string for unknown color", () => {
     expect(getBgColor("unknown")).toBe("");
+  });
+});
+
+describe("getEventsByMode (clock)", () => {
+  const testDate = new Date(2024, 2, 15);
+  const events: IEvent[] = [
+    createMockEvent({
+      id: "today-1",
+      startDate: "2024-03-15T10:00:00",
+      endDate: "2024-03-15T11:00:00",
+    }),
+    createMockEvent({
+      id: "today-2",
+      startDate: "2024-03-15T14:00:00",
+      endDate: "2024-03-15T15:00:00",
+    }),
+    createMockEvent({
+      id: "tomorrow",
+      startDate: "2024-03-16T10:00:00",
+      endDate: "2024-03-16T11:00:00",
+    }),
+  ];
+
+  it("returns events for the selected day in clock view", () => {
+    const result = getEventsByMode(events, "clock", testDate);
+    const ids = result.map((e) => e.id).sort();
+    expect(ids).toEqual(["today-1", "today-2"]);
+  });
+});
+
+describe("getEventTimePosition", () => {
+  const day = new Date(2026, 3, 15); // Apr 15 2026
+
+  it("positions a 9:00–10:00 event at top=37.5%, height=4.166...%", () => {
+    const event = createMockEvent({
+      startDate: new Date(2026, 3, 15, 9, 0).toISOString(),
+      endDate: new Date(2026, 3, 15, 10, 0).toISOString(),
+    });
+    const { top, height } = getEventTimePosition(event, day);
+    expect(top).toBeCloseTo((9 * 60 * 100) / 1440, 5); // 37.5
+    expect(height).toBeCloseTo((60 * 100) / 1440, 5); // ~4.166
+  });
+
+  it("positions an event at midnight start with top=0", () => {
+    const event = createMockEvent({
+      startDate: new Date(2026, 3, 15, 0, 0).toISOString(),
+      endDate: new Date(2026, 3, 15, 1, 0).toISOString(),
+    });
+    expect(getEventTimePosition(event, day).top).toBe(0);
+  });
+
+  it("clamps top to 0 when event starts before the day", () => {
+    const event = createMockEvent({
+      startDate: new Date(2026, 3, 14, 22, 0).toISOString(),
+      endDate: new Date(2026, 3, 15, 6, 0).toISOString(),
+    });
+    const { top, height } = getEventTimePosition(event, day);
+    expect(top).toBe(0);
+    // 6 hours of height = 25%
+    expect(height).toBeCloseTo(25, 5);
+  });
+
+  it("clamps height when event ends after the day", () => {
+    const event = createMockEvent({
+      startDate: new Date(2026, 3, 15, 22, 0).toISOString(),
+      endDate: new Date(2026, 3, 16, 4, 0).toISOString(),
+    });
+    const { top, height } = getEventTimePosition(event, day);
+    // top: 22*60 / 1440 * 100 = 91.666...
+    expect(top).toBeCloseTo((22 * 60 * 100) / 1440, 5);
+    // height clamped to remainder of the day = 2 hours / 24 = 8.33...%
+    expect(height).toBeCloseTo((2 * 60 * 100) / 1440, 5);
+  });
+
+  it("enforces a minimum height so very short events stay clickable", () => {
+    const event = createMockEvent({
+      startDate: new Date(2026, 3, 15, 9, 0).toISOString(),
+      endDate: new Date(2026, 3, 15, 9, 0).toISOString(),
+    });
+    expect(getEventTimePosition(event, day).height).toBeGreaterThan(0);
+  });
+});
+
+describe("getCurrentTimePosition", () => {
+  it("returns 0% at midnight", () => {
+    const now = new Date(2026, 3, 15, 0, 0);
+    expect(getCurrentTimePosition(now).top).toBe(0);
+  });
+
+  it("returns 50% at noon", () => {
+    const now = new Date(2026, 3, 15, 12, 0);
+    expect(getCurrentTimePosition(now).top).toBeCloseTo(50, 5);
+  });
+
+  it("returns ~99.93% at 23:59", () => {
+    const now = new Date(2026, 3, 15, 23, 59);
+    expect(getCurrentTimePosition(now).top).toBeCloseTo(
+      (23 * 60 + 59) / 14.4,
+      5
+    );
+  });
+});
+
+describe("computeEventColumns", () => {
+  const day = new Date(2026, 3, 15);
+
+  function eventAt(id: string, startHour: number, endHour: number): IEvent {
+    const start = new Date(day);
+    start.setHours(startHour, 0, 0, 0);
+    const end = new Date(day);
+    end.setHours(endHour, 0, 0, 0);
+    return createMockEvent({
+      id,
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+    });
+  }
+
+  it("gives a single event 1 column at column 0", () => {
+    const result = computeEventColumns([eventAt("a", 9, 10)]);
+    expect(result["a"]).toEqual({ column: 0, columns: 1 });
+  });
+
+  it("gives an event with no time-overlapping neighbour full width even if other events stack elsewhere", () => {
+    // A(9-10) and B(9:30-10:30) overlap. C(11-12) is alone.
+    const events = [
+      eventAt("a", 9, 10),
+      eventAt("b", 9, 11),
+      eventAt("c", 11, 12),
+    ];
+    const result = computeEventColumns(events);
+    // A and B overlap each other but not C. C gets full width.
+    expect(result["c"]).toEqual({ column: 0, columns: 1 });
+  });
+
+  it("widens to the local concurrency for overlapping events", () => {
+    const events = [
+      eventAt("a", 9, 10),
+      eventAt("b", 9, 11), // overlaps a
+    ];
+    const result = computeEventColumns(events);
+    expect(result["a"].columns).toBe(2);
+    expect(result["b"].columns).toBe(2);
+    expect(result["a"].column).not.toBe(result["b"].column);
+  });
+
+  it("handles three concurrent events", () => {
+    const events = [
+      eventAt("a", 9, 10),
+      eventAt("b", 9, 10),
+      eventAt("c", 9, 10),
+    ];
+    const result = computeEventColumns(events);
+    expect(result["a"].columns).toBe(3);
+    expect(result["b"].columns).toBe(3);
+    expect(result["c"].columns).toBe(3);
+    const cols = new Set([
+      result["a"].column,
+      result["b"].column,
+      result["c"].column,
+    ]);
+    expect(cols.size).toBe(3);
+  });
+});
+
+describe("assignBarRows", () => {
+  const weekStart = new Date(2026, 3, 12); // Sun Apr 12 2026
+  const weekEnd = new Date(2026, 3, 18); // Sat Apr 18 2026
+
+  it("assigns row 0 to a single multi-day event", () => {
+    const event = createMockEvent({
+      id: "e1",
+      startDate: new Date(2026, 3, 13).toISOString(),
+      endDate: new Date(2026, 3, 15).toISOString(),
+    });
+    const rows = assignBarRows([event], weekStart, weekEnd);
+    expect(rows[event.id]).toBe(0);
+  });
+
+  it("stacks two overlapping events into rows 0 and 1", () => {
+    const a = createMockEvent({
+      id: "a",
+      startDate: new Date(2026, 3, 13).toISOString(),
+      endDate: new Date(2026, 3, 15).toISOString(),
+    });
+    const b = createMockEvent({
+      id: "b",
+      startDate: new Date(2026, 3, 14).toISOString(),
+      endDate: new Date(2026, 3, 16).toISOString(),
+    });
+    const rows = assignBarRows([a, b], weekStart, weekEnd);
+    expect(rows[a.id]).toBe(0);
+    expect(rows[b.id]).toBe(1);
+  });
+
+  it("re-uses row 0 for two events that don't overlap", () => {
+    const a = createMockEvent({
+      id: "a",
+      startDate: new Date(2026, 3, 13).toISOString(),
+      endDate: new Date(2026, 3, 14).toISOString(),
+    });
+    const b = createMockEvent({
+      id: "b",
+      startDate: new Date(2026, 3, 16).toISOString(),
+      endDate: new Date(2026, 3, 17).toISOString(),
+    });
+    const rows = assignBarRows([a, b], weekStart, weekEnd);
+    expect(rows[a.id]).toBe(0);
+    expect(rows[b.id]).toBe(0);
+  });
+
+  it("ignores events fully outside the week", () => {
+    const event = createMockEvent({
+      id: "out",
+      startDate: new Date(2026, 4, 1).toISOString(),
+      endDate: new Date(2026, 4, 2).toISOString(),
+    });
+    const rows = assignBarRows([event], weekStart, weekEnd);
+    expect(rows[event.id]).toBeUndefined();
   });
 });

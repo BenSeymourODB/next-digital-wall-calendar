@@ -80,6 +80,7 @@ export function rangeText(view: TCalendarView, date: Date): string {
       end = endOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
       break;
     case "day":
+    case "clock":
       return format(date, FORMAT_STRING);
     case "year":
       start = startOfYear(date);
@@ -107,6 +108,7 @@ export function navigateDate(
     day: direction === "next" ? addDays : subDays,
     year: direction === "next" ? addYears : subYears,
     agenda: direction === "next" ? addMonths : subMonths,
+    clock: direction === "next" ? addDays : subDays,
   };
 
   return operations[view](date, 1);
@@ -123,6 +125,7 @@ export function getEventsCount(
     month: isSameMonth,
     year: isSameYear,
     agenda: isSameMonth,
+    clock: isSameDay,
   };
 
   const compareFn = compareFns[view];
@@ -155,24 +158,6 @@ export function groupEvents(dayEvents: IEvent[]): IEvent[][] {
   }
 
   return groups;
-}
-
-export function getEventBlockStyle(
-  event: IEvent,
-  day: Date,
-  groupIndex: number,
-  groupSize: number
-) {
-  const startDate = parseISO(event.startDate);
-  const dayStart = startOfDay(day); // Use startOfDay instead of manual reset
-  const eventStart = startDate < dayStart ? dayStart : startDate;
-  const startMinutes = differenceInMinutes(eventStart, dayStart);
-
-  const top = (startMinutes / 1440) * 100; // 1440 minutes in a day
-  const width = 100 / groupSize;
-  const left = groupIndex * width;
-
-  return { top: `${top}%`, width: `${width}%`, left: `${left}%` };
 }
 
 export function getCalendarCells(selectedDate: Date): ICalendarCell[] {
@@ -455,6 +440,7 @@ export const getEventsByMode = (
 ) => {
   switch (view) {
     case "day":
+    case "clock":
       return getEventsForDay(events, selectedDate);
     case "week":
       return getEventsForWeek(events, selectedDate);
@@ -471,4 +457,140 @@ export const getEventsByMode = (
 export const toCapitalize = (str: string): string => {
   if (!str) return "";
   return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
+const MINUTES_PER_DAY = 1440;
+const MIN_EVENT_HEIGHT_PCT = 1.5;
+
+/**
+ * Position an event on a 24-hour vertical time grid.
+ *
+ * Returns `top` and `height` in percent of the day axis (0–100).
+ * Events that start before `day` clamp `top` to 0; events that end
+ * after `day` clamp `height` to the remainder of the axis. A small
+ * minimum height keeps zero-duration events visible.
+ */
+export const getEventTimePosition = (
+  event: IEvent,
+  day: Date
+): { top: number; height: number } => {
+  const dayStart = startOfDay(day);
+  const dayEnd = addDays(dayStart, 1);
+  const start = parseISO(event.startDate);
+  const end = parseISO(event.endDate);
+
+  const visibleStart = start < dayStart ? dayStart : start;
+  const visibleEnd = end > dayEnd ? dayEnd : end;
+
+  const startMinutes = differenceInMinutes(visibleStart, dayStart);
+  const durationMinutes = Math.max(
+    0,
+    differenceInMinutes(visibleEnd, visibleStart)
+  );
+
+  const top = (startMinutes / MINUTES_PER_DAY) * 100;
+  const rawHeight = (durationMinutes / MINUTES_PER_DAY) * 100;
+  const height = Math.max(rawHeight, MIN_EVENT_HEIGHT_PCT);
+
+  return { top, height };
+};
+
+/**
+ * Position the "now" indicator on the same 24-hour axis as
+ * `getEventTimePosition`. `now` defaults to the wall-clock time so
+ * tests can inject a frozen Date.
+ */
+export const getCurrentTimePosition = (
+  now: Date = new Date()
+): { top: number } => {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  return { top: (minutes / MINUTES_PER_DAY) * 100 };
+};
+
+/**
+ * Lay out timed events in a single-day time grid. Returns a map of
+ * `eventId → { column, columns }` where `columns` is the *local*
+ * concurrency at this event's slot — i.e. the maximum number of
+ * events present at any moment during this event's duration — and
+ * `column` is the lane assigned by `groupEvents`.
+ *
+ * Local concurrency keeps an event full-width when it has no
+ * overlapping neighbour, even if other events later in the day
+ * stack two-deep elsewhere.
+ */
+export const computeEventColumns = (
+  events: IEvent[]
+): Record<string, { column: number; columns: number }> => {
+  const groups = groupEvents([...events]);
+  const lane: Record<string, number> = {};
+  groups.forEach((group, groupIndex) => {
+    group.forEach((event) => {
+      lane[event.id] = groupIndex;
+    });
+  });
+
+  const result: Record<string, { column: number; columns: number }> = {};
+
+  for (const event of events) {
+    const eventStart = parseISO(event.startDate).getTime();
+    const eventEnd = parseISO(event.endDate).getTime();
+    let maxLane = lane[event.id];
+
+    for (const other of events) {
+      if (other.id === event.id) continue;
+      const otherStart = parseISO(other.startDate).getTime();
+      const otherEnd = parseISO(other.endDate).getTime();
+      if (otherStart < eventEnd && otherEnd > eventStart) {
+        const otherLane = lane[other.id];
+        if (otherLane > maxLane) maxLane = otherLane;
+      }
+    }
+
+    result[event.id] = { column: lane[event.id], columns: maxLane + 1 };
+  }
+
+  return result;
+};
+
+/**
+ * Assign each event a stacking row index for the week's multi-day
+ * spanning bar row. Events are sorted by start; the first available
+ * row is reused for non-overlapping events. Events that fall fully
+ * outside `[weekStart, weekEnd]` are dropped from the returned map.
+ */
+export const assignBarRows = (
+  events: IEvent[],
+  weekStart: Date,
+  weekEnd: Date
+): Record<string, number> => {
+  const result: Record<string, number> = {};
+  const rowEnds: Date[] = [];
+
+  const inWeek = events
+    .filter((e) => {
+      const start = parseISO(e.startDate);
+      const end = parseISO(e.endDate);
+      return start <= weekEnd && end >= weekStart;
+    })
+    .sort(
+      (a, b) =>
+        parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime()
+    );
+
+  for (const event of inWeek) {
+    const start = parseISO(event.startDate);
+    const end = parseISO(event.endDate);
+    const visibleStart = start < weekStart ? weekStart : start;
+
+    let row = rowEnds.findIndex((rowEnd) => rowEnd <= visibleStart);
+    if (row === -1) {
+      row = rowEnds.length;
+      rowEnds.push(end);
+    } else {
+      rowEnds[row] = end;
+    }
+    result[event.id] = row;
+  }
+
+  return result;
 };

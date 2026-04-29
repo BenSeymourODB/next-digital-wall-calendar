@@ -3,9 +3,13 @@
 import { AccountManager } from "@/components/calendar/AccountManager";
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
+import { AnalogClockView } from "@/components/calendar/AnalogClockView";
+import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
+import { WeekCalendar } from "@/components/calendar/WeekCalendar";
+import { YearCalendar } from "@/components/calendar/YearCalendar";
 import {
   CalendarProvider,
   useCalendar,
@@ -13,8 +17,27 @@ import {
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
+import type { TCalendarView } from "@/types/calendar";
 import { useState } from "react";
 import { Settings } from "lucide-react";
+
+function CalendarView({ view }: { view: TCalendarView }) {
+  switch (view) {
+    case "day":
+      return <DayCalendar />;
+    case "week":
+      return <WeekCalendar />;
+    case "year":
+      return <YearCalendar />;
+    case "agenda":
+      return <AgendaCalendar />;
+    case "clock":
+      return <AnalogClockView />;
+    case "month":
+    default:
+      return <SimpleCalendar />;
+  }
+}
 
 /**
  * Calendar content component
@@ -23,6 +46,11 @@ import { Settings } from "lucide-react";
 function CalendarContent() {
   const { view } = useCalendar();
   const [showSettings, setShowSettings] = useState(false);
+
+  // Views that surface the mini-calendar sidebar. Month duplicates the main
+  // grid (issue #146) and the Clock view ships its own all-day events aside,
+  // so neither needs the shared sidebar.
+  const showSidebar = view !== "month" && view !== "clock" && view !== "year" ;
 
   return (
     <div className="bg-background min-h-screen p-4 sm:p-8">
@@ -62,12 +90,16 @@ function CalendarContent() {
           <CalendarFilterPanel />
         </div>
 
-        {/* Calendar + mini-calendar sidebar */}
-        <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+        {/* Calendar + optional mini-calendar sidebar. */}
+        <div
+          className={
+            showSidebar ? "grid gap-6 lg:grid-cols-[1fr_280px]" : "grid gap-6"
+          }
+        >
           <div className="border-border bg-card rounded-lg border p-6">
-            {view === "month" ? <SimpleCalendar /> : <AgendaCalendar />}
+            <CalendarView view={view} />
           </div>
-          <MiniCalendarSidebar />
+          {showSidebar && <MiniCalendarSidebar />}
         </div>
       </div>
     </div>
