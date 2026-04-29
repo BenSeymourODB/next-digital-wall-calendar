@@ -2,7 +2,6 @@
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
-import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
@@ -10,6 +9,7 @@ import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
 import { WeekCalendar } from "@/components/calendar/WeekCalendar";
 import { YearCalendar } from "@/components/calendar/YearCalendar";
+import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import {
   MockCalendarProvider,
   useCalendar,
