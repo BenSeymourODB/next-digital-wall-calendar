@@ -4,9 +4,10 @@ import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { IEvent, TEventColor } from "@/types/calendar";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";
 import { Search, X } from "lucide-react";
+import { EventDetailModal } from "./EventDetailModal";
 
 /**
  * Filter events for the next N days from today
@@ -162,16 +163,16 @@ function getColorBadgeClasses(color: TEventColor): string {
   return classes[color];
 }
 
+interface EventCardProps {
+  event: IEvent;
+  use24HourFormat: boolean;
+  onClick: (event: IEvent, trigger: HTMLElement) => void;
+}
+
 /**
  * Event card component
  */
-function EventCard({
-  event,
-  use24HourFormat,
-}: {
-  event: IEvent;
-  use24HourFormat: boolean;
-}) {
+function EventCard({ event, use24HourFormat, onClick }: EventCardProps) {
   const isAllDay = isAllDayEvent(event);
   const startTime = format(
     new Date(event.startDate),
@@ -181,10 +182,13 @@ function EventCard({
     new Date(event.endDate),
     use24HourFormat ? "HH:mm" : "h:mm a"
   );
+  const hasDescription = Boolean(event.description?.trim());
 
   return (
-    <div
-      className={`rounded-lg border-l-4 p-4 ${getColorClasses(event.color)}`}
+    <button
+      type="button"
+      onClick={(e) => onClick(event, e.currentTarget)}
+      className={`hover:bg-accent/40 focus:ring-ring w-full cursor-pointer rounded-lg border-l-4 p-4 text-left transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none ${getColorClasses(event.color)}`}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
@@ -192,7 +196,7 @@ function EventCard({
           <p className="text-muted-foreground mt-1 text-sm">
             {isAllDay ? "All day" : `${startTime} - ${endTime}`}
           </p>
-          {event.description && (
+          {hasDescription && (
             <p className="text-muted-foreground mt-2 text-sm">
               {event.description}
             </p>
@@ -202,7 +206,7 @@ function EventCard({
           className={`h-3 w-3 rounded-full ${getColorBadgeClasses(event.color)}`}
         />
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -241,6 +245,13 @@ export function AgendaCalendar() {
     setAgendaModeGroupBy,
   } = useCalendar();
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
+  const openModal = (event: IEvent, trigger: HTMLElement) => {
+    triggerRef.current = trigger;
+    setSelectedEvent(event);
+  };
 
   // Window the data once, then apply the search query
   const windowedEvents = filterEventsForNextNDays(events, 7);
@@ -361,6 +372,7 @@ export function AgendaCalendar() {
                         key={event.id}
                         event={event}
                         use24HourFormat={use24HourFormat}
+                        onClick={openModal}
                       />
                     ))}
                   </AgendaGroup>
@@ -390,6 +402,7 @@ export function AgendaCalendar() {
                       key={event.id}
                       event={event}
                       use24HourFormat={use24HourFormat}
+                      onClick={openModal}
                     />
                   ))}
                 </AgendaGroup>
@@ -397,6 +410,13 @@ export function AgendaCalendar() {
           </div>
         )}
       </div>
+
+      <EventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        use24HourFormat={use24HourFormat}
+        returnFocusTo={triggerRef}
+      />
     </div>
   );
 }
