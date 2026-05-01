@@ -1,9 +1,10 @@
 /**
  * Tests for /calendar page layout.
  *
- * The mini-calendar sidebar is redundant on the month view (renders a mini
- * month grid next to the full month grid) and should only be shown on
- * views where it adds value: day, week, and agenda. See issue #146.
+ * The mini-calendar sidebar duplicates content the active view already
+ * provides on month (full month grid), year (twelve-month overview), and
+ * clock (built-in all-day aside), so it's hidden on those views and shown
+ * on day, week, and agenda. See issues #146 and #152.
  */
 import type { TCalendarView } from "@/types/calendar";
 import type { ReactNode } from "react";
@@ -55,7 +56,7 @@ vi.mock("@/components/calendar/ViewSwitcher", () => ({
 }));
 
 vi.mock("@/components/calendar/CalendarFilterPanel", () => ({
-  CalendarFilterPanel: () => <div data-testid="mock-calendar-filter-panel" />,
+  CalendarFilterPanel: () => <div data-testid="mock-filter-panel" />,
 }));
 
 vi.mock("@/components/theme/theme-toggle", () => ({
@@ -97,10 +98,12 @@ describe("CalendarPage — mini-calendar sidebar visibility", () => {
     expect(screen.getByTestId("mini-calendar-sidebar")).toBeInTheDocument();
   });
 
-  it("shows the mini-calendar sidebar when the active view is year", () => {
+  it("hides the mini-calendar sidebar when the active view is year", () => {
     setView("year");
     render(<CalendarPage />);
-    expect(screen.getByTestId("mini-calendar-sidebar")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("mini-calendar-sidebar")
+    ).not.toBeInTheDocument();
   });
 
   it("hides the mini-calendar sidebar when the active view is clock", () => {

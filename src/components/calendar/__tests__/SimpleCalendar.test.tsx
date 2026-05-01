@@ -844,4 +844,75 @@ describe("SimpleCalendar", () => {
       expect(gridAfter).toBe(gridBefore);
     });
   });
+
+  describe("Event click opens detail modal", () => {
+    it("opens EventDetailModal with the clicked event's details", async () => {
+      const user = userEvent.setup();
+      const now = new Date();
+      const clickable = createMockEvent({
+        id: "click-me",
+        title: "Piano Recital",
+        description: "Emma's spring concert",
+        startDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          18,
+          0
+        ).toISOString(),
+        endDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          19,
+          30
+        ).toISOString(),
+        color: "purple",
+      });
+
+      renderWithContext({ events: [clickable] });
+
+      // Modal should not be open initially
+      expect(
+        screen.queryByRole("heading", { name: "Piano Recital" })
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByText("Piano Recital"));
+
+      // Modal should render event details
+      expect(
+        screen.getByRole("heading", { name: "Piano Recital" })
+      ).toBeInTheDocument();
+      expect(screen.getByText("Emma's spring concert")).toBeInTheDocument();
+    });
+
+    it("closes the modal after opening when the close button is clicked", async () => {
+      const user = userEvent.setup();
+      const now = new Date();
+      const clickable = createMockEvent({
+        id: "close-me",
+        title: "Doctor Appointment",
+        startDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          10,
+          0
+        ).toISOString(),
+      });
+
+      renderWithContext({ events: [clickable] });
+
+      await user.click(screen.getByText("Doctor Appointment"));
+      expect(
+        screen.getByRole("heading", { name: "Doctor Appointment" })
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /close/i }));
+
+      expect(
+        screen.queryByRole("heading", { name: "Doctor Appointment" })
+      ).not.toBeInTheDocument();
+    });
+  });
 });
