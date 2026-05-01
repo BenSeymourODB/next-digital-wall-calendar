@@ -1,8 +1,8 @@
 "use client";
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
-import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
+import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
