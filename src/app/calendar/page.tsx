@@ -10,6 +10,7 @@ import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
 import { WeekCalendar } from "@/components/calendar/WeekCalendar";
 import { YearCalendar } from "@/components/calendar/YearCalendar";
+import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import {
   CalendarProvider,
   useCalendar,
@@ -20,6 +21,8 @@ import { Toaster } from "@/components/ui/sonner";
 import type { TCalendarView } from "@/types/calendar";
 import { useState } from "react";
 import { Settings } from "lucide-react";
+
+const VIEW_FADE_DURATION_MS = 250;
 
 function CalendarView({ view }: { view: TCalendarView }) {
   switch (view) {
@@ -97,7 +100,14 @@ function CalendarContent() {
           }
         >
           <div className="border-border bg-card rounded-lg border p-6">
-            <CalendarView view={view} />
+            <AnimatedSwap
+              swapKey={view}
+              type="fade"
+              direction="forward"
+              durationMs={VIEW_FADE_DURATION_MS}
+            >
+              <CalendarView view={view} />
+            </AnimatedSwap>
           </div>
           {showSidebar && <MiniCalendarSidebar />}
         </div>

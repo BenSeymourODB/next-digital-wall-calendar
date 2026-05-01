@@ -9,6 +9,7 @@ import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
 import { WeekCalendar } from "@/components/calendar/WeekCalendar";
 import { YearCalendar } from "@/components/calendar/YearCalendar";
+import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import {
   MockCalendarProvider,
   useCalendar,
@@ -304,12 +305,19 @@ function CalendarDisplay() {
 
   return (
     <div data-testid="calendar-display">
-      {view === "day" && <DayCalendar />}
-      {view === "week" && <WeekCalendar />}
-      {view === "month" && <SimpleCalendar />}
-      {view === "year" && <YearCalendar />}
-      {view === "agenda" && <AgendaCalendar />}
-      {view === "clock" && <AnalogClockView />}
+      <AnimatedSwap
+        swapKey={view}
+        type="fade"
+        direction="forward"
+        durationMs={250}
+      >
+        {view === "day" && <DayCalendar />}
+        {view === "week" && <WeekCalendar />}
+        {view === "month" && <SimpleCalendar />}
+        {view === "year" && <YearCalendar />}
+        {view === "agenda" && <AgendaCalendar />}
+        {view === "clock" && <AnalogClockView />}
+      </AnimatedSwap>
     </div>
   );
 }
