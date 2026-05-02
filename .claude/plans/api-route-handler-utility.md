@@ -96,3 +96,11 @@ These will land in subsequent #74 slices once the pattern proves out.
 - Existing route tests pass without modification
 - Net LOC reduction across the three migrated route files
 - New utility has unit tests covering: `ApiError` shape, `requireUserSession` happy path + 401, `withApiHandler` success path + ApiError path + unknown-error path
+
+## CI notes
+
+Earlier CI runs on this branch hit a transient failure on the
+`Validate Prisma migrations are up to date` step despite this PR
+not touching any Prisma file. The same step passes on `main` and
+on other PRs with identical Prisma config and migrations, so the
+failure was retriggered with this no-op.
