@@ -13,6 +13,9 @@ export type { TaskItemProps } from "./task-item";
 export { TaskList } from "./task-list";
 export type { TaskListProps } from "./task-list";
 
+export { ProfileScopedTaskList } from "./profile-scoped-task-list";
+export type { ProfileScopedTaskListProps } from "./profile-scoped-task-list";
+
 export { TaskListSettings } from "./task-list-settings";
 export type { TaskListSettingsProps } from "./task-list-settings";
 
