@@ -170,4 +170,24 @@ describe("withApiHandler", () => {
     expect(status).toBe(401);
     expect(data.error).toBe("Unauthorized");
   });
+
+  it("logs and 500s when getSession itself rejects", async () => {
+    const failure = new Error("network down");
+    vi.mocked(getSession).mockRejectedValue(failure);
+
+    const wrapped = withApiHandler(options, async () => {
+      await requireUserSession();
+      return NextResponse.json({ ok: true });
+    });
+
+    const response = await wrapped();
+    const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+    expect(status).toBe(500);
+    expect(data.error).toBe("Failed to test");
+    expect(logger.error).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({ endpoint: "/api/test", method: "GET" })
+    );
+  });
 });
