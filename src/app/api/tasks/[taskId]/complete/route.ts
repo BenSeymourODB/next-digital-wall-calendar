@@ -5,18 +5,13 @@
  * POST - Complete a task and update streak
  */
 import { getAccessToken, getSession } from "@/lib/auth/helpers";
+import { patchTask } from "@/lib/google/tasks-api";
+import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { updateProfileStreak } from "@/lib/services/streak";
 import { NextRequest, NextResponse } from "next/server";
 
 interface RouteContext {
   params: Promise<{ taskId: string }>;
-}
-
-interface GoogleTask {
-  id: string;
-  title: string;
-  status: "needsAction" | "completed";
-  updated?: string;
 }
 
 interface RequestBody {
@@ -75,28 +70,20 @@ export async function POST(
     );
   }
 
-  // Mark task as completed in Google Tasks API
-  const googleResponse = await fetch(
-    `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${taskId}`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ status: "completed" }),
+  let task;
+  try {
+    task = await patchTask(accessToken, listId, taskId, {
+      status: "completed",
+    });
+  } catch (error) {
+    if (error instanceof GoogleTasksApiError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status }
+      );
     }
-  );
-
-  if (!googleResponse.ok) {
-    const error = await googleResponse.json();
-    return NextResponse.json(
-      { error: error.error?.message || "Failed to complete task" },
-      { status: googleResponse.status }
-    );
+    throw error;
   }
-
-  const task = (await googleResponse.json()) as GoogleTask;
 
   const streak = await updateProfileStreak(profileId);
 

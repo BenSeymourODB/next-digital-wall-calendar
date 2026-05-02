@@ -135,10 +135,13 @@ describe("Task Complete API", () => {
     });
 
     it("returns error when Google API fails", async () => {
+      // 500 is transient — fetchWithRetry retries and reads Retry-After from
+      // headers each pass, so the mock must include a real Headers instance.
       mockFetch.mockResolvedValue({
         ok: false,
         status: 500,
-        json: () => Promise.resolve({ error: "Server error" }),
+        headers: new Headers(),
+        json: () => Promise.resolve({ error: { message: "Server error" } }),
       });
 
       const request = createRequest({

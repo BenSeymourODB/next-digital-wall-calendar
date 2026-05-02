@@ -3,11 +3,17 @@
  * Uses server-side authentication with NextAuth.js
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
-import { fetchWithRetry } from "@/lib/http/retry";
+import { createTask, listTasks } from "@/lib/google/tasks-api";
+import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
-const GOOGLE_TASKS_API = "https://tasks.googleapis.com/tasks/v1";
+interface CreateTaskBody {
+  listId?: string;
+  title?: string;
+  notes?: string;
+  due?: string;
+}
 
 /**
  * GET /api/tasks - List tasks from a task list
@@ -44,77 +50,25 @@ export async function GET(request: NextRequest) {
     }
 
     const showCompleted = searchParams.get("showCompleted") === "true";
-    const maxResults = searchParams.get("maxResults") || "100";
+    const maxResultsParam = searchParams.get("maxResults");
+    const maxResults = maxResultsParam ? Number(maxResultsParam) : undefined;
 
     const accessToken = await getAccessToken();
 
-    const apiUrl = new URL(
-      `${GOOGLE_TASKS_API}/lists/${encodeURIComponent(listId)}/tasks`
-    );
-    apiUrl.searchParams.set("maxResults", maxResults);
-    apiUrl.searchParams.set("showCompleted", String(showCompleted));
-
-    const response = await fetchWithRetry(apiUrl.toString(), {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
+    const { tasks, nextPageToken } = await listTasks(accessToken, listId, {
+      showCompleted,
+      ...(maxResults !== undefined && { maxResults }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      logger.error(new Error("Google Tasks API error"), {
-        status: response.status,
-        errorData,
-        listId,
-        userId: session.user.id,
-      });
-
-      if (response.status === 401) {
-        return NextResponse.json(
-          {
-            error: "Google authentication failed. Please sign in again.",
-            requiresReauth: true,
-          },
-          { status: 401 }
-        );
-      }
-
-      return NextResponse.json(
-        { error: "Failed to fetch tasks" },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-
-    logger.log("Tasks fetched", {
+    logger.event("TasksFetched", {
       listId,
-      taskCount: data.items?.length || 0,
+      taskCount: tasks.length,
       userId: session.user.id,
     });
 
-    return NextResponse.json({
-      tasks: data.items || [],
-      nextPageToken: data.nextPageToken,
-    });
+    return NextResponse.json({ tasks, nextPageToken });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json(
-        { error: error.message, requiresReauth: error.status === 401 },
-        { status: error.status }
-      );
-    }
-
-    logger.error(error as Error, {
-      endpoint: "/api/tasks",
-      errorType: "fetch_tasks",
-    });
-
-    return NextResponse.json(
-      { error: "An unexpected error occurred" },
-      { status: 500 }
-    );
+    return handleTasksApiError(error, "fetch_tasks");
   }
 }
 
@@ -139,7 +93,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    const body = (await request.json()) as CreateTaskBody;
     const { listId, title, notes, due } = body;
 
     if (!listId || !title) {
@@ -151,48 +105,7 @@ export async function POST(request: NextRequest) {
 
     const accessToken = await getAccessToken();
 
-    const response = await fetchWithRetry(
-      `${GOOGLE_TASKS_API}/lists/${encodeURIComponent(listId)}/tasks`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title,
-          notes,
-          due,
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      logger.error(new Error("Failed to create task"), {
-        status: response.status,
-        errorData,
-        listId,
-        userId: session.user.id,
-      });
-
-      if (response.status === 401) {
-        return NextResponse.json(
-          {
-            error: "Google authentication failed. Please sign in again.",
-            requiresReauth: true,
-          },
-          { status: 401 }
-        );
-      }
-
-      return NextResponse.json(
-        { error: "Failed to create task" },
-        { status: response.status }
-      );
-    }
-
-    const task = await response.json();
+    const task = await createTask(accessToken, listId, { title, notes, due });
 
     logger.event("TaskCreated", {
       listId,
@@ -202,21 +115,56 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {
-    if (error instanceof AuthError) {
+    return handleTasksApiError(error, "create_task");
+  }
+}
+
+function handleTasksApiError(
+  error: unknown,
+  errorType: "fetch_tasks" | "create_task"
+): NextResponse {
+  if (error instanceof AuthError) {
+    return NextResponse.json(
+      { error: error.message, requiresReauth: error.status === 401 },
+      { status: error.status }
+    );
+  }
+
+  if (error instanceof GoogleTasksApiError) {
+    logger.error(error, {
+      endpoint: "/api/tasks",
+      errorType,
+      status: error.status,
+    });
+
+    if (error.status === 401 || error.status === 403) {
       return NextResponse.json(
-        { error: error.message, requiresReauth: error.status === 401 },
+        {
+          error:
+            error.status === 403
+              ? "Missing Google Tasks scope. Please sign in again to grant access."
+              : "Google authentication failed. Please sign in again.",
+          requiresReauth: true,
+        },
         { status: error.status }
       );
     }
 
-    logger.error(error as Error, {
-      endpoint: "/api/tasks",
-      errorType: "create_task",
-    });
-
     return NextResponse.json(
-      { error: "An unexpected error occurred" },
-      { status: 500 }
+      {
+        error:
+          errorType === "create_task"
+            ? "Failed to create task"
+            : "Failed to fetch tasks",
+      },
+      { status: error.status }
     );
   }
+
+  logger.error(error as Error, { endpoint: "/api/tasks", errorType });
+
+  return NextResponse.json(
+    { error: "An unexpected error occurred" },
+    { status: 500 }
+  );
 }
