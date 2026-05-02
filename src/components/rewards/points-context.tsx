@@ -16,21 +16,18 @@
  * state (zero points, isEnabled=false) and never hits the network.
  */
 import { logger } from "@/lib/logger";
+import type { PointAwardReason } from "@/lib/services/reward-points";
 import {
   type ReactNode,
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
-export type PointAwardReason =
-  | "task_completed"
-  | "manual"
-  | "bonus"
-  | "streak"
-  | "goal";
+export type { PointAwardReason };
 
 export interface AwardPointsMetadata {
   taskId?: string;
@@ -70,9 +67,61 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
   const [fetchedTotal, setFetchedTotal] = useState(0);
   const [fetchedEnabled, setFetchedEnabled] = useState(false);
 
-  const fetchPoints = useCallback(async (id: string) => {
+  // Track the currently-mounted profile id so in-flight requests
+  // started under a different profile don't write their result into
+  // the new profile's displayed state when they resolve.
+  const activeProfileIdRef = useRef<string | null>(profileId);
+  useEffect(() => {
+    activeProfileIdRef.current = profileId;
+  }, [profileId]);
+
+  useEffect(() => {
+    if (!profileId) {
+      return;
+    }
+    const controller = new AbortController();
+    const run = async () => {
+      try {
+        const response = await fetch(
+          `/api/points?profileId=${encodeURIComponent(profileId)}`,
+          { signal: controller.signal }
+        );
+        if (controller.signal.aborted) return;
+        if (!response.ok) {
+          setFetchedTotal(0);
+          setFetchedEnabled(false);
+          return;
+        }
+        const data = (await response.json()) as {
+          totalPoints: number;
+          enabled: boolean;
+        };
+        if (controller.signal.aborted) return;
+        setFetchedTotal(data.totalPoints);
+        setFetchedEnabled(data.enabled);
+      } catch (error) {
+        if ((error as Error).name === "AbortError") return;
+        logger.error(error as Error, { context: "FetchPointsFailed" });
+        setFetchedTotal(0);
+        setFetchedEnabled(false);
+      }
+    };
+    run();
+    return () => controller.abort();
+  }, [profileId]);
+
+  const totalPoints = profileId ? fetchedTotal : 0;
+  const isEnabled = profileId ? fetchedEnabled : false;
+
+  const refreshPoints = useCallback(async () => {
+    if (!profileId) {
+      return;
+    }
     try {
-      const response = await fetch(`/api/points?profileId=${id}`);
+      const response = await fetch(
+        `/api/points?profileId=${encodeURIComponent(profileId)}`
+      );
+      if (activeProfileIdRef.current !== profileId) return;
       if (!response.ok) {
         setFetchedTotal(0);
         setFetchedEnabled(false);
@@ -82,34 +131,16 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
         totalPoints: number;
         enabled: boolean;
       };
+      if (activeProfileIdRef.current !== profileId) return;
       setFetchedTotal(data.totalPoints);
       setFetchedEnabled(data.enabled);
     } catch (error) {
       logger.error(error as Error, { context: "FetchPointsFailed" });
+      if (activeProfileIdRef.current !== profileId) return;
       setFetchedTotal(0);
       setFetchedEnabled(false);
     }
-  }, []);
-
-  useEffect(() => {
-    if (!profileId) {
-      return;
-    }
-    const run = async () => {
-      await fetchPoints(profileId);
-    };
-    run();
-  }, [profileId, fetchPoints]);
-
-  const totalPoints = profileId ? fetchedTotal : 0;
-  const isEnabled = profileId ? fetchedEnabled : false;
-
-  const refreshPoints = useCallback(async () => {
-    if (!profileId) {
-      return;
-    }
-    await fetchPoints(profileId);
-  }, [profileId, fetchPoints]);
+  }, [profileId]);
 
   const awardPoints = useCallback(
     async (
@@ -143,7 +174,11 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
         alreadyAwarded: boolean;
       };
 
-      setFetchedTotal(data.newTotal);
+      // Only sync local state if this closure's profile is still the
+      // active one — guards against a profile switch during the POST.
+      if (activeProfileIdRef.current === profileId) {
+        setFetchedTotal(data.newTotal);
+      }
 
       logger.event("PointsAwarded", {
         profileId,

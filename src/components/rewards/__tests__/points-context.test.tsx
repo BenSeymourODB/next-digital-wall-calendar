@@ -68,7 +68,10 @@ describe("usePoints", () => {
     });
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/points?profileId=profile-1");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/points?profileId=profile-1",
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
     });
 
     await waitFor(() => {
@@ -271,7 +274,10 @@ describe("usePoints", () => {
     await waitFor(() => {
       expect(getByTestId("total").textContent).toBe("50");
     });
-    expect(mockFetch).toHaveBeenCalledWith("/api/points?profileId=profile-1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/points?profileId=profile-1",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
 
     rerender(
       <PointsProvider profileId="profile-2">
@@ -280,8 +286,84 @@ describe("usePoints", () => {
     );
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/points?profileId=profile-2");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/points?profileId=profile-2",
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
       expect(getByTestId("total").textContent).toBe("200");
     });
+  });
+
+  it("does not write a stale awardPoints result into the new profile's state", async () => {
+    let resolveAward: ((value: Response) => void) | null = null;
+    const awardPromise = new Promise<Response>((resolve) => {
+      resolveAward = resolve;
+    });
+
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ totalPoints: 50, enabled: true }),
+      })
+      .mockReturnValueOnce(awardPromise)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ totalPoints: 200, enabled: true }),
+      });
+
+    function Probe() {
+      const { totalPoints, awardPoints } = usePoints();
+      return (
+        <div>
+          <div data-testid="total">{totalPoints}</div>
+          <button
+            data-testid="award"
+            onClick={() => {
+              awardPoints(10, "task_completed", { taskId: "t1" }).catch(
+                () => {}
+              );
+            }}
+          />
+        </div>
+      );
+    }
+
+    const { rerender, getByTestId } = render(
+      <PointsProvider profileId="profile-1">
+        <Probe />
+      </PointsProvider>
+    );
+
+    await waitFor(() => expect(getByTestId("total").textContent).toBe("50"));
+
+    // Fire an award under profile-1; do NOT resolve it yet.
+    await act(async () => {
+      getByTestId("award").click();
+    });
+
+    // Switch to profile-2 mid-flight; the GET resolves to 200.
+    rerender(
+      <PointsProvider profileId="profile-2">
+        <Probe />
+      </PointsProvider>
+    );
+    await waitFor(() => expect(getByTestId("total").textContent).toBe("200"));
+
+    // Now resolve the in-flight profile-1 award. Its newTotal of 999
+    // must NOT overwrite profile-2's displayed 200.
+    await act(async () => {
+      resolveAward!({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            newTotal: 999,
+            alreadyAwarded: false,
+          }),
+      } as Response);
+      await awardPromise;
+    });
+
+    expect(getByTestId("total").textContent).toBe("200");
   });
 });

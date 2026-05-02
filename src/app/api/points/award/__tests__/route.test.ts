@@ -115,6 +115,44 @@ describe("POST /api/points/award", () => {
     expect(data.error).toBe("Invalid points value");
   });
 
+  it("returns 400 when points exceeds MAX_POINTS_PER_AWARD", async () => {
+    vi.mocked(getSession).mockResolvedValue(mockSession);
+
+    const request = createMockRequest("/api/points/award", {
+      method: "POST",
+      body: {
+        profileId: mockStandardProfile.id,
+        points: 10_001,
+        reason: "task_completed",
+        taskId: "task-abc",
+      },
+    });
+    const response = await POST(request);
+    const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+    expect(status).toBe(400);
+    expect(data.error).toBe("Invalid points value");
+  });
+
+  it("returns 400 when reason is task_completed but taskId is missing", async () => {
+    vi.mocked(getSession).mockResolvedValue(mockSession);
+
+    const request = createMockRequest("/api/points/award", {
+      method: "POST",
+      body: {
+        profileId: mockStandardProfile.id,
+        points: 10,
+        reason: "task_completed",
+      },
+    });
+    const response = await POST(request);
+    const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+    expect(status).toBe(400);
+    expect(data.error).toBe("taskId is required for task_completed awards");
+    expect(mockRecordPointAward).not.toHaveBeenCalled();
+  });
+
   it("returns 400 when points is not an integer", async () => {
     vi.mocked(getSession).mockResolvedValue(mockSession);
 
@@ -160,7 +198,7 @@ describe("POST /api/points/award", () => {
       body: {
         profileId: "someone-elses-profile",
         points: 10,
-        reason: "task_completed",
+        reason: "bonus",
       },
     });
     const response = await POST(request);
@@ -192,7 +230,7 @@ describe("POST /api/points/award", () => {
       body: {
         profileId: mockStandardProfile.id,
         points: 10,
-        reason: "task_completed",
+        reason: "bonus",
       },
     });
     const response = await POST(request);
@@ -215,7 +253,7 @@ describe("POST /api/points/award", () => {
       body: {
         profileId: mockStandardProfile.id,
         points: 10,
-        reason: "task_completed",
+        reason: "bonus",
       },
     });
     const response = await POST(request);
@@ -313,7 +351,7 @@ describe("POST /api/points/award", () => {
       body: {
         profileId: mockStandardProfile.id,
         points: 10,
-        reason: "task_completed",
+        reason: "bonus",
       },
     });
     const response = await POST(request);

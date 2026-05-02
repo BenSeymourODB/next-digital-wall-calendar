@@ -4,9 +4,9 @@
  * Body:
  *   {
  *     profileId: string;
- *     points: number;            // positive integer
+ *     points: number;            // positive integer, max MAX_POINTS_PER_AWARD
  *     reason: PointAwardReason;  // e.g. "task_completed"
- *     taskId?: string;
+ *     taskId?: string;           // required when reason === "task_completed"
  *     taskTitle?: string;
  *   }
  *
@@ -17,7 +17,10 @@
  * (`UserSettings.rewardSystemEnabled`). Points themselves are stored
  * per profile. The `alreadyAwarded` flag surfaces idempotency hits
  * driven by the `(profileId, taskId, reason)` unique index — a
- * task can only credit a profile once.
+ * task can only credit a profile once. The index is partial in
+ * effect (Postgres treats NULL as distinct), so the route requires
+ * `taskId` for `task_completed` awards to keep the idempotency
+ * guarantee meaningful.
  */
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -35,6 +38,12 @@ const VALID_REASONS: ReadonlySet<PointAwardReason> = new Set([
   "streak",
   "goal",
 ]);
+
+// Cap a single award well below 32-bit Int range so an accumulated
+// totalPoints can't reasonably overflow Postgres INTEGER. Anything
+// realistic for task / bonus / streak awards stays comfortably under
+// this; admin manual awards above this should hit a different path.
+const MAX_POINTS_PER_AWARD = 10_000;
 
 interface AwardRequestBody {
   profileId?: string;
@@ -69,7 +78,8 @@ export async function POST(request: NextRequest) {
     if (
       typeof points !== "number" ||
       !Number.isInteger(points) ||
-      points <= 0
+      points <= 0 ||
+      points > MAX_POINTS_PER_AWARD
     ) {
       return NextResponse.json(
         { error: "Invalid points value" },
@@ -79,6 +89,17 @@ export async function POST(request: NextRequest) {
 
     if (typeof reason !== "string" || !isValidReason(reason)) {
       return NextResponse.json({ error: "Invalid reason" }, { status: 400 });
+    }
+
+    // Without taskId the unique (profileId, taskId, reason) index can't
+    // dedupe — Postgres treats NULL as distinct, so a caller could
+    // re-award the same "task" indefinitely. Force taskId on the
+    // automated task path to keep the idempotency guarantee.
+    if (reason === "task_completed" && !taskId) {
+      return NextResponse.json(
+        { error: "taskId is required for task_completed awards" },
+        { status: 400 }
+      );
     }
 
     const profile = await prisma.profile.findFirst({

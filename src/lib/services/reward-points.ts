@@ -123,6 +123,11 @@ export async function recordPointAward(
   }
 }
 
+// We duck-type the Prisma P2002 code rather than `instanceof
+// PrismaClientKnownRequestError` to avoid pulling the Prisma
+// namespace into this module just for a type guard. P2002 from a
+// non-Prisma source is vanishingly unlikely on this call path
+// (the only awaited write is a Prisma transaction).
 function isUniqueConstraintError(error: unknown): boolean {
   return (
     typeof error === "object" &&
