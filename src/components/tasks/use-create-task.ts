@@ -23,23 +23,6 @@ export interface UseCreateTaskReturn {
   error: Error | null;
 }
 
-interface CreateTaskRequestBody {
-  listId: string;
-  title: string;
-  due?: string;
-  notes?: string;
-}
-
-function buildRequestBody(input: CreateTaskInput): CreateTaskRequestBody {
-  const body: CreateTaskRequestBody = {
-    listId: input.listId,
-    title: input.title,
-  };
-  if (input.due !== undefined) body.due = input.due;
-  if (input.notes !== undefined) body.notes = input.notes;
-  return body;
-}
-
 export function useCreateTask(): UseCreateTaskReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -52,7 +35,12 @@ export function useCreateTask(): UseCreateTaskReturn {
       const response = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildRequestBody(input)),
+        body: JSON.stringify({
+          listId: input.listId,
+          title: input.title,
+          ...(input.due !== undefined ? { due: input.due } : {}),
+          ...(input.notes !== undefined ? { notes: input.notes } : {}),
+        }),
       });
 
       if (!response.ok) {

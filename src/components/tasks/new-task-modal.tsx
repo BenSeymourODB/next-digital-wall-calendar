@@ -58,16 +58,20 @@ function buildInitialState(defaultListId: string | undefined): FormState {
 }
 
 /**
- * Convert an HTML `<input type="date">` value (YYYY-MM-DD) to RFC 3339,
- * which is what the Google Tasks API expects on the `due` field. Empty
- * strings collapse to `undefined` so the field is omitted entirely.
+ * Convert an HTML `<input type="date">` value (YYYY-MM-DD) to RFC 3339
+ * for the Google Tasks API `due` field. Parses as **local** midnight so
+ * the resulting UTC instant round-trips back to the same calendar date
+ * when re-read by `formatDueDate` in `./types.ts`. A naïve
+ * `${date}T00:00:00Z` would shift the date by one day for any user west
+ * of UTC. Empty strings collapse to `undefined` so the field is omitted.
  */
-function toApiDue(value: string): string | undefined {
+export function toApiDue(value: string): string | undefined {
   if (!value) return undefined;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return undefined;
   const [, y, m, d] = match;
-  return `${y}-${m}-${d}T00:00:00.000Z`;
+  const local = new Date(Number(y), Number(m) - 1, Number(d));
+  return local.toISOString();
 }
 
 export function NewTaskModal({
@@ -93,7 +97,11 @@ export function NewTaskModal({
 
   const { createTask, loading, error: submitError } = useCreateTask();
 
-  // Reset on open (mirrors EventCreateDialog's "store information from previous renders" pattern).
+  // Reset on open (mirrors EventCreateDialog's "store information from
+  // previous renders" pattern). NOTE: changes to `defaultListId` or
+  // `availableLists` while the dialog is already open are intentionally
+  // not reflected — the user's in-progress selection is preserved. The
+  // parent must close + reopen to seed a different default.
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
@@ -104,6 +112,7 @@ export function NewTaskModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
 
     const trimmedTitle = state.title.trim();
     const nextErrors: FormErrors = {};
@@ -263,7 +272,11 @@ export function NewTaskModal({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button
+              type="submit"
+              disabled={loading}
+              aria-describedby={submitError ? submitErrorId : undefined}
+            >
               {loading ? "Adding…" : "Add Task"}
             </Button>
           </DialogFooter>

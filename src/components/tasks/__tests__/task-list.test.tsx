@@ -263,6 +263,17 @@ describe("TaskList", () => {
       ).toBeInTheDocument();
     });
 
+    it("disables the Add Task button when no lists are enabled", () => {
+      const noEnabledConfig: TaskListConfig = {
+        ...mockConfig,
+        lists: mockConfig.lists.map((l) => ({ ...l, enabled: false })),
+      };
+      render(<TaskList config={noEnabledConfig} />);
+      expect(screen.getByRole("button", { name: /add task/i })).toBeDisabled();
+      expect(lastModalProps()?.availableLists).toEqual([]);
+      expect(lastModalProps()?.defaultListId).toBeUndefined();
+    });
+
     it("renders the modal closed by default", () => {
       render(<TaskList config={mockConfig} />);
       expect(lastModalProps()?.open).toBe(false);

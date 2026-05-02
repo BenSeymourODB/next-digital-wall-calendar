@@ -4,7 +4,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NewTaskModal } from "../new-task-modal";
+import { NewTaskModal, toApiDue } from "../new-task-modal";
 import type { GoogleTask, TaskListSelection } from "../types";
 // Import after mocking
 import { useCreateTask } from "../use-create-task";
@@ -309,6 +309,56 @@ describe("NewTaskModal", () => {
 
       expect(screen.getByRole("button", { name: /adding/i })).toBeDisabled();
     });
+
+    it("ignores submit attempts while a request is already in flight", async () => {
+      const user = userEvent.setup();
+      // Loading=true means createTask is already running; the form's
+      // onSubmit must short-circuit rather than fire a second POST.
+      mockUseCreateTask.mockReturnValue({
+        createTask: mockCreateTask,
+        loading: true,
+        error: null,
+      });
+
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      await user.type(screen.getByLabelText(/title/i), "Buy milk");
+      // Pressing Enter inside an input fires the form's submit handler
+      // even though the submit button is `disabled`.
+      await user.keyboard("{Enter}");
+
+      expect(mockCreateTask).not.toHaveBeenCalled();
+    });
+
+    it("wires aria-describedby on the submit button when there is a server error", () => {
+      mockUseCreateTask.mockReturnValue({
+        createTask: mockCreateTask,
+        loading: false,
+        error: new Error("Server boom"),
+      });
+
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      const submit = screen.getByRole("button", { name: /add task/i });
+      const describedBy = submit.getAttribute("aria-describedby");
+      expect(describedBy).toBeTruthy();
+      const banner = document.getElementById(describedBy ?? "");
+      expect(banner).toHaveTextContent(/server boom/i);
+    });
   });
 
   describe("cancel", () => {
@@ -368,5 +418,38 @@ describe("NewTaskModal", () => {
 
       expect(screen.getByLabelText(/title/i)).toHaveValue("");
     });
+  });
+});
+
+describe("toApiDue", () => {
+  it("returns undefined for an empty string", () => {
+    expect(toApiDue("")).toBeUndefined();
+  });
+
+  it("returns undefined for an unparseable value", () => {
+    expect(toApiDue("not-a-date")).toBeUndefined();
+    expect(toApiDue("2026/05/10")).toBeUndefined();
+  });
+
+  it("round-trips back to the same local calendar date", () => {
+    // Whatever timezone the test runs in, the date the user picked
+    // (2026-05-10) must come back as 2026-05-10 after parsing the
+    // returned UTC instant locally — that's what formatDueDate does in
+    // src/components/tasks/types.ts. A naïve `T00:00:00Z` would shift
+    // by one day for any timezone west of UTC.
+    const out = toApiDue("2026-05-10");
+    expect(out).toBeTypeOf("string");
+    const roundTrip = new Date(out as string);
+    expect(roundTrip.getFullYear()).toBe(2026);
+    expect(roundTrip.getMonth()).toBe(4); // May (0-indexed)
+    expect(roundTrip.getDate()).toBe(10);
+  });
+
+  it("preserves single-digit months and days", () => {
+    const out = toApiDue("2026-01-05");
+    const roundTrip = new Date(out as string);
+    expect(roundTrip.getFullYear()).toBe(2026);
+    expect(roundTrip.getMonth()).toBe(0);
+    expect(roundTrip.getDate()).toBe(5);
   });
 });
