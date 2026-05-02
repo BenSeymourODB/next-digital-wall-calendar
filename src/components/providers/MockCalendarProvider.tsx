@@ -150,6 +150,14 @@ export function MockCalendarProvider({
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
+  // Mock deleteEvent matches the real provider's optimistic-remove signature
+  // but skips the network call so tests can drive UI flows without mocking
+  // fetch. Tests that care about failure behavior should override this in
+  // their own provider wrapper.
+  const deleteEvent = async (eventId: string, _calendarId: string) => {
+    setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
+  };
+
   // Mock refresh - just returns current events
   const refreshEvents = async () => {
     if (loadingDelay > 0) {
@@ -213,6 +221,7 @@ export function MockCalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    deleteEvent,
     clearFilter,
     refreshEvents,
     isLoading,
