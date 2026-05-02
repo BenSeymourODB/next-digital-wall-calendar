@@ -3,6 +3,7 @@
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
 import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
+import { CalendarSettingsPanel } from "@/components/calendar/CalendarSettingsPanel";
 import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
@@ -450,7 +451,10 @@ function TestCalendarContent() {
         {showControls && <TestControls />}
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <ViewSwitcher />
+          <div className="flex items-center gap-2">
+            <ViewSwitcher />
+            <CalendarSettingsPanel />
+          </div>
           {showFilters ? <CalendarFilterPanel /> : null}
         </div>
 

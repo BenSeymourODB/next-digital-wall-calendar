@@ -60,6 +60,8 @@ function createMockContext(
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
+    weekStartDay: 0,
+    setWeekStartDay: vi.fn(),
     ...overrides,
   };
 }

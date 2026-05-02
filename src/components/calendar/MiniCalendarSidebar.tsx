@@ -64,8 +64,13 @@ function formatEventTime(event: IEvent, use24HourFormat: boolean): string {
 }
 
 export function MiniCalendarSidebar() {
-  const { selectedDate, setSelectedDate, events, use24HourFormat } =
-    useCalendar();
+  const {
+    selectedDate,
+    setSelectedDate,
+    events,
+    use24HourFormat,
+    weekStartDay,
+  } = useCalendar();
 
   const [viewMonth, setViewMonth] = useState<Date>(() =>
     startOfMonth(selectedDate)
@@ -88,8 +93,12 @@ export function MiniCalendarSidebar() {
 
   const monthStart = startOfMonth(viewMonth);
   const monthEnd = endOfMonth(viewMonth);
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
-  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const gridStart = startOfWeek(monthStart, { weekStartsOn: weekStartDay });
+  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: weekStartDay });
+  const rotatedDowLabels = [
+    ...DOW_LABELS.slice(weekStartDay),
+    ...DOW_LABELS.slice(0, weekStartDay),
+  ];
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
   const weekRows: Date[][] = [];
   for (let i = 0; i < days.length; i += 7) {
@@ -155,7 +164,7 @@ export function MiniCalendarSidebar() {
         aria-label={format(viewMonth, "MMMM yyyy")}
       >
         <div role="row" className="mb-1 grid grid-cols-7">
-          {DOW_LABELS.map((label, i) => (
+          {rotatedDowLabels.map((label, i) => (
             <div
               key={`dow-${i}`}
               role="columnheader"

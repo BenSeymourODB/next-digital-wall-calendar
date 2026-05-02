@@ -9,6 +9,7 @@ import type {
   IUser,
   TCalendarView,
   TEventColor,
+  TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -30,6 +31,10 @@ interface MockCalendarProviderProps {
   isLoading?: boolean;
   /** Use 24-hour time format */
   use24HourFormat?: boolean;
+  /** Which day the visible calendar week starts on (0 = Sunday, 1 = Monday) */
+  weekStartDay?: TWeekStartDay;
+  /** Initial agenda-mode group-by */
+  agendaModeGroupBy?: "date" | "color";
   /** Simulate loading delay in ms */
   loadingDelay?: number;
   /** Whether user is authenticated (for testing) */
@@ -59,6 +64,8 @@ export function MockCalendarProvider({
   initialDate,
   isLoading: initialLoading = false,
   use24HourFormat: initial24Hour = true,
+  weekStartDay: initialWeekStartDay = 0,
+  agendaModeGroupBy: initialAgendaGroupBy = "date",
   loadingDelay = 0,
   isAuthenticated = true,
   maxEventsPerDay = 3,
@@ -71,7 +78,9 @@ export function MockCalendarProvider({
     useState<boolean>(initial24Hour);
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
-  >("date");
+  >(initialAgendaGroupBy);
+  const [weekStartDay, setWeekStartDayState] =
+    useState<TWeekStartDay>(initialWeekStartDay);
 
   const [selectedDate, setSelectedDate] = useState(initialDate || new Date());
   const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
@@ -108,6 +117,10 @@ export function MockCalendarProvider({
 
   const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
     setAgendaModeGroupByState(groupBy);
+  };
+
+  const setWeekStartDay = (day: TWeekStartDay) => {
+    setWeekStartDayState(day);
   };
 
   const filterEventsBySelectedColors = (color: TEventColor) => {
@@ -185,6 +198,8 @@ export function MockCalendarProvider({
     setAgendaModeGroupBy,
     use24HourFormat,
     toggleTimeFormat,
+    weekStartDay,
+    setWeekStartDay,
     setSelectedDate: handleSetSelectedDate,
     selectedUserId,
     setSelectedUserId,

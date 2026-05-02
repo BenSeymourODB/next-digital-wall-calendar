@@ -1,35 +1,39 @@
 /**
- * Regression tests for CalendarProvider behavior that day/week views
- * depend on (issue #113):
+ * Tests for CalendarProvider:
  *
- * - `setSelectedDate(date)` triggers `loadEventsForDate` for any
- *   navigation away from the originally loaded month — ensures the
- *   week/day chevrons fetch needed data.
- * - `events` exposed by the provider reflect color/user filters so
- *   downstream views (`DayCalendar`, `WeekCalendar`) inherit filtering
- *   without re-implementing it.
+ * 1. Settings state added in #86 (Calendar settings panel) — exercises the
+ *    LocalStorage-persisted settings against an unauthenticated session so
+ *    the network-backed code paths stay dormant.
+ * 2. Issue #113 regression — `setSelectedDate` triggers `loadEventsForDate`
+ *    and color/user filters propagate to downstream views.
  *
- * The full provider exercises NextAuth, IndexedDB, and `fetch`. We
- * mock those at the module boundary so the tests stay tight.
+ * The full provider exercises NextAuth, IndexedDB, and `fetch`. We mock
+ * those at the module boundary so the tests stay tight. A swappable
+ * `mockSessionState` lets each describe block toggle the auth state it
+ * needs without re-mocking next-auth per file.
  */
 import {
   CalendarProvider,
   useCalendar,
 } from "@/components/providers/CalendarProvider";
+import { SessionProvider } from "next-auth/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { addMonths } from "date-fns";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next-auth/react", () => ({
-  useSession: () => ({
-    data: {
-      user: { name: "Test", email: "test@test.test" },
-      expires: new Date(Date.now() + 86_400_000).toISOString(),
-    },
-    status: "authenticated",
-  }),
-}));
+const mockSessionState: { current: { data: unknown; status: string } } = {
+  current: { data: null, status: "unauthenticated" },
+};
+
+vi.mock("next-auth/react", async () => {
+  const actual =
+    await vi.importActual<typeof import("next-auth/react")>("next-auth/react");
+  return {
+    ...actual,
+    useSession: () => mockSessionState.current,
+  };
+});
 
 vi.mock("@/lib/calendar-storage", () => ({
   loadColorMappings: () => [],
@@ -40,6 +44,160 @@ vi.mock("@/lib/calendar-storage", () => ({
     saveEvents: vi.fn().mockResolvedValue(undefined),
   },
 }));
+
+function SettingsProbe() {
+  const {
+    badgeVariant,
+    setBadgeVariant,
+    use24HourFormat,
+    toggleTimeFormat,
+    agendaModeGroupBy,
+    setAgendaModeGroupBy,
+    weekStartDay,
+    setWeekStartDay,
+  } = useCalendar();
+
+  return (
+    <div>
+      <span data-testid="badge">{badgeVariant}</span>
+      <span data-testid="hour">{String(use24HourFormat)}</span>
+      <span data-testid="group">{agendaModeGroupBy}</span>
+      <span data-testid="week-start">{String(weekStartDay)}</span>
+      <button type="button" onClick={() => setBadgeVariant("dot")}>
+        badge-dot
+      </button>
+      <button type="button" onClick={toggleTimeFormat}>
+        toggle-hour
+      </button>
+      <button type="button" onClick={() => setAgendaModeGroupBy("color")}>
+        group-color
+      </button>
+      <button type="button" onClick={() => setWeekStartDay(1)}>
+        week-monday
+      </button>
+    </div>
+  );
+}
+
+function renderProvider() {
+  return render(
+    <SessionProvider session={null}>
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    </SessionProvider>
+  );
+}
+
+describe("CalendarProvider — settings state", () => {
+  beforeEach(() => {
+    mockSessionState.current = { data: null, status: "unauthenticated" };
+    window.localStorage.clear();
+  });
+
+  it("exposes default settings when nothing is persisted", async () => {
+    renderProvider();
+
+    // CalendarProvider schedules an async cache-read on mount; wait for it
+    // to settle so later tests don't race against the act() warning.
+    await waitFor(() => {
+      expect(screen.getByTestId("badge")).toHaveTextContent("colored");
+    });
+
+    expect(screen.getByTestId("hour")).toHaveTextContent("true");
+    expect(screen.getByTestId("group")).toHaveTextContent("date");
+    // 0 = Sunday per product requirement
+    expect(screen.getByTestId("week-start")).toHaveTextContent("0");
+  });
+
+  it("persists weekStartDay changes to localStorage", async () => {
+    const user = userEvent.setup();
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("0");
+    });
+
+    await user.click(screen.getByText("week-monday"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("1");
+    });
+
+    const stored = window.localStorage.getItem("calendar-settings");
+    expect(stored).not.toBeNull();
+    const parsed = JSON.parse(stored!);
+    expect(parsed.weekStartDay).toBe(1);
+  });
+
+  it("persists agenda group-by and badge changes alongside weekStartDay", async () => {
+    const user = userEvent.setup();
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("badge")).toHaveTextContent("colored");
+    });
+
+    await user.click(screen.getByText("badge-dot"));
+    await user.click(screen.getByText("group-color"));
+    await user.click(screen.getByText("toggle-hour"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hour")).toHaveTextContent("false");
+    });
+
+    const parsed = JSON.parse(
+      window.localStorage.getItem("calendar-settings") ?? "{}"
+    );
+    expect(parsed.badgeVariant).toBe("dot");
+    expect(parsed.agendaModeGroupBy).toBe("color");
+    expect(parsed.use24HourFormat).toBe(false);
+  });
+
+  it("rehydrates weekStartDay from localStorage on mount", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "dot",
+        view: "month",
+        use24HourFormat: false,
+        agendaModeGroupBy: "color",
+        weekStartDay: 1,
+      })
+    );
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("1");
+    });
+    expect(screen.getByTestId("group")).toHaveTextContent("color");
+    expect(screen.getByTestId("hour")).toHaveTextContent("false");
+    expect(screen.getByTestId("badge")).toHaveTextContent("dot");
+  });
+
+  it("falls back to defaults when the stored payload is missing the new field", async () => {
+    // Legacy payload (pre-#86) — no weekStartDay key
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+      })
+    );
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("0");
+    });
+    expect(screen.getByTestId("group")).toHaveTextContent("date");
+    expect(screen.getByTestId("hour")).toHaveTextContent("true");
+    expect(screen.getByTestId("badge")).toHaveTextContent("colored");
+  });
+});
 
 vi.mock("@/lib/calendar-transform", () => ({
   // Honour `colorOverride` on the test fixture so the filter test
@@ -109,6 +267,13 @@ describe("CalendarProvider", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    mockSessionState.current = {
+      data: {
+        user: { name: "Test", email: "test@test.test" },
+        expires: new Date(Date.now() + 86_400_000).toISOString(),
+      },
+      status: "authenticated",
+    };
     fetchMock = vi.fn().mockImplementation((input: string | URL) => {
       const url = String(input);
       if (url.includes("/api/calendar/calendars")) {
