@@ -4,6 +4,7 @@ import { AccountManager } from "@/components/calendar/AccountManager";
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
 import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
+import { CalendarSettingsPanel } from "@/components/calendar/CalendarSettingsPanel";
 import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
@@ -70,9 +71,11 @@ function CalendarContent() {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
+            <CalendarSettingsPanel />
             <Button
               variant="outline"
               size="icon"
+              aria-label="Account manager"
               onClick={() => setShowSettings(!showSettings)}
             >
               <Settings className="h-5 w-5" />
