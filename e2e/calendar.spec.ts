@@ -186,21 +186,25 @@ test.describe("Agenda Calendar - Time Format", () => {
 });
 
 test.describe("View Switcher", () => {
-  test("switches from month view to agenda view", async ({ page }) => {
+  test("switches from month view to day-agenda mode (#150)", async ({
+    page,
+  }) => {
     await page.goto("/test/calendar?events=default&view=month");
 
-    // Click Agenda tab
-    await page.getByRole("tab", { name: "Agenda" }).click();
+    // Day is a dropdown — open it and pick Agenda.
+    await page.getByTestId("view-switcher-day").click();
+    await page.getByRole("menuitemradio", { name: /agenda/i }).click();
 
-    // Should now show agenda view
-    await expect(page.getByText("Upcoming Events")).toBeVisible();
+    // Day-view agenda renders the AgendaList.
+    await expect(page.getByTestId("agenda-list")).toBeVisible();
   });
 
-  test("switches from agenda view to month view", async ({ page }) => {
+  test("switches from legacy agenda URL to month view", async ({ page }) => {
+    // ?view=agenda is the legacy URL preserved for backward compat with
+    // the search-driven AgendaCalendar tests (#150).
     await page.goto("/test/calendar?events=default&view=agenda");
 
-    // Click Month tab
-    await page.getByRole("tab", { name: "Month" }).click();
+    await page.getByTestId("view-switcher-month").click();
 
     // Should now show month view with day headers (use exact match)
     await expect(page.getByText("Sun", { exact: true })).toBeVisible();
@@ -213,10 +217,11 @@ test.describe("View Switcher", () => {
     // Verify event in month view
     await expect(page.getByText("Morning Standup")).toBeVisible();
 
-    // Switch to agenda
-    await page.getByRole("tab", { name: "Agenda" }).click();
+    // Switch to day-agenda mode via the dropdown.
+    await page.getByTestId("view-switcher-day").click();
+    await page.getByRole("menuitemradio", { name: /agenda/i }).click();
 
-    // Event should still be visible in agenda view
+    // Event should still be visible in agenda mode for the same date range.
     await expect(page.getByText("Morning Standup")).toBeVisible();
   });
 });
@@ -324,17 +329,17 @@ test.describe("Accessibility", () => {
     await expect(nextButton).toBeEnabled();
   });
 
-  test("view switcher tabs are keyboard navigable", async ({ page }) => {
+  test("view switcher buttons are keyboard navigable", async ({ page }) => {
     await page.goto("/test/calendar?events=default&view=month");
 
-    const monthTab = page.getByRole("tab", { name: "Month" });
-    const agendaTab = page.getByRole("tab", { name: "Agenda" });
+    const monthBtn = page.getByTestId("view-switcher-month");
+    const dayBtn = page.getByTestId("view-switcher-day");
 
-    await expect(monthTab).toBeVisible();
-    await expect(agendaTab).toBeVisible();
+    await expect(monthBtn).toBeVisible();
+    await expect(dayBtn).toBeVisible();
 
-    // Tabs should be focusable
-    await monthTab.focus();
-    await expect(monthTab).toBeFocused();
+    // Buttons should be focusable.
+    await monthBtn.focus();
+    await expect(monthBtn).toBeFocused();
   });
 });
