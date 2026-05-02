@@ -264,8 +264,9 @@ model PlannedMeal {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
 
+  // Leading columns of the unique index also satisfy (userId, weekStart)
+  // lookups, so a separate @@index is redundant.
   @@unique([userId, weekStart, dayOfWeek, mealType])
-  @@index([userId, weekStart])
 }
 
 model MealIngredient {
@@ -292,7 +293,9 @@ model GroceryList {
   user  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   items GroceryListItem[]
 
-  @@index([userId, weekStart])
+  // One list per user per week. The unique index also serves the
+  // (userId, weekStart) lookup, so no additional @@index is needed.
+  @@unique([userId, weekStart])
 }
 
 model GroceryListItem {
@@ -312,16 +315,19 @@ model GroceryListItem {
 }
 
 model SavedMeal {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
   name       String
   type       MealType
-  servings   Int      @default(4)
+  servings   Int       @default(4)
   recipeId   String?
-  isFavorite Boolean  @default(false)
-  useCount   Int      @default(0)
-  lastUsed   DateTime @default(now())
-  createdAt  DateTime @default(now())
+  isFavorite Boolean   @default(false)
+  useCount   Int       @default(0)
+  // Nullable + no default: a never-used meal is distinguishable from one
+  // that was used at insertion time. Set explicitly when the meal lands
+  // on a plan.
+  lastUsed   DateTime?
+  createdAt  DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

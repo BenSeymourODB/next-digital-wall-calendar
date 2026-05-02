@@ -82,7 +82,7 @@ CREATE TABLE "SavedMeal" (
     "recipeId" TEXT,
     "isFavorite" BOOLEAN NOT NULL DEFAULT false,
     "useCount" INTEGER NOT NULL DEFAULT 0,
-    "lastUsed" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastUsed" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "SavedMeal_pkey" PRIMARY KEY ("id")
@@ -105,16 +105,13 @@ CREATE TABLE "MealTemplate" (
 CREATE INDEX "Meal_userId_type_idx" ON "Meal"("userId", "type");
 
 -- CreateIndex
-CREATE INDEX "PlannedMeal_userId_weekStart_idx" ON "PlannedMeal"("userId", "weekStart");
-
--- CreateIndex
 CREATE UNIQUE INDEX "PlannedMeal_userId_weekStart_dayOfWeek_mealType_key" ON "PlannedMeal"("userId", "weekStart", "dayOfWeek", "mealType");
 
 -- CreateIndex
 CREATE INDEX "MealIngredient_mealId_idx" ON "MealIngredient"("mealId");
 
 -- CreateIndex
-CREATE INDEX "GroceryList_userId_weekStart_idx" ON "GroceryList"("userId", "weekStart");
+CREATE UNIQUE INDEX "GroceryList_userId_weekStart_key" ON "GroceryList"("userId", "weekStart");
 
 -- CreateIndex
 CREATE INDEX "GroceryListItem_listId_category_idx" ON "GroceryListItem"("listId", "category");

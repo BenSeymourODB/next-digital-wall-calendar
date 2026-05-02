@@ -185,15 +185,18 @@ describe("Account uniqueness constraints (issue #61)", () => {
 
 function readAllMigrationsCombined(): string {
   const entries = fs.readdirSync(MIGRATIONS_DIR, { withFileTypes: true });
-  return entries
-    .filter((e) => e.isDirectory() && e.name !== "__tests__")
-    .map((e) =>
-      fs.readFileSync(
-        path.join(MIGRATIONS_DIR, e.name, "migration.sql"),
-        "utf-8"
-      )
-    )
-    .join("\n");
+  return (
+    entries
+      .filter((e) => e.isDirectory() && e.name !== "__tests__")
+      .map((e) => path.join(MIGRATIONS_DIR, e.name, "migration.sql"))
+      // Skip directories without a migration.sql so a partial / accidental
+      // directory yields a clear assertion failure (via a separate test
+      // that checks every migration dir contains a migration.sql) rather
+      // than an unrelated ENOENT here.
+      .filter((p) => fs.existsSync(p))
+      .map((p) => fs.readFileSync(p, "utf-8"))
+      .join("\n")
+  );
 }
 
 describe("schema and migration consistency", () => {
@@ -326,9 +329,21 @@ describe("meal planning schema (issue #167)", () => {
 
     expect(groceryListBlock![0]).toMatch(/userId\s+String/);
     expect(groceryListBlock![0]).toMatch(/weekStart\s+DateTime/);
+    // One list per user per week — guards getGroceryListForWeek's
+    // findFirst contract against concurrent inserts.
+    expect(groceryListBlock![0]).toMatch(/@@unique\(\[userId,\s*weekStart\]\)/);
     expect(groceryItemBlock![0]).toMatch(/listId\s+String/);
     expect(groceryItemBlock![0]).toMatch(/isChecked\s+Boolean/);
     expect(groceryItemBlock![0]).toMatch(/mealId\s+String\?/);
+  });
+
+  it("SavedMeal.lastUsed is nullable so a never-used meal is distinguishable", () => {
+    const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");
+    const block = schemaContent.match(/model SavedMeal \{[\s\S]*?\n\}/);
+    expect(block, "SavedMeal model not found").not.toBeNull();
+
+    expect(block![0]).toMatch(/lastUsed\s+DateTime\?/);
+    expect(block![0]).not.toMatch(/lastUsed\s+DateTime\s+@default\(now\(\)\)/);
   });
 
   it("creates a 0005_add_meal_planning migration with the new tables", () => {
@@ -364,9 +379,20 @@ describe("meal planning schema (issue #167)", () => {
       /CREATE UNIQUE INDEX\s+"[^"]+"\s+ON\s+"PlannedMeal"\s*\(\s*"userId"\s*,\s*"weekStart"\s*,\s*"dayOfWeek"\s*,\s*"mealType"\s*\)/
     );
 
+    // GroceryList unique constraint enforces one list per (userId, weekStart)
+    expect(content).toMatch(
+      /CREATE UNIQUE INDEX\s+"[^"]+"\s+ON\s+"GroceryList"\s*\(\s*"userId"\s*,\s*"weekStart"\s*\)/
+    );
+
     // Meal index for fast lookup
     expect(content).toMatch(
       /CREATE INDEX\s+"[^"]+"\s+ON\s+"Meal"\s*\(\s*"userId"\s*,\s*"type"\s*\)/
+    );
+
+    // SavedMeal.lastUsed is nullable (no DEFAULT, no NOT NULL)
+    expect(content).toMatch(/"lastUsed"\s+TIMESTAMP\(3\),/);
+    expect(content).not.toMatch(
+      /"lastUsed"\s+TIMESTAMP\(3\)\s+NOT NULL\s+DEFAULT\s+CURRENT_TIMESTAMP/
     );
   });
 });

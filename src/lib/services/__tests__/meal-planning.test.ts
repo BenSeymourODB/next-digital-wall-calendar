@@ -247,8 +247,11 @@ describe("week-start normalization", () => {
     // [input, expected Monday]
     ["2026-04-27T00:00:00.000Z", "2026-04-27T00:00:00.000Z"], // Monday
     ["2026-04-28T05:30:00.000Z", "2026-04-27T00:00:00.000Z"], // Tuesday
-    ["2026-05-03T23:59:59.000Z", "2026-04-27T00:00:00.000Z"], // Sunday
+    ["2026-04-29T14:23:11.000Z", "2026-04-27T00:00:00.000Z"], // Wednesday
     ["2026-04-30T12:00:00.000Z", "2026-04-27T00:00:00.000Z"], // Thursday
+    ["2026-05-01T09:15:00.000Z", "2026-04-27T00:00:00.000Z"], // Friday
+    ["2026-05-02T08:00:00.000Z", "2026-04-27T00:00:00.000Z"], // Saturday — getUTCDay() === 6
+    ["2026-05-03T23:59:59.000Z", "2026-04-27T00:00:00.000Z"], // Sunday — getUTCDay() === 0
   ])("input %s resolves to weekStart %s", async (input, expected) => {
     mockPrisma.groceryList.create.mockResolvedValue({} as never);
 

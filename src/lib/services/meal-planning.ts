@@ -61,10 +61,7 @@ export async function createPlannedMeal(
 
 export type PlannedMealWithMeal = PlannedMeal & { meal: Meal };
 
-export async function getPlannedMealsForWeek(
-  userId: string,
-  weekStart: Date
-): Promise<PlannedMealWithMeal[]> {
+export function getPlannedMealsForWeek(userId: string, weekStart: Date) {
   return prisma.plannedMeal.findMany({
     where: {
       userId,
@@ -72,7 +69,7 @@ export async function getPlannedMealsForWeek(
     },
     include: { meal: true },
     orderBy: [{ dayOfWeek: "asc" }, { mealType: "asc" }],
-  }) as Promise<PlannedMealWithMeal[]>;
+  });
 }
 
 export interface CreateGroceryListInput {
@@ -100,10 +97,7 @@ export async function createGroceryList(
 
 export type GroceryListWithItems = GroceryList & { items: GroceryListItem[] };
 
-export async function getGroceryListForWeek(
-  userId: string,
-  weekStart: Date
-): Promise<GroceryListWithItems | null> {
+export function getGroceryListForWeek(userId: string, weekStart: Date) {
   return prisma.groceryList.findFirst({
     where: {
       userId,
@@ -114,5 +108,5 @@ export async function getGroceryListForWeek(
         orderBy: [{ category: "asc" }, { order: "asc" }],
       },
     },
-  }) as Promise<GroceryListWithItems | null>;
+  });
 }
