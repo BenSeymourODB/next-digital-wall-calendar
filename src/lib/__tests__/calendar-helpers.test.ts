@@ -174,6 +174,10 @@ describe("getEventsCount", () => {
   it("counts events for the same week with Monday-first weekStartsOn=1", () => {
     // testDate = Fri Mar 15 2024. With weekStartsOn = 1 (Monday), the week
     // runs Mon Mar 11 – Sun Mar 17. Mar 10 falls into the prior week.
+    // Note: getEventsCount uses isSameWeek, which is boundary-safe (compares
+    // calendar-week membership, not raw timestamps), so unlike
+    // getEventsForWeek this test isn't affected by the midnight-boundary
+    // bug discussed in #201/PR #228.
     const weekEvents: IEvent[] = [
       createMockEvent({ id: "prior-week", startDate: "2024-03-10T10:00:00" }),
       createMockEvent({ id: "same-week", startDate: "2024-03-17T10:00:00" }),
@@ -408,6 +412,10 @@ describe("getEventsForWeek", () => {
     // Note: the symmetric case at the end-of-week boundary is intentionally
     // not exercised here because it depends on the `endOfWeekDate` semantics
     // owned by #201 (PR #228); both fixes compose cleanly when they land.
+    // TODO(#201/PR #228): when endOfWeekDate becomes endOfDay(weekDates[6]),
+    // also assert that a Mon-first week includes a noon event on Sun Mar 17
+    // (currently excluded by the midnight bound, same as the Sun-first
+    // Saturday-afternoon case).
     const sundayMar10Noon = createMockEvent({
       id: "sun-mar-10-noon",
       startDate: "2024-03-10T12:00:00",
