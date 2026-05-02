@@ -72,6 +72,7 @@ function createMockContext(
     removeEvent: vi.fn(),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
+    loadEventsForYear: vi.fn(),
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,

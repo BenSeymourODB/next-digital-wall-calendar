@@ -429,4 +429,138 @@ describe("CalendarProvider", () => {
       expect(screen.queryByText("Red Event")).not.toBeInTheDocument();
     });
   });
+
+  describe("loadEventsForYear (#117)", () => {
+    function YearProbe({ year }: { year: number }) {
+      const { loadEventsForYear } = useCalendar();
+      return (
+        <button onClick={() => loadEventsForYear(year)} type="button">
+          load-year-{year}
+        </button>
+      );
+    }
+
+    /**
+     * Helper: pull every `/api/calendar/events` URL the provider has called
+     * since render, in order. Lets the assertions reason about which
+     * timeMin/timeMax windows were actually requested.
+     */
+    function eventFetches() {
+      return fetchMock.mock.calls
+        .map((c) => String(c[0]))
+        .filter((u) => u.includes("/api/calendar/events"));
+    }
+
+    it("extends the loaded range to cover Jan 1 – Dec 31 of the requested year", async () => {
+      const targetYear = new Date().getFullYear() + 5;
+
+      render(
+        <CalendarProvider>
+          <YearProbe year={targetYear} />
+        </CalendarProvider>
+      );
+
+      // Wait for the initial -1mo / +6mo range to load before exercising
+      // the year loader; the loader is a no-op until `loadedRange` is set.
+      await waitFor(() => {
+        expect(eventFetches().length).toBeGreaterThan(0);
+      });
+      const beforeCount = eventFetches().length;
+
+      await userEvent
+        .setup()
+        .click(screen.getByText(`load-year-${targetYear}`));
+
+      // The loader fetches the missing edges, so we expect at least one
+      // additional /events request whose [timeMin, timeMax] straddles
+      // either Jan 1 or Dec 31 of the target year.
+      await waitFor(() => {
+        const afterFetches = eventFetches();
+        expect(afterFetches.length).toBeGreaterThan(beforeCount);
+
+        const yearStart = new Date(targetYear, 0, 1).getTime();
+        const yearEnd = new Date(targetYear, 11, 31).getTime();
+
+        const newFetches = afterFetches.slice(beforeCount);
+        const ranges = newFetches.map((u) => {
+          const params = new URLSearchParams(u.split("?")[1] ?? "");
+          return {
+            min: new Date(params.get("timeMin") ?? "").getTime(),
+            max: new Date(params.get("timeMax") ?? "").getTime(),
+          };
+        });
+
+        const coversJan = ranges.some(
+          (r) => r.min <= yearStart && r.max >= yearStart
+        );
+        const coversDec = ranges.some(
+          (r) => r.min <= yearEnd && r.max >= yearEnd
+        );
+        expect(coversJan).toBe(true);
+        expect(coversDec).toBe(true);
+      });
+    });
+
+    it("is a no-op when the requested year is already fully loaded", async () => {
+      // `loadEventsForYear` is called twice for the same year. The second
+      // call must not issue any new /events requests because the first
+      // call already widened `loadedRange` to cover Jan 1 – Dec 31.
+      const targetYear = new Date().getFullYear() + 5;
+
+      render(
+        <CalendarProvider>
+          <YearProbe year={targetYear} />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(eventFetches().length).toBeGreaterThan(0);
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByText(`load-year-${targetYear}`));
+
+      // Wait for the first year-load to finish issuing its fetches.
+      let countAfterFirstYearLoad = 0;
+      await waitFor(() => {
+        const fetches = eventFetches();
+        countAfterFirstYearLoad = fetches.length;
+        // Sanity: at least one new fetch was issued for the first call.
+        expect(countAfterFirstYearLoad).toBeGreaterThan(0);
+      });
+
+      // Give the in-flight guard a tick to clear before the second click.
+      await new Promise((r) => setTimeout(r, 10));
+
+      await user.click(screen.getByText(`load-year-${targetYear}`));
+
+      // No new fetches should fire because the year is fully covered.
+      // Wait a small amount, then assert the count is unchanged.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(eventFetches().length).toBe(countAfterFirstYearLoad);
+    });
+
+    it("does nothing when called before the initial range is loaded", async () => {
+      // Before the first refreshEvents finishes, `loadedRange` is null.
+      // The loader must guard against that to avoid fetching with NaN
+      // timeMin/timeMax.
+      mockSessionState.current = {
+        data: null,
+        status: "unauthenticated",
+      };
+
+      render(
+        <CalendarProvider>
+          <YearProbe year={2099} />
+        </CalendarProvider>
+      );
+
+      await userEvent.setup().click(screen.getByText("load-year-2099"));
+
+      // Unauthenticated path never sets loadedRange, so the loader
+      // must not call fetch.
+      const eventCalls = eventFetches();
+      expect(eventCalls.length).toBe(0);
+    });
+  });
 });

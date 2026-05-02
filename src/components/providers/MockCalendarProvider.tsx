@@ -159,6 +159,10 @@ export function MockCalendarProvider({
     }
   };
 
+  // No-op: the mock provider holds a static fixture, so widening the
+  // year window doesn't need to fetch anything.
+  const loadEventsForYear = async () => {};
+
   // Filter events using useMemo to avoid effect-based setState
   const filteredEvents = useMemo(() => {
     let filtered = allEvents;
@@ -215,6 +219,7 @@ export function MockCalendarProvider({
     removeEvent,
     clearFilter,
     refreshEvents,
+    loadEventsForYear,
     isLoading,
     isAuthenticated,
     maxEventsPerDay,

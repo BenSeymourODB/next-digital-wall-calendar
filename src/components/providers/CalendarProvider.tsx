@@ -63,6 +63,12 @@ export interface ICalendarContext {
   removeEvent: (eventId: string) => void;
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
+  /**
+   * Ensure events for the entire requested calendar year (Jan 1 – Dec 31)
+   * are loaded into the provider's `loadedRange`. Used by the year view to
+   * widen the default lazy-load window beyond -1 / +6 months.
+   */
+  loadEventsForYear: (year: number) => Promise<void>;
   isLoading: boolean;
   isAuthenticated: boolean;
   maxEventsPerDay: number;
@@ -494,6 +500,93 @@ export function CalendarProvider({
     [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
   );
 
+  /**
+   * Ensure events for an entire calendar year are loaded.
+   *
+   * The default `refreshEvents` window is `-calendarFetchMonthsBehind` to
+   * `+calendarFetchMonthsAhead` months from "now" — typically 7 months —
+   * which leaves the year view sparsely populated outside that window.
+   * This method widens `loadedRange` to cover Jan 1 – Dec 31 of the
+   * requested year by fetching only the missing edges and merging them
+   * into `allEvents`.
+   */
+  const loadEventsForYear = useCallback(
+    async (year: number) => {
+      if (
+        status !== "authenticated" ||
+        !loadedRange ||
+        isLoadingRangeRef.current
+      ) {
+        return;
+      }
+
+      const yearStart = new Date(year, 0, 1, 0, 0, 0, 0);
+      const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+
+      // Year already fully covered by loadedRange — nothing to do.
+      if (
+        !isBefore(yearStart, loadedRange.start) &&
+        !isAfter(yearEnd, loadedRange.end)
+      ) {
+        return;
+      }
+
+      isLoadingRangeRef.current = true;
+      logger.log("Loading events for full year", { year });
+
+      try {
+        let newStart = loadedRange.start;
+        let newEnd = loadedRange.end;
+        const calIds = calendarIds.length > 0 ? calendarIds : ["primary"];
+
+        if (isBefore(yearStart, loadedRange.start)) {
+          const newEvents = await fetchEventsForRange(
+            yearStart,
+            loadedRange.start,
+            calIds,
+            colorMappings
+          );
+
+          setAllEvents((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const uniqueNewEvents = newEvents.filter(
+              (e) => !existingIds.has(e.id)
+            );
+            return [...uniqueNewEvents, ...prev];
+          });
+
+          newStart = yearStart;
+        }
+
+        if (isAfter(yearEnd, loadedRange.end)) {
+          const newEvents = await fetchEventsForRange(
+            loadedRange.end,
+            yearEnd,
+            calIds,
+            colorMappings
+          );
+
+          setAllEvents((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const uniqueNewEvents = newEvents.filter(
+              (e) => !existingIds.has(e.id)
+            );
+            return [...prev, ...uniqueNewEvents];
+          });
+
+          newEnd = yearEnd;
+        }
+
+        setLoadedRange({ start: newStart, end: newEnd });
+      } catch (error) {
+        logger.error(error as Error, { context: "loadEventsForYear" });
+      } finally {
+        isLoadingRangeRef.current = false;
+      }
+    },
+    [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
+  );
+
   // Color mappings are initialized synchronously from localStorage in useState.
   // They are also refreshed from the API as part of refreshEvents.
 
@@ -610,6 +703,7 @@ export function CalendarProvider({
     removeEvent,
     clearFilter,
     refreshEvents,
+    loadEventsForYear,
     isLoading,
     isAuthenticated,
     // Clamp defensively so a rogue DB write of 0 or a negative number never
