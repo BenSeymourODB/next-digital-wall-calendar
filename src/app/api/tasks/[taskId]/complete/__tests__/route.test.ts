@@ -7,18 +7,57 @@
  * focuses on the handler's concerns: auth, validation, the Google
  * Tasks call, and response shaping.
  */
+import { getAccessToken, getSession } from "@/lib/auth";
+import {
+  mockSession,
+  mockSessionWithError,
+} from "@/lib/auth/__tests__/fixtures";
 import { updateProfileStreak } from "@/lib/services/streak";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "../route";
 
-const mockGetSession = vi.fn();
-const mockGetAccessToken = vi.fn();
-
-vi.mock("@/lib/auth/helpers", () => ({
-  getSession: () => mockGetSession(),
-  getAccessToken: () => mockGetAccessToken(),
+vi.mock("@/lib/auth", () => ({
+  getSession: vi.fn(),
+  getAccessToken: vi.fn(),
+  AuthError: class AuthError extends Error {
+    status: number;
+    constructor(message: string, status: number = 401) {
+      super(message);
+      this.name = "AuthError";
+      this.status = status;
+    }
+  },
 }));
+
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    error: vi.fn(),
+    log: vi.fn(),
+    event: vi.fn(),
+  },
+}));
+
+// Replace the real `sleep` inside fetchWithRetry with a no-op so transient-
+// status tests (5xx, 429) don't wait for real backoff delays.
+vi.mock("@/lib/http/retry", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/http/retry")>(
+      "@/lib/http/retry"
+    );
+  return {
+    ...actual,
+    fetchWithRetry: (
+      input: Parameters<typeof actual.fetchWithRetry>[0],
+      init?: Parameters<typeof actual.fetchWithRetry>[1],
+      options: Parameters<typeof actual.fetchWithRetry>[2] = {}
+    ) =>
+      actual.fetchWithRetry(input, init, {
+        ...options,
+        sleep: () => Promise.resolve(),
+      }),
+  };
+});
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -40,14 +79,10 @@ function createRequest(body?: unknown): NextRequest {
 }
 
 describe("Task Complete API", () => {
-  const mockSession = {
-    user: { id: "user-123", email: "test@example.com" },
-  };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetSession.mockResolvedValue(mockSession);
-    mockGetAccessToken.mockResolvedValue("mock-access-token");
+    vi.mocked(getSession).mockResolvedValue(mockSession);
+    vi.mocked(getAccessToken).mockResolvedValue("mock-access-token");
     mockFetch.mockResolvedValue({
       ok: true,
       json: () =>
@@ -62,7 +97,7 @@ describe("Task Complete API", () => {
 
   describe("authentication", () => {
     it("returns 401 when no session", async () => {
-      mockGetSession.mockResolvedValue(null);
+      vi.mocked(getSession).mockResolvedValue(null);
 
       const request = createRequest({
         listId: "list-1",
@@ -75,8 +110,8 @@ describe("Task Complete API", () => {
       expect(response.status).toBe(401);
     });
 
-    it("returns 401 when no access token", async () => {
-      mockGetAccessToken.mockResolvedValue(null);
+    it("returns 401 with requiresReauth when RefreshTokenError", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSessionWithError);
 
       const request = createRequest({
         listId: "list-1",
@@ -85,8 +120,11 @@ describe("Task Complete API", () => {
       const response = await POST(request, {
         params: Promise.resolve({ taskId: "task-123" }),
       });
+      const data = await response.json();
 
       expect(response.status).toBe(401);
+      expect(data.error).toBe("Session expired. Please sign in again.");
+      expect(data.requiresReauth).toBe(true);
     });
   });
 
@@ -134,9 +172,56 @@ describe("Task Complete API", () => {
       );
     });
 
-    it("returns error when Google API fails", async () => {
-      // 500 is transient — fetchWithRetry retries and reads Retry-After from
-      // headers each pass, so the mock must include a real Headers instance.
+    it("returns 401 with requiresReauth when Google API returns 403", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 403,
+        headers: new Headers(),
+        json: () =>
+          Promise.resolve({ error: { message: "Insufficient Permission" } }),
+      });
+
+      const request = createRequest({
+        listId: "list-1",
+        profileId: "profile-1",
+      });
+      const response = await POST(request, {
+        params: Promise.resolve({ taskId: "task-123" }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.requiresReauth).toBe(true);
+      expect(data.error).toBe(
+        "Missing Google Tasks scope. Please sign in again to grant access."
+      );
+      expect(mockUpdateProfileStreak).not.toHaveBeenCalled();
+    });
+
+    it("returns generic error when Google API returns non-auth failure", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 404,
+        headers: new Headers(),
+        json: () => Promise.resolve({ error: { message: "Not found" } }),
+      });
+
+      const request = createRequest({
+        listId: "list-1",
+        profileId: "profile-1",
+      });
+      const response = await POST(request, {
+        params: Promise.resolve({ taskId: "task-123" }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error).toBe("Failed to complete task");
+      expect(mockUpdateProfileStreak).not.toHaveBeenCalled();
+    });
+
+    it("returns 500 when Google API fails with a server error", async () => {
+      // 500 is transient — fetchWithRetry retries (sleep is mocked to no-op).
       mockFetch.mockResolvedValue({
         ok: false,
         status: 500,

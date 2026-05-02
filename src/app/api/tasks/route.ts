@@ -51,7 +51,17 @@ export async function GET(request: NextRequest) {
 
     const showCompleted = searchParams.get("showCompleted") === "true";
     const maxResultsParam = searchParams.get("maxResults");
-    const maxResults = maxResultsParam ? Number(maxResultsParam) : undefined;
+    let maxResults: number | undefined;
+    if (maxResultsParam !== null) {
+      const parsed = Number(maxResultsParam);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        return NextResponse.json(
+          { error: "maxResults must be a positive integer" },
+          { status: 400 }
+        );
+      }
+      maxResults = Math.trunc(parsed);
+    }
 
     const accessToken = await getAccessToken();
 
