@@ -272,22 +272,33 @@ describe("/api/calendar/colors", () => {
     });
 
     it("returns error status from Google API for other errors", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
-        mockGoogleAccount.access_token!
-      );
+      // 5xx is transient — `fetchWithRetry` retries with backoff, so use fake
+      // timers and provide `headers` so the Retry-After lookup is safe.
+      vi.useFakeTimers();
+      try {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
 
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 500,
-        json: () => Promise.resolve({ error: "Internal error" }),
-      });
+        mockFetch.mockResolvedValue({
+          ok: false,
+          status: 500,
+          headers: new Headers(),
+          json: () => Promise.resolve({ error: "Internal error" }),
+        });
 
-      const response = await GET();
-      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+        const promise = GET();
+        await vi.runAllTimersAsync();
+        const response = await promise;
+        const { status, data } =
+          await parseResponse<ApiErrorResponse>(response);
 
-      expect(status).toBe(500);
-      expect(data.error).toBe("Failed to fetch calendar colors");
+        expect(status).toBe(500);
+        expect(data.error).toBe("Failed to fetch calendar colors");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("returns 500 on unexpected error", async () => {

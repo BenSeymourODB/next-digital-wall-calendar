@@ -8,6 +8,7 @@ import {
   type GoogleCalendarEvent,
   normalizeFetchedEvent,
 } from "@/lib/google-calendar-mappers";
+import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -44,7 +45,7 @@ async function fetchEventsFromCalendar(
   apiUrl.searchParams.set("singleEvents", String(singleEvents));
   apiUrl.searchParams.set("orderBy", "startTime");
 
-  const response = await fetch(apiUrl.toString(), {
+  const response = await fetchWithRetry(apiUrl.toString(), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
