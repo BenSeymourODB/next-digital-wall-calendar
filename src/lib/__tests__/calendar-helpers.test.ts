@@ -410,6 +410,32 @@ describe("getEventsForWeek", () => {
     const result = getEventsForWeek([priorSaturdayLate], new Date(2024, 2, 13));
     expect(result).toEqual([]);
   });
+
+  it("includes a multi-day event that ends Saturday afternoon", () => {
+    // Spans Thu Mar 14 22:00 → Sat Mar 16 15:00. Locks in the overlap
+    // logic against the symmetric off-by-one we just fixed.
+    const spanning = createMockEvent({
+      id: "span",
+      startDate: "2024-03-14T22:00:00",
+      endDate: "2024-03-16T15:00:00",
+    });
+    const result = getEventsForWeek([spanning], new Date(2024, 2, 13));
+    expect(result.map((e) => e.id)).toEqual(["span"]);
+  });
+
+  it("includes a multi-day event that starts Saturday afternoon and runs into next week", () => {
+    // Spans Sat Mar 16 14:00 → Mon Mar 18 09:00. Pre-fix this would be
+    // dropped: `eventStart` (Sat 14:00) was greater than the old upper
+    // bound (Sat 00:00), even though the event clearly belongs in the
+    // week.
+    const spanningOut = createMockEvent({
+      id: "span-out",
+      startDate: "2024-03-16T14:00:00",
+      endDate: "2024-03-18T09:00:00",
+    });
+    const result = getEventsForWeek([spanningOut], new Date(2024, 2, 13));
+    expect(result.map((e) => e.id)).toEqual(["span-out"]);
+  });
 });
 
 describe("getEventsForMonth", () => {
