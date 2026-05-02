@@ -5,9 +5,15 @@
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
+import { getTaskAssignmentsByTaskIds } from "@/lib/services/task-assignments";
 import { NextRequest, NextResponse } from "next/server";
 
 const GOOGLE_TASKS_API = "https://tasks.googleapis.com/tasks/v1";
+
+interface GoogleTaskItem {
+  id: string;
+  [key: string]: unknown;
+}
 
 /**
  * GET /api/tasks - List tasks from a task list
@@ -87,15 +93,38 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
+    const tasks = (data.items || []) as GoogleTaskItem[];
 
     logger.log("Tasks fetched", {
       listId,
-      taskCount: data.items?.length || 0,
+      taskCount: tasks.length,
       userId: session.user.id,
     });
 
+    const includeAssignments =
+      searchParams.get("includeAssignments") === "true";
+
+    if (!includeAssignments) {
+      return NextResponse.json({
+        tasks,
+        nextPageToken: data.nextPageToken,
+      });
+    }
+
+    // Embed per-task profile assignments so the client can filter by
+    // active profile without a second round-trip per task.
+    const assignmentMap =
+      tasks.length === 0
+        ? new Map()
+        : await getTaskAssignmentsByTaskIds(tasks.map((t) => t.id));
+
+    const tasksWithAssignments = tasks.map((task) => ({
+      ...task,
+      assignments: assignmentMap.get(task.id) ?? [],
+    }));
+
     return NextResponse.json({
-      tasks: data.items || [],
+      tasks: tasksWithAssignments,
       nextPageToken: data.nextPageToken,
     });
   } catch (error) {
