@@ -158,4 +158,32 @@ describe("useTodayStartOfDay", () => {
     expect(result.current.getDate()).toBe(3);
     expect(result.current.getHours()).toBe(0);
   });
+
+  it("returns a stable Date reference between midnight ticks", () => {
+    // Reference stability matters for React Compiler's automatic
+    // bail-out: a fresh Date object on every render would defeat memo
+    // optimisations downstream.
+    const { result, rerender } = renderHook(() => useTodayStartOfDay());
+    const first = result.current;
+
+    rerender();
+    rerender();
+    rerender();
+
+    expect(result.current).toBe(first);
+  });
+
+  it("shares the same reference across multiple subscribers", () => {
+    const { result: a } = renderHook(() => useTodayStartOfDay());
+    const { result: b } = renderHook(() => useTodayStartOfDay());
+
+    expect(a.current).toBe(b.current);
+
+    act(() => {
+      vi.advanceTimersByTime(10 * 60 * 60 * 1000);
+    });
+
+    expect(a.current).toBe(b.current);
+    expect(a.current.getDate()).toBe(3);
+  });
 });
