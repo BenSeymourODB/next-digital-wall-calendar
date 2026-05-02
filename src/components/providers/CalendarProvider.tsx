@@ -535,10 +535,14 @@ export function CalendarProvider({
       logger.log("Loading events for full year", { year });
 
       try {
-        let newStart = loadedRange.start;
-        let newEnd = loadedRange.end;
         const calIds = calendarIds.length > 0 ? calendarIds : ["primary"];
 
+        // Advance `loadedRange` after each successful edge fetch rather
+        // than batching both updates at the end. If the Dec edge throws
+        // after the Jan edge has already merged its events into state,
+        // the range pointer must reflect what's actually stored — else
+        // a retry would needlessly re-fetch Jan and rely on the dedupe
+        // guard to discard the duplicates.
         if (isBefore(yearStart, loadedRange.start)) {
           const newEvents = await fetchEventsForRange(
             yearStart,
@@ -555,7 +559,9 @@ export function CalendarProvider({
             return [...uniqueNewEvents, ...prev];
           });
 
-          newStart = yearStart;
+          setLoadedRange((prev) =>
+            prev ? { ...prev, start: yearStart } : prev
+          );
         }
 
         if (isAfter(yearEnd, loadedRange.end)) {
@@ -574,10 +580,8 @@ export function CalendarProvider({
             return [...prev, ...uniqueNewEvents];
           });
 
-          newEnd = yearEnd;
+          setLoadedRange((prev) => (prev ? { ...prev, end: yearEnd } : prev));
         }
-
-        setLoadedRange({ start: newStart, end: newEnd });
       } catch (error) {
         logger.error(error as Error, { context: "loadEventsForYear" });
       } finally {

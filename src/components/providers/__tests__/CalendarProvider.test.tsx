@@ -505,6 +505,10 @@ describe("CalendarProvider", () => {
       // `loadEventsForYear` is called twice for the same year. The second
       // call must not issue any new /events requests because the first
       // call already widened `loadedRange` to cover Jan 1 – Dec 31.
+      //
+      // targetYear is currentYear + 5: yearStart and yearEnd are both
+      // after the default refresh window's end, so only the Dec edge
+      // fires — exactly one new /events request per first call.
       const targetYear = new Date().getFullYear() + 5;
 
       render(
@@ -513,31 +517,36 @@ describe("CalendarProvider", () => {
         </CalendarProvider>
       );
 
+      // Wait until the initial -1mo/+6mo refresh has made its single
+      // /events call AND any associated state updates have flushed.
       await waitFor(() => {
-        expect(eventFetches().length).toBeGreaterThan(0);
+        expect(eventFetches().length).toBe(1);
       });
 
       const user = userEvent.setup();
       await user.click(screen.getByText(`load-year-${targetYear}`));
 
-      // Wait for the first year-load to finish issuing its fetches.
-      let countAfterFirstYearLoad = 0;
+      // The Dec-edge fetch is the sole new /events call. waitFor only
+      // returns once the awaited fetchEventsForRange has resolved AND
+      // the finally block (which clears `isLoadingRangeRef`) has run,
+      // because all of that happens in a single microtask burst once
+      // the mock's promise resolves. No artificial sleep needed.
       await waitFor(() => {
-        const fetches = eventFetches();
-        countAfterFirstYearLoad = fetches.length;
-        // Sanity: at least one new fetch was issued for the first call.
-        expect(countAfterFirstYearLoad).toBeGreaterThan(0);
+        expect(eventFetches().length).toBe(2);
       });
 
-      // Give the in-flight guard a tick to clear before the second click.
-      await new Promise((r) => setTimeout(r, 10));
-
+      // Second click: year is now fully covered. The loader should
+      // return early at the "already covered" guard with no new fetch.
       await user.click(screen.getByText(`load-year-${targetYear}`));
 
-      // No new fetches should fire because the year is fully covered.
-      // Wait a small amount, then assert the count is unchanged.
-      await new Promise((r) => setTimeout(r, 50));
-      expect(eventFetches().length).toBe(countAfterFirstYearLoad);
+      // Stability assertion: poll for the duration of waitFor's default
+      // window (~1s) and fail if the count ever moves past 2.
+      await waitFor(
+        () => {
+          expect(eventFetches().length).toBe(2);
+        },
+        { timeout: 200, interval: 25 }
+      );
     });
 
     it("does nothing when called before the initial range is loaded", async () => {
@@ -561,6 +570,98 @@ describe("CalendarProvider", () => {
       // must not call fetch.
       const eventCalls = eventFetches();
       expect(eventCalls.length).toBe(0);
+    });
+
+    it("advances loadedRange for the successful edge when the second edge fetch fails", async () => {
+      // If the Jan-edge fetch succeeds but the Dec-edge fetch then throws,
+      // a retry must NOT re-fetch the Jan edge (the events are already
+      // merged into state). The range pointer must be advanced after each
+      // successful fetch, not batched at the end.
+      //
+      // The current year is picked deliberately: with the default refresh
+      // window of -1mo / +6mo around `now`, only the current year has
+      // both yearStart (Jan 1) before loadedRange.start AND yearEnd
+      // (Dec 31) after loadedRange.end, so both edge branches fire.
+      const targetYear = new Date().getFullYear();
+
+      render(
+        <CalendarProvider>
+          <YearProbe year={targetYear} />
+        </CalendarProvider>
+      );
+
+      // Wait for the initial -1mo / +6mo range to land.
+      await waitFor(() => {
+        expect(eventFetches().length).toBeGreaterThan(0);
+      });
+
+      const user = userEvent.setup();
+
+      // First click: Jan edge succeeds, Dec edge rejects. The provider
+      // swallows the rejection (logged via logger.error) but should
+      // already have advanced loadedRange.start to yearStart.
+      let postClickEventCalls = 0;
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        if (url.includes("/api/calendar/events")) {
+          postClickEventCalls++;
+          if (postClickEventCalls === 2) {
+            return Promise.reject(new Error("simulated network blip"));
+          }
+          return Promise.resolve(fetchOk({ events: [] }));
+        }
+        return Promise.resolve(fetchOk({}));
+      });
+
+      await user.click(screen.getByText(`load-year-${targetYear}`));
+
+      // Wait for both edge attempts to have been made.
+      await waitFor(() => {
+        expect(postClickEventCalls).toBeGreaterThanOrEqual(2);
+      });
+
+      // Restore happy fetchMock for the retry.
+      let secondClickEventCalls = 0;
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        if (url.includes("/api/calendar/events")) {
+          secondClickEventCalls++;
+          return Promise.resolve(fetchOk({ events: [] }));
+        }
+        return Promise.resolve(fetchOk({}));
+      });
+
+      await user.click(screen.getByText(`load-year-${targetYear}`));
+
+      // The retry must hit the Dec edge ONLY — not the Jan edge.
+      // (If the partial-failure bug were present, both edges would
+      // refire because `setLoadedRange` was never called after the
+      // partial success.)
+      await waitFor(() => {
+        expect(secondClickEventCalls).toBe(1);
+      });
+
+      // Sanity: confirm the retry's single fetch covers Dec, not Jan.
+      const yearEndTs = new Date(targetYear, 11, 31).getTime();
+      const calls = fetchMock.mock.calls
+        .map((c) => String(c[0]))
+        .filter((u) => u.includes("/api/calendar/events"));
+      const lastUrl = calls[calls.length - 1] ?? "";
+      const params = new URLSearchParams(lastUrl.split("?")[1] ?? "");
+      const tMax = new Date(params.get("timeMax") ?? "").getTime();
+      expect(tMax).toBeGreaterThanOrEqual(yearEndTs);
     });
   });
 });
