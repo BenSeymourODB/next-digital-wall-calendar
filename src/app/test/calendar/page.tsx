@@ -1,6 +1,5 @@
 "use client";
 
-import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
 import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { CalendarSettingsPanel } from "@/components/calendar/CalendarSettingsPanel";
@@ -302,12 +301,18 @@ const mockEventSets: Record<string, IEvent[]> = {
 };
 
 function CalendarDisplay() {
-  const { view } = useCalendar();
+  const { view, agendaMode } = useCalendar();
+
+  // Compose a swap key that switches the animation when the user toggles
+  // agenda mode within day/week, so the grid <-> agenda transition gets
+  // the same fade treatment as a primary view change (#150 + #87).
+  const swapKey =
+    (view === "day" || view === "week") && agendaMode ? `${view}:agenda` : view;
 
   return (
     <div data-testid="calendar-display">
       <AnimatedSwap
-        swapKey={view}
+        swapKey={swapKey}
         type="fade"
         direction="forward"
         durationMs={250}
@@ -316,7 +321,6 @@ function CalendarDisplay() {
         {view === "week" && <WeekCalendar />}
         {view === "month" && <SimpleCalendar />}
         {view === "year" && <YearCalendar />}
-        {view === "agenda" && <AgendaCalendar />}
         {view === "clock" && <AnalogClockView />}
       </AnimatedSwap>
     </div>
@@ -419,7 +423,13 @@ function TestCalendarContent() {
 
   // Get test configuration from URL params
   const eventSet = searchParams.get("events") || "default";
-  const view = (searchParams.get("view") as TCalendarView) || "month";
+  const rawView = searchParams.get("view") ?? "month";
+  // Legacy `view=agenda` (pre-#150) maps to day + agendaMode=true so existing
+  // bookmarks, screenshots, and E2E specs keep working without a hard cutover.
+  const legacyAgenda = rawView === "agenda";
+  const view: TCalendarView = legacyAgenda ? "day" : (rawView as TCalendarView);
+  const agendaModeParam =
+    legacyAgenda || searchParams.get("agendaMode") === "true";
   const loading = searchParams.get("loading") === "true";
   const loadingDelay = parseInt(searchParams.get("loadingDelay") || "0", 10);
   const showControls = searchParams.get("controls") !== "false";
@@ -434,6 +444,7 @@ function TestCalendarContent() {
     <MockCalendarProvider
       initialEvents={events}
       view={view}
+      agendaMode={agendaModeParam}
       isLoading={loading}
       loadingDelay={loadingDelay}
       use24HourFormat={use24Hour}

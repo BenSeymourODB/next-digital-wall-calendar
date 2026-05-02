@@ -38,6 +38,8 @@ function createMockContext(
     selectedDate: new Date(),
     view: "clock" as TCalendarView,
     setView: vi.fn(),
+    agendaMode: false,
+    setAgendaMode: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
     use24HourFormat: true,

@@ -42,6 +42,13 @@ export interface ICalendarContext {
   selectedDate: Date;
   view: TCalendarView;
   setView: (view: TCalendarView) => void;
+  /**
+   * Whether the active Day or Week view renders as a chronological agenda
+   * list instead of the hourly time-grid. Has no effect on month/year/clock.
+   * Issue #150.
+   */
+  agendaMode: boolean;
+  setAgendaMode: (enabled: boolean) => void;
   agendaModeGroupBy: "date" | "color";
   setAgendaModeGroupBy: (groupBy: "date" | "color") => void;
   use24HourFormat: boolean;
@@ -72,6 +79,7 @@ interface CalendarSettings {
   badgeVariant: "dot" | "colored";
   view: TCalendarView;
   use24HourFormat: boolean;
+  agendaMode: boolean;
   agendaModeGroupBy: "date" | "color";
   weekStartDay: TWeekStartDay;
 }
@@ -80,9 +88,33 @@ const DEFAULT_SETTINGS: CalendarSettings = {
   badgeVariant: "colored",
   view: "month",
   use24HourFormat: true,
+  agendaMode: false,
   agendaModeGroupBy: "date",
   weekStartDay: 0,
 };
+
+/**
+ * Loose shape used during boot: localStorage may hold a pre-#150 payload
+ * where `view` was the now-removed `"agenda"` literal.
+ */
+type LegacyCalendarSettings = Omit<Partial<CalendarSettings>, "view"> & {
+  view?: TCalendarView | "agenda";
+};
+
+/**
+ * Migrate legacy persisted state. Pre-#150, "agenda" was a peer view; it's
+ * now a sub-toggle that only applies inside Day and Week. Treat any stored
+ * "agenda" value as `view: "day", agendaMode: true` so existing users land
+ * in the closest equivalent surface instead of an undefined view.
+ */
+function migrateLegacySettings(
+  raw: LegacyCalendarSettings
+): Partial<CalendarSettings> {
+  if (raw.view === "agenda") {
+    return { ...raw, view: "day", agendaMode: true };
+  }
+  return raw as Partial<CalendarSettings>;
+}
 
 export const CalendarContext = createContext({} as ICalendarContext);
 
@@ -112,14 +144,30 @@ export function CalendarProvider({
   // fetch-window sizing for refreshEvents.
   const { settings: userSettings } = useUserSettings();
 
-  const [settings, setSettings] = useLocalStorage<CalendarSettings>(
+  // Cast through unknown so the legacy `"agenda"` literal can flow through
+  // the hook even though it's no longer part of TCalendarView (#150).
+  const [rawSettings, setSettings] = useLocalStorage<LegacyCalendarSettings>(
     "calendar-settings",
     {
       ...DEFAULT_SETTINGS,
       badgeVariant: badge,
       view: view,
-    }
+    } as unknown as LegacyCalendarSettings
   );
+  const settings = migrateLegacySettings(rawSettings) as CalendarSettings;
+
+  // Flush the migrated payload back to localStorage so the legacy value is
+  // overwritten on the first render after a #150 upgrade. Subsequent loads
+  // see the new shape directly and skip the migration branch.
+  const rawView = rawSettings.view;
+  useEffect(() => {
+    if (rawView === "agenda") {
+      setSettings(
+        (prev) =>
+          migrateLegacySettings(prev) as unknown as LegacyCalendarSettings
+      );
+    }
+  }, [rawView, setSettings]);
 
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     settings.badgeVariant ?? DEFAULT_SETTINGS.badgeVariant
@@ -129,6 +177,9 @@ export function CalendarProvider({
   );
   const [use24HourFormat, setUse24HourFormatState] = useState<boolean>(
     settings.use24HourFormat ?? DEFAULT_SETTINGS.use24HourFormat
+  );
+  const [agendaMode, setAgendaModeState] = useState<boolean>(
+    settings.agendaMode ?? DEFAULT_SETTINGS.agendaMode
   );
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
@@ -171,6 +222,11 @@ export function CalendarProvider({
   const setView = (view: TCalendarView) => {
     setCurrentViewState(view);
     updateSettings({ view });
+  };
+
+  const setAgendaMode = (enabled: boolean) => {
+    setAgendaModeState(enabled);
+    updateSettings({ agendaMode: enabled });
   };
 
   const toggleTimeFormat = () => {
@@ -589,6 +645,8 @@ export function CalendarProvider({
     selectedDate,
     view: currentView,
     setView,
+    agendaMode,
+    setAgendaMode,
     agendaModeGroupBy,
     setAgendaModeGroupBy,
     use24HourFormat,
