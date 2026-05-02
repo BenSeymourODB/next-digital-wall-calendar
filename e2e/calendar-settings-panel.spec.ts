@@ -54,4 +54,26 @@ test.describe("CalendarSettingsPanel", () => {
     await expect(mainDow.first()).toHaveText("Mon");
     await expect(mainDow.nth(6)).toHaveText("Sun");
   });
+
+  test("week view also honours the Monday-first setting (#205)", async ({
+    page,
+  }) => {
+    // Switch to week view first, capture the Sunday-first header order.
+    await page.goto("/test/calendar?events=default&view=week&sidebar=true");
+    const range = page.getByTestId("week-calendar-range");
+    const initialRange = await range.textContent();
+    await expect(page.getByText("Sun", { exact: true }).first()).toBeVisible();
+
+    await page.getByTestId("calendar-settings-trigger").click();
+    await page
+      .getByTestId("calendar-settings-panel")
+      .getByTestId("setting-week-start-day-monday")
+      .click();
+    await page.keyboard.press("Escape");
+
+    // Range should shift by one day (Sun → Mon … Sat → Sun) and the first
+    // weekday column header should now be "Mon".
+    await expect(range).not.toHaveText(initialRange!);
+    await expect(page.getByText("Mon", { exact: true }).first()).toBeVisible();
+  });
 });
