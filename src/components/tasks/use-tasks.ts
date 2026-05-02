@@ -6,6 +6,7 @@
  * Features:
  * - Fetches tasks from all enabled task lists
  * - Filters completed tasks based on config
+ * - Optional per-profile filter (assigned + optional unassigned)
  * - Sorts tasks by due date, created date, or manual order
  * - Provides updateTask function for toggling completion
  * - Auto-refreshes on config change
@@ -62,10 +63,21 @@ export function useTasks(config: TaskListConfig | null): UseTasksReturn {
     setLoading(true);
     setError(null);
 
+    const profileFilter = config.profileFilter ?? null;
+    const showUnassigned = config.showUnassigned ?? false;
+    // Only ask the server for assignments when we'll actually use them
+    // for filtering or rendering. Avoids a needless DB query in the
+    // simple "no profile filter" path.
+    const includeAssignments = profileFilter !== null;
+
     try {
       // Fetch tasks from all enabled lists in parallel
       const taskPromises = enabledLists.map(async (list) => {
-        const response = await fetch(`/api/tasks?listId=${list.listId}`);
+        const params = new URLSearchParams({ listId: list.listId });
+        if (includeAssignments) {
+          params.set("includeAssignments", "true");
+        }
+        const response = await fetch(`/api/tasks?${params.toString()}`);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch tasks from list ${list.listTitle}`);
@@ -85,16 +97,29 @@ export function useTasks(config: TaskListConfig | null): UseTasksReturn {
           listTitle: list.listTitle,
           listColor: list.color,
           isOverdue: isTaskOverdue(task),
+          assignments: task.assignments ?? [],
         }))
       );
 
       // Filter completed tasks if needed
-      const filtered = config.showCompleted
+      const completionFiltered = config.showCompleted
         ? allTasks
         : allTasks.filter((t) => t.status !== "completed");
 
+      // Apply profile filter when configured
+      const profileFiltered =
+        profileFilter === null
+          ? completionFiltered
+          : completionFiltered.filter((task) => {
+              const isAssignedToActive = task.assignments.some(
+                (a) => a.profileId === profileFilter
+              );
+              if (isAssignedToActive) return true;
+              return showUnassigned && task.assignments.length === 0;
+            });
+
       // Sort tasks
-      const sorted = sortTasks(filtered, config.sortBy);
+      const sorted = sortTasks(profileFiltered, config.sortBy);
 
       setTasks(sorted);
     } catch (err) {

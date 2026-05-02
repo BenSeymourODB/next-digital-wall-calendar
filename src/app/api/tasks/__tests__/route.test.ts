@@ -8,6 +8,7 @@ import {
   mockSession,
   mockSessionWithError,
 } from "@/lib/auth/__tests__/fixtures";
+import { getTaskAssignmentsByTaskIds } from "@/lib/services/task-assignments";
 import {
   type ApiErrorResponse,
   createMockRequest,
@@ -36,6 +37,10 @@ vi.mock("@/lib/logger", () => ({
     log: vi.fn(),
     event: vi.fn(),
   },
+}));
+
+vi.mock("@/lib/services/task-assignments", () => ({
+  getTaskAssignmentsByTaskIds: vi.fn(),
 }));
 
 // Replace the real `sleep` inside fetchWithRetry with a no-op so transient-
@@ -278,6 +283,137 @@ describe("/api/tasks", () => {
 
       expect(status).toBe(200);
       expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("omits the assignments lookup by default", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [{ id: "t1", title: "T1" }] }),
+      });
+
+      const request = createMockRequest("/api/tasks?listId=list-123");
+      const response = await GET(request);
+      const { status, data } = await parseResponse<{
+        tasks: Array<{ id: string; assignments?: unknown }>;
+      }>(response);
+
+      expect(status).toBe(200);
+      expect(data.tasks[0]).not.toHaveProperty("assignments");
+      expect(getTaskAssignmentsByTaskIds).not.toHaveBeenCalled();
+    });
+
+    it("embeds assignments per task when ?includeAssignments=true", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const dad = {
+        id: "profile-dad",
+        name: "Dad",
+        color: "#3b82f6",
+        avatar: { type: "initials" as const, value: "D" },
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [
+              { id: "t1", title: "T1" },
+              { id: "t2", title: "T2" },
+            ],
+          }),
+      });
+
+      vi.mocked(getTaskAssignmentsByTaskIds).mockResolvedValue(
+        new Map([["t1", [{ profileId: dad.id, profile: dad }]]])
+      );
+
+      const request = createMockRequest(
+        "/api/tasks?listId=list-123&includeAssignments=true"
+      );
+      const response = await GET(request);
+      const { status, data } = await parseResponse<{
+        tasks: Array<{
+          id: string;
+          assignments: Array<{ profileId: string }>;
+        }>;
+      }>(response);
+
+      expect(status).toBe(200);
+      expect(getTaskAssignmentsByTaskIds).toHaveBeenCalledWith(
+        ["t1", "t2"],
+        mockSession.user.id
+      );
+      expect(data.tasks).toHaveLength(2);
+      expect(data.tasks[0].assignments).toEqual([
+        { profileId: dad.id, profile: dad },
+      ]);
+      // Tasks with no assignments still get an empty array so the
+      // client doesn't have to special-case `undefined`.
+      expect(data.tasks[1].assignments).toEqual([]);
+    });
+
+    it("returns 500 when the assignments lookup throws", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [{ id: "t1", title: "T1" }] }),
+      });
+
+      vi.mocked(getTaskAssignmentsByTaskIds).mockRejectedValue(
+        new Error("DB connection lost")
+      );
+
+      const request = createMockRequest(
+        "/api/tasks?listId=list-123&includeAssignments=true"
+      );
+      const response = await GET(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      // Route surfaces the catch-all 500 rather than returning a half-
+      // populated tasks array. The Google fetch already succeeded, but
+      // we'd rather fail loudly than show tasks without correct
+      // assignment data when the client asked for it.
+      expect(status).toBe(500);
+      expect(data.error).toBe("An unexpected error occurred");
+    });
+
+    it("returns empty assignments array when there are no tasks and includeAssignments is set", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [] }),
+      });
+
+      vi.mocked(getTaskAssignmentsByTaskIds).mockResolvedValue(new Map());
+
+      const request = createMockRequest(
+        "/api/tasks?listId=list-123&includeAssignments=true"
+      );
+      const response = await GET(request);
+      const { status, data } = await parseResponse<{
+        tasks: unknown[];
+      }>(response);
+
+      expect(status).toBe(200);
+      expect(data.tasks).toEqual([]);
+      // No tasks β†' no DB lookup. Saves a round-trip when the list is empty.
+      expect(getTaskAssignmentsByTaskIds).not.toHaveBeenCalled();
     });
 
     it("does NOT retry a 401 from the upstream API (non-transient, issue #68)", async () => {

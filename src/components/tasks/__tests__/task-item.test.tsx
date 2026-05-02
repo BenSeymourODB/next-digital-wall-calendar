@@ -23,6 +23,7 @@ describe("TaskItem", () => {
     listTitle: "My List",
     listColor: "#3b82f6",
     isOverdue: false,
+    assignments: [],
     ...overrides,
   });
 
@@ -223,6 +224,65 @@ describe("TaskItem", () => {
 
       const colorIndicator = screen.getByTitle("My List");
       expect(colorIndicator).toBeInTheDocument();
+    });
+  });
+
+  describe("profile assignments", () => {
+    const dad = {
+      id: "profile-dad",
+      name: "Dad",
+      color: "#3b82f6",
+      avatar: { type: "initials" as const, value: "D" },
+    };
+    const mom = {
+      id: "profile-mom",
+      name: "Mom",
+      color: "#ef4444",
+      avatar: { type: "initials" as const, value: "M" },
+    };
+
+    it("does not render an assignments region when there are no assignees", () => {
+      render(
+        <TaskItem
+          task={createTask({ assignments: [] })}
+          onToggle={mockOnToggle}
+        />
+      );
+
+      expect(screen.queryByLabelText(/assigned to/i)).not.toBeInTheDocument();
+    });
+
+    it("renders an avatar for the assigned profile", () => {
+      render(
+        <TaskItem
+          task={createTask({
+            assignments: [{ profileId: dad.id, profile: dad }],
+          })}
+          onToggle={mockOnToggle}
+        />
+      );
+
+      const region = screen.getByLabelText(/assigned to dad/i);
+      expect(region).toBeInTheDocument();
+    });
+
+    it("renders an avatar for each assigned profile when shared", () => {
+      render(
+        <TaskItem
+          task={createTask({
+            assignments: [
+              { profileId: dad.id, profile: dad },
+              { profileId: mom.id, profile: mom },
+            ],
+          })}
+          onToggle={mockOnToggle}
+        />
+      );
+
+      // Both names should appear in the assignment region's accessible
+      // label so screen readers announce who owns the task.
+      const region = screen.getByLabelText(/assigned to dad, mom/i);
+      expect(region).toBeInTheDocument();
     });
   });
 });
