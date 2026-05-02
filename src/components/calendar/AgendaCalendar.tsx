@@ -1,8 +1,13 @@
 "use client";
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { IEvent, TEventColor } from "@/types/calendar";
+import { useRef, useState } from "react";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";
+import { Search, X } from "lucide-react";
+import { EventDetailModal } from "./EventDetailModal";
 
 /**
  * Filter events for the next N days from today
@@ -20,6 +25,21 @@ function filterEventsForNextNDays(events: IEvent[], days: number): IEvent[] {
         eventStart.getTime() === todayStart.getTime()) &&
       isBefore(eventStart, futureEnd)
     );
+  });
+}
+
+/**
+ * Filter events whose title, description, or attendee name contains the
+ * query (case-insensitive). An empty/whitespace-only query returns the
+ * list unchanged.
+ */
+function filterEventsBySearch(events: IEvent[], query: string): IEvent[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return events;
+  return events.filter((event) => {
+    const haystack =
+      `${event.title} ${event.description ?? ""} ${event.user?.name ?? ""}`.toLowerCase();
+    return haystack.includes(normalized);
   });
 }
 
@@ -67,6 +87,39 @@ function groupEventsByDate(events: IEvent[]): Map<string, IEvent[]> {
 }
 
 /**
+ * Color display order when grouping by color — stable, predictable,
+ * and matches the palette order used elsewhere in the calendar UI.
+ */
+const COLOR_ORDER: TEventColor[] = [
+  "blue",
+  "green",
+  "red",
+  "yellow",
+  "purple",
+  "orange",
+];
+
+/**
+ * Group events by color
+ */
+function groupEventsByColor(events: IEvent[]): Map<TEventColor, IEvent[]> {
+  const groups = new Map<TEventColor, IEvent[]>();
+
+  events.forEach((event) => {
+    if (!groups.has(event.color)) {
+      groups.set(event.color, []);
+    }
+    groups.get(event.color)!.push(event);
+  });
+
+  groups.forEach((colorEvents, color) => {
+    groups.set(color, sortEventsByStartTime(colorEvents));
+  });
+
+  return groups;
+}
+
+/**
  * Parse a date key string (yyyy-MM-dd) as local time, not UTC
  * This fixes timezone offset issues where new Date("2026-01-05") is interpreted
  * as UTC midnight, which can shift to the previous day in local timezones
@@ -74,6 +127,10 @@ function groupEventsByDate(events: IEvent[]): Map<string, IEvent[]> {
 function parseDateKeyAsLocal(dateKey: string): Date {
   const [year, month, day] = dateKey.split("-").map(Number);
   return new Date(year, month - 1, day);
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 /**
@@ -106,16 +163,16 @@ function getColorBadgeClasses(color: TEventColor): string {
   return classes[color];
 }
 
+interface EventCardProps {
+  event: IEvent;
+  use24HourFormat: boolean;
+  onClick: (event: IEvent, trigger: HTMLElement) => void;
+}
+
 /**
  * Event card component
  */
-function EventCard({
-  event,
-  use24HourFormat,
-}: {
-  event: IEvent;
-  use24HourFormat: boolean;
-}) {
+function EventCard({ event, use24HourFormat, onClick }: EventCardProps) {
   const isAllDay = isAllDayEvent(event);
   const startTime = format(
     new Date(event.startDate),
@@ -125,10 +182,13 @@ function EventCard({
     new Date(event.endDate),
     use24HourFormat ? "HH:mm" : "h:mm a"
   );
+  const hasDescription = Boolean(event.description?.trim());
 
   return (
-    <div
-      className={`rounded-lg border-l-4 p-4 ${getColorClasses(event.color)}`}
+    <button
+      type="button"
+      onClick={(e) => onClick(event, e.currentTarget)}
+      className={`hover:bg-accent/40 focus:ring-ring w-full cursor-pointer rounded-lg border-l-4 p-4 text-left transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none ${getColorClasses(event.color)}`}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
@@ -136,7 +196,7 @@ function EventCard({
           <p className="text-muted-foreground mt-1 text-sm">
             {isAllDay ? "All day" : `${startTime} - ${endTime}`}
           </p>
-          {event.description && (
+          {hasDescription && (
             <p className="text-muted-foreground mt-2 text-sm">
               {event.description}
             </p>
@@ -146,31 +206,56 @@ function EventCard({
           className={`h-3 w-3 rounded-full ${getColorBadgeClasses(event.color)}`}
         />
       </div>
+    </button>
+  );
+}
+
+function AgendaGroup({
+  headerText,
+  eventCount,
+  children,
+}: {
+  headerText: string;
+  eventCount: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="border-border bg-card sticky top-0 z-10 border-b pt-2 pb-2">
+        <h3 className="text-foreground text-lg font-semibold">{headerText}</h3>
+        <p className="text-muted-foreground text-sm">
+          {eventCount} {eventCount === 1 ? "event" : "events"}
+        </p>
+      </div>
+      <div className="space-y-2">{children}</div>
     </div>
   );
 }
 
 /**
  * Agenda calendar component
- * Displays the next 7 days of events grouped by date
+ * Displays the next 7 days of events grouped by date or color, with text search.
  */
 export function AgendaCalendar() {
-  const { events, use24HourFormat, isLoading } = useCalendar();
+  const {
+    events,
+    use24HourFormat,
+    isLoading,
+    agendaModeGroupBy,
+    setAgendaModeGroupBy,
+  } = useCalendar();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
-  // Filter to next 7 days from today
-  const agendaEvents = filterEventsForNextNDays(events, 7);
+  const openModal = (event: IEvent, trigger: HTMLElement) => {
+    triggerRef.current = trigger;
+    setSelectedEvent(event);
+  };
 
-  // Group events by date
-  const groupedEvents = groupEventsByDate(agendaEvents);
-
-  // Convert grouped events to sorted array of [date, events] pairs
-  const sortedGroupedEvents = Array.from(groupedEvents.entries()).sort(
-    (a, b) => {
-      const dateA = parseDateKeyAsLocal(a[0]);
-      const dateB = parseDateKeyAsLocal(b[0]);
-      return dateA.getTime() - dateB.getTime();
-    }
-  );
+  // Window the data once, then apply the search query
+  const windowedEvents = filterEventsForNextNDays(events, 7);
+  const agendaEvents = filterEventsBySearch(windowedEvents, searchQuery);
 
   if (isLoading) {
     return (
@@ -180,47 +265,158 @@ export function AgendaCalendar() {
     );
   }
 
+  const hasEventsBeforeSearch = windowedEvents.length > 0;
+  const searchActive = searchQuery.trim().length > 0;
+  const noMatches = searchActive && agendaEvents.length === 0;
+  const resultCount = agendaEvents.length;
+
+  // Build color groups once per render (only used when grouping by color)
+  const colorGroups =
+    agendaModeGroupBy === "color" ? groupEventsByColor(agendaEvents) : null;
+
   return (
     <div className="w-full space-y-4">
-      <h2 className="text-foreground text-2xl font-bold">Upcoming Events</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-foreground text-2xl font-bold">Upcoming Events</h2>
 
-      {/* Scrollable container */}
+        <div
+          className="flex items-center gap-1 rounded-md border p-1"
+          role="group"
+          aria-label="Group agenda events by"
+        >
+          <Button
+            type="button"
+            variant={agendaModeGroupBy === "date" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setAgendaModeGroupBy("date")}
+            aria-pressed={agendaModeGroupBy === "date"}
+          >
+            Group by date
+          </Button>
+          <Button
+            type="button"
+            variant={agendaModeGroupBy === "color" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setAgendaModeGroupBy("color")}
+            aria-pressed={agendaModeGroupBy === "color"}
+          >
+            Group by color
+          </Button>
+        </div>
+      </div>
+
+      <div className="relative">
+        <Search
+          className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+          aria-hidden="true"
+        />
+        <Input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search events by title, description, or attendee…"
+          aria-label="Search events"
+          data-testid="agenda-search-input"
+          className="pr-9 pl-9"
+        />
+        {searchActive && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setSearchQuery("")}
+            aria-label="Clear search"
+            data-testid="agenda-search-clear"
+            className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
+      {/* Live region announces result count while the user types. Visually
+          hidden so it doesn't displace other UI. */}
+      <p
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="agenda-search-status"
+      >
+        {searchActive
+          ? `${resultCount} ${resultCount === 1 ? "event matches" : "events match"} "${searchQuery.trim()}"`
+          : ""}
+      </p>
+
       <div className="border-border bg-card max-h-[600px] overflow-y-auto rounded-lg border">
-        {sortedGroupedEvents.length > 0 ? (
+        {noMatches ? (
+          <div className="text-muted-foreground py-12 text-center">
+            <p>No events match &ldquo;{searchQuery.trim()}&rdquo;</p>
+          </div>
+        ) : !hasEventsBeforeSearch ? (
+          <div className="text-muted-foreground py-12 text-center">
+            <p>No upcoming events in the next 7 days</p>
+          </div>
+        ) : agendaModeGroupBy === "color" && colorGroups ? (
           <div className="space-y-6 p-4">
-            {sortedGroupedEvents.map(([dateKey, dayEvents]) => (
-              <div key={dateKey} className="space-y-3">
-                {/* Date Header - Sticky */}
-                <div className="border-border bg-card sticky top-0 z-10 border-b pt-2 pb-2">
-                  <h3 className="text-foreground text-lg font-semibold">
-                    {format(parseDateKeyAsLocal(dateKey), "EEEE, MMMM d")}
-                  </h3>
-                  <p className="text-muted-foreground text-sm">
-                    {dayEvents.length}{" "}
-                    {dayEvents.length === 1 ? "event" : "events"}
-                  </p>
-                </div>
-
-                {/* Events for this date */}
-                <div className="space-y-2">
+            {COLOR_ORDER.filter((color) => colorGroups.has(color)).map(
+              (color) => {
+                const colorEvents = colorGroups.get(color) ?? [];
+                return (
+                  <AgendaGroup
+                    key={color}
+                    headerText={capitalize(color)}
+                    eventCount={colorEvents.length}
+                  >
+                    {colorEvents.map((event) => (
+                      <EventCard
+                        key={event.id}
+                        event={event}
+                        use24HourFormat={use24HourFormat}
+                        onClick={openModal}
+                      />
+                    ))}
+                  </AgendaGroup>
+                );
+              }
+            )}
+          </div>
+        ) : (
+          <div className="space-y-6 p-4">
+            {Array.from(groupEventsByDate(agendaEvents).entries())
+              .sort(
+                ([a], [b]) =>
+                  parseDateKeyAsLocal(a).getTime() -
+                  parseDateKeyAsLocal(b).getTime()
+              )
+              .map(([dateKey, dayEvents]) => (
+                <AgendaGroup
+                  key={dateKey}
+                  headerText={format(
+                    parseDateKeyAsLocal(dateKey),
+                    "EEEE, MMMM d"
+                  )}
+                  eventCount={dayEvents.length}
+                >
                   {dayEvents.map((event) => (
                     <EventCard
                       key={event.id}
                       event={event}
                       use24HourFormat={use24HourFormat}
+                      onClick={openModal}
                     />
                   ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          /* Empty state */
-          <div className="text-muted-foreground py-12 text-center">
-            <p>No upcoming events in the next 7 days</p>
+                </AgendaGroup>
+              ))}
           </div>
         )}
       </div>
+
+      <EventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        use24HourFormat={use24HourFormat}
+        returnFocusTo={triggerRef}
+      />
     </div>
   );
 }

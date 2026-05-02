@@ -167,6 +167,37 @@ test.describe("Month Calendar - Day Overflow Popover", () => {
     await expect(popover.getByText(/8:00 AM - 9:00 AM/)).toBeVisible();
     await expect(popover.getByText(/5:00 PM - 6:00 PM/)).toBeVisible();
   });
+
+  test("clicking an event card inside the popover opens the event detail modal", async ({
+    page,
+  }) => {
+    await page.goto("/test/calendar?events=overflow&view=month");
+    const key = await todayKeyFromBrowser(page);
+
+    const trigger = page.getByTestId(`day-overflow-trigger-${key}`);
+    await trigger.click();
+
+    const popover = page.getByTestId(`day-events-popover-${key}`);
+    await expect(popover).toBeVisible();
+
+    // Click an overflow event (one only visible inside the popover).
+    await popover.getByRole("button", { name: /Event 5/ }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole("heading", { name: "Event 5" })
+    ).toBeVisible();
+
+    // Popover dismisses when the modal grabs focus.
+    await expect(popover).toBeHidden();
+
+    // Closing the modal returns focus to the +N more trigger so keyboard
+    // users land where they were.
+    await page.getByRole("button", { name: /close/i }).click();
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
 });
 
 test.describe("Month Calendar - Color Variations", () => {

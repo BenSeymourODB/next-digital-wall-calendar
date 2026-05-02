@@ -9,6 +9,7 @@ import type {
   TEventColor,
 } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AgendaCalendar } from "../AgendaCalendar";
 
@@ -88,6 +89,7 @@ function createMockContext(
     refreshEvents: vi.fn(),
     isLoading: false,
     isAuthenticated: true,
+    maxEventsPerDay: 3,
     ...overrides,
   };
 }
@@ -247,6 +249,331 @@ describe("AgendaCalendar", () => {
       renderWithContext(events);
 
       expect(screen.getByText("Green Event")).toBeInTheDocument();
+    });
+  });
+
+  describe("Search", () => {
+    const buildEvents = (): IEvent[] => [
+      createMockEvent({
+        id: "e1",
+        title: "Dentist Appointment",
+        description: "Annual cleaning",
+        startDate: getFutureDate(1, 9, 0),
+        endDate: getFutureDate(1, 10, 0),
+      }),
+      createMockEvent({
+        id: "e2",
+        title: "Soccer Practice",
+        description: "Bring water bottle",
+        startDate: getFutureDate(2, 16, 0),
+        endDate: getFutureDate(2, 17, 0),
+      }),
+      createMockEvent({
+        id: "e3",
+        title: "Birthday Party",
+        description: "Grandma's 70th",
+        startDate: getFutureDate(3, 14, 0),
+        endDate: getFutureDate(3, 16, 0),
+      }),
+    ];
+
+    it("renders a search input with the expected placeholder", () => {
+      renderWithContext(buildEvents());
+      expect(screen.getByPlaceholderText(/search events/i)).toBeInTheDocument();
+    });
+
+    it("advertises attendee search in the placeholder", () => {
+      renderWithContext(buildEvents());
+      expect(
+        screen.getByPlaceholderText(/title, description, or attendee/i)
+      ).toBeInTheDocument();
+    });
+
+    it("filters events by title in real time as the user types", async () => {
+      const user = userEvent.setup();
+      renderWithContext(buildEvents());
+
+      expect(screen.getByText("Dentist Appointment")).toBeInTheDocument();
+      expect(screen.getByText("Soccer Practice")).toBeInTheDocument();
+      expect(screen.getByText("Birthday Party")).toBeInTheDocument();
+
+      await user.type(screen.getByPlaceholderText(/search events/i), "soccer");
+
+      expect(screen.queryByText("Dentist Appointment")).not.toBeInTheDocument();
+      expect(screen.getByText("Soccer Practice")).toBeInTheDocument();
+      expect(screen.queryByText("Birthday Party")).not.toBeInTheDocument();
+    });
+
+    it("matches against event descriptions as well as titles", async () => {
+      const user = userEvent.setup();
+      renderWithContext(buildEvents());
+
+      await user.type(screen.getByPlaceholderText(/search events/i), "water");
+
+      expect(screen.getByText("Soccer Practice")).toBeInTheDocument();
+      expect(screen.queryByText("Dentist Appointment")).not.toBeInTheDocument();
+      expect(screen.queryByText("Birthday Party")).not.toBeInTheDocument();
+    });
+
+    it("is case-insensitive and trims whitespace", async () => {
+      const user = userEvent.setup();
+      renderWithContext(buildEvents());
+
+      await user.type(
+        screen.getByPlaceholderText(/search events/i),
+        "   DENTIST   "
+      );
+
+      expect(screen.getByText("Dentist Appointment")).toBeInTheDocument();
+      expect(screen.queryByText("Soccer Practice")).not.toBeInTheDocument();
+    });
+
+    it("shows a 'no matches' empty state when the query filters out every event", async () => {
+      const user = userEvent.setup();
+      renderWithContext(buildEvents());
+
+      await user.type(
+        screen.getByPlaceholderText(/search events/i),
+        "nothing-matches-this"
+      );
+
+      expect(screen.getByText(/no events match/i)).toBeInTheDocument();
+      expect(screen.queryByText("Dentist Appointment")).not.toBeInTheDocument();
+    });
+
+    it("matches against the attendee (user) name", async () => {
+      const user = userEvent.setup();
+      const events: IEvent[] = [
+        createMockEvent({
+          id: "a1",
+          title: "Soccer Practice",
+          description: "Field 3",
+          startDate: getFutureDate(1, 16, 0),
+          endDate: getFutureDate(1, 17, 0),
+          user: { id: "u-emma", name: "Emma", picturePath: null },
+        }),
+        createMockEvent({
+          id: "a2",
+          title: "Work Meeting",
+          description: "Quarterly review",
+          startDate: getFutureDate(2, 9, 0),
+          endDate: getFutureDate(2, 10, 0),
+          user: { id: "u-dad", name: "Dad", picturePath: null },
+        }),
+      ];
+
+      renderWithContext(events);
+      await user.type(screen.getByPlaceholderText(/search events/i), "emma");
+
+      expect(screen.getByText("Soccer Practice")).toBeInTheDocument();
+      expect(screen.queryByText("Work Meeting")).not.toBeInTheDocument();
+    });
+
+    it("attendee match is case-insensitive", async () => {
+      const user = userEvent.setup();
+      const events: IEvent[] = [
+        createMockEvent({
+          id: "b1",
+          title: "Piano Lesson",
+          description: "",
+          startDate: getFutureDate(1, 16, 0),
+          endDate: getFutureDate(1, 17, 0),
+          user: { id: "u-carol", name: "Carol", picturePath: null },
+        }),
+        createMockEvent({
+          id: "b2",
+          title: "Doctor",
+          description: "",
+          startDate: getFutureDate(2, 9, 0),
+          endDate: getFutureDate(2, 10, 0),
+          user: { id: "u-bob", name: "Bob", picturePath: null },
+        }),
+      ];
+
+      renderWithContext(events);
+      await user.type(screen.getByPlaceholderText(/search events/i), "CAROL");
+
+      expect(screen.getByText("Piano Lesson")).toBeInTheDocument();
+      expect(screen.queryByText("Doctor")).not.toBeInTheDocument();
+    });
+
+    it("restores all events when the search is cleared", async () => {
+      const user = userEvent.setup();
+      renderWithContext(buildEvents());
+
+      const input = screen.getByPlaceholderText(/search events/i);
+      await user.type(input, "soccer");
+      expect(screen.queryByText("Dentist Appointment")).not.toBeInTheDocument();
+
+      await user.clear(input);
+
+      expect(screen.getByText("Dentist Appointment")).toBeInTheDocument();
+      expect(screen.getByText("Soccer Practice")).toBeInTheDocument();
+      expect(screen.getByText("Birthday Party")).toBeInTheDocument();
+    });
+  });
+
+  describe("Group by", () => {
+    const multiColorEvents = (): IEvent[] => [
+      createMockEvent({
+        id: "blue-1",
+        title: "Blue Event",
+        color: "blue",
+        startDate: getFutureDate(1, 9, 0),
+        endDate: getFutureDate(1, 10, 0),
+      }),
+      createMockEvent({
+        id: "blue-2",
+        title: "Another Blue Event",
+        color: "blue",
+        startDate: getFutureDate(2, 9, 0),
+        endDate: getFutureDate(2, 10, 0),
+      }),
+      createMockEvent({
+        id: "red-1",
+        title: "Red Event",
+        color: "red",
+        startDate: getFutureDate(1, 11, 0),
+        endDate: getFutureDate(1, 12, 0),
+      }),
+    ];
+
+    it("groups events by date by default (agendaModeGroupBy='date')", () => {
+      renderWithContext(multiColorEvents(), { agendaModeGroupBy: "date" });
+
+      // Date grouping shows "Monday, …" style headers, not color names
+      const headers = screen
+        .getAllByRole("heading", { level: 3 })
+        .map((h) => h.textContent ?? "");
+      expect(headers.some((text) => /\w+,\s\w+\s\d+/.test(text))).toBe(true);
+      expect(headers.some((text) => /^Blue$/i.test(text.trim()))).toBe(false);
+    });
+
+    it("groups events by color when agendaModeGroupBy='color'", () => {
+      renderWithContext(multiColorEvents(), { agendaModeGroupBy: "color" });
+
+      // Color-grouping renders one header per color, spelled in a human-friendly form
+      const headerTexts = screen
+        .getAllByRole("heading", { level: 3 })
+        .map((h) => (h.textContent ?? "").trim());
+      expect(headerTexts).toEqual(expect.arrayContaining(["Blue", "Red"]));
+    });
+
+    it("shows a group-by control that switches grouping when toggled", async () => {
+      const setAgendaModeGroupBy = vi.fn();
+      const user = userEvent.setup();
+      renderWithContext(multiColorEvents(), {
+        agendaModeGroupBy: "date",
+        setAgendaModeGroupBy,
+      });
+
+      const colorToggle = screen.getByRole("button", {
+        name: /group by color/i,
+      });
+      await user.click(colorToggle);
+
+      expect(setAgendaModeGroupBy).toHaveBeenCalledWith("color");
+    });
+
+    it("shows event count per group when grouping by color", () => {
+      renderWithContext(multiColorEvents(), { agendaModeGroupBy: "color" });
+
+      // Two blue events on two different days, one red event
+      // Count rendered once per color group
+      const countMatches = screen.getAllByText(/\d+ events?/);
+      expect(countMatches.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe("Search + Group by interaction", () => {
+    it("applies the search filter within each color group", async () => {
+      const user = userEvent.setup();
+      const events: IEvent[] = [
+        createMockEvent({
+          id: "b1",
+          title: "Budget Review",
+          color: "blue",
+          startDate: getFutureDate(1, 9, 0),
+          endDate: getFutureDate(1, 10, 0),
+        }),
+        createMockEvent({
+          id: "b2",
+          title: "Dentist",
+          color: "blue",
+          startDate: getFutureDate(2, 9, 0),
+          endDate: getFutureDate(2, 10, 0),
+        }),
+        createMockEvent({
+          id: "r1",
+          title: "Budget Gym",
+          color: "red",
+          startDate: getFutureDate(1, 11, 0),
+          endDate: getFutureDate(1, 12, 0),
+        }),
+      ];
+
+      renderWithContext(events, { agendaModeGroupBy: "color" });
+      await user.type(screen.getByPlaceholderText(/search events/i), "budget");
+
+      expect(screen.getByText("Budget Review")).toBeInTheDocument();
+      expect(screen.getByText("Budget Gym")).toBeInTheDocument();
+      expect(screen.queryByText("Dentist")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Event click opens detail modal", () => {
+    it("opens EventDetailModal with the clicked event's details", async () => {
+      const user = userEvent.setup();
+      const events = [
+        createMockEvent({
+          id: "detail-me",
+          title: "Client Demo",
+          description: "Q2 roadmap presentation",
+          startDate: getFutureDate(1, 14, 0),
+          endDate: getFutureDate(1, 15, 0),
+          color: "red",
+        }),
+      ];
+
+      renderWithContext(events);
+
+      // Modal should not be open initially (no dialog role)
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      // AgendaCalendar renders the event title once per card, so click by title.
+      await user.click(screen.getByRole("button", { name: /Client Demo/i }));
+
+      // The dialog should now be open and contain the event details
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      // The description appears both in the card and in the modal; both are fine.
+      expect(
+        screen.getAllByText("Q2 roadmap presentation").length
+      ).toBeGreaterThan(0);
+      // Modal-specific data attribute is uniquely the modal's description
+      expect(screen.getByTestId("event-detail-description")).toHaveTextContent(
+        "Q2 roadmap presentation"
+      );
+    });
+
+    it("closes the modal when the close button is clicked", async () => {
+      const user = userEvent.setup();
+      const events = [
+        createMockEvent({
+          id: "close-me",
+          title: "Team Sync",
+          startDate: getFutureDate(1, 10, 0),
+          endDate: getFutureDate(1, 11, 0),
+        }),
+      ];
+
+      renderWithContext(events);
+
+      await user.click(screen.getByText("Team Sync"));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /close/i }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 });

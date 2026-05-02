@@ -2,7 +2,13 @@
  * Calendar type definitions
  */
 
-export type TCalendarView = "day" | "week" | "month" | "year" | "agenda";
+export type TCalendarView =
+  | "day"
+  | "week"
+  | "month"
+  | "year"
+  | "agenda"
+  | "clock";
 
 export type TEventColor =
   | "blue"

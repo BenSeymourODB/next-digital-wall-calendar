@@ -231,4 +231,61 @@ test.describe("Analog Clock - Radial Display", () => {
       });
     });
   });
+
+  test.describe("rawEvents prop (IEvent[] input)", () => {
+    test("renders timed events from raw IEvents and filters all-day + out-of-period", async ({
+      page,
+    }) => {
+      await page.goto("/test/analog-clock?scenario=all-day-mix&hour=9&min=0");
+      await expect(page.getByTestId("analog-clock")).toBeVisible();
+
+      // Timed AM events render as arcs
+      await expect(page.getByTestId("event-arc-tp-1")).toBeVisible();
+      await expect(page.getByTestId("event-arc-tp-2")).toBeVisible();
+      await expect(page.getByTestId("event-arc-tp-3")).toBeVisible();
+
+      // All-day and out-of-period events are filtered — no arcs rendered
+      await expect(page.getByTestId("event-arc-ad-1")).toHaveCount(0);
+      await expect(page.getByTestId("event-arc-op-1")).toHaveCount(0);
+
+      // But the raw inputs listing still shows all 5 entries (for the dev UI)
+      const rawInputs = page.locator('[data-testid^="raw-input-item-"]');
+      await expect(rawInputs).toHaveCount(5);
+
+      await page.screenshot({
+        path: "test-results/screenshots/clock-raw-all-day-mix-am.png",
+        fullPage: true,
+      });
+    });
+
+    test("filters all-day events in PM period as well", async ({ page }) => {
+      await page.goto("/test/analog-clock?scenario=all-day-mix&hour=15&min=0");
+      await expect(page.getByTestId("analog-clock")).toBeVisible();
+
+      // PM indicator
+      await expect(page.getByTestId("period-indicator")).toHaveText("PM");
+
+      // Same timed events exist but shifted to PM-relative offsets
+      await expect(page.getByTestId("event-arc-tp-1")).toBeVisible();
+      await expect(page.getByTestId("event-arc-ad-1")).toHaveCount(0);
+      // In PM mode, the "other period" event is AM, so filtered out
+      await expect(page.getByTestId("event-arc-op-1")).toHaveCount(0);
+
+      await page.screenshot({
+        path: "test-results/screenshots/clock-raw-all-day-mix-pm.png",
+        fullPage: true,
+      });
+    });
+
+    test("shows raw events listing with all-day badge for transparency", async ({
+      page,
+    }) => {
+      await page.goto("/test/analog-clock?scenario=all-day-mix&hour=9&min=0");
+      await expect(page.getByTestId("raw-events-input")).toBeVisible();
+
+      // The all-day entry has an all-day badge visible in the input listing
+      const allDayEntry = page.getByTestId("raw-input-item-ad-1");
+      await expect(allDayEntry).toContainText("all-day");
+    });
+  });
 });

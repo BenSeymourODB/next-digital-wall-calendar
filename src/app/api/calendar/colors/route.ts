@@ -26,14 +26,6 @@ export interface ColorsResponse {
   colorMappings: CalendarColorMapping[];
 }
 
-/**
- * Raw Google Calendar API calendarList item (subset of fields we need)
- */
-interface GoogleCalendarListItem {
-  id: string;
-  backgroundColor?: string;
-}
-
 export async function GET() {
   try {
     // Check authentication
@@ -93,7 +85,7 @@ export async function GET() {
     }
 
     const data = await response.json();
-    const items: GoogleCalendarListItem[] = data.items || [];
+    const items: gapi.client.calendar.CalendarListEntry[] = data.items || [];
 
     // Map each calendar to its color
     const colorMappings: CalendarColorMapping[] = items.map((item) => {

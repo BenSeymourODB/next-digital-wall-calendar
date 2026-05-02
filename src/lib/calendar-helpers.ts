@@ -4,6 +4,7 @@ import type {
   TCalendarView,
   TEventColor,
 } from "@/types/calendar";
+import type { Day } from "date-fns";
 import {
   addDays,
   addMonths,
@@ -34,6 +35,37 @@ import {
 
 const FORMAT_STRING = "MMM d, yyyy";
 
+/**
+ * Project-wide convention for which day a calendar week begins on.
+ *
+ * 0 = Sunday, 1 = Monday, ..., 6 = Saturday (matches `date-fns` `Day`).
+ *
+ * Use this constant anywhere a week boundary is computed — `startOfWeek`,
+ * `endOfWeek`, calendar grid padding, weekday header labels — so every view
+ * agrees. A future settings screen can override this per user (see #141).
+ */
+export const WEEK_STARTS_ON: Day = 0;
+
+const SHORT_WEEKDAY_LABELS = [
+  "Sun",
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+] as const;
+
+/**
+ * Returns the 7 short weekday labels (`"Sun"`…`"Sat"`) rotated so the
+ * first entry corresponds to `WEEK_STARTS_ON`. Use this for day-of-week
+ * headers instead of hard-coding the array so every view agrees.
+ */
+export const getShortWeekdayLabels = (): string[] => [
+  ...SHORT_WEEKDAY_LABELS.slice(WEEK_STARTS_ON),
+  ...SHORT_WEEKDAY_LABELS.slice(0, WEEK_STARTS_ON),
+];
+
 export function rangeText(view: TCalendarView, date: Date): string {
   let start: Date;
   let end: Date;
@@ -44,10 +76,11 @@ export function rangeText(view: TCalendarView, date: Date): string {
       end = endOfMonth(date);
       break;
     case "week":
-      start = startOfWeek(date);
-      end = endOfWeek(date);
+      start = startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
+      end = endOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
       break;
     case "day":
+    case "clock":
       return format(date, FORMAT_STRING);
     case "year":
       start = startOfYear(date);
@@ -75,6 +108,7 @@ export function navigateDate(
     day: direction === "next" ? addDays : subDays,
     year: direction === "next" ? addYears : subYears,
     agenda: direction === "next" ? addMonths : subMonths,
+    clock: direction === "next" ? addDays : subDays,
   };
 
   return operations[view](date, 1);
@@ -87,10 +121,11 @@ export function getEventsCount(
 ): number {
   const compareFns: Record<TCalendarView, (d1: Date, d2: Date) => boolean> = {
     day: isSameDay,
-    week: isSameWeek,
+    week: (d1, d2) => isSameWeek(d1, d2, { weekStartsOn: WEEK_STARTS_ON }),
     month: isSameMonth,
     year: isSameYear,
     agenda: isSameMonth,
+    clock: isSameDay,
   };
 
   const compareFn = compareFns[view];
@@ -125,37 +160,21 @@ export function groupEvents(dayEvents: IEvent[]): IEvent[][] {
   return groups;
 }
 
-export function getEventBlockStyle(
-  event: IEvent,
-  day: Date,
-  groupIndex: number,
-  groupSize: number
-) {
-  const startDate = parseISO(event.startDate);
-  const dayStart = startOfDay(day); // Use startOfDay instead of manual reset
-  const eventStart = startDate < dayStart ? dayStart : startDate;
-  const startMinutes = differenceInMinutes(eventStart, dayStart);
-
-  const top = (startMinutes / 1440) * 100; // 1440 minutes in a day
-  const width = 100 / groupSize;
-  const left = groupIndex * width;
-
-  return { top: `${top}%`, width: `${width}%`, left: `${left}%` };
-}
-
 export function getCalendarCells(selectedDate: Date): ICalendarCell[] {
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth();
 
   const daysInMonth = endOfMonth(selectedDate).getDate(); // Faster than new Date(year, month + 1, 0)
-  const firstDayOfMonth = startOfMonth(selectedDate).getDay();
+  // Offset of the 1st relative to WEEK_STARTS_ON (0..6).
+  const firstDayOffset =
+    (startOfMonth(selectedDate).getDay() - WEEK_STARTS_ON + 7) % 7;
   const daysInPrevMonth = endOfMonth(new Date(year, month - 1)).getDate();
-  const totalDays = firstDayOfMonth + daysInMonth;
+  const totalDays = firstDayOffset + daysInMonth;
 
-  const prevMonthCells = Array.from({ length: firstDayOfMonth }, (_, i) => ({
-    day: daysInPrevMonth - firstDayOfMonth + i + 1,
+  const prevMonthCells = Array.from({ length: firstDayOffset }, (_, i) => ({
+    day: daysInPrevMonth - firstDayOffset + i + 1,
     currentMonth: false,
-    date: new Date(year, month - 1, daysInPrevMonth - firstDayOfMonth + i + 1),
+    date: new Date(year, month - 1, daysInPrevMonth - firstDayOffset + i + 1),
   }));
 
   const currentMonthCells = Array.from({ length: daysInMonth }, (_, i) => ({
@@ -331,7 +350,7 @@ export const getEventsForDay = (
 };
 
 export const getWeekDates = (date: Date): Date[] => {
-  const startDate = startOfWeek(date, { weekStartsOn: 1 });
+  const startDate = startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
   return Array.from({ length: 7 }, (_, i) => addDays(startDate, i));
 };
 
@@ -421,6 +440,7 @@ export const getEventsByMode = (
 ) => {
   switch (view) {
     case "day":
+    case "clock":
       return getEventsForDay(events, selectedDate);
     case "week":
       return getEventsForWeek(events, selectedDate);
@@ -437,4 +457,140 @@ export const getEventsByMode = (
 export const toCapitalize = (str: string): string => {
   if (!str) return "";
   return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
+const MINUTES_PER_DAY = 1440;
+const MIN_EVENT_HEIGHT_PCT = 1.5;
+
+/**
+ * Position an event on a 24-hour vertical time grid.
+ *
+ * Returns `top` and `height` in percent of the day axis (0–100).
+ * Events that start before `day` clamp `top` to 0; events that end
+ * after `day` clamp `height` to the remainder of the axis. A small
+ * minimum height keeps zero-duration events visible.
+ */
+export const getEventTimePosition = (
+  event: IEvent,
+  day: Date
+): { top: number; height: number } => {
+  const dayStart = startOfDay(day);
+  const dayEnd = addDays(dayStart, 1);
+  const start = parseISO(event.startDate);
+  const end = parseISO(event.endDate);
+
+  const visibleStart = start < dayStart ? dayStart : start;
+  const visibleEnd = end > dayEnd ? dayEnd : end;
+
+  const startMinutes = differenceInMinutes(visibleStart, dayStart);
+  const durationMinutes = Math.max(
+    0,
+    differenceInMinutes(visibleEnd, visibleStart)
+  );
+
+  const top = (startMinutes / MINUTES_PER_DAY) * 100;
+  const rawHeight = (durationMinutes / MINUTES_PER_DAY) * 100;
+  const height = Math.max(rawHeight, MIN_EVENT_HEIGHT_PCT);
+
+  return { top, height };
+};
+
+/**
+ * Position the "now" indicator on the same 24-hour axis as
+ * `getEventTimePosition`. `now` defaults to the wall-clock time so
+ * tests can inject a frozen Date.
+ */
+export const getCurrentTimePosition = (
+  now: Date = new Date()
+): { top: number } => {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  return { top: (minutes / MINUTES_PER_DAY) * 100 };
+};
+
+/**
+ * Lay out timed events in a single-day time grid. Returns a map of
+ * `eventId → { column, columns }` where `columns` is the *local*
+ * concurrency at this event's slot — i.e. the maximum number of
+ * events present at any moment during this event's duration — and
+ * `column` is the lane assigned by `groupEvents`.
+ *
+ * Local concurrency keeps an event full-width when it has no
+ * overlapping neighbour, even if other events later in the day
+ * stack two-deep elsewhere.
+ */
+export const computeEventColumns = (
+  events: IEvent[]
+): Record<string, { column: number; columns: number }> => {
+  const groups = groupEvents([...events]);
+  const lane: Record<string, number> = {};
+  groups.forEach((group, groupIndex) => {
+    group.forEach((event) => {
+      lane[event.id] = groupIndex;
+    });
+  });
+
+  const result: Record<string, { column: number; columns: number }> = {};
+
+  for (const event of events) {
+    const eventStart = parseISO(event.startDate).getTime();
+    const eventEnd = parseISO(event.endDate).getTime();
+    let maxLane = lane[event.id];
+
+    for (const other of events) {
+      if (other.id === event.id) continue;
+      const otherStart = parseISO(other.startDate).getTime();
+      const otherEnd = parseISO(other.endDate).getTime();
+      if (otherStart < eventEnd && otherEnd > eventStart) {
+        const otherLane = lane[other.id];
+        if (otherLane > maxLane) maxLane = otherLane;
+      }
+    }
+
+    result[event.id] = { column: lane[event.id], columns: maxLane + 1 };
+  }
+
+  return result;
+};
+
+/**
+ * Assign each event a stacking row index for the week's multi-day
+ * spanning bar row. Events are sorted by start; the first available
+ * row is reused for non-overlapping events. Events that fall fully
+ * outside `[weekStart, weekEnd]` are dropped from the returned map.
+ */
+export const assignBarRows = (
+  events: IEvent[],
+  weekStart: Date,
+  weekEnd: Date
+): Record<string, number> => {
+  const result: Record<string, number> = {};
+  const rowEnds: Date[] = [];
+
+  const inWeek = events
+    .filter((e) => {
+      const start = parseISO(e.startDate);
+      const end = parseISO(e.endDate);
+      return start <= weekEnd && end >= weekStart;
+    })
+    .sort(
+      (a, b) =>
+        parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime()
+    );
+
+  for (const event of inWeek) {
+    const start = parseISO(event.startDate);
+    const end = parseISO(event.endDate);
+    const visibleStart = start < weekStart ? weekStart : start;
+
+    let row = rowEnds.findIndex((rowEnd) => rowEnd <= visibleStart);
+    if (row === -1) {
+      row = rowEnds.length;
+      rowEnds.push(end);
+    } else {
+      rowEnds[row] = end;
+    }
+    result[event.id] = row;
+  }
+
+  return result;
 };
