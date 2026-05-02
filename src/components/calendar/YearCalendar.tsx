@@ -3,6 +3,7 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import type { IEvent, TEventColor } from "@/types/calendar";
+import { useEffect } from "react";
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -143,14 +144,31 @@ function MonthPanel({
 }
 
 export function YearCalendar() {
-  const { selectedDate, setSelectedDate, setView, events, isLoading } =
-    useCalendar();
+  const {
+    selectedDate,
+    setSelectedDate,
+    setView,
+    events,
+    isLoading,
+    loadEventsForYear,
+  } = useCalendar();
 
   const today = new Date();
   const year = selectedDate.getFullYear();
   const yearStart = startOfYear(selectedDate);
   const yearEnd = endOfYear(selectedDate);
   const isCurrentYear = isSameYear(selectedDate, today);
+
+  // Ask the provider to widen its loaded range to the full year. The
+  // default refresh window (-1mo / +6mo) is too narrow for the year
+  // grid, so without this trigger Dec/Jan cells outside the window
+  // would render blank. The provider's loader is itself idempotent
+  // when the year is already covered, so depending on `year` (rather
+  // than `selectedDate`) avoids redundant fetches as the user moves
+  // around within the same year.
+  useEffect(() => {
+    loadEventsForYear(year);
+  }, [year, loadEventsForYear]);
 
   const months = Array.from({ length: 12 }, (_, i) => new Date(year, i, 1));
 

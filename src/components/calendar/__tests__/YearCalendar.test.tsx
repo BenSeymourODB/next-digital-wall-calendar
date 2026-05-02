@@ -395,4 +395,81 @@ describe("YearCalendar", () => {
       expect(screen.getByText(/loading events/i)).toBeInTheDocument();
     });
   });
+
+  describe("Full-year event loading (#117)", () => {
+    it("requests the selected year's events on mount", () => {
+      const loadEventsForYear = vi.fn();
+      renderWithContext({
+        selectedDate: new Date(2030, 5, 10),
+        loadEventsForYear,
+      });
+
+      expect(loadEventsForYear).toHaveBeenCalledWith(2030);
+    });
+
+    it("requests events for the new year when selectedDate's year changes", () => {
+      const loadEventsForYear = vi.fn();
+      const initialContext = createMockContext({
+        selectedDate: new Date(2030, 5, 10),
+        loadEventsForYear,
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider value={initialContext}>
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(loadEventsForYear).toHaveBeenLastCalledWith(2030);
+
+      // Year changes — provider should be asked to widen the loaded
+      // range to cover the new year.
+      const updatedContext = createMockContext({
+        ...initialContext,
+        selectedDate: new Date(2031, 0, 1),
+        loadEventsForYear,
+      });
+
+      rerender(
+        <CalendarContext.Provider value={updatedContext}>
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(loadEventsForYear).toHaveBeenLastCalledWith(2031);
+      expect(loadEventsForYear).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not re-request the same year when selectedDate changes within it", () => {
+      const loadEventsForYear = vi.fn();
+      const initialContext = createMockContext({
+        selectedDate: new Date(2030, 0, 5),
+        loadEventsForYear,
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider value={initialContext}>
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(loadEventsForYear).toHaveBeenCalledTimes(1);
+
+      // Same year, different month — the provider already covers
+      // Jan 1–Dec 31, so re-fetching is wasteful.
+      const updatedContext = createMockContext({
+        ...initialContext,
+        selectedDate: new Date(2030, 8, 20),
+        loadEventsForYear,
+      });
+
+      rerender(
+        <CalendarContext.Provider value={updatedContext}>
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(loadEventsForYear).toHaveBeenCalledTimes(1);
+    });
+  });
 });
