@@ -69,6 +69,7 @@ function createMockContext(
     addEvent: vi.fn(),
     updateEvent: vi.fn(),
     removeEvent: vi.fn(),
+    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     isLoading: false,

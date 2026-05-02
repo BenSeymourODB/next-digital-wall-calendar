@@ -429,4 +429,159 @@ describe("CalendarProvider", () => {
       expect(screen.queryByText("Red Event")).not.toBeInTheDocument();
     });
   });
+
+  describe("createEvent (#116)", () => {
+    /**
+     * Probe that exposes `createEvent` and the current event list. Tests
+     * drive a click → see the optimistic row appear → assert reconciliation
+     * (or rollback) when the mocked fetch settles.
+     */
+    function CreateEventProbe({
+      optimisticId,
+      onResolve,
+      onError,
+    }: {
+      optimisticId: string;
+      onResolve?: (id: string) => void;
+      onError?: (err: Error) => void;
+    }) {
+      const { createEvent, events } = useCalendar();
+
+      return (
+        <div>
+          <ul data-testid="probe-events">
+            {events.map((e) => (
+              <li key={e.id} data-testid={`probe-evt-${e.id}`}>
+                {e.id}:{e.title}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => {
+              createEvent(
+                {
+                  id: optimisticId,
+                  title: "New event",
+                  description: "",
+                  color: "blue",
+                  isAllDay: false,
+                  startDate: "2026-05-01T14:00:00.000Z",
+                  endDate: "2026-05-01T15:00:00.000Z",
+                  user: { id: "local", name: "You", picturePath: null },
+                  calendarId: "primary",
+                },
+                {
+                  title: "New event",
+                  description: "",
+                  color: "blue",
+                  isAllDay: false,
+                  startDate: "2026-05-01T14:00:00.000Z",
+                  endDate: "2026-05-01T15:00:00.000Z",
+                  calendarId: "primary",
+                }
+              )
+                .then((created) => onResolve?.(created.id))
+                .catch((err: Error) => onError?.(err));
+            }}
+          >
+            create
+          </button>
+        </div>
+      );
+    }
+
+    it("inserts the optimistic event and reconciles to the server's id on success", async () => {
+      // Override the default fetch mock so POST /api/calendar/events returns
+      // a canonical Google id; the seed GET still returns nothing relevant.
+      fetchMock.mockImplementation(
+        (input: string | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.includes("/api/calendar/events") && init?.method === "POST") {
+            return Promise.resolve(
+              fetchOk({
+                event: {
+                  id: "google-id-1",
+                  summary: "New event",
+                  start: { dateTime: "2026-05-01T14:00:00.000Z" },
+                  end: { dateTime: "2026-05-01T15:00:00.000Z" },
+                  calendarId: "primary",
+                },
+              })
+            );
+          }
+          if (url.includes("/api/calendar/calendars")) {
+            return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+          }
+          if (url.includes("/api/calendar/colors")) {
+            return Promise.resolve(fetchOk({ colorMappings: [] }));
+          }
+          return Promise.resolve(fetchOk({ events: [] }));
+        }
+      );
+
+      const onResolve = vi.fn();
+
+      render(
+        <CalendarProvider>
+          <CreateEventProbe optimisticId="opt-1" onResolve={onResolve} />
+        </CalendarProvider>
+      );
+
+      await userEvent.setup().click(screen.getByText("create"));
+
+      // Optimistic row should be replaced by the canonical row keyed on the
+      // server's id. There must be no point at which both rows are visible.
+      await waitFor(() => {
+        expect(screen.getByTestId("probe-evt-google-id-1")).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId("probe-evt-opt-1")).not.toBeInTheDocument();
+
+      // Promise resolves with the reconciled event id.
+      await waitFor(() => {
+        expect(onResolve).toHaveBeenCalledWith("google-id-1");
+      });
+    });
+
+    it("rolls back the optimistic row when the request fails", async () => {
+      fetchMock.mockImplementation(
+        (input: string | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.includes("/api/calendar/events") && init?.method === "POST") {
+            return Promise.resolve({
+              ok: false,
+              status: 403,
+              json: async () => ({ error: "Permission denied" }),
+            } as unknown as Response);
+          }
+          if (url.includes("/api/calendar/calendars")) {
+            return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+          }
+          if (url.includes("/api/calendar/colors")) {
+            return Promise.resolve(fetchOk({ colorMappings: [] }));
+          }
+          return Promise.resolve(fetchOk({ events: [] }));
+        }
+      );
+
+      const onError = vi.fn();
+
+      render(
+        <CalendarProvider>
+          <CreateEventProbe optimisticId="opt-2" onError={onError} />
+        </CalendarProvider>
+      );
+
+      await userEvent.setup().click(screen.getByText("create"));
+
+      // The optimistic row briefly appears, then disappears once the POST
+      // resolves with 403. We assert the end state plus the rejected promise.
+      await waitFor(() => {
+        expect(onError).toHaveBeenCalled();
+      });
+
+      expect(screen.queryByTestId("probe-evt-opt-2")).not.toBeInTheDocument();
+      expect(onError.mock.calls[0][0].message).toBe("Permission denied");
+    });
+  });
 });

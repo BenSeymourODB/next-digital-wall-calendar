@@ -2,6 +2,7 @@
 
 import {
   CalendarContext,
+  type CreateEventInput,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import type {
@@ -150,6 +151,18 @@ export function MockCalendarProvider({
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
+  // Mock createEvent: hermetic local insert that resolves with the
+  // optimistic event so AddEventButton's happy path works in E2E without
+  // mocking fetch. Tests that need failure behaviour should override this
+  // in their own provider wrapper.
+  const createEvent = async (
+    optimistic: IEvent,
+    _input: CreateEventInput
+  ): Promise<IEvent> => {
+    setAllEvents((prev) => [...prev, optimistic]);
+    return optimistic;
+  };
+
   // Mock refresh - just returns current events
   const refreshEvents = async () => {
     if (loadingDelay > 0) {
@@ -213,6 +226,7 @@ export function MockCalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    createEvent,
     clearFilter,
     refreshEvents,
     isLoading,

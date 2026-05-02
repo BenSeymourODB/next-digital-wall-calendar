@@ -38,6 +38,21 @@ interface LoadedRange {
   end: Date;
 }
 
+/**
+ * Server-bound payload for `createEvent`. Mirrors the body of
+ * `POST /api/calendar/events` (#116) — `calendarId` is mandatory at this
+ * layer because the provider doesn't second-guess the caller's choice.
+ */
+export interface CreateEventInput {
+  title: string;
+  description: string;
+  color: TEventColor;
+  isAllDay: boolean;
+  startDate: string;
+  endDate: string;
+  calendarId: string;
+}
+
 export interface ICalendarContext {
   selectedDate: Date;
   view: TCalendarView;
@@ -61,6 +76,13 @@ export interface ICalendarContext {
   addEvent: (event: IEvent) => void;
   updateEvent: (event: IEvent) => void;
   removeEvent: (eventId: string) => void;
+  /**
+   * Persist a new event to Google Calendar with an optimistic insert.
+   * The local list is updated immediately with `optimistic` and reconciled
+   * to the server's canonical event on success; the optimistic row is
+   * removed on failure and the promise rejects so callers can toast.
+   */
+  createEvent: (optimistic: IEvent, input: CreateEventInput) => Promise<IEvent>;
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
   isLoading: boolean;
@@ -213,6 +235,70 @@ export function CalendarProvider({
 
   const removeEvent = (eventId: string) => {
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
+  };
+
+  const createEvent = async (
+    optimistic: IEvent,
+    input: CreateEventInput
+  ): Promise<IEvent> => {
+    // Optimistic insert keyed on the optimistic id. If the request fails
+    // we remove only that row, so a concurrent refreshEvents() can update
+    // the rest of the list without us clobbering its result on rollback.
+    setAllEvents((prev) => [...prev, optimistic]);
+
+    try {
+      const response = await fetch("/api/calendar/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: input.title,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          color: input.color,
+          description: input.description,
+          isAllDay: input.isAllDay,
+          calendarId: input.calendarId,
+        }),
+      });
+
+      if (!response.ok) {
+        let message = "Failed to create event";
+        try {
+          const body = await response.json();
+          if (typeof body?.error === "string") message = body.error;
+        } catch {
+          // Some upstream proxies return non-JSON 502s; the generic message
+          // is sufficient for the toast.
+        }
+        throw new Error(message);
+      }
+
+      const body = (await response.json()) as { event: GoogleCalendarEvent };
+      const mappings = await loadColorMappings();
+      const reconciled = transformGoogleEvent(body.event, mappings);
+
+      // Replace the optimistic row with the server's canonical event in a
+      // single setState so the list never flickers.
+      setAllEvents((current) =>
+        current.map((e) => (e.id === optimistic.id ? reconciled : e))
+      );
+
+      logger.event("CalendarEventCreated", {
+        eventId: reconciled.id,
+        calendarId: reconciled.calendarId,
+      });
+
+      return reconciled;
+    } catch (error) {
+      // Rollback: remove the optimistic row from whatever list is current,
+      // preserving any concurrent refresh's writes.
+      setAllEvents((current) => current.filter((e) => e.id !== optimistic.id));
+      logger.error(error as Error, {
+        context: "createEvent",
+        calendarId: input.calendarId,
+      });
+      throw error;
+    }
   };
 
   /**
@@ -608,6 +694,7 @@ export function CalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    createEvent,
     clearFilter,
     refreshEvents,
     isLoading,
