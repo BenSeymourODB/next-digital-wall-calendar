@@ -8,6 +8,7 @@ import {
   applyCalendarKeyboardAction,
   keyboardEventToAction,
 } from "@/lib/calendar-keyboard";
+import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -134,7 +135,7 @@ export function SimpleCalendar() {
     });
   };
 
-  const today = new Date();
+  const today = useDateNow();
   const isCurrentMonth = isSameMonth(selectedDate, today);
 
   // Count events in the displayed month
