@@ -112,11 +112,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Embed per-task profile assignments so the client can filter by
-    // active profile without a second round-trip per task.
+    // active profile without a second round-trip per task. Scoped to
+    // the caller's userId so two accounts with the same Google task
+    // ID don't see each other's assignments.
     const assignmentMap =
       tasks.length === 0
         ? new Map()
-        : await getTaskAssignmentsByTaskIds(tasks.map((t) => t.id));
+        : await getTaskAssignmentsByTaskIds(
+            tasks.map((t) => t.id),
+            session.user.id
+          );
 
     const tasksWithAssignments = tasks.map((task) => ({
       ...task,

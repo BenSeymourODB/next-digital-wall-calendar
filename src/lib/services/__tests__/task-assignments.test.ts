@@ -42,20 +42,25 @@ describe("getTaskAssignmentsByTaskIds", () => {
     vi.clearAllMocks();
   });
 
+  const USER_ID = "user-123";
+
   it("returns an empty map when no task IDs are given", async () => {
-    const result = await getTaskAssignmentsByTaskIds([]);
+    const result = await getTaskAssignmentsByTaskIds([], USER_ID);
 
     expect(result.size).toBe(0);
     expect(mockPrisma.taskAssignment.findMany).not.toHaveBeenCalled();
   });
 
-  it("queries TaskAssignment for the supplied task IDs", async () => {
+  it("scopes the query to the caller's profiles to prevent cross-tenant reads", async () => {
     mockPrisma.taskAssignment.findMany.mockResolvedValue([]);
 
-    await getTaskAssignmentsByTaskIds(["task-1", "task-2"]);
+    await getTaskAssignmentsByTaskIds(["task-1", "task-2"], USER_ID);
 
     expect(mockPrisma.taskAssignment.findMany).toHaveBeenCalledWith({
-      where: { taskId: { in: ["task-1", "task-2"] } },
+      where: {
+        taskId: { in: ["task-1", "task-2"] },
+        profile: { userId: USER_ID },
+      },
       include: {
         profile: {
           select: {
@@ -67,6 +72,16 @@ describe("getTaskAssignmentsByTaskIds", () => {
         },
       },
     });
+  });
+
+  it("propagates Prisma errors so the route can surface a 500", async () => {
+    mockPrisma.taskAssignment.findMany.mockRejectedValue(
+      new Error("connection refused")
+    );
+
+    await expect(
+      getTaskAssignmentsByTaskIds(["task-1"], USER_ID)
+    ).rejects.toThrow("connection refused");
   });
 
   it("groups assignments by task ID with profile summaries", async () => {
@@ -91,11 +106,10 @@ describe("getTaskAssignmentsByTaskIds", () => {
       },
     ]);
 
-    const result = await getTaskAssignmentsByTaskIds([
-      "task-1",
-      "task-2",
-      "task-3",
-    ]);
+    const result = await getTaskAssignmentsByTaskIds(
+      ["task-1", "task-2", "task-3"],
+      USER_ID
+    );
 
     expect(result.get("task-1")).toEqual([
       { profileId: dadProfile.id, profile: dadProfile },
@@ -110,11 +124,14 @@ describe("getTaskAssignmentsByTaskIds", () => {
   it("dedupes input task IDs before querying", async () => {
     mockPrisma.taskAssignment.findMany.mockResolvedValue([]);
 
-    await getTaskAssignmentsByTaskIds(["task-1", "task-1", "task-2"]);
+    await getTaskAssignmentsByTaskIds(["task-1", "task-1", "task-2"], USER_ID);
 
     expect(mockPrisma.taskAssignment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { taskId: { in: ["task-1", "task-2"] } },
+        where: {
+          taskId: { in: ["task-1", "task-2"] },
+          profile: { userId: USER_ID },
+        },
       })
     );
   });

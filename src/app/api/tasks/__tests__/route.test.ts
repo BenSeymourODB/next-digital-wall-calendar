@@ -317,7 +317,7 @@ describe("/api/tasks", () => {
         id: "profile-dad",
         name: "Dad",
         color: "#3b82f6",
-        avatar: { type: "initials", value: "D" },
+        avatar: { type: "initials" as const, value: "D" },
       };
 
       mockFetch.mockResolvedValue({
@@ -347,7 +347,10 @@ describe("/api/tasks", () => {
       }>(response);
 
       expect(status).toBe(200);
-      expect(getTaskAssignmentsByTaskIds).toHaveBeenCalledWith(["t1", "t2"]);
+      expect(getTaskAssignmentsByTaskIds).toHaveBeenCalledWith(
+        ["t1", "t2"],
+        mockSession.user.id
+      );
       expect(data.tasks).toHaveLength(2);
       expect(data.tasks[0].assignments).toEqual([
         { profileId: dad.id, profile: dad },
@@ -355,6 +358,35 @@ describe("/api/tasks", () => {
       // Tasks with no assignments still get an empty array so the
       // client doesn't have to special-case `undefined`.
       expect(data.tasks[1].assignments).toEqual([]);
+    });
+
+    it("returns 500 when the assignments lookup throws", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [{ id: "t1", title: "T1" }] }),
+      });
+
+      vi.mocked(getTaskAssignmentsByTaskIds).mockRejectedValue(
+        new Error("DB connection lost")
+      );
+
+      const request = createMockRequest(
+        "/api/tasks?listId=list-123&includeAssignments=true"
+      );
+      const response = await GET(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      // Route surfaces the catch-all 500 rather than returning a half-
+      // populated tasks array. The Google fetch already succeeded, but
+      // we'd rather fail loudly than show tasks without correct
+      // assignment data when the client asked for it.
+      expect(status).toBe(500);
+      expect(data.error).toBe("An unexpected error occurred");
     });
 
     it("returns empty assignments array when there are no tasks and includeAssignments is set", async () => {

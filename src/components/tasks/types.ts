@@ -109,13 +109,18 @@ export type TaskSortOption = "dueDate" | "created" | "manual";
 /**
  * Avatar shape for an assigned profile, mirroring the `ProfileAvatar`
  * type from the profile context but kept loose here so this module
- * stays free of cross-feature imports.
+ * stays free of cross-feature imports. Shared with the service layer
+ * (`@/lib/services/task-assignments`) and the API response type.
  */
 export interface AssignmentProfileSummary {
   id: string;
   name: string;
   color: string;
-  avatar: { type: "initials" | "photo" | "emoji"; value: string };
+  avatar: {
+    type: "initials" | "photo" | "emoji";
+    value: string;
+    backgroundColor?: string;
+  };
 }
 
 /**

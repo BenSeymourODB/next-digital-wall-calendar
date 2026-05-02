@@ -2,9 +2,12 @@
  * Tests for ProfileScopedTaskList β€" the wrapper that bridges the
  * surrounding ProfileContext into a TaskList's per-profile filter.
  */
-import { ProfileProvider } from "@/components/profiles/profile-context";
+import {
+  ProfileProvider,
+  useProfile,
+} from "@/components/profiles/profile-context";
 import { type ReactNode } from "react";
-import { render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileScopedTaskList } from "../profile-scoped-task-list";
 import { TaskList } from "../task-list";
@@ -152,6 +155,51 @@ describe("ProfileScopedTaskList", () => {
 
     await waitFor(async () => {
       const config = await getEffectiveConfig();
+      expect(config.profileFilter).toBeNull();
+    });
+  });
+
+  it("clears the filter in family view mode even when a profile is active", async () => {
+    function FamilyToggle() {
+      const { setViewMode } = useProfile();
+      return (
+        <button
+          type="button"
+          onClick={() => setViewMode("family")}
+          data-testid="enter-family-mode"
+        >
+          Family
+        </button>
+      );
+    }
+
+    render(
+      withProvider(
+        <>
+          <FamilyToggle />
+          <ProfileScopedTaskList config={baseConfig} />
+        </>
+      )
+    );
+
+    // Wait for the profile to load and the initial profile-mode render
+    // to settle β€" baseline `profileFilter` is the active profile id.
+    await waitFor(async () => {
+      const config = await getEffectiveConfig();
+      expect(config.profileFilter).toBe("profile-admin-1");
+    });
+
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '[data-testid="enter-family-mode"]'
+        ) as HTMLElement
+      );
+    });
+
+    await waitFor(async () => {
+      const config = await getEffectiveConfig();
+      // Family mode wins even though `activeProfile` is still set.
       expect(config.profileFilter).toBeNull();
     });
   });
