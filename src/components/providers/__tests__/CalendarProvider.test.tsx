@@ -429,4 +429,163 @@ describe("CalendarProvider", () => {
       expect(screen.queryByText("Red Event")).not.toBeInTheDocument();
     });
   });
+
+  describe("deleteEvent (#115)", () => {
+    function DeleteProbe({
+      eventId,
+      calendarId,
+      onError,
+    }: {
+      eventId: string;
+      calendarId: string;
+      onError?: (err: Error) => void;
+    }) {
+      const { events, deleteEvent } = useCalendar();
+      return (
+        <div>
+          <ul data-testid="delete-probe-events">
+            {events.map((e) => (
+              <li key={e.id}>{e.title}</li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await deleteEvent(eventId, calendarId);
+              } catch (err) {
+                onError?.(err as Error);
+              }
+            }}
+          >
+            delete
+          </button>
+        </div>
+      );
+    }
+
+    function seedFetch(deleteResponse: Response | (() => Promise<Response>)) {
+      fetchMock.mockImplementation(
+        (input: string | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (
+            init?.method === "DELETE" &&
+            url.includes("/api/calendar/events/")
+          ) {
+            return typeof deleteResponse === "function"
+              ? deleteResponse()
+              : Promise.resolve(deleteResponse);
+          }
+          if (url.includes("/api/calendar/calendars")) {
+            return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+          }
+          if (url.includes("/api/calendar/colors")) {
+            return Promise.resolve(fetchOk({ colorMappings: [] }));
+          }
+          if (url.includes("/api/calendar/events")) {
+            return Promise.resolve(
+              fetchOk({
+                events: [
+                  baseEvent("evt-1", new Date().toISOString()),
+                  baseEvent("evt-2", new Date().toISOString()),
+                ],
+              })
+            );
+          }
+          return Promise.resolve(fetchOk({}));
+        }
+      );
+    }
+
+    it("optimistically removes the event and calls DELETE with the calendar id", async () => {
+      seedFetch({
+        ok: true,
+        status: 204,
+        json: async () => ({}),
+      } as unknown as Response);
+
+      render(
+        <CalendarProvider>
+          <DeleteProbe eventId="evt-1" calendarId="primary" />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("evt-1")).toBeInTheDocument();
+        expect(screen.getByText("evt-2")).toBeInTheDocument();
+      });
+
+      await userEvent.setup().click(screen.getByText("delete"));
+
+      await waitFor(() => {
+        expect(screen.queryByText("evt-1")).not.toBeInTheDocument();
+        expect(screen.getByText("evt-2")).toBeInTheDocument();
+      });
+
+      const deleteCall = fetchMock.mock.calls.find(
+        ([, init]) => init?.method === "DELETE"
+      );
+      expect(deleteCall).toBeDefined();
+      expect(String(deleteCall![0])).toContain(
+        "/api/calendar/events/evt-1?calendarId=primary"
+      );
+    });
+
+    it("rolls back the optimistic remove and rethrows when the API rejects", async () => {
+      seedFetch({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: "Failed to delete calendar event" }),
+      } as unknown as Response);
+
+      const onError = vi.fn();
+
+      render(
+        <CalendarProvider>
+          <DeleteProbe eventId="evt-1" calendarId="primary" onError={onError} />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("evt-1")).toBeInTheDocument();
+      });
+
+      await userEvent.setup().click(screen.getByText("delete"));
+
+      await waitFor(() => {
+        expect(onError).toHaveBeenCalledTimes(1);
+      });
+
+      // The event is back in the list because the optimistic remove rolled back.
+      expect(screen.getByText("evt-1")).toBeInTheDocument();
+      expect(screen.getByText("evt-2")).toBeInTheDocument();
+    });
+
+    it("treats a 204 from the API as success even when no body is returned", async () => {
+      seedFetch({
+        ok: true,
+        status: 204,
+        json: async () => {
+          throw new Error("body should not be parsed for 204");
+        },
+      } as unknown as Response);
+
+      render(
+        <CalendarProvider>
+          <DeleteProbe eventId="evt-2" calendarId="primary" />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("evt-2")).toBeInTheDocument();
+      });
+
+      await userEvent.setup().click(screen.getByText("delete"));
+
+      await waitFor(() => {
+        expect(screen.queryByText("evt-2")).not.toBeInTheDocument();
+        expect(screen.getByText("evt-1")).toBeInTheDocument();
+      });
+    });
+  });
 });

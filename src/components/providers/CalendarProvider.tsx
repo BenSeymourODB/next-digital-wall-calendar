@@ -61,6 +61,12 @@ export interface ICalendarContext {
   addEvent: (event: IEvent) => void;
   updateEvent: (event: IEvent) => void;
   removeEvent: (eventId: string) => void;
+  /**
+   * Delete an event from Google Calendar with an optimistic UI remove.
+   * Snapshots the prior list before removing and restores it on failure.
+   * The promise rejects on failure so the caller can surface a toast.
+   */
+  deleteEvent: (eventId: string, calendarId: string) => Promise<void>;
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
   isLoading: boolean;
@@ -214,6 +220,49 @@ export function CalendarProvider({
   const removeEvent = (eventId: string) => {
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
+
+  const deleteEvent = useCallback(
+    async (eventId: string, calendarId: string) => {
+      let snapshot: IEvent[] = [];
+      setAllEvents((prev) => {
+        snapshot = prev;
+        return prev.filter((e) => e.id !== eventId);
+      });
+
+      try {
+        const url = new URL(
+          `/api/calendar/events/${encodeURIComponent(eventId)}`,
+          window.location.origin
+        );
+        url.searchParams.set("calendarId", calendarId);
+
+        const response = await fetch(url.toString(), { method: "DELETE" });
+
+        if (!response.ok) {
+          let message = "Failed to delete event";
+          try {
+            const body = await response.json();
+            if (typeof body?.error === "string") message = body.error;
+          } catch {
+            // Some failures (e.g. 502 from a proxy) may not have a JSON body.
+          }
+          throw new Error(message);
+        }
+
+        logger.event("CalendarEventDeleted", { eventId, calendarId });
+      } catch (error) {
+        // Rollback the optimistic remove so the UI matches reality.
+        setAllEvents(snapshot);
+        logger.error(error as Error, {
+          context: "deleteEvent",
+          eventId,
+          calendarId,
+        });
+        throw error;
+      }
+    },
+    []
+  );
 
   /**
    * Fetch events for a specific date range and merge with existing events
@@ -608,6 +657,7 @@ export function CalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    deleteEvent,
     clearFilter,
     refreshEvents,
     isLoading,
