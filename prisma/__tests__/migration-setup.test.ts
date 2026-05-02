@@ -183,13 +183,23 @@ describe("Account uniqueness constraints (issue #61)", () => {
   });
 });
 
+function readAllMigrationsCombined(): string {
+  const entries = fs.readdirSync(MIGRATIONS_DIR, { withFileTypes: true });
+  return entries
+    .filter((e) => e.isDirectory() && e.name !== "__tests__")
+    .map((e) =>
+      fs.readFileSync(
+        path.join(MIGRATIONS_DIR, e.name, "migration.sql"),
+        "utf-8"
+      )
+    )
+    .join("\n");
+}
+
 describe("schema and migration consistency", () => {
-  it("should reference the same models in schema and migration", () => {
+  it("should reference the same models across all migrations", () => {
     const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");
-    const migrationContent = fs.readFileSync(
-      path.join(MIGRATIONS_DIR, "0001_initial", "migration.sql"),
-      "utf-8"
-    );
+    const combinedSql = readAllMigrationsCombined();
 
     // Extract model names from schema
     const modelRegex = /^model\s+(\w+)\s*\{/gm;
@@ -199,21 +209,18 @@ describe("schema and migration consistency", () => {
       schemaModels.push(match[1]);
     }
 
-    // Every schema model should have a CREATE TABLE in the migration
+    // Every schema model should have a CREATE TABLE in some migration
     for (const model of schemaModels) {
       expect(
-        migrationContent,
-        `Migration is missing CREATE TABLE for model "${model}"`
+        combinedSql,
+        `Migrations are missing CREATE TABLE for model "${model}"`
       ).toContain(`CREATE TABLE "${model}"`);
     }
   });
 
-  it("should reference the same enums in schema and migration", () => {
+  it("should reference the same enums across all migrations", () => {
     const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");
-    const migrationContent = fs.readFileSync(
-      path.join(MIGRATIONS_DIR, "0001_initial", "migration.sql"),
-      "utf-8"
-    );
+    const combinedSql = readAllMigrationsCombined();
 
     // Extract enum names from schema
     const enumRegex = /^enum\s+(\w+)\s*\{/gm;
@@ -223,12 +230,143 @@ describe("schema and migration consistency", () => {
       schemaEnums.push(match[1]);
     }
 
-    // Every schema enum should have a CREATE TYPE in the migration
+    // Every schema enum should have a CREATE TYPE in some migration
     for (const enumName of schemaEnums) {
       expect(
-        migrationContent,
-        `Migration is missing CREATE TYPE for enum "${enumName}"`
+        combinedSql,
+        `Migrations are missing CREATE TYPE for enum "${enumName}"`
       ).toContain(`CREATE TYPE "${enumName}"`);
     }
+  });
+});
+
+describe("meal planning schema (issue #167)", () => {
+  const MEAL_MIGRATION_DIR = path.join(
+    MIGRATIONS_DIR,
+    "0005_add_meal_planning"
+  );
+
+  it("declares the MealType and DayOfWeek enums", () => {
+    const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");
+
+    expect(schemaContent).toMatch(/enum\s+MealType\s*\{[\s\S]*?breakfast/);
+    expect(schemaContent).toMatch(/enum\s+MealType\s*\{[\s\S]*?lunch/);
+    expect(schemaContent).toMatch(/enum\s+MealType\s*\{[\s\S]*?dinner/);
+    expect(schemaContent).toMatch(/enum\s+MealType\s*\{[\s\S]*?snack/);
+
+    for (const day of [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+      "sunday",
+    ]) {
+      expect(schemaContent).toMatch(
+        new RegExp(`enum\\s+DayOfWeek\\s*\\{[\\s\\S]*?${day}`)
+      );
+    }
+  });
+
+  it("declares the meal-planning models", () => {
+    const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");
+
+    for (const model of [
+      "Meal",
+      "PlannedMeal",
+      "MealIngredient",
+      "GroceryList",
+      "GroceryListItem",
+      "SavedMeal",
+      "MealTemplate",
+    ]) {
+      expect(
+        schemaContent,
+        `schema.prisma is missing model "${model}"`
+      ).toMatch(new RegExp(`^model\\s+${model}\\s*\\{`, "m"));
+    }
+  });
+
+  it("Meal model indexes (userId, type) and references the recipe id as a plain string", () => {
+    const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");
+    const mealBlockMatch = schemaContent.match(/model Meal \{[\s\S]*?\n\}/);
+    expect(mealBlockMatch, "Meal model not found").not.toBeNull();
+    const mealBlock = mealBlockMatch![0];
+
+    expect(mealBlock).toMatch(/@@index\(\[userId,\s*type\]\)/);
+    expect(mealBlock).toMatch(/recipeId\s+String\?/);
+    expect(mealBlock).toMatch(/profileId\s+String\?/);
+    expect(mealBlock).toMatch(/servings\s+Int/);
+    expect(mealBlock).toMatch(/notes\s+String\?/);
+  });
+
+  it("PlannedMeal enforces the (userId, weekStart, dayOfWeek, mealType) unique constraint", () => {
+    const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");
+    const blockMatch = schemaContent.match(/model PlannedMeal \{[\s\S]*?\n\}/);
+    expect(blockMatch, "PlannedMeal model not found").not.toBeNull();
+    const block = blockMatch![0];
+
+    expect(block).toMatch(
+      /@@unique\(\[userId,\s*weekStart,\s*dayOfWeek,\s*mealType\]\)/
+    );
+  });
+
+  it("GroceryList belongs to a User and has items keyed by listId", () => {
+    const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");
+    const groceryListBlock = schemaContent.match(
+      /model GroceryList \{[\s\S]*?\n\}/
+    );
+    const groceryItemBlock = schemaContent.match(
+      /model GroceryListItem \{[\s\S]*?\n\}/
+    );
+
+    expect(groceryListBlock, "GroceryList model not found").not.toBeNull();
+    expect(groceryItemBlock, "GroceryListItem model not found").not.toBeNull();
+
+    expect(groceryListBlock![0]).toMatch(/userId\s+String/);
+    expect(groceryListBlock![0]).toMatch(/weekStart\s+DateTime/);
+    expect(groceryItemBlock![0]).toMatch(/listId\s+String/);
+    expect(groceryItemBlock![0]).toMatch(/isChecked\s+Boolean/);
+    expect(groceryItemBlock![0]).toMatch(/mealId\s+String\?/);
+  });
+
+  it("creates a 0005_add_meal_planning migration with the new tables", () => {
+    expect(
+      fs.existsSync(MEAL_MIGRATION_DIR),
+      "0005_add_meal_planning migration directory missing"
+    ).toBe(true);
+
+    const sqlPath = path.join(MEAL_MIGRATION_DIR, "migration.sql");
+    expect(fs.existsSync(sqlPath)).toBe(true);
+
+    const content = fs.readFileSync(sqlPath, "utf-8");
+    for (const table of [
+      "Meal",
+      "PlannedMeal",
+      "MealIngredient",
+      "GroceryList",
+      "GroceryListItem",
+      "SavedMeal",
+      "MealTemplate",
+    ]) {
+      expect(
+        content,
+        `0005 migration is missing CREATE TABLE for "${table}"`
+      ).toContain(`CREATE TABLE "${table}"`);
+    }
+
+    expect(content).toContain('CREATE TYPE "MealType"');
+    expect(content).toContain('CREATE TYPE "DayOfWeek"');
+
+    // PlannedMeal unique constraint expressed as a unique index
+    expect(content).toMatch(
+      /CREATE UNIQUE INDEX\s+"[^"]+"\s+ON\s+"PlannedMeal"\s*\(\s*"userId"\s*,\s*"weekStart"\s*,\s*"dayOfWeek"\s*,\s*"mealType"\s*\)/
+    );
+
+    // Meal index for fast lookup
+    expect(content).toMatch(
+      /CREATE INDEX\s+"[^"]+"\s+ON\s+"Meal"\s*\(\s*"userId"\s*,\s*"type"\s*\)/
+    );
   });
 });
