@@ -30,6 +30,7 @@ import {
   subWeeks,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AgendaList } from "./AgendaList";
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 40;
@@ -110,8 +111,14 @@ function isMultiDayEvent(event: IEvent): boolean {
 }
 
 export function WeekCalendar() {
-  const { selectedDate, setSelectedDate, events, isLoading, use24HourFormat } =
-    useCalendar();
+  const {
+    selectedDate,
+    setSelectedDate,
+    events,
+    isLoading,
+    use24HourFormat,
+    agendaMode,
+  } = useCalendar();
 
   const weekdayHeaders = getShortWeekdayLabels();
   const weekDates = getWeekDates(selectedDate);
@@ -197,206 +204,215 @@ export function WeekCalendar() {
         </div>
       )}
 
-      <div
-        className="border-border bg-card overflow-hidden rounded-lg border"
-        role="grid"
-        aria-label={`Week of ${format(weekStart, "MMMM d, yyyy")}`}
-      >
-        <div className="border-border bg-muted flex border-b" role="row">
-          <div className="w-12 shrink-0" aria-hidden="true" />
-          <div className="grid flex-1 grid-cols-7">
-            {weekDates.map((day, index) => {
-              const isTodayCell = isSameDay(day, today);
-              return (
-                <div
-                  key={day.toISOString()}
-                  role="columnheader"
-                  data-testid={
-                    isTodayCell ? "week-calendar-today-cell" : undefined
-                  }
-                  className={`flex flex-col items-center p-2 ${isTodayCell ? "bg-blue-50 dark:bg-blue-950" : ""}`}
-                >
-                  <span className="text-muted-foreground text-xs font-semibold">
-                    {weekdayHeaders[index]}
-                  </span>
-                  <span
-                    className={
-                      isTodayCell
-                        ? "mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-sm text-white"
-                        : "text-foreground mt-0.5 text-sm font-semibold"
-                    }
-                  >
-                    {format(day, "d")}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {(barRowCount > 0 || multiDayEvents.length > 0) && (
-          <div
-            className="border-border flex border-b"
-            data-testid="week-calendar-multi-day-row"
-            role="row"
-            aria-label="All-day and multi-day events"
-          >
+      {agendaMode ? (
+        <AgendaList
+          events={weekEvents}
+          rangeStart={weekStart}
+          rangeEnd={weekEnd}
+          emptyLabel={`No events from ${format(weekStart, "MMM d")} to ${format(weekEnd, "MMM d")}`}
+        />
+      ) : (
+        <div
+          className="border-border bg-card overflow-hidden rounded-lg border"
+          role="grid"
+          aria-label={`Week of ${format(weekStart, "MMMM d, yyyy")}`}
+        >
+          <div className="border-border bg-muted flex border-b" role="row">
             <div className="w-12 shrink-0" aria-hidden="true" />
-            <div
-              className="relative flex-1"
-              style={{
-                height: `${Math.max(barRowCount, 1) * BAR_ROW_HEIGHT_PX + 8}px`,
-              }}
-            >
-              {multiDayEvents.map((event) => {
-                const row = barRows[event.id];
-                if (row === undefined) return null;
-                const eventStart = parseISO(event.startDate);
-                const eventEnd = parseISO(event.endDate);
-                const visibleStart =
-                  eventStart < weekStart ? weekStart : eventStart;
-                const visibleEnd = eventEnd > weekEnd ? weekEnd : eventEnd;
-                const startCol = differenceInCalendarDays(
-                  visibleStart,
-                  weekStart
-                );
-                const span =
-                  differenceInCalendarDays(visibleEnd, visibleStart) + 1;
-                const widthPct = (span * 100) / 7;
-                const leftPct = (startCol * 100) / 7;
-
+            <div className="grid flex-1 grid-cols-7">
+              {weekDates.map((day, index) => {
+                const isTodayCell = isSameDay(day, today);
                 return (
                   <div
-                    key={event.id}
-                    data-testid="week-calendar-multi-day-bar"
-                    className={`absolute mx-0.5 truncate rounded px-2 py-0.5 text-xs ${getBarPillClasses(event.color)}`}
-                    style={{
-                      top: `${row * BAR_ROW_HEIGHT_PX + 4}px`,
-                      left: `${leftPct}%`,
-                      width: `calc(${widthPct}% - 0.25rem)`,
-                      height: `${BAR_ROW_HEIGHT_PX - 4}px`,
-                    }}
-                    title={event.title}
+                    key={day.toISOString()}
+                    role="columnheader"
+                    data-testid={
+                      isTodayCell ? "week-calendar-today-cell" : undefined
+                    }
+                    className={`flex flex-col items-center p-2 ${isTodayCell ? "bg-blue-50 dark:bg-blue-950" : ""}`}
                   >
-                    <span data-testid="week-calendar-event-title">
-                      {event.title}
+                    <span className="text-muted-foreground text-xs font-semibold">
+                      {weekdayHeaders[index]}
+                    </span>
+                    <span
+                      className={
+                        isTodayCell
+                          ? "mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-sm text-white"
+                          : "text-foreground mt-0.5 text-sm font-semibold"
+                      }
+                    >
+                      {format(day, "d")}
                     </span>
                   </div>
                 );
               })}
             </div>
           </div>
-        )}
 
-        <div className="relative flex max-h-[calc(100vh-320px)] overflow-y-auto">
-          <div
-            className="w-12 shrink-0"
-            style={{ height: `${TIME_GRID_HEIGHT_PX}px` }}
-            aria-hidden="true"
-          >
-            {HOURS.map((hour) => (
+          {(barRowCount > 0 || multiDayEvents.length > 0) && (
+            <div
+              className="border-border flex border-b"
+              data-testid="week-calendar-multi-day-row"
+              role="row"
+              aria-label="All-day and multi-day events"
+            >
+              <div className="w-12 shrink-0" aria-hidden="true" />
               <div
-                key={hour}
-                className="border-border relative border-b"
-                style={{ height: `${HOUR_HEIGHT_PX}px` }}
+                className="relative flex-1"
+                style={{
+                  height: `${Math.max(barRowCount, 1) * BAR_ROW_HEIGHT_PX + 8}px`,
+                }}
               >
-                <span className="text-muted-foreground absolute -top-2 right-1 text-[10px]">
-                  {use24HourFormat
-                    ? `${String(hour).padStart(2, "0")}:00`
-                    : hour === 0
-                      ? "12 AM"
-                      : hour < 12
-                        ? `${hour} AM`
-                        : hour === 12
-                          ? "12 PM"
-                          : `${hour - 12} PM`}
-                </span>
-              </div>
-            ))}
-          </div>
+                {multiDayEvents.map((event) => {
+                  const row = barRows[event.id];
+                  if (row === undefined) return null;
+                  const eventStart = parseISO(event.startDate);
+                  const eventEnd = parseISO(event.endDate);
+                  const visibleStart =
+                    eventStart < weekStart ? weekStart : eventStart;
+                  const visibleEnd = eventEnd > weekEnd ? weekEnd : eventEnd;
+                  const startCol = differenceInCalendarDays(
+                    visibleStart,
+                    weekStart
+                  );
+                  const span =
+                    differenceInCalendarDays(visibleEnd, visibleStart) + 1;
+                  const widthPct = (span * 100) / 7;
+                  const leftPct = (startCol * 100) / 7;
 
-          <div
-            className="relative grid flex-1 grid-cols-7"
-            style={{ height: `${TIME_GRID_HEIGHT_PX}px` }}
-          >
-            {weekDates.map((day) => {
-              const isTodayCol = isSameDay(day, today);
-              const dayTimedEvents = timedEvents
-                .filter((e) => isSameDay(parseISO(e.startDate), day))
-                .sort(
-                  (a, b) =>
-                    parseISO(a.startDate).getTime() -
-                    parseISO(b.startDate).getTime()
-                );
-              const eventColumn = computeEventColumns(dayTimedEvents);
-
-              return (
-                <div
-                  key={day.toISOString()}
-                  role="gridcell"
-                  data-testid={`week-calendar-day-col-${format(day, "yyyy-MM-dd")}`}
-                  className={`border-border relative border-r last:border-r-0 ${
-                    isTodayCol ? "bg-blue-50/40 dark:bg-blue-950/40" : ""
-                  }`}
-                >
-                  {HOURS.map((hour) => (
+                  return (
                     <div
-                      key={hour}
-                      className="border-border absolute right-0 left-0 border-b"
+                      key={event.id}
+                      data-testid="week-calendar-multi-day-bar"
+                      className={`absolute mx-0.5 truncate rounded px-2 py-0.5 text-xs ${getBarPillClasses(event.color)}`}
                       style={{
-                        top: `${hour * HOUR_HEIGHT_PX}px`,
-                        height: `${HOUR_HEIGHT_PX}px`,
+                        top: `${row * BAR_ROW_HEIGHT_PX + 4}px`,
+                        left: `${leftPct}%`,
+                        width: `calc(${widthPct}% - 0.25rem)`,
+                        height: `${BAR_ROW_HEIGHT_PX - 4}px`,
                       }}
-                      aria-hidden="true"
-                    />
-                  ))}
+                      title={event.title}
+                    >
+                      <span data-testid="week-calendar-event-title">
+                        {event.title}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
-                  {dayTimedEvents.map((event) => {
-                    const { top, height } = getEventTimePosition(event, day);
-                    const slot = eventColumn[event.id] ?? {
-                      column: 0,
-                      columns: 1,
-                    };
-                    const widthPct = 100 / slot.columns;
-                    const leftPct = slot.column * widthPct;
-
-                    return (
-                      <div
-                        key={event.id}
-                        data-testid="week-calendar-event"
-                        role="button"
-                        aria-label={`${event.title}, ${formatTime(event.startDate, use24HourFormat)} to ${formatTime(event.endDate, use24HourFormat)}`}
-                        className={`absolute overflow-hidden rounded border-l-4 px-1 py-0.5 text-[10px] leading-tight ${getEventBlockClasses(event.color)}`}
-                        style={{
-                          top: `${top}%`,
-                          height: `${height}%`,
-                          left: `${leftPct}%`,
-                          width: `calc(${widthPct}% - 0.125rem)`,
-                        }}
-                      >
-                        <div
-                          className="truncate font-semibold"
-                          data-testid="week-calendar-event-title"
-                          title={event.title}
-                        >
-                          {event.title}
-                        </div>
-                        {!event.isAllDay && (
-                          <div className="truncate opacity-80">
-                            {formatTime(event.startDate, use24HourFormat)}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+          <div className="relative flex max-h-[calc(100vh-320px)] overflow-y-auto">
+            <div
+              className="w-12 shrink-0"
+              style={{ height: `${TIME_GRID_HEIGHT_PX}px` }}
+              aria-hidden="true"
+            >
+              {HOURS.map((hour) => (
+                <div
+                  key={hour}
+                  className="border-border relative border-b"
+                  style={{ height: `${HOUR_HEIGHT_PX}px` }}
+                >
+                  <span className="text-muted-foreground absolute -top-2 right-1 text-[10px]">
+                    {use24HourFormat
+                      ? `${String(hour).padStart(2, "0")}:00`
+                      : hour === 0
+                        ? "12 AM"
+                        : hour < 12
+                          ? `${hour} AM`
+                          : hour === 12
+                            ? "12 PM"
+                            : `${hour - 12} PM`}
+                  </span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
 
-            <NowLine weekStart={weekStart} weekEnd={weekEnd} />
+            <div
+              className="relative grid flex-1 grid-cols-7"
+              style={{ height: `${TIME_GRID_HEIGHT_PX}px` }}
+            >
+              {weekDates.map((day) => {
+                const isTodayCol = isSameDay(day, today);
+                const dayTimedEvents = timedEvents
+                  .filter((e) => isSameDay(parseISO(e.startDate), day))
+                  .sort(
+                    (a, b) =>
+                      parseISO(a.startDate).getTime() -
+                      parseISO(b.startDate).getTime()
+                  );
+                const eventColumn = computeEventColumns(dayTimedEvents);
+
+                return (
+                  <div
+                    key={day.toISOString()}
+                    role="gridcell"
+                    data-testid={`week-calendar-day-col-${format(day, "yyyy-MM-dd")}`}
+                    className={`border-border relative border-r last:border-r-0 ${
+                      isTodayCol ? "bg-blue-50/40 dark:bg-blue-950/40" : ""
+                    }`}
+                  >
+                    {HOURS.map((hour) => (
+                      <div
+                        key={hour}
+                        className="border-border absolute right-0 left-0 border-b"
+                        style={{
+                          top: `${hour * HOUR_HEIGHT_PX}px`,
+                          height: `${HOUR_HEIGHT_PX}px`,
+                        }}
+                        aria-hidden="true"
+                      />
+                    ))}
+
+                    {dayTimedEvents.map((event) => {
+                      const { top, height } = getEventTimePosition(event, day);
+                      const slot = eventColumn[event.id] ?? {
+                        column: 0,
+                        columns: 1,
+                      };
+                      const widthPct = 100 / slot.columns;
+                      const leftPct = slot.column * widthPct;
+
+                      return (
+                        <div
+                          key={event.id}
+                          data-testid="week-calendar-event"
+                          role="button"
+                          aria-label={`${event.title}, ${formatTime(event.startDate, use24HourFormat)} to ${formatTime(event.endDate, use24HourFormat)}`}
+                          className={`absolute overflow-hidden rounded border-l-4 px-1 py-0.5 text-[10px] leading-tight ${getEventBlockClasses(event.color)}`}
+                          style={{
+                            top: `${top}%`,
+                            height: `${height}%`,
+                            left: `${leftPct}%`,
+                            width: `calc(${widthPct}% - 0.125rem)`,
+                          }}
+                        >
+                          <div
+                            className="truncate font-semibold"
+                            data-testid="week-calendar-event-title"
+                            title={event.title}
+                          >
+                            {event.title}
+                          </div>
+                          {!event.isAllDay && (
+                            <div className="truncate opacity-80">
+                              {formatTime(event.startDate, use24HourFormat)}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              <NowLine weekStart={weekStart} weekEnd={weekEnd} />
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
 import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { CalendarSettingsPanel } from "@/components/calendar/CalendarSettingsPanel";
@@ -300,14 +301,28 @@ const mockEventSets: Record<string, IEvent[]> = {
   ],
 };
 
-function CalendarDisplay() {
+function CalendarDisplay({
+  legacyAgenda = false,
+}: {
+  /**
+   * When true, render the search-driven AgendaCalendar (the pre-#150
+   * agenda view). The test page exposes this via `?view=agenda` so existing
+   * E2E specs that exercise the search UX keep working without change. New
+   * agenda-mode behavior (Day / Week chronological list) is reached via
+   * `?view=day&agendaMode=true` instead.
+   */
+  legacyAgenda?: boolean;
+}) {
   const { view, agendaMode } = useCalendar();
 
   // Compose a swap key that switches the animation when the user toggles
   // agenda mode within day/week, so the grid <-> agenda transition gets
   // the same fade treatment as a primary view change (#150 + #87).
-  const swapKey =
-    (view === "day" || view === "week") && agendaMode ? `${view}:agenda` : view;
+  const swapKey = legacyAgenda
+    ? "legacy-agenda"
+    : (view === "day" || view === "week") && agendaMode
+      ? `${view}:agenda`
+      : view;
 
   return (
     <div data-testid="calendar-display">
@@ -317,11 +332,17 @@ function CalendarDisplay() {
         direction="forward"
         durationMs={250}
       >
-        {view === "day" && <DayCalendar />}
-        {view === "week" && <WeekCalendar />}
-        {view === "month" && <SimpleCalendar />}
-        {view === "year" && <YearCalendar />}
-        {view === "clock" && <AnalogClockView />}
+        {legacyAgenda ? (
+          <AgendaCalendar />
+        ) : (
+          <>
+            {view === "day" && <DayCalendar />}
+            {view === "week" && <WeekCalendar />}
+            {view === "month" && <SimpleCalendar />}
+            {view === "year" && <YearCalendar />}
+            {view === "clock" && <AnalogClockView />}
+          </>
+        )}
       </AnimatedSwap>
     </div>
   );
@@ -471,10 +492,10 @@ function TestCalendarContent() {
 
         {showSidebar ? (
           <SidebarAwareLayout>
-            <CalendarDisplay />
+            <CalendarDisplay legacyAgenda={legacyAgenda} />
           </SidebarAwareLayout>
         ) : (
-          <CalendarDisplay />
+          <CalendarDisplay legacyAgenda={legacyAgenda} />
         )}
       </div>
     </MockCalendarProvider>
