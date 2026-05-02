@@ -40,6 +40,13 @@ export function useEventCreate(options: UseEventCreateOptions = {}) {
         ...input,
         calendarId: input.calendarId ?? defaultCalendarId,
       });
+      // The toast fires after Google's `events.insert` confirms the write,
+      // not on optimistic insert. The user sees the row appear immediately
+      // and a "saved" confirmation lands a moment later — the toast carries
+      // *durability* meaning, not first-render meaning. Move it above the
+      // await only if you also surface an explicit pending state to the
+      // user; otherwise an early toast claims success a failed POST will
+      // contradict 200ms later.
       toast.success("Event created");
       return created;
     } catch (error) {

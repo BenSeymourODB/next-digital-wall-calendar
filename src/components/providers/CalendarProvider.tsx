@@ -274,8 +274,10 @@ export function CalendarProvider({
       }
 
       const body = (await response.json()) as { event: GoogleCalendarEvent };
-      const mappings = await loadColorMappings();
-      const reconciled = transformGoogleEvent(body.event, mappings);
+      // Reconcile through the in-memory colorMappings state — refreshEvents
+      // keeps it current via saveColorMappings, and re-reading localStorage
+      // here would race with that path on subsequent creates.
+      const reconciled = transformGoogleEvent(body.event, colorMappings);
 
       // Replace the optimistic row with the server's canonical event in a
       // single setState so the list never flickers.

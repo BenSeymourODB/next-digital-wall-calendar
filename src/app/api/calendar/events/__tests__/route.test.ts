@@ -860,11 +860,13 @@ describe("/api/calendar/events", () => {
           }),
       });
 
-      // Dialog produces local-midnight start and 23:59:59.999 end on the
-      // chosen day. Using local times to match what the client sends after
-      // toISOString().
-      const start = new Date(2026, 6, 4, 0, 0, 0, 0); // Jul 4 local midnight
-      const end = new Date(2026, 6, 7, 23, 59, 59, 999); // Jul 7 local end-of-day
+      // Use Date.UTC to lock the input to a TZ-independent moment so the
+      // assertion holds whether the test runs in CI (UTC) or a developer's
+      // local box. Convention: the dialog encodes local-midnight start and
+      // local-end-of-day end as UTC ISOs; we reproduce a UTC-client send
+      // here (UTC == local) so the route's UTC-component math is exercised.
+      const start = new Date(Date.UTC(2026, 6, 4, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(2026, 6, 7, 23, 59, 59, 999));
 
       const request = createMockRequest("/api/calendar/events", {
         method: "POST",
@@ -912,8 +914,8 @@ describe("/api/calendar/events", () => {
           }),
       });
 
-      const start = new Date(2026, 3, 20, 0, 0, 0, 0);
-      const end = new Date(2026, 3, 20, 23, 59, 59, 999);
+      const start = new Date(Date.UTC(2026, 3, 20, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(2026, 3, 20, 23, 59, 59, 999));
 
       const request = createMockRequest("/api/calendar/events", {
         method: "POST",
@@ -932,6 +934,65 @@ describe("/api/calendar/events", () => {
       ) as { start: { date: string }; end: { date: string } };
       expect(sentBody.start.date).toBe("2026-04-20");
       expect(sentBody.end.date).toBe("2026-04-21");
+    });
+
+    it("emits the correct exclusive-end for a UTC-7 client (negative offset)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            id: "evt-allday-pdt",
+            summary: "Birthday",
+            start: { date: "2026-04-20" },
+            end: { date: "2026-04-21" },
+          }),
+      });
+
+      // Simulate what a UTC-7 (PDT) browser sends for "Apr 20 all-day":
+      // local midnight Apr 20 PDT = Apr 20 07:00:00 UTC. Local end-of-day
+      // Apr 20 23:59:59.999 PDT = Apr 21 06:59:59.999 UTC. Without the
+      // duration-based exclusive-end, `setUTCHours(0)` + `+1 day` would
+      // emit "2026-04-22" here.
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody({
+          isAllDay: true,
+          startDate: "2026-04-20T07:00:00.000Z",
+          endDate: "2026-04-21T06:59:59.999Z",
+          title: "Birthday",
+        }),
+      });
+      await parseResponse(await POST(request));
+
+      const sentBody = JSON.parse(
+        mockFetch.mock.calls[0][1].body as string
+      ) as { start: { date: string }; end: { date: string } };
+      expect(sentBody.start.date).toBe("2026-04-20");
+      expect(sentBody.end.date).toBe("2026-04-21");
+    });
+
+    it("rejects an array body with a 400", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: ["not", "an", "object"],
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toMatch(/object/i);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it("maps each TEventColor to a Google colorId", async () => {

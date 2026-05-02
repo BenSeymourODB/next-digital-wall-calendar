@@ -274,7 +274,7 @@ function isSupportedColor(value: unknown): value is TEventColor {
 }
 
 function validateCreateBody(body: unknown): ValidationResult {
-  if (!body || typeof body !== "object") {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     return { ok: false, error: "Request body must be a JSON object" };
   }
 
@@ -333,21 +333,38 @@ function validateCreateBody(body: unknown): ValidationResult {
 }
 
 /**
- * Format a `Date` as a `YYYY-MM-DD` string in the local timezone. Used for
- * Google's all-day event format, which is timezone-agnostic and stores raw
- * calendar dates rather than a moment.
+ * Format a `Date` as a `YYYY-MM-DD` string using its UTC components, so the
+ * route's behaviour is independent of the server's timezone.
+ *
+ * This is the right choice for Google's all-day shape AND for the wire
+ * format the dialog produces: `start = local-midnight Date.toISOString()`
+ * and `end = local-end-of-day Date.toISOString()`. Using `getUTC*` here
+ * keeps the start date stable across server TZs, and the duration-based
+ * `exclusiveEnd` below avoids the off-by-one that `setHours(0,0,0,0)` +
+ * `getDate()+1` produces on a server in a different TZ to the client.
+ *
+ * Caveat: a client in a positive UTC offset (e.g., NZST = UTC+12) creating
+ * an all-day event for "Apr 20 local" sends UTC = Apr 19. The route still
+ * sees Apr 19 here. Fully fixing that needs a wire-format change so the
+ * dialog emits `YYYY-MM-DD` strings (or a `tzOffsetMinutes`) rather than
+ * encoding local-midnight as a UTC ISO. Tracked as follow-up.
  */
-function formatLocalDate(d: Date): string {
+function formatUTCDate(d: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
+
+const MS_PER_DAY = 86_400_000;
 
 /**
  * Build the Google Calendar `events.insert` body from a validated event.
  *
  * For all-day events we emit `start.date` / `end.date` and apply Google's
- * exclusive-end convention: the dialog gives us an inclusive last day (the
- * end-of-day timestamp), so the wire `end.date` is one day after.
+ * exclusive-end convention: a single-day event on Apr 20 sends
+ * `start.date = "2026-04-20"` / `end.date = "2026-04-21"`. The exclusive
+ * end is computed as `start + N * MS_PER_DAY` where N is the inclusive
+ * day-count rounded from the input span (`24h - 1ms` per day), so the
+ * result is server-TZ-independent and survives DST boundaries.
  */
 function buildGoogleInsertBody(event: ValidatedEvent) {
   const insertBody: {
@@ -368,14 +385,16 @@ function buildGoogleInsertBody(event: ValidatedEvent) {
   }
 
   if (event.isAllDay) {
-    // Google all-day end is exclusive: e.g., a single-day event on Apr 20
-    // is `start.date = "2026-04-20"` / `end.date = "2026-04-21"`.
-    const exclusiveEnd = new Date(event.end);
-    exclusiveEnd.setHours(0, 0, 0, 0);
-    exclusiveEnd.setDate(exclusiveEnd.getDate() + 1);
+    const inclusiveDays = Math.max(
+      1,
+      Math.round((event.end.getTime() - event.start.getTime()) / MS_PER_DAY)
+    );
+    const exclusiveEnd = new Date(
+      event.start.getTime() + inclusiveDays * MS_PER_DAY
+    );
 
-    insertBody.start.date = formatLocalDate(event.start);
-    insertBody.end.date = formatLocalDate(exclusiveEnd);
+    insertBody.start.date = formatUTCDate(event.start);
+    insertBody.end.date = formatUTCDate(exclusiveEnd);
   } else {
     insertBody.start.dateTime = event.start.toISOString();
     insertBody.end.dateTime = event.end.toISOString();

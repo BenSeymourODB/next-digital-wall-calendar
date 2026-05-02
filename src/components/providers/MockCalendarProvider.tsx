@@ -13,7 +13,7 @@ import type {
   TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 // Re-export useCalendar from CalendarProvider for backward compatibility
 export { useCalendar } from "@/components/providers/CalendarProvider";
@@ -172,22 +172,19 @@ export function MockCalendarProvider({
     }
   };
 
-  // Filter events using useMemo to avoid effect-based setState
-  const filteredEvents = useMemo(() => {
-    let filtered = allEvents;
-
-    if (selectedUserId !== "all") {
-      filtered = filtered.filter((event) => event.user.id === selectedUserId);
-    }
-
-    if (selectedColors.length > 0) {
-      filtered = filtered.filter((event) =>
-        selectedColors.includes(event.color)
-      );
-    }
-
-    return filtered;
-  }, [allEvents, selectedUserId, selectedColors]);
+  // Derive filtered events at render time. React Compiler memoizes the
+  // result automatically; manual `useMemo` is forbidden by CLAUDE.md.
+  let filteredEvents = allEvents;
+  if (selectedUserId !== "all") {
+    filteredEvents = filteredEvents.filter(
+      (event) => event.user.id === selectedUserId
+    );
+  }
+  if (selectedColors.length > 0) {
+    filteredEvents = filteredEvents.filter((event) =>
+      selectedColors.includes(event.color)
+    );
+  }
 
   // Get unique users from events
   const users = allEvents.reduce((acc, event) => {
