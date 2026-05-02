@@ -23,6 +23,7 @@ describe("TaskItem", () => {
     listTitle: "My List",
     listColor: "#3b82f6",
     isOverdue: false,
+    assignments: [],
     ...overrides,
   });
 
