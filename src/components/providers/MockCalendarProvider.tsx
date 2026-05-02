@@ -35,6 +35,8 @@ interface MockCalendarProviderProps {
   weekStartDay?: TWeekStartDay;
   /** Initial agenda-mode group-by */
   agendaModeGroupBy?: "date" | "color";
+  /** Initial agenda-mode toggle (only meaningful for day/week views). */
+  agendaMode?: boolean;
   /** Simulate loading delay in ms */
   loadingDelay?: number;
   /** Whether user is authenticated (for testing) */
@@ -66,6 +68,7 @@ export function MockCalendarProvider({
   use24HourFormat: initial24Hour = true,
   weekStartDay: initialWeekStartDay = 0,
   agendaModeGroupBy: initialAgendaGroupBy = "date",
+  agendaMode: initialAgendaMode = false,
   loadingDelay = 0,
   isAuthenticated = true,
   maxEventsPerDay = 3,
@@ -79,6 +82,7 @@ export function MockCalendarProvider({
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
   >(initialAgendaGroupBy);
+  const [agendaMode, setAgendaModeState] = useState<boolean>(initialAgendaMode);
   const [weekStartDay, setWeekStartDayState] =
     useState<TWeekStartDay>(initialWeekStartDay);
 
@@ -117,6 +121,10 @@ export function MockCalendarProvider({
 
   const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
     setAgendaModeGroupByState(groupBy);
+  };
+
+  const setAgendaMode = (enabled: boolean) => {
+    setAgendaModeState(enabled);
   };
 
   const setWeekStartDay = (day: TWeekStartDay) => {
@@ -202,6 +210,8 @@ export function MockCalendarProvider({
     selectedDate,
     view: currentView,
     setView,
+    agendaMode,
+    setAgendaMode,
     agendaModeGroupBy,
     setAgendaModeGroupBy,
     use24HourFormat,

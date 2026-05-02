@@ -51,6 +51,8 @@ function createMockContext(
     selectedDate: new Date(),
     view: "month" as TCalendarView,
     setView: vi.fn(),
+    agendaMode: false,
+    setAgendaMode: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
     weekStartDay: 0,

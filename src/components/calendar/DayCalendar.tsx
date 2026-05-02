@@ -12,6 +12,7 @@ import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useState } from "react";
 import {
   addDays,
+  endOfDay,
   format,
   isSameDay,
   parseISO,
@@ -19,6 +20,7 @@ import {
   subDays,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AgendaList } from "./AgendaList";
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 48;
@@ -101,8 +103,14 @@ function isMultiDay(event: IEvent): boolean {
 }
 
 export function DayCalendar() {
-  const { selectedDate, setSelectedDate, events, isLoading, use24HourFormat } =
-    useCalendar();
+  const {
+    selectedDate,
+    setSelectedDate,
+    events,
+    isLoading,
+    use24HourFormat,
+    agendaMode,
+  } = useCalendar();
 
   const isToday = isSameDay(selectedDate, today);
 
@@ -207,6 +215,46 @@ export function DayCalendar() {
         </div>
       )}
 
+      {agendaMode ? (
+        <AgendaList
+          events={dayEvents}
+          rangeStart={startOfDay(selectedDate)}
+          rangeEnd={endOfDay(selectedDate)}
+          emptyLabel={`No events on ${format(selectedDate, "EEEE, MMMM d")}`}
+        />
+      ) : (
+        <DayGridView
+          allDayEvents={allDayEvents}
+          timedEvents={timedEvents}
+          eventColumn={eventColumn}
+          selectedDate={selectedDate}
+          use24HourFormat={use24HourFormat}
+          isLoading={isLoading}
+        />
+      )}
+    </div>
+  );
+}
+
+interface DayGridViewProps {
+  allDayEvents: IEvent[];
+  timedEvents: IEvent[];
+  eventColumn: ReturnType<typeof computeEventColumns>;
+  selectedDate: Date;
+  use24HourFormat: boolean;
+  isLoading: boolean;
+}
+
+function DayGridView({
+  allDayEvents,
+  timedEvents,
+  eventColumn,
+  selectedDate,
+  use24HourFormat,
+  isLoading,
+}: DayGridViewProps) {
+  return (
+    <>
       {allDayEvents.length > 0 && (
         <section
           role="region"
@@ -338,6 +386,6 @@ export function DayCalendar() {
             </div>
           )}
       </div>
-    </div>
+    </>
   );
 }

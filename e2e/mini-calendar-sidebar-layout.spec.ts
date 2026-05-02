@@ -45,7 +45,7 @@ test.describe("MiniCalendarSidebar layout rule", () => {
     await expect(page.getByTestId("mini-calendar-sidebar")).toBeVisible();
   });
 
-  test("toggles live when switching between month and agenda views", async ({
+  test("toggles live when switching between month and day views (#150)", async ({
     page,
   }) => {
     // Start on month — sidebar hidden.
@@ -53,12 +53,14 @@ test.describe("MiniCalendarSidebar layout rule", () => {
     await expect(page.getByTestId("calendar-display")).toBeVisible();
     await expect(page.getByTestId("mini-calendar-sidebar")).toHaveCount(0);
 
-    // Switch to agenda — sidebar appears.
-    await page.getByRole("tab", { name: /agenda/i }).click();
+    // Switch to Day-agenda via the new dropdown — sidebar appears
+    // (sidebar rule keys on view ∈ {day, week}).
+    await page.getByTestId("view-switcher-day").click();
+    await page.getByRole("menuitemradio", { name: /agenda/i }).click();
     await expect(page.getByTestId("mini-calendar-sidebar")).toBeVisible();
 
     // Switch back to month — sidebar disappears again.
-    await page.getByRole("tab", { name: /month/i }).click();
+    await page.getByTestId("view-switcher-month").click();
     await expect(page.getByTestId("mini-calendar-sidebar")).toHaveCount(0);
   });
 

@@ -39,6 +39,8 @@ function createMockContext(
     selectedDate: new Date(2026, 3, 15),
     view: "year" as TCalendarView,
     setView: vi.fn(),
+    agendaMode: false,
+    setAgendaMode: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
     use24HourFormat: true,

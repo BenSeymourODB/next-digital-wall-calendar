@@ -55,6 +55,10 @@ function SettingsProbe() {
     setAgendaModeGroupBy,
     weekStartDay,
     setWeekStartDay,
+    view,
+    setView,
+    agendaMode,
+    setAgendaMode,
   } = useCalendar();
 
   return (
@@ -63,6 +67,8 @@ function SettingsProbe() {
       <span data-testid="hour">{String(use24HourFormat)}</span>
       <span data-testid="group">{agendaModeGroupBy}</span>
       <span data-testid="week-start">{String(weekStartDay)}</span>
+      <span data-testid="view">{view}</span>
+      <span data-testid="agenda-mode">{String(agendaMode)}</span>
       <button type="button" onClick={() => setBadgeVariant("dot")}>
         badge-dot
       </button>
@@ -74,6 +80,12 @@ function SettingsProbe() {
       </button>
       <button type="button" onClick={() => setWeekStartDay(1)}>
         week-monday
+      </button>
+      <button type="button" onClick={() => setView("week")}>
+        view-week
+      </button>
+      <button type="button" onClick={() => setAgendaMode(true)}>
+        agenda-on
       </button>
     </div>
   );
@@ -196,6 +208,84 @@ describe("CalendarProvider — settings state", () => {
     expect(screen.getByTestId("group")).toHaveTextContent("date");
     expect(screen.getByTestId("hour")).toHaveTextContent("true");
     expect(screen.getByTestId("badge")).toHaveTextContent("colored");
+  });
+
+  // Issue #150 — agendaMode is now a sub-toggle, not a top-level view.
+  it("defaults agendaMode to false on first load", async () => {
+    renderProvider();
+    await waitFor(() => {
+      expect(screen.getByTestId("agenda-mode")).toHaveTextContent("false");
+    });
+  });
+
+  it("persists agendaMode toggles to localStorage", async () => {
+    const user = userEvent.setup();
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("agenda-mode")).toHaveTextContent("false");
+    });
+
+    await user.click(screen.getByText("agenda-on"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("agenda-mode")).toHaveTextContent("true");
+    });
+
+    const parsed = JSON.parse(
+      window.localStorage.getItem("calendar-settings") ?? "{}"
+    );
+    expect(parsed.agendaMode).toBe(true);
+  });
+
+  it("migrates legacy view='agenda' in localStorage to view='day' + agendaMode=true", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "agenda",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("day");
+    });
+    expect(screen.getByTestId("agenda-mode")).toHaveTextContent("true");
+  });
+
+  it("rewrites the migrated payload back to localStorage so the legacy value is removed", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "agenda",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    const user = userEvent.setup();
+    renderProvider();
+
+    // Trigger any persisted update so the migrated payload is flushed.
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("day");
+    });
+    await user.click(screen.getByText("badge-dot"));
+
+    await waitFor(() => {
+      const parsed = JSON.parse(
+        window.localStorage.getItem("calendar-settings") ?? "{}"
+      );
+      expect(parsed.view).toBe("day");
+      expect(parsed.agendaMode).toBe(true);
+    });
   });
 });
 
