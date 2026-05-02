@@ -13,6 +13,7 @@ import { useSyncExternalStore } from "react";
 import { startOfDay } from "date-fns";
 
 let currentDate: Date = new Date();
+let currentStartOfDay: Date = startOfDay(currentDate);
 let timeoutId: ReturnType<typeof setTimeout> | null = null;
 const subscribers = new Set<() => void>();
 
@@ -28,14 +29,20 @@ function msUntilNextLocalMidnight(from: Date): number {
   );
   // Guard against a 0/negative delay if the system clock is exactly at
   // midnight: setTimeout with 0 fires synchronously which would loop.
+  // DST shifts (max ±1h) are absorbed because the next interval is
+  // recomputed from `new Date()` after every tick.
   return Math.max(1, next.getTime() - from.getTime());
 }
 
+function refreshDates(): void {
+  currentDate = new Date();
+  currentStartOfDay = startOfDay(currentDate);
+}
+
 function scheduleTick(): void {
-  if (timeoutId !== null) return;
   timeoutId = setTimeout(() => {
     timeoutId = null;
-    currentDate = new Date();
+    refreshDates();
     for (const cb of [...subscribers]) cb();
     if (subscribers.size > 0) scheduleTick();
   }, msUntilNextLocalMidnight(new Date()));
@@ -46,7 +53,7 @@ function subscribe(cb: () => void): () => void {
   // module-loaded value has drifted across a day boundary while no
   // component was mounted.
   if (subscribers.size === 0) {
-    currentDate = new Date();
+    refreshDates();
   }
   subscribers.add(cb);
   if (timeoutId === null) {
@@ -65,12 +72,20 @@ function getSnapshot(): Date {
   return currentDate;
 }
 
+function getStartOfDaySnapshot(): Date {
+  return currentStartOfDay;
+}
+
 /**
  * Returns the current Date and re-renders the component when the local
  * day rolls over. Use this anywhere you compare against "now" for UI
  * affordances that must stay correct across midnight on a wall display.
  */
 export function useDateNow(): Date {
+  // The same function is passed for both client and server snapshots
+  // because this module is "use client"-only — the SSR path never
+  // actually subscribes, but useSyncExternalStore still requires the
+  // argument and an undefined value triggers a hydration warning.
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
@@ -78,9 +93,17 @@ export function useDateNow(): Date {
  * Like {@link useDateNow}, but returns `startOfDay(now)` so consumers
  * comparing dates with `isSameDay`, `isSameWeek`, `isSameMonth`, etc.
  * don't have to call `startOfDay` themselves.
+ *
+ * The returned `Date` reference is stable between midnight ticks (the
+ * same object is returned across re-renders) so React Compiler can
+ * skip work for components whose only changing input is `today`.
  */
 export function useTodayStartOfDay(): Date {
-  return startOfDay(useDateNow());
+  return useSyncExternalStore(
+    subscribe,
+    getStartOfDaySnapshot,
+    getStartOfDaySnapshot
+  );
 }
 
 /**
@@ -93,5 +116,5 @@ export function __resetUseDateNowForTests(): void {
     timeoutId = null;
   }
   subscribers.clear();
-  currentDate = new Date();
+  refreshDates();
 }

@@ -81,15 +81,22 @@ describe("useDateNow", () => {
   });
 
   it("uses a single shared timer across many subscribers", () => {
+    // Mount one subscriber first to take the cost of arming the
+    // initial timer (and any bookkeeping setTimeouts the testing
+    // framework happens to schedule during renderHook). After this
+    // baseline mounting four more subscribers must not increment the
+    // timer-arm count, since the shared timer is already running.
+    renderHook(() => useDateNow());
+
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     setTimeoutSpy.mockClear();
 
-    const hooks = Array.from({ length: 5 }, () =>
-      renderHook(() => useDateNow())
-    );
-    expect(hooks).toHaveLength(5);
+    renderHook(() => useDateNow());
+    renderHook(() => useDateNow());
+    renderHook(() => useDateNow());
+    renderHook(() => useDateNow());
 
-    expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
     setTimeoutSpy.mockRestore();
   });
 

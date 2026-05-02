@@ -153,8 +153,10 @@ describe("midnight rollover wiring", () => {
   it("MiniCalendarSidebar: data-today flips to the new day after midnight", () => {
     renderWithContext(<MiniCalendarSidebar />, { selectedDate: NEXT_DAY });
 
+    // Exact-match on the rendered day-of-month so a fixture change to
+    // overlapping numerals (e.g. 1 vs 21) cannot mask a wiring break.
     const todayBefore = document.querySelector('[data-today="true"]');
-    expect(todayBefore?.textContent).toContain(
+    expect(todayBefore?.textContent?.trim()).toBe(
       String(BEFORE_MIDNIGHT.getDate())
     );
 
@@ -164,7 +166,7 @@ describe("midnight rollover wiring", () => {
     });
 
     const todayAfter = document.querySelector('[data-today="true"]');
-    expect(todayAfter?.textContent).toContain(String(NEXT_DAY.getDate()));
+    expect(todayAfter?.textContent?.trim()).toBe(String(NEXT_DAY.getDate()));
   });
 
   it("SimpleCalendar: today-cell aria-current follows the wall-clock day", () => {
