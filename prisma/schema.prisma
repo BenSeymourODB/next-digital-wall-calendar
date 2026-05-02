@@ -26,8 +26,13 @@ model User {
   taskConfigs     TaskListConfig[]
   rewardPoints    RewardPoints?
   profiles        Profile[]
-  maxProfiles     Int       @default(10) // Maximum profiles allowed per account
-  activeProfileId String?   // Last active profile
+  meals           Meal[]
+  plannedMeals    PlannedMeal[]
+  groceryLists    GroceryList[]
+  savedMeals      SavedMeal[]
+  mealTemplates   MealTemplate[]
+  maxProfiles     Int              @default(10) // Maximum profiles allowed per account
+  activeProfileId String? // Last active profile
 }
 
 model Account {
@@ -125,26 +130,27 @@ enum AgeGroup {
 
 model Profile {
   id                String      @id @default(cuid())
-  userId            String      // Account owner
+  userId            String // Account owner
   name              String
   type              ProfileType @default(standard)
   ageGroup          AgeGroup    @default(adult)
   color             String      @default("#3b82f6") // Tailwind blue-500
-  avatar            Json        // ProfileAvatar as JSON: { type: 'initials' | 'photo' | 'emoji', value: string, backgroundColor?: string }
-  pinHash           String?     // Bcrypt hashed PIN (null if no PIN set)
+  avatar            Json // ProfileAvatar as JSON: { type: 'initials' | 'photo' | 'emoji', value: string, backgroundColor?: string }
+  pinHash           String? // Bcrypt hashed PIN (null if no PIN set)
   pinEnabled        Boolean     @default(false)
   failedPinAttempts Int         @default(0)
-  pinLockedUntil    DateTime?   // Temporary lockout timestamp
+  pinLockedUntil    DateTime? // Temporary lockout timestamp
   isActive          Boolean     @default(true) // Soft delete flag
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
-  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rewardPoints     ProfileRewardPoints?
-  settings         ProfileSettings?
-  pointsAwarded    PointTransaction[]    @relation("AwardedBy")
-  pointsReceived   PointTransaction[]    @relation("ReceivedBy")
-  taskAssignments  TaskAssignment[]
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewardPoints    ProfileRewardPoints?
+  settings        ProfileSettings?
+  pointsAwarded   PointTransaction[]   @relation("AwardedBy")
+  pointsReceived  PointTransaction[]   @relation("ReceivedBy")
+  taskAssignments TaskAssignment[]
+  meals           Meal[]
 
   @@index([userId, isActive])
 }
@@ -163,16 +169,16 @@ model ProfileRewardPoints {
 }
 
 model PointTransaction {
-  id               String   @id @default(cuid())
-  profileId        String
-  rewardPointsId   String?  // Reference to ProfileRewardPoints
-  points           Int
-  reason           String   // task_completed, bonus, manual, streak, goal
-  taskId           String?
-  taskTitle        String?
-  awardedBy        String?  // Profile ID if manually awarded (admin)
-  note             String?  // Reason for manual award
-  createdAt        DateTime @default(now())
+  id             String   @id @default(cuid())
+  profileId      String
+  rewardPointsId String? // Reference to ProfileRewardPoints
+  points         Int
+  reason         String // task_completed, bonus, manual, streak, goal
+  taskId         String?
+  taskTitle      String?
+  awardedBy      String? // Profile ID if manually awarded (admin)
+  note           String? // Reason for manual award
+  createdAt      DateTime @default(now())
 
   profile          Profile              @relation("ReceivedBy", fields: [profileId], references: [id], onDelete: Cascade, map: "PointTransaction_profile_fkey")
   awardedByProfile Profile?             @relation("AwardedBy", fields: [awardedBy], references: [id], map: "PointTransaction_awardedBy_fkey")
@@ -198,7 +204,7 @@ model ProfileSettings {
 // Task Assignment - Links Google Tasks to profiles
 model TaskAssignment {
   id        String   @id @default(cuid())
-  taskId    String   // Google Tasks ID
+  taskId    String // Google Tasks ID
   profileId String
   createdAt DateTime @default(now())
 
@@ -206,4 +212,139 @@ model TaskAssignment {
 
   @@unique([taskId, profileId])
   @@index([profileId, taskId])
+}
+
+// Meal Planning (issue #167)
+enum MealType {
+  breakfast
+  lunch
+  dinner
+  snack
+}
+
+enum DayOfWeek {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+}
+
+model Meal {
+  id        String   @id @default(cuid())
+  userId    String
+  profileId String?
+  name      String
+  type      MealType
+  servings  Int      @default(4)
+  notes     String?  @db.Text
+  recipeId  String? // Plain id; Recipe model lands with the recipe slice
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile      Profile?         @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  plannedMeals PlannedMeal[]
+  ingredients  MealIngredient[]
+
+  @@index([userId, type])
+}
+
+model PlannedMeal {
+  id        String    @id @default(cuid())
+  userId    String
+  mealId    String
+  weekStart DateTime // Monday of the week (UTC midnight)
+  dayOfWeek DayOfWeek
+  mealType  MealType
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  // Leading columns of the unique index also satisfy (userId, weekStart)
+  // lookups, so a separate @@index is redundant.
+  @@unique([userId, weekStart, dayOfWeek, mealType])
+}
+
+model MealIngredient {
+  id       String @id @default(cuid())
+  mealId   String
+  name     String
+  quantity String
+  category String @default("other")
+  order    Int    @default(0)
+
+  meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  @@index([mealId])
+}
+
+model GroceryList {
+  id        String   @id @default(cuid())
+  userId    String
+  weekStart DateTime
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items GroceryListItem[]
+
+  // One list per user per week. The unique index also serves the
+  // (userId, weekStart) lookup, so no additional @@index is needed.
+  @@unique([userId, weekStart])
+}
+
+model GroceryListItem {
+  id        String   @id @default(cuid())
+  listId    String
+  name      String
+  quantity  String
+  category  String   @default("other")
+  isChecked Boolean  @default(false)
+  mealId    String? // Plain id; the source meal may have been deleted
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  list GroceryList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@index([listId, category])
+}
+
+model SavedMeal {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  type       MealType
+  servings   Int       @default(4)
+  recipeId   String?
+  isFavorite Boolean   @default(false)
+  useCount   Int       @default(0)
+  // Nullable + no default: a never-used meal is distinguishable from one
+  // that was used at insertion time. Set explicitly when the meal lands
+  // on a plan.
+  lastUsed   DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isFavorite])
+  @@index([userId, lastUsed])
+}
+
+model MealTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @db.Text
+  meals       Json // TemplateMeal[] - 28 entries (7 days x 4 meal types)
+  isPublic    Boolean  @default(false)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([isPublic])
 }
