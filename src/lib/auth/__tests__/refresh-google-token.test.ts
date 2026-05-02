@@ -9,7 +9,10 @@
  * failures are retried instead of bubbling to the caller.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { refreshGoogleAccessToken } from "../refresh-google-token";
+import {
+  GoogleTokenRefreshError,
+  refreshGoogleAccessToken,
+} from "../refresh-google-token";
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -74,7 +77,7 @@ describe("refreshGoogleAccessToken", () => {
     });
   });
 
-  it("throws the parsed error body on a 4xx response (non-transient, no retry)", async () => {
+  it("throws GoogleTokenRefreshError on 400 invalid_grant (non-transient, no retry)", async () => {
     const errorBody = {
       error: "invalid_grant",
       error_description: "Token has been expired or revoked.",
@@ -83,7 +86,27 @@ describe("refreshGoogleAccessToken", () => {
 
     await expect(
       refreshGoogleAccessToken("revoked-rt", "cid", "sec")
-    ).rejects.toEqual(errorBody);
+    ).rejects.toMatchObject({
+      name: "GoogleTokenRefreshError",
+      status: 400,
+      body: errorBody,
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws GoogleTokenRefreshError on 401 invalid_client without retrying", async () => {
+    // 401 is non-transient per `isTransientHttpError` — locking this in
+    // prevents a regression that would hammer Google with retries against
+    // a revoked grant.
+    const errorBody = {
+      error: "invalid_client",
+      error_description: "The OAuth client was not found.",
+    };
+    mockFetch.mockResolvedValue(jsonResponse(errorBody, { status: 401 }));
+
+    await expect(
+      refreshGoogleAccessToken("rt", "wrong-client", "sec")
+    ).rejects.toBeInstanceOf(GoogleTokenRefreshError);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 

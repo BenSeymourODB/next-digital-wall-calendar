@@ -5,9 +5,10 @@
  * `fetch` call is a discrete, testable surface — and so the call site can
  * pick up `fetchWithRetry`'s transient-failure handling (#217). Behaviour is
  * unchanged for callers: tokens come back on success, the parsed error
- * envelope is thrown on a non-OK response, and Google's "no new refresh
- * token" rotation policy is left untouched (callers fall back to the
- * existing plaintext refresh token).
+ * envelope is thrown on a non-OK response (wrapped in
+ * {@link GoogleTokenRefreshError} so the upstream HTTP status survives),
+ * and Google's "no new refresh token" rotation policy is left untouched
+ * (callers fall back to the existing plaintext refresh token).
  */
 import { fetchWithRetry } from "@/lib/http/retry";
 
@@ -19,15 +20,34 @@ export interface GoogleRefreshedTokens {
   expires_in: number;
   /** Google only returns a new refresh_token on first consent or revocation. */
   refresh_token?: string;
+  scope?: string;
+  token_type?: string;
+}
+
+/**
+ * Thrown by {@link refreshGoogleAccessToken} on a non-OK response from
+ * Google's token endpoint. Carries both the upstream status (so server-side
+ * routes can forward it to clients) and the parsed JSON body (so callers
+ * can branch on `error: "invalid_grant"` etc. without re-reading the body).
+ */
+export class GoogleTokenRefreshError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(status: number, body: unknown) {
+    super(`Google token refresh failed: HTTP ${status}`);
+    this.name = "GoogleTokenRefreshError";
+    this.status = status;
+    this.body = body;
+  }
 }
 
 /**
  * Exchange a long-lived refresh token for a fresh access token.
  *
- * Throws the parsed error body (matching the legacy `tokensOrError` throw
- * shape the session callback already catches) on a non-OK response.
- * Transient 5xx / 429 / network failures are retried by `fetchWithRetry`
- * before reaching this throw.
+ * Throws {@link GoogleTokenRefreshError} on non-OK responses; transient
+ * 5xx / 429 / network failures are retried by {@link fetchWithRetry} before
+ * reaching the throw.
  */
 export async function refreshGoogleAccessToken(
   refreshToken: string,
@@ -50,7 +70,7 @@ export async function refreshGoogleAccessToken(
   const tokensOrError = await response.json();
 
   if (!response.ok) {
-    throw tokensOrError;
+    throw new GoogleTokenRefreshError(response.status, tokensOrError);
   }
 
   return tokensOrError as GoogleRefreshedTokens;
