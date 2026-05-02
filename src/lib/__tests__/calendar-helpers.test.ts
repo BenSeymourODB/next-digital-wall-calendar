@@ -354,6 +354,62 @@ describe("getEventsForWeek", () => {
     const result = getEventsForWeek(events, new Date(2024, 2, 13));
     expect(result.length).toBe(2);
   });
+
+  it("includes Saturday-afternoon events on the last day of the week (regression: #201)", () => {
+    // Week of Sun Mar 10 – Sat Mar 16, 2024 (WEEK_STARTS_ON = 0).
+    // Events at every hour of Saturday should be included; the previous
+    // implementation used `weekDates[6]` (start-of-Saturday) as the upper
+    // bound and silently dropped anything after Saturday 00:00:00.
+    const saturdayAfternoon = createMockEvent({
+      id: "sat-afternoon",
+      startDate: "2024-03-16T14:00:00",
+      endDate: "2024-03-16T15:00:00",
+    });
+    const saturdayLateNight = createMockEvent({
+      id: "sat-late",
+      startDate: "2024-03-16T23:30:00",
+      endDate: "2024-03-16T23:59:00",
+    });
+    const saturdayMorning = createMockEvent({
+      id: "sat-morning",
+      startDate: "2024-03-16T08:00:00",
+      endDate: "2024-03-16T09:00:00",
+    });
+
+    const result = getEventsForWeek(
+      [saturdayMorning, saturdayAfternoon, saturdayLateNight],
+      new Date(2024, 2, 13)
+    );
+    const ids = result.map((e) => e.id).sort();
+    expect(ids).toEqual(["sat-afternoon", "sat-late", "sat-morning"]);
+  });
+
+  it("excludes events that start on Sunday of the next week", () => {
+    // Boundary check the other direction: the next week starts at
+    // Sun Mar 17 00:00:00 and should NOT be included in the prior week.
+    const nextSundayMidnight = createMockEvent({
+      id: "next-sun",
+      startDate: "2024-03-17T00:00:00",
+      endDate: "2024-03-17T01:00:00",
+    });
+    const result = getEventsForWeek(
+      [nextSundayMidnight],
+      new Date(2024, 2, 13)
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("excludes events fully before the week (Saturday of the prior week)", () => {
+    // Week prior runs Sun Mar 3 – Sat Mar 9, 2024. An event at Sat Mar 9
+    // 23:30 is in the prior week and should not leak into Mar 10–16.
+    const priorSaturdayLate = createMockEvent({
+      id: "prior-sat",
+      startDate: "2024-03-09T23:30:00",
+      endDate: "2024-03-09T23:59:00",
+    });
+    const result = getEventsForWeek([priorSaturdayLate], new Date(2024, 2, 13));
+    expect(result).toEqual([]);
+  });
 });
 
 describe("getEventsForMonth", () => {

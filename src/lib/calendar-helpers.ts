@@ -13,6 +13,7 @@ import {
   differenceInDays,
   differenceInMinutes,
   eachDayOfInterval,
+  endOfDay,
   endOfMonth,
   endOfWeek,
   endOfYear,
@@ -356,7 +357,11 @@ export const getWeekDates = (date: Date): Date[] => {
 export const getEventsForWeek = (events: IEvent[], date: Date): IEvent[] => {
   const weekDates = getWeekDates(date);
   const startOfWeekDate = weekDates[0];
-  const endOfWeekDate = weekDates[6];
+  // Use end-of-day so Saturday-afternoon events on the last day of the
+  // week are included. `weekDates[6]` is start-of-Saturday (00:00:00),
+  // which would silently exclude anything later that day. Mirrors the
+  // semantics of `getEventsForMonth`/`getEventsForYear`.
+  const endOfWeekDate = endOfDay(weekDates[6]);
 
   return events.filter((event) => {
     const eventStart = parseISO(event.startDate);
