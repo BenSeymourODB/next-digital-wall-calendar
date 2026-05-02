@@ -1,0 +1,372 @@
+/**
+ * Tests for NewTaskModal component
+ */
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NewTaskModal } from "../new-task-modal";
+import type { GoogleTask, TaskListSelection } from "../types";
+// Import after mocking
+import { useCreateTask } from "../use-create-task";
+
+vi.mock("../use-create-task", () => ({
+  useCreateTask: vi.fn(),
+}));
+
+const mockUseCreateTask = vi.mocked(useCreateTask);
+
+const sampleTask: GoogleTask = {
+  id: "new-task-1",
+  title: "Buy milk",
+  status: "needsAction",
+  updated: "2024-06-14T00:00:00Z",
+  position: "00000000000000000000",
+};
+
+const lists: TaskListSelection[] = [
+  { listId: "list-1", listTitle: "Groceries", color: "#ef4444", enabled: true },
+  { listId: "list-2", listTitle: "Work", color: "#3b82f6", enabled: true },
+];
+
+describe("NewTaskModal", () => {
+  const mockOnOpenChange = vi.fn();
+  const mockOnSuccess = vi.fn();
+  const mockCreateTask = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseCreateTask.mockReturnValue({
+      createTask: mockCreateTask,
+      loading: false,
+      error: null,
+    });
+    mockCreateTask.mockResolvedValue(sampleTask);
+  });
+
+  describe("rendering", () => {
+    it("does not render when closed", () => {
+      render(
+        <NewTaskModal
+          open={false}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+        />
+      );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("renders the dialog with all form fields when open", () => {
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+        />
+      );
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: /add new task/i })
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^list/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/due date/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/notes/i)).toBeInTheDocument();
+    });
+
+    it("shows all available lists in the list dropdown", () => {
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+        />
+      );
+      const select = screen.getByLabelText(/^list/i) as HTMLSelectElement;
+      const options = Array.from(select.options).map((o) => o.textContent);
+      expect(options).toContain("Groceries");
+      expect(options).toContain("Work");
+    });
+  });
+
+  describe("smart defaults", () => {
+    it("pre-selects the supplied defaultListId", () => {
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-2"
+        />
+      );
+      const select = screen.getByLabelText(/^list/i) as HTMLSelectElement;
+      expect(select.value).toBe("list-2");
+    });
+
+    it("leaves the list unselected when no default is provided", () => {
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+        />
+      );
+      const select = screen.getByLabelText(/^list/i) as HTMLSelectElement;
+      expect(select.value).toBe("");
+    });
+  });
+
+  describe("validation", () => {
+    it("shows an inline error when submitting with an empty title", async () => {
+      const user = userEvent.setup();
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /add task/i }));
+
+      expect(screen.getByText(/title is required/i)).toBeInTheDocument();
+      expect(mockCreateTask).not.toHaveBeenCalled();
+    });
+
+    it("shows an inline error when submitting without selecting a list", async () => {
+      const user = userEvent.setup();
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+        />
+      );
+
+      await user.type(screen.getByLabelText(/title/i), "Buy milk");
+      await user.click(screen.getByRole("button", { name: /add task/i }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /please select a list/i
+      );
+      expect(mockCreateTask).not.toHaveBeenCalled();
+    });
+
+    it("clears the title error once the user types into the field", async () => {
+      const user = userEvent.setup();
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /add task/i }));
+      expect(screen.getByText(/title is required/i)).toBeInTheDocument();
+
+      await user.type(screen.getByLabelText(/title/i), "Buy milk");
+
+      expect(screen.queryByText(/title is required/i)).not.toBeInTheDocument();
+    });
+
+    it("treats whitespace-only titles as empty", async () => {
+      const user = userEvent.setup();
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      await user.type(screen.getByLabelText(/title/i), "   ");
+      await user.click(screen.getByRole("button", { name: /add task/i }));
+
+      expect(screen.getByText(/title is required/i)).toBeInTheDocument();
+      expect(mockCreateTask).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("submission", () => {
+    it("calls createTask with the trimmed title and selected list", async () => {
+      const user = userEvent.setup();
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      await user.type(screen.getByLabelText(/title/i), "  Buy milk  ");
+      await user.click(screen.getByRole("button", { name: /add task/i }));
+
+      await waitFor(() => {
+        expect(mockCreateTask).toHaveBeenCalledWith({
+          listId: "list-1",
+          title: "Buy milk",
+        });
+      });
+    });
+
+    it("includes due date and notes when provided", async () => {
+      const user = userEvent.setup();
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      await user.type(screen.getByLabelText(/title/i), "Buy milk");
+      await user.type(screen.getByLabelText(/due date/i), "2026-05-10");
+      await user.type(screen.getByLabelText(/notes/i), "Whole milk");
+      await user.click(screen.getByRole("button", { name: /add task/i }));
+
+      await waitFor(() => {
+        expect(mockCreateTask).toHaveBeenCalledWith(
+          expect.objectContaining({
+            listId: "list-1",
+            title: "Buy milk",
+            due: expect.stringMatching(/^2026-05-10/),
+            notes: "Whole milk",
+          })
+        );
+      });
+    });
+
+    it("invokes onSuccess and closes the modal on success", async () => {
+      const user = userEvent.setup();
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          onSuccess={mockOnSuccess}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      await user.type(screen.getByLabelText(/title/i), "Buy milk");
+      await user.click(screen.getByRole("button", { name: /add task/i }));
+
+      await waitFor(() => {
+        expect(mockOnSuccess).toHaveBeenCalledWith(sampleTask);
+      });
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it("keeps the modal open and shows the error when the API rejects", async () => {
+      const user = userEvent.setup();
+      mockCreateTask.mockRejectedValueOnce(new Error("Server unavailable"));
+      mockUseCreateTask.mockReturnValue({
+        createTask: mockCreateTask,
+        loading: false,
+        error: new Error("Server unavailable"),
+      });
+
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          onSuccess={mockOnSuccess}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      await user.type(screen.getByLabelText(/title/i), "Buy milk");
+      await user.click(screen.getByRole("button", { name: /add task/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/server unavailable/i)).toBeInTheDocument();
+      });
+      expect(mockOnSuccess).not.toHaveBeenCalled();
+      expect(mockOnOpenChange).not.toHaveBeenCalledWith(false);
+    });
+
+    it("disables the submit button while loading", () => {
+      mockUseCreateTask.mockReturnValue({
+        createTask: mockCreateTask,
+        loading: true,
+        error: null,
+      });
+
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      expect(screen.getByRole("button", { name: /adding/i })).toBeDisabled();
+    });
+  });
+
+  describe("cancel", () => {
+    it("closes without calling createTask when Cancel is clicked", async () => {
+      const user = userEvent.setup();
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      await user.type(screen.getByLabelText(/title/i), "Buy milk");
+      await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+      expect(mockCreateTask).not.toHaveBeenCalled();
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe("form reset", () => {
+    it("resets the form when the dialog reopens", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      await user.type(screen.getByLabelText(/title/i), "Draft");
+      expect(screen.getByLabelText(/title/i)).toHaveValue("Draft");
+
+      // Close
+      rerender(
+        <NewTaskModal
+          open={false}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      // Reopen
+      rerender(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      expect(screen.getByLabelText(/title/i)).toHaveValue("");
+    });
+  });
+});
