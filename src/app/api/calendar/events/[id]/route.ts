@@ -76,7 +76,6 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
       },
     });
 
@@ -109,6 +108,11 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     }
 
     if (response.status === 403) {
+      logger.error(new Error("Google denied delete on calendar (403)"), {
+        userId: session.user.id,
+        calendarId,
+        eventId,
+      });
       return NextResponse.json(
         {
           error:

@@ -102,11 +102,11 @@ export function EventDetailModal({
     setIsDeleting(true);
     try {
       await onDelete(event);
-      setConfirmingDelete(false);
+      // onClose unmounts the modal; no need to reset confirmingDelete first.
       onClose();
     } catch {
-      // Caller surfaces the toast; keep the modal open so the user sees
-      // the event still present and can retry.
+      // Caller surfaces the toast; keep the detail modal open so the user
+      // sees the event still present and can retry.
       setConfirmingDelete(false);
     } finally {
       setIsDeleting(false);

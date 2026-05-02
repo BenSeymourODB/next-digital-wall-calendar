@@ -587,5 +587,93 @@ describe("CalendarProvider", () => {
         expect(screen.getByText("evt-1")).toBeInTheDocument();
       });
     });
+
+    it("rollback after failure preserves any concurrent additions to the list", async () => {
+      // Hold the DELETE response open so we can mutate the list mid-flight.
+      let rejectDelete: ((reason: Error) => void) | undefined;
+      const deletePromise = new Promise<Response>((_, reject) => {
+        rejectDelete = (err) => reject(err);
+      });
+
+      function ConcurrentProbe() {
+        const { events, deleteEvent, addEvent } = useCalendar();
+        return (
+          <div>
+            <ul data-testid="concurrent-events">
+              {events.map((e) => (
+                <li key={e.id}>{e.title}</li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => {
+                // Don't await — the request is held by the test.
+                deleteEvent("evt-1", "primary").catch(() => {
+                  /* expected */
+                });
+              }}
+            >
+              start-delete
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                // Simulate a refresh landing while delete is in-flight.
+                addEvent({
+                  id: "fresh-evt",
+                  title: "fresh-evt",
+                  startDate: new Date().toISOString(),
+                  endDate: new Date().toISOString(),
+                  color: "blue",
+                  description: "",
+                  isAllDay: false,
+                  calendarId: "primary",
+                  user: { id: "u1", name: "Alice", picturePath: null },
+                })
+              }
+            >
+              add-fresh
+            </button>
+          </div>
+        );
+      }
+
+      seedFetch(() => deletePromise);
+
+      render(
+        <CalendarProvider>
+          <ConcurrentProbe />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("evt-1")).toBeInTheDocument();
+        expect(screen.getByText("evt-2")).toBeInTheDocument();
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByText("start-delete"));
+
+      // evt-1 vanishes optimistically while DELETE is held open.
+      await waitFor(() => {
+        expect(screen.queryByText("evt-1")).not.toBeInTheDocument();
+      });
+
+      // A "refresh" lands while the DELETE is in-flight.
+      await user.click(screen.getByText("add-fresh"));
+      await waitFor(() => {
+        expect(screen.getByText("fresh-evt")).toBeInTheDocument();
+      });
+
+      // Now fail the DELETE — rollback must restore evt-1 *without*
+      // dropping the fresh event the concurrent update added.
+      rejectDelete?.(new Error("boom"));
+
+      await waitFor(() => {
+        expect(screen.getByText("evt-1")).toBeInTheDocument();
+      });
+      expect(screen.getByText("fresh-evt")).toBeInTheDocument();
+      expect(screen.getByText("evt-2")).toBeInTheDocument();
+    });
   });
 });

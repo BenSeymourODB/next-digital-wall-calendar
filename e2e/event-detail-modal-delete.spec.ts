@@ -12,7 +12,10 @@ import { expect, test } from "@playwright/test";
  * covered by the route unit tests.
  */
 
-test.use({ video: "on" });
+// Keep video only when something fails so green CI runs don't churn out
+// gigabytes of useless artifacts. CLAUDE.md forbids committing them either way,
+// but this also keeps the local test-results dir lean.
+test.use({ video: "retain-on-failure" });
 
 test.describe("EventDetailModal — delete (#115)", () => {
   test("clicking 'Delete event' and confirming removes the event from the calendar", async ({
