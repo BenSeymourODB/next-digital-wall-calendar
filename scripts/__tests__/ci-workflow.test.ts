@@ -1,16 +1,23 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const WORKFLOW_PATH = path.resolve(
   __dirname,
   "../../.github/workflows/main_nextjs-template-build.yml"
 );
 
-const workflow = readFileSync(WORKFLOW_PATH, "utf-8");
+let workflow: string;
 
+beforeAll(() => {
+  workflow = readFileSync(WORKFLOW_PATH, "utf-8");
+});
+
+// Match `- name: <name>` only when followed by a newline so step names that
+// are prefixes of other step names (e.g. "Test" vs "Test coverage", "Build"
+// vs "Build and cache") cannot false-positive on each other.
 function indexOfStep(name: string): number {
-  return workflow.indexOf(`- name: ${name}`);
+  return workflow.indexOf(`- name: ${name}\n`);
 }
 
 describe("CI workflow (main_nextjs-template-build.yml)", () => {
