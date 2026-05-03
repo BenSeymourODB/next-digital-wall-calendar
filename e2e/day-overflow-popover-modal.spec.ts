@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 
 /**
  * E2E for issue #209 — clicking an event card inside the day-overflow
@@ -14,7 +14,21 @@ import { expect, test } from "@playwright/test";
 
 test.use({ video: "on" });
 
-const dayKey = new Date().toISOString().slice(0, 10);
+/**
+ * The popover trigger's data-testid is keyed off `format(day, "yyyy-MM-dd")`
+ * which uses the browser's local clock, and the overflow fixture's events
+ * are seeded with `new Date()` + `setHours()` (also local). Computing the
+ * same key in Node (e.g. `new Date().toISOString().slice(0, 10)`) is UTC
+ * and would diverge from the browser by one day in any timezone west of
+ * GMT during the post-midnight-UTC / pre-midnight-local window — so we
+ * derive it from the browser per test.
+ */
+async function getTodayDayKey(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+}
 
 test.describe("Day overflow popover → EventDetailModal (#209)", () => {
   test.beforeEach(async ({ page }) => {
@@ -29,6 +43,7 @@ test.describe("Day overflow popover → EventDetailModal (#209)", () => {
   test("clicking a popover event card opens the modal with that event", async ({
     page,
   }) => {
+    const dayKey = await getTodayDayKey(page);
     const trigger = page.getByTestId(`day-overflow-trigger-${dayKey}`);
     await expect(trigger).toBeVisible();
 
@@ -57,13 +72,15 @@ test.describe("Day overflow popover → EventDetailModal (#209)", () => {
   test("popover event cards are keyboard activatable with Enter", async ({
     page,
   }) => {
+    const dayKey = await getTodayDayKey(page);
     const trigger = page.getByTestId(`day-overflow-trigger-${dayKey}`);
-    await trigger.focus();
-    await page.keyboard.press("Enter");
+    // Open the popover via a real click (scripted .focus() is unreliable
+    // on WebKit for buttons); reserve keyboard activation for the in-popover
+    // card, which is the path under test.
+    await trigger.click();
 
-    await expect(
-      page.getByTestId(`day-events-popover-${dayKey}`)
-    ).toBeVisible();
+    const popover = page.getByTestId(`day-events-popover-${dayKey}`);
+    await expect(popover).toBeVisible();
 
     const card = page.getByTestId("day-events-popover-event-overflow-3");
     await card.focus();
@@ -73,11 +90,17 @@ test.describe("Day overflow popover → EventDetailModal (#209)", () => {
     await expect(
       page.getByRole("dialog").getByRole("heading", { name: "Event 4" })
     ).toBeVisible();
+
+    // Match the click test's contract: the popover dismisses when the
+    // dialog grabs focus, so a future regression that breaks Radix focus
+    // handoff fails this test on the keyboard path too.
+    await expect(popover).not.toBeAttached();
   });
 
   test("closing the modal restores focus to the +N more trigger", async ({
     page,
   }) => {
+    const dayKey = await getTodayDayKey(page);
     const trigger = page.getByTestId(`day-overflow-trigger-${dayKey}`);
     await trigger.click();
     await expect(
