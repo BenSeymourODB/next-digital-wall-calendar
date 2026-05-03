@@ -9,7 +9,7 @@ import {
   getEventTimePosition,
 } from "@/lib/calendar-helpers";
 import type { IEvent, TEventColor } from "@/types/calendar";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   addDays,
   endOfDay,
@@ -25,6 +25,10 @@ import { AgendaList } from "./AgendaList";
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 48;
 const TIME_GRID_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
+// Hour the time grid scrolls to on mount so working-hours events are
+// immediately visible without a manual scroll. (#214)
+const WORKING_HOURS_START_HOUR = 7;
+const INITIAL_SCROLL_TOP_PX = WORKING_HOURS_START_HOUR * HOUR_HEIGHT_PX;
 
 const today = startOfDay(new Date());
 
@@ -253,6 +257,17 @@ function DayGridView({
   use24HourFormat,
   isLoading,
 }: DayGridViewProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll the time grid to the start of working hours on mount so
+  // morning events are immediately visible. useLayoutEffect runs
+  // synchronously before paint, avoiding a visible flash from 00:00.
+  useLayoutEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = INITIAL_SCROLL_TOP_PX;
+    }
+  }, []);
+
   return (
     <>
       {allDayEvents.length > 0 && (
@@ -300,6 +315,7 @@ function DayGridView({
       )}
 
       <div
+        ref={scrollContainerRef}
         className="border-border bg-card relative max-h-[calc(100vh-280px)] overflow-y-auto rounded-lg border"
         data-testid="day-calendar-grid"
         role="grid"

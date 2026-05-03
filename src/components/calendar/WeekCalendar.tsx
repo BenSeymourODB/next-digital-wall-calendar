@@ -14,7 +14,7 @@ import {
   getWeekDates,
 } from "@/lib/calendar-helpers";
 import type { IEvent, TEventColor } from "@/types/calendar";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   addWeeks,
   differenceInCalendarDays,
@@ -36,6 +36,10 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 40;
 const TIME_GRID_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
 const BAR_ROW_HEIGHT_PX = 22;
+// Hour the time grid scrolls to on mount so working-hours events are
+// immediately visible without a manual scroll. (#214)
+const WORKING_HOURS_START_HOUR = 7;
+const INITIAL_SCROLL_TOP_PX = WORKING_HOURS_START_HOUR * HOUR_HEIGHT_PX;
 
 const today = startOfDay(new Date());
 
@@ -135,6 +139,17 @@ export function WeekCalendar() {
   const previousWeek = () => setSelectedDate(subWeeks(selectedDate, 1));
   const nextWeek = () => setSelectedDate(addWeeks(selectedDate, 1));
   const goToToday = () => setSelectedDate(new Date());
+
+  // Scroll the time grid to the start of working hours when the grid
+  // mounts so morning events are immediately visible. Re-runs when
+  // agendaMode toggles back to false so re-entering the grid view also
+  // lands on working hours.
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!agendaMode && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = INITIAL_SCROLL_TOP_PX;
+    }
+  }, [agendaMode]);
 
   // Split into multi-day vs single-day timed events.
   const multiDayEvents = weekEvents.filter(isMultiDayEvent);
@@ -303,7 +318,11 @@ export function WeekCalendar() {
             </div>
           )}
 
-          <div className="relative flex max-h-[calc(100vh-320px)] overflow-y-auto">
+          <div
+            ref={scrollContainerRef}
+            data-testid="week-calendar-grid-scroll"
+            className="relative flex max-h-[calc(100vh-320px)] overflow-y-auto"
+          >
             <div
               className="w-12 shrink-0"
               style={{ height: `${TIME_GRID_HEIGHT_PX}px` }}
