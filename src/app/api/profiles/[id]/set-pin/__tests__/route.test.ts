@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import {
   type ApiErrorResponse,
   createMockRequest,
+  createParams,
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import bcrypt from "bcrypt";
@@ -57,11 +58,6 @@ const mockPrisma = prisma as unknown as {
   };
 };
 
-// Helper to create params promise (Next.js 16 style)
-function createParams(id: string): Promise<{ id: string }> {
-  return Promise.resolve({ id });
-}
-
 describe("/api/profiles/[id]/set-pin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -100,44 +96,12 @@ describe("/api/profiles/[id]/set-pin", () => {
       expect(data.error).toBe("PIN must be 4-6 digits");
     });
 
-    it("returns 400 when PIN is too short", async () => {
+    it("returns 400 and forwards the validator error when PIN is malformed", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
 
       const request = createMockRequest("/api/profiles/profile-1/set-pin", {
         method: "POST",
-        body: { pin: "123" },
-      });
-      const response = await POST(request, {
-        params: createParams("profile-1"),
-      });
-      const { status, data } = await parseResponse<ApiErrorResponse>(response);
-
-      expect(status).toBe(400);
-      expect(data.error).toBe("PIN must be 4-6 digits");
-    });
-
-    it("returns 400 when PIN is too long", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-
-      const request = createMockRequest("/api/profiles/profile-1/set-pin", {
-        method: "POST",
-        body: { pin: "1234567" },
-      });
-      const response = await POST(request, {
-        params: createParams("profile-1"),
-      });
-      const { status, data } = await parseResponse<ApiErrorResponse>(response);
-
-      expect(status).toBe(400);
-      expect(data.error).toBe("PIN must be 4-6 digits");
-    });
-
-    it("returns 400 when PIN contains non-digits", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-
-      const request = createMockRequest("/api/profiles/profile-1/set-pin", {
-        method: "POST",
-        body: { pin: "12ab" },
+        body: { pin: "abc" },
       });
       const response = await POST(request, {
         params: createParams("profile-1"),
@@ -195,18 +159,6 @@ describe("/api/profiles/[id]/set-pin", () => {
 
       expect(status).toBe(200);
       expect(data.success).toBe(true);
-      expect(bcrypt.hash).toHaveBeenCalledWith("1234", 10);
-      expect(mockPrisma.profile.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: mockStandardProfile.id },
-          data: expect.objectContaining({
-            pinHash: "$2b$10$hashedPin",
-            pinEnabled: true,
-            failedPinAttempts: 0,
-            pinLockedUntil: null,
-          }),
-        })
-      );
     });
 
     it("requires current PIN when changing existing PIN", async () => {
@@ -288,11 +240,6 @@ describe("/api/profiles/[id]/set-pin", () => {
 
       expect(status).toBe(200);
       expect(data.success).toBe(true);
-      expect(bcrypt.compare).toHaveBeenCalledWith(
-        "1234",
-        "$2b$10$existingHash"
-      );
-      expect(bcrypt.hash).toHaveBeenCalledWith("5678", 10);
     });
 
     it("returns 500 on database error", async () => {

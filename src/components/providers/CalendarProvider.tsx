@@ -1,11 +1,11 @@
 "use client";
 
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import {
   type CalendarColorMapping,
   eventCache,
   loadColorMappings,
-  loadSettings,
   saveColorMappings,
 } from "@/lib/calendar-storage";
 import { transformGoogleEvent } from "@/lib/calendar-transform";
@@ -16,6 +16,7 @@ import type {
   IUser,
   TCalendarView,
   TEventColor,
+  TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
 import {
@@ -41,10 +42,19 @@ export interface ICalendarContext {
   selectedDate: Date;
   view: TCalendarView;
   setView: (view: TCalendarView) => void;
+  /**
+   * Whether the active Day or Week view renders as a chronological agenda
+   * list instead of the hourly time-grid. Has no effect on month/year/clock.
+   * Issue #150.
+   */
+  agendaMode: boolean;
+  setAgendaMode: (enabled: boolean) => void;
   agendaModeGroupBy: "date" | "color";
   setAgendaModeGroupBy: (groupBy: "date" | "color") => void;
   use24HourFormat: boolean;
   toggleTimeFormat: () => void;
+  weekStartDay: TWeekStartDay;
+  setWeekStartDay: (day: TWeekStartDay) => void;
   setSelectedDate: (date: Date | undefined) => void;
   selectedUserId: IUser["id"] | "all";
   setSelectedUserId: (userId: IUser["id"] | "all") => void;
@@ -58,25 +68,59 @@ export interface ICalendarContext {
   addEvent: (event: IEvent) => void;
   updateEvent: (event: IEvent) => void;
   removeEvent: (eventId: string) => void;
+  /**
+   * Delete an event from Google Calendar with an optimistic UI remove.
+   * Snapshots the prior list before removing and restores it on failure.
+   * The promise rejects on failure so the caller can surface a toast.
+   */
+  deleteEvent: (eventId: string, calendarId: string) => Promise<void>;
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
   isLoading: boolean;
   isAuthenticated: boolean;
+  maxEventsPerDay: number;
 }
 
 interface CalendarSettings {
   badgeVariant: "dot" | "colored";
   view: TCalendarView;
   use24HourFormat: boolean;
+  agendaMode: boolean;
   agendaModeGroupBy: "date" | "color";
+  weekStartDay: TWeekStartDay;
 }
 
 const DEFAULT_SETTINGS: CalendarSettings = {
   badgeVariant: "colored",
   view: "month",
   use24HourFormat: true,
+  agendaMode: false,
   agendaModeGroupBy: "date",
+  weekStartDay: 0,
 };
+
+/**
+ * Loose shape used during boot: localStorage may hold a pre-#150 payload
+ * where `view` was the now-removed `"agenda"` literal.
+ */
+type LegacyCalendarSettings = Omit<Partial<CalendarSettings>, "view"> & {
+  view?: TCalendarView | "agenda";
+};
+
+/**
+ * Migrate legacy persisted state. Pre-#150, "agenda" was a peer view; it's
+ * now a sub-toggle that only applies inside Day and Week. Treat any stored
+ * "agenda" value as `view: "day", agendaMode: true` so existing users land
+ * in the closest equivalent surface instead of an undefined view.
+ */
+function migrateLegacySettings(
+  raw: LegacyCalendarSettings
+): Partial<CalendarSettings> {
+  if (raw.view === "agenda") {
+    return { ...raw, view: "day", agendaMode: true };
+  }
+  return raw as Partial<CalendarSettings>;
+}
 
 export const CalendarContext = createContext({} as ICalendarContext);
 
@@ -101,27 +145,54 @@ export function CalendarProvider({
   const { data: session, status } = useSession();
   const isAuthenticated = status === "authenticated";
 
-  const [settings, setSettings] = useLocalStorage<CalendarSettings>(
+  // User-configurable data-loading settings (fetched from server when authed,
+  // falls back to defaults otherwise). Powers auto-refresh interval and
+  // fetch-window sizing for refreshEvents.
+  const { settings: userSettings } = useUserSettings();
+
+  // Cast through unknown so the legacy `"agenda"` literal can flow through
+  // the hook even though it's no longer part of TCalendarView (#150).
+  const [rawSettings, setSettings] = useLocalStorage<LegacyCalendarSettings>(
     "calendar-settings",
     {
       ...DEFAULT_SETTINGS,
       badgeVariant: badge,
       view: view,
-    }
+    } as unknown as LegacyCalendarSettings
   );
+  const settings = migrateLegacySettings(rawSettings) as CalendarSettings;
+
+  // Flush the migrated payload back to localStorage so the legacy value is
+  // overwritten on the first render after a #150 upgrade. Subsequent loads
+  // see the new shape directly and skip the migration branch.
+  const rawView = rawSettings.view;
+  useEffect(() => {
+    if (rawView === "agenda") {
+      setSettings(
+        (prev) =>
+          migrateLegacySettings(prev) as unknown as LegacyCalendarSettings
+      );
+    }
+  }, [rawView, setSettings]);
 
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
-    settings.badgeVariant
+    settings.badgeVariant ?? DEFAULT_SETTINGS.badgeVariant
   );
   const [currentView, setCurrentViewState] = useState<TCalendarView>(
-    settings.view
+    settings.view ?? DEFAULT_SETTINGS.view
   );
   const [use24HourFormat, setUse24HourFormatState] = useState<boolean>(
-    settings.use24HourFormat
+    settings.use24HourFormat ?? DEFAULT_SETTINGS.use24HourFormat
+  );
+  const [agendaMode, setAgendaModeState] = useState<boolean>(
+    settings.agendaMode ?? DEFAULT_SETTINGS.agendaMode
   );
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
-  >(settings.agendaModeGroupBy);
+  >(settings.agendaModeGroupBy ?? DEFAULT_SETTINGS.agendaModeGroupBy);
+  const [weekStartDay, setWeekStartDayState] = useState<TWeekStartDay>(
+    settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay
+  );
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
@@ -143,10 +214,10 @@ export function CalendarProvider({
   const isLoadingRangeRef = useRef(false);
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
-    setSettings({
-      ...settings,
+    setSettings((prev) => ({
+      ...prev,
       ...newPartialSettings,
-    });
+    }));
   };
 
   const setBadgeVariant = (variant: "dot" | "colored") => {
@@ -159,6 +230,11 @@ export function CalendarProvider({
     updateSettings({ view });
   };
 
+  const setAgendaMode = (enabled: boolean) => {
+    setAgendaModeState(enabled);
+    updateSettings({ agendaMode: enabled });
+  };
+
   const toggleTimeFormat = () => {
     setUse24HourFormatState(!use24HourFormat);
     updateSettings({ use24HourFormat: !use24HourFormat });
@@ -167,6 +243,11 @@ export function CalendarProvider({
   const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
     setAgendaModeGroupByState(groupBy);
     updateSettings({ agendaModeGroupBy: groupBy });
+  };
+
+  const setWeekStartDay = (day: TWeekStartDay) => {
+    setWeekStartDayState(day);
+    updateSettings({ weekStartDay: day });
   };
 
   const filterEventsBySelectedColors = (color: TEventColor) => {
@@ -194,6 +275,55 @@ export function CalendarProvider({
 
   const removeEvent = (eventId: string) => {
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
+  };
+
+  const deleteEvent = async (eventId: string, calendarId: string) => {
+    // Snapshot the single event being removed so a concurrent
+    // refreshEvents() can update the rest of the list without us clobbering
+    // its result on rollback.
+    let removed: IEvent | undefined;
+    setAllEvents((prev) => {
+      removed = prev.find((e) => e.id === eventId);
+      return prev.filter((e) => e.id !== eventId);
+    });
+
+    try {
+      const url = new URL(
+        `/api/calendar/events/${encodeURIComponent(eventId)}`,
+        window.location.origin
+      );
+      url.searchParams.set("calendarId", calendarId);
+
+      const response = await fetch(url.toString(), { method: "DELETE" });
+
+      if (!response.ok) {
+        let message = "Failed to delete event";
+        try {
+          const body = await response.json();
+          if (typeof body?.error === "string") message = body.error;
+        } catch {
+          // Some failures (e.g. 502 from a proxy) may not have a JSON body.
+        }
+        throw new Error(message);
+      }
+
+      logger.event("CalendarEventDeleted", { eventId, calendarId });
+    } catch (error) {
+      // Rollback by re-adding the single event into whatever list is
+      // current — any concurrent refresh's writes are preserved.
+      setAllEvents((current) => {
+        if (!removed || current.some((e) => e.id === removed!.id)) {
+          return current;
+        }
+        return [...current, removed];
+      });
+      logger.error(error as Error, {
+        context: "deleteEvent",
+        eventId,
+        calendarId,
+      });
+      throw error;
+    }
   };
 
   /**
@@ -305,10 +435,18 @@ export function CalendarProvider({
         }
       }
 
-      // Calculate time range: 1 month ago to 6 months ahead
+      // Calculate time range from user settings (defaults: -1 month, +6 months)
       const now = new Date();
-      const timeMin = new Date(now.getFullYear(), now.getMonth() - 1, 1); // 1 month ago
-      const timeMax = new Date(now.getFullYear(), now.getMonth() + 7, 0); // End of 6 months ahead
+      const timeMin = new Date(
+        now.getFullYear(),
+        now.getMonth() - userSettings.calendarFetchMonthsBehind,
+        1
+      );
+      const timeMax = new Date(
+        now.getFullYear(),
+        now.getMonth() + userSettings.calendarFetchMonthsAhead + 1,
+        0
+      );
 
       // Fetch events from all calendars
       const transformedEvents = await fetchEventsForRange(
@@ -364,6 +502,8 @@ export function CalendarProvider({
     colorMappings,
     fetchCalendarList,
     fetchEventsForRange,
+    userSettings.calendarFetchMonthsAhead,
+    userSettings.calendarFetchMonthsBehind,
   ]);
 
   /**
@@ -500,23 +640,28 @@ export function CalendarProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  // Auto-refresh events based on settings
+  // Keep a ref to the latest refreshEvents so the interval always calls the
+  // current closure (avoids stale state from earlier effect runs).
+  const refreshEventsRef = useRef(refreshEvents);
+  useEffect(() => {
+    refreshEventsRef.current = refreshEvents;
+  }, [refreshEvents]);
+
+  // Auto-refresh events using the user-configurable interval
   useEffect(() => {
     // Only set up refresh interval if authenticated
     if (status !== "authenticated") {
       return;
     }
 
-    const settings = loadSettings();
-    const intervalMs = settings.refreshInterval * 60 * 1000;
+    const intervalMs = userSettings.calendarRefreshIntervalMinutes * 60 * 1000;
 
     const interval = setInterval(() => {
-      refreshEvents();
+      refreshEventsRef.current();
     }, intervalMs);
 
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [status, userSettings.calendarRefreshIntervalMinutes]);
 
   // Filter events
   useEffect(() => {
@@ -555,10 +700,14 @@ export function CalendarProvider({
     selectedDate,
     view: currentView,
     setView,
+    agendaMode,
+    setAgendaMode,
     agendaModeGroupBy,
     setAgendaModeGroupBy,
     use24HourFormat,
     toggleTimeFormat,
+    weekStartDay,
+    setWeekStartDay,
     setSelectedDate: handleSetSelectedDate,
     selectedUserId,
     setSelectedUserId,
@@ -572,10 +721,14 @@ export function CalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    deleteEvent,
     clearFilter,
     refreshEvents,
     isLoading,
     isAuthenticated,
+    // Clamp defensively so a rogue DB write of 0 or a negative number never
+    // collapses every non-empty day into a bare "+N more" label.
+    maxEventsPerDay: Math.max(1, userSettings.calendarMaxEventsPerDay),
   };
 
   return (

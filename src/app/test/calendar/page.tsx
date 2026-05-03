@@ -1,15 +1,23 @@
 "use client";
 
 import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { AnalogClockView } from "@/components/calendar/AnalogClockView";
+import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
+import { CalendarSettingsPanel } from "@/components/calendar/CalendarSettingsPanel";
+import { DayCalendar } from "@/components/calendar/DayCalendar";
+import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
+import { WeekCalendar } from "@/components/calendar/WeekCalendar";
+import { YearCalendar } from "@/components/calendar/YearCalendar";
+import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import {
   MockCalendarProvider,
   useCalendar,
 } from "@/components/providers/MockCalendarProvider";
 import { Button } from "@/components/ui/button";
-import type { IEvent, TEventColor } from "@/types/calendar";
-import { Suspense } from "react";
+import type { IEvent, TCalendarView, TEventColor } from "@/types/calendar";
+import { type ReactNode, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 /**
@@ -204,6 +212,32 @@ const mockEventSets: Record<string, IEvent[]> = {
     })
   ),
 
+  // Multi-day event scenario for week-view spanning bars
+  multiDay: [
+    createMockEvent({
+      id: "trip",
+      title: "Family Trip",
+      startDate: getRelativeDate(1, 0, 0),
+      endDate: getRelativeDate(4, 23, 59),
+      color: "purple",
+    }),
+    createMockEvent({
+      id: "all-day-holiday",
+      title: "Holiday",
+      startDate: getRelativeDate(0, 0, 0),
+      endDate: getRelativeDate(0, 23, 59),
+      color: "red",
+      isAllDay: true,
+    }),
+    createMockEvent({
+      id: "morning-meeting",
+      title: "Morning Standup",
+      startDate: getRelativeDate(0, 9, 0),
+      endDate: getRelativeDate(0, 9, 30),
+      color: "blue",
+    }),
+  ],
+
   // Family calendar scenario
   family: [
     createMockEvent({
@@ -267,16 +301,69 @@ const mockEventSets: Record<string, IEvent[]> = {
   ],
 };
 
-/**
- * Calendar display component that renders based on current view
- */
-function CalendarDisplay() {
-  const { view } = useCalendar();
+function CalendarDisplay({
+  legacyAgenda = false,
+}: {
+  /**
+   * When true, render the search-driven AgendaCalendar (the pre-#150
+   * agenda view). The test page exposes this via `?view=agenda` so existing
+   * E2E specs that exercise the search UX keep working without change. New
+   * agenda-mode behavior (Day / Week chronological list) is reached via
+   * `?view=day&agendaMode=true` instead.
+   */
+  legacyAgenda?: boolean;
+}) {
+  const { view, agendaMode } = useCalendar();
+
+  // Compose a swap key that switches the animation when the user toggles
+  // agenda mode within day/week, so the grid <-> agenda transition gets
+  // the same fade treatment as a primary view change (#150 + #87).
+  const swapKey = legacyAgenda
+    ? "legacy-agenda"
+    : (view === "day" || view === "week") && agendaMode
+      ? `${view}:agenda`
+      : view;
 
   return (
     <div data-testid="calendar-display">
-      {view === "month" && <SimpleCalendar />}
-      {view === "agenda" && <AgendaCalendar />}
+      <AnimatedSwap
+        swapKey={swapKey}
+        type="fade"
+        direction="forward"
+        durationMs={250}
+      >
+        {legacyAgenda ? (
+          <AgendaCalendar />
+        ) : (
+          <>
+            {view === "day" && <DayCalendar />}
+            {view === "week" && <WeekCalendar />}
+            {view === "month" && <SimpleCalendar />}
+            {view === "year" && <YearCalendar />}
+            {view === "clock" && <AnalogClockView />}
+          </>
+        )}
+      </AnimatedSwap>
+    </div>
+  );
+}
+
+/**
+ * Layout that mirrors the production /calendar page: the mini-calendar sidebar
+ * is hidden when the active view is month (where it duplicates the main grid)
+ * and shown on day, week, year, and agenda views. See issue #146.
+ */
+function SidebarAwareLayout({ children }: { children: ReactNode }) {
+  const { view } = useCalendar();
+
+  if (view === "month") {
+    return <div className="grid gap-4">{children}</div>;
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+      {children}
+      <MiniCalendarSidebar />
     </div>
   );
 }
@@ -357,11 +444,19 @@ function TestCalendarContent() {
 
   // Get test configuration from URL params
   const eventSet = searchParams.get("events") || "default";
-  const view = (searchParams.get("view") as "month" | "agenda") || "month";
+  const rawView = searchParams.get("view") ?? "month";
+  // Legacy `view=agenda` (pre-#150) maps to day + agendaMode=true so existing
+  // bookmarks, screenshots, and E2E specs keep working without a hard cutover.
+  const legacyAgenda = rawView === "agenda";
+  const view: TCalendarView = legacyAgenda ? "day" : (rawView as TCalendarView);
+  const agendaModeParam =
+    legacyAgenda || searchParams.get("agendaMode") === "true";
   const loading = searchParams.get("loading") === "true";
   const loadingDelay = parseInt(searchParams.get("loadingDelay") || "0", 10);
   const showControls = searchParams.get("controls") !== "false";
   const use24Hour = searchParams.get("24hour") !== "false";
+  const showSidebar = searchParams.get("sidebar") === "true";
+  const showFilters = searchParams.get("filters") === "true";
 
   // Get events for the specified set
   const events = mockEventSets[eventSet] || mockEventSets.default;
@@ -370,6 +465,7 @@ function TestCalendarContent() {
     <MockCalendarProvider
       initialEvents={events}
       view={view}
+      agendaMode={agendaModeParam}
       isLoading={loading}
       loadingDelay={loadingDelay}
       use24HourFormat={use24Hour}
@@ -386,11 +482,21 @@ function TestCalendarContent() {
 
         {showControls && <TestControls />}
 
-        <div className="mb-4">
-          <ViewSwitcher />
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <ViewSwitcher />
+            <CalendarSettingsPanel />
+          </div>
+          {showFilters ? <CalendarFilterPanel /> : null}
         </div>
 
-        <CalendarDisplay />
+        {showSidebar ? (
+          <SidebarAwareLayout>
+            <CalendarDisplay legacyAgenda={legacyAgenda} />
+          </SidebarAwareLayout>
+        ) : (
+          <CalendarDisplay legacyAgenda={legacyAgenda} />
+        )}
       </div>
     </MockCalendarProvider>
   );
@@ -401,11 +507,13 @@ function TestCalendarContent() {
  *
  * URL Parameters:
  * - events: Event set to use (default, empty, single, colors, overflow, family)
- * - view: Initial view (month, agenda)
+ * - view: Initial view (month, agenda, clock)
  * - loading: Show loading state (true/false)
  * - loadingDelay: Simulate loading delay in ms
  * - controls: Show test controls (true/false)
  * - 24hour: Use 24-hour format (true/false)
+ * - sidebar: Show the mini-calendar sidebar (true/false)
+ * - filters: Show the calendar filter panel (true/false)
  *
  * Examples:
  * - /test/calendar - Default events, month view

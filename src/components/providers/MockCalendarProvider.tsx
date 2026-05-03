@@ -9,6 +9,7 @@ import type {
   IUser,
   TCalendarView,
   TEventColor,
+  TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -30,10 +31,18 @@ interface MockCalendarProviderProps {
   isLoading?: boolean;
   /** Use 24-hour time format */
   use24HourFormat?: boolean;
+  /** Which day the visible calendar week starts on (0 = Sunday, 1 = Monday) */
+  weekStartDay?: TWeekStartDay;
+  /** Initial agenda-mode group-by */
+  agendaModeGroupBy?: "date" | "color";
+  /** Initial agenda-mode toggle (only meaningful for day/week views). */
+  agendaMode?: boolean;
   /** Simulate loading delay in ms */
   loadingDelay?: number;
   /** Whether user is authenticated (for testing) */
   isAuthenticated?: boolean;
+  /** Max events rendered per day cell before the "+N more" overflow */
+  maxEventsPerDay?: number;
 }
 
 /**
@@ -57,8 +66,12 @@ export function MockCalendarProvider({
   initialDate,
   isLoading: initialLoading = false,
   use24HourFormat: initial24Hour = true,
+  weekStartDay: initialWeekStartDay = 0,
+  agendaModeGroupBy: initialAgendaGroupBy = "date",
+  agendaMode: initialAgendaMode = false,
   loadingDelay = 0,
   isAuthenticated = true,
+  maxEventsPerDay = 3,
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -68,7 +81,10 @@ export function MockCalendarProvider({
     useState<boolean>(initial24Hour);
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
-  >("date");
+  >(initialAgendaGroupBy);
+  const [agendaMode, setAgendaModeState] = useState<boolean>(initialAgendaMode);
+  const [weekStartDay, setWeekStartDayState] =
+    useState<TWeekStartDay>(initialWeekStartDay);
 
   const [selectedDate, setSelectedDate] = useState(initialDate || new Date());
   const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
@@ -107,6 +123,14 @@ export function MockCalendarProvider({
     setAgendaModeGroupByState(groupBy);
   };
 
+  const setAgendaMode = (enabled: boolean) => {
+    setAgendaModeState(enabled);
+  };
+
+  const setWeekStartDay = (day: TWeekStartDay) => {
+    setWeekStartDayState(day);
+  };
+
   const filterEventsBySelectedColors = (color: TEventColor) => {
     setSelectedColors((prev) =>
       prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color]
@@ -131,6 +155,14 @@ export function MockCalendarProvider({
   };
 
   const removeEvent = (eventId: string) => {
+    setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
+  };
+
+  // Mock deleteEvent matches the real provider's optimistic-remove signature
+  // but skips the network call so tests can drive UI flows without mocking
+  // fetch. Tests that care about failure behavior should override this in
+  // their own provider wrapper.
+  const deleteEvent = async (eventId: string, _calendarId: string) => {
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
@@ -178,10 +210,14 @@ export function MockCalendarProvider({
     selectedDate,
     view: currentView,
     setView,
+    agendaMode,
+    setAgendaMode,
     agendaModeGroupBy,
     setAgendaModeGroupBy,
     use24HourFormat,
     toggleTimeFormat,
+    weekStartDay,
+    setWeekStartDay,
     setSelectedDate: handleSetSelectedDate,
     selectedUserId,
     setSelectedUserId,
@@ -195,10 +231,12 @@ export function MockCalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    deleteEvent,
     clearFilter,
     refreshEvents,
     isLoading,
     isAuthenticated,
+    maxEventsPerDay,
   };
 
   return (

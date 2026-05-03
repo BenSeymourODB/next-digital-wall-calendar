@@ -29,11 +29,33 @@ export interface TimeSpecificNavigation {
 }
 
 /**
- * Full schedule configuration containing sequences and time-specific rules.
+ * Transition animation type for page transitions.
+ */
+export type TransitionType = "slide" | "fade" | "slide-fade" | "none";
+
+/**
+ * Navigation direction for determining transition animation direction.
+ */
+export type TransitionDirection = "forward" | "backward";
+
+/**
+ * Configuration for animated page transitions between scheduler screens.
+ */
+export interface TransitionConfig {
+  /** Animation type — 'none' disables transitions */
+  type: TransitionType;
+  /** Duration in milliseconds (200-1000ms range) */
+  durationMs: number;
+}
+
+/**
+ * Full schedule configuration containing sequences, time-specific rules,
+ * and transition preferences.
  */
 export interface ScheduleConfig {
   sequences: ScreenSequence[];
   timeSpecific: TimeSpecificNavigation[];
+  transition?: TransitionConfig;
 }
 
 /**
@@ -47,6 +69,8 @@ export interface SchedulerState {
   timeUntilNextNav: number;
   pausedUntil: Date | null;
   activeTimeSpecific: TimeSpecificNavigation | null;
+  /** Direction of the last navigation (for transition animations) */
+  transitionDirection: TransitionDirection;
 }
 
 /**

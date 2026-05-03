@@ -1,6 +1,8 @@
+import { AppShell } from "@/components/navigation/app-shell";
 import { ProfileProvider } from "@/components/profiles/profile-context";
 import { AppInsightsProvider } from "@/components/providers/AppInsightsProvider";
 import { SessionProvider } from "@/components/providers/SessionProvider";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import type { Metadata } from "next";
 import "./globals.css";
 
@@ -21,12 +23,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">
         <SessionProvider>
-          <AppInsightsProvider>
-            <ProfileProvider>{children}</ProfileProvider>
-          </AppInsightsProvider>
+          <ThemeProvider>
+            <AppInsightsProvider>
+              <ProfileProvider>
+                <AppShell>{children}</AppShell>
+              </ProfileProvider>
+            </AppInsightsProvider>
+          </ThemeProvider>
         </SessionProvider>
       </body>
     </html>
