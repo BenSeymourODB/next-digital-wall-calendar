@@ -224,6 +224,90 @@ describe("transformGoogleEvent", () => {
     });
   });
 
+  describe("Category mapping (issue #211)", () => {
+    it("maps extendedProperties.shared.category onto IEvent.category", () => {
+      const googleEvent = createGoogleEvent({
+        extendedProperties: {
+          shared: { category: "Work" },
+        },
+      });
+
+      const result = transformGoogleEvent(googleEvent, []);
+
+      expect(result.category).toBe("Work");
+    });
+
+    it("falls back to extendedProperties.private.category when shared is absent", () => {
+      const googleEvent = createGoogleEvent({
+        extendedProperties: {
+          private: { category: "Personal" },
+        },
+      });
+
+      const result = transformGoogleEvent(googleEvent, []);
+
+      expect(result.category).toBe("Personal");
+    });
+
+    it("prefers shared.category over private.category when both are present", () => {
+      const googleEvent = createGoogleEvent({
+        extendedProperties: {
+          shared: { category: "Family" },
+          private: { category: "Personal" },
+        },
+      });
+
+      const result = transformGoogleEvent(googleEvent, []);
+
+      expect(result.category).toBe("Family");
+    });
+
+    it("leaves category undefined when extendedProperties is absent", () => {
+      const googleEvent = createGoogleEvent();
+
+      const result = transformGoogleEvent(googleEvent, []);
+
+      expect(result.category).toBeUndefined();
+    });
+
+    it("leaves category undefined when neither shared nor private has a category", () => {
+      const googleEvent = createGoogleEvent({
+        extendedProperties: {
+          shared: { other: "value" },
+          private: { another: "thing" },
+        },
+      });
+
+      const result = transformGoogleEvent(googleEvent, []);
+
+      expect(result.category).toBeUndefined();
+    });
+
+    it("treats whitespace-only category as undefined", () => {
+      const googleEvent = createGoogleEvent({
+        extendedProperties: {
+          shared: { category: "   " },
+        },
+      });
+
+      const result = transformGoogleEvent(googleEvent, []);
+
+      expect(result.category).toBeUndefined();
+    });
+
+    it("trims surrounding whitespace from category", () => {
+      const googleEvent = createGoogleEvent({
+        extendedProperties: {
+          shared: { category: "  Errands  " },
+        },
+      });
+
+      const result = transformGoogleEvent(googleEvent, []);
+
+      expect(result.category).toBe("Errands");
+    });
+  });
+
   describe("Basic field mapping", () => {
     it("maps summary to title", () => {
       const googleEvent = createGoogleEvent({ summary: "My Meeting" });
