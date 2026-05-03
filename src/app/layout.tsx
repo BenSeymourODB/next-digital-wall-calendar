@@ -1,3 +1,4 @@
+import { ProfileProvider } from "@/components/profiles/profile-context";
 import { AppInsightsProvider } from "@/components/providers/AppInsightsProvider";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import type { Metadata } from "next";
@@ -23,7 +24,9 @@ export default function RootLayout({
     <html lang="en">
       <body className="font-sans antialiased">
         <SessionProvider>
-          <AppInsightsProvider>{children}</AppInsightsProvider>
+          <AppInsightsProvider>
+            <ProfileProvider>{children}</ProfileProvider>
+          </AppInsightsProvider>
         </SessionProvider>
       </body>
     </html>
