@@ -1,16 +1,28 @@
 /**
  * Tests for NewTaskModal component
  */
+import { signIn } from "next-auth/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NewTaskModal, toApiDue } from "../new-task-modal";
 import type { GoogleTask, TaskListSelection } from "../types";
 // Import after mocking
-import { useCreateTask } from "../use-create-task";
+import { TaskApiError, useCreateTask } from "../use-create-task";
 
-vi.mock("../use-create-task", () => ({
-  useCreateTask: vi.fn(),
+vi.mock("../use-create-task", async () => {
+  const actual =
+    await vi.importActual<typeof import("../use-create-task")>(
+      "../use-create-task"
+    );
+  return {
+    ...actual,
+    useCreateTask: vi.fn(),
+  };
+});
+
+vi.mock("next-auth/react", () => ({
+  signIn: vi.fn(),
 }));
 
 const mockUseCreateTask = vi.mocked(useCreateTask);
@@ -289,6 +301,61 @@ describe("NewTaskModal", () => {
       });
       expect(mockOnSuccess).not.toHaveBeenCalled();
       expect(mockOnOpenChange).not.toHaveBeenCalledWith(false);
+    });
+
+    it("renders a Sign in again CTA and triggers re-auth when create fails with requiresReauth (#237)", async () => {
+      const user = userEvent.setup();
+      const reauthError = new TaskApiError(
+        "Re-authentication required: Google Tasks scope missing.",
+        403,
+        true
+      );
+      mockUseCreateTask.mockReturnValue({
+        createTask: mockCreateTask,
+        loading: false,
+        error: reauthError,
+      });
+
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          onSuccess={mockOnSuccess}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      const reauthButton = await screen.findByRole("button", {
+        name: /sign in again/i,
+      });
+      await user.click(reauthButton);
+
+      expect(signIn).toHaveBeenCalledWith(
+        "google",
+        expect.objectContaining({ callbackUrl: expect.any(String) })
+      );
+    });
+
+    it("does not render the re-auth CTA on a generic error", () => {
+      mockUseCreateTask.mockReturnValue({
+        createTask: mockCreateTask,
+        loading: false,
+        error: new Error("Server unavailable"),
+      });
+
+      render(
+        <NewTaskModal
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          availableLists={lists}
+          defaultListId="list-1"
+        />
+      );
+
+      expect(
+        screen.queryByRole("button", { name: /sign in again/i })
+      ).not.toBeInTheDocument();
     });
 
     it("disables the submit button while loading", () => {
