@@ -3,6 +3,30 @@ import { logger } from "@/lib/logger";
 import { auth } from "./auth";
 
 /**
+ * Google OAuth scope required to read or write Google Tasks. The same string
+ * is requested at sign-in (see `auth.ts`); centralised here so callers can
+ * verify it against the user's stored grant before hitting the upstream API.
+ */
+export const GOOGLE_TASKS_SCOPE = "https://www.googleapis.com/auth/tasks";
+
+/**
+ * The space- or `+`-separated string Google returns in the OAuth `scope`
+ * field. We accept both because Google's OAuth flow surfaces `+` in the
+ * authorisation URL but spaces in the token-exchange response, and the
+ * NextAuth Prisma adapter has historically stored either form.
+ */
+export function accountHasScope(
+  account: { scope?: string | null } | null | undefined,
+  scope: string
+): boolean {
+  if (!account?.scope) return false;
+  // Whole-token match — split on whitespace or `+` so substring-only matches
+  // (e.g. `tasks.readonly` when checking for `tasks`) do not falsely succeed.
+  const granted = account.scope.split(/[\s+]+/).filter(Boolean);
+  return granted.includes(scope);
+}
+
+/**
  * Get the current user's session
  */
 export async function getSession() {
@@ -126,6 +150,34 @@ export async function withAuth<T>(
       userId: session.user.id,
     });
     throw error;
+  }
+}
+
+/**
+ * Asserts that the current user's Google account grant includes the Tasks
+ * scope. Throws `AuthError(401)` if the user is not signed in or the session
+ * is in `RefreshTokenError`, and `AuthError(403)` if the scope is missing —
+ * the 403 is the signal API routes use to return `requiresReauth: true`.
+ */
+export async function assertGoogleTasksScope(): Promise<void> {
+  const session = await getSession();
+  if (!session?.user?.id) {
+    throw new AuthError("Not authenticated", 401);
+  }
+  if (session.error === "RefreshTokenError") {
+    throw new AuthError("Session expired. Please sign in again.", 401);
+  }
+
+  const account = await getGoogleAccount();
+  if (!account) {
+    throw new AuthError("No Google account linked.", 401);
+  }
+
+  if (!accountHasScope(account, GOOGLE_TASKS_SCOPE)) {
+    throw new AuthError(
+      "Re-authentication required: Google Tasks scope missing.",
+      403
+    );
   }
 }
 

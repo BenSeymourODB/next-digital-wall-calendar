@@ -8,6 +8,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { auth } from "../auth";
 import {
   AuthError,
+  GOOGLE_TASKS_SCOPE,
+  accountHasScope,
+  assertGoogleTasksScope,
   getAccessToken,
   getCurrentUser,
   getGoogleAccount,
@@ -318,6 +321,104 @@ describe("auth helpers", () => {
         "No Google account linked"
       );
       expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("accountHasScope", () => {
+    it("returns true when the scope is present (space separator)", () => {
+      expect(accountHasScope(mockGoogleAccount, GOOGLE_TASKS_SCOPE)).toBe(true);
+    });
+
+    it("returns true when the scope is present with `+` separators", () => {
+      const account = {
+        ...mockGoogleAccount,
+        scope:
+          "openid+email+profile+https://www.googleapis.com/auth/tasks+https://www.googleapis.com/auth/calendar.readonly",
+      };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(true);
+    });
+
+    it("returns false when the scope is missing", () => {
+      const account = {
+        ...mockGoogleAccount,
+        scope:
+          "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+      };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(false);
+    });
+
+    it("returns false when the stored scope is null", () => {
+      const account = { ...mockGoogleAccount, scope: null };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(false);
+    });
+
+    it("returns false when the stored scope is an empty string", () => {
+      const account = { ...mockGoogleAccount, scope: "" };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(false);
+    });
+
+    it("returns false when the account is null", () => {
+      expect(accountHasScope(null, GOOGLE_TASKS_SCOPE)).toBe(false);
+    });
+
+    it("does not match a substring of a different scope", () => {
+      const account = {
+        ...mockGoogleAccount,
+        scope:
+          "openid email profile https://www.googleapis.com/auth/tasks.readonly",
+      };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(false);
+    });
+  });
+
+  describe("assertGoogleTasksScope", () => {
+    it("resolves silently when the tasks scope is present", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findMany).mockResolvedValue([mockGoogleAccount]);
+
+      await expect(assertGoogleTasksScope()).resolves.toBeUndefined();
+    });
+
+    it("throws AuthError(403) with requiresReauth message when the tasks scope is missing", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findMany).mockResolvedValue([
+        {
+          ...mockGoogleAccount,
+          scope:
+            "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+        },
+      ]);
+
+      await expect(assertGoogleTasksScope()).rejects.toBeInstanceOf(AuthError);
+      await expect(assertGoogleTasksScope()).rejects.toMatchObject({
+        status: 403,
+        message: expect.stringContaining("Google Tasks"),
+      });
+    });
+
+    it("throws AuthError(401) when no session", async () => {
+      mockAuth.mockResolvedValue(null);
+
+      await expect(assertGoogleTasksScope()).rejects.toMatchObject({
+        status: 401,
+      });
+    });
+
+    it("throws AuthError(401) when session has RefreshTokenError", async () => {
+      mockAuth.mockResolvedValue(mockSessionWithError);
+
+      await expect(assertGoogleTasksScope()).rejects.toMatchObject({
+        status: 401,
+      });
+    });
+
+    it("throws AuthError(401) when no Google account is linked", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findMany).mockResolvedValue([]);
+
+      await expect(assertGoogleTasksScope()).rejects.toMatchObject({
+        status: 401,
+      });
     });
   });
 
