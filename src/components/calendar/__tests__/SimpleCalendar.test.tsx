@@ -1169,5 +1169,51 @@ describe("SimpleCalendar", () => {
         expect(trigger).toHaveFocus();
       });
     });
+
+    it("opens the event detail modal when a popover event card is activated with Enter", async () => {
+      const user = userEvent.setup();
+      const events = makeOverflowEvents(5);
+      renderWithContext({
+        selectedDate: overflowDate,
+        events,
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+      await screen.findByTestId(`day-events-popover-${dayKey}`);
+
+      const card = screen.getByTestId(
+        `day-events-popover-event-${events[3].id}`
+      );
+      card.focus();
+      expect(card).toHaveFocus();
+      await user.keyboard("{Enter}");
+
+      expect(
+        await screen.findByRole("heading", { name: "Event 4" })
+      ).toBeInTheDocument();
+    });
+
+    it("opens the event detail modal when a popover event card is activated with Space", async () => {
+      const user = userEvent.setup();
+      const events = makeOverflowEvents(5);
+      renderWithContext({
+        selectedDate: overflowDate,
+        events,
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+      await screen.findByTestId(`day-events-popover-${dayKey}`);
+
+      const card = screen.getByTestId(
+        `day-events-popover-event-${events[2].id}`
+      );
+      card.focus();
+      expect(card).toHaveFocus();
+      await user.keyboard(" ");
+
+      expect(
+        await screen.findByRole("heading", { name: "Event 3" })
+      ).toBeInTheDocument();
+    });
   });
 });
