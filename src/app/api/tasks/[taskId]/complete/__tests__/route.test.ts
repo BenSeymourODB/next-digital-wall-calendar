@@ -7,7 +7,12 @@
  * focuses on the handler's concerns: auth, validation, the Google
  * Tasks call, and response shaping.
  */
-import { getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  assertGoogleTasksScope,
+  getAccessToken,
+  getSession,
+} from "@/lib/auth";
 import {
   mockSession,
   mockSessionWithError,
@@ -20,6 +25,7 @@ import { POST } from "../route";
 vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
   getAccessToken: vi.fn(),
+  assertGoogleTasksScope: vi.fn(),
   AuthError: class AuthError extends Error {
     status: number;
     constructor(message: string, status: number = 401) {
@@ -83,6 +89,7 @@ describe("Task Complete API", () => {
     vi.clearAllMocks();
     vi.mocked(getSession).mockResolvedValue(mockSession);
     vi.mocked(getAccessToken).mockResolvedValue("mock-access-token");
+    vi.mocked(assertGoogleTasksScope).mockResolvedValue(undefined);
     mockFetch.mockResolvedValue({
       ok: true,
       json: () =>
@@ -125,6 +132,29 @@ describe("Task Complete API", () => {
       expect(response.status).toBe(401);
       expect(data.error).toBe("Session expired. Please sign in again.");
       expect(data.requiresReauth).toBe(true);
+    });
+
+    it("returns 403 with requiresReauth when stored grant is missing the Tasks scope (#237)", async () => {
+      vi.mocked(assertGoogleTasksScope).mockRejectedValue(
+        new AuthError(
+          "Re-authentication required: Google Tasks scope missing.",
+          403
+        )
+      );
+
+      const request = createRequest({
+        listId: "list-1",
+        profileId: "profile-1",
+      });
+      const response = await POST(request, {
+        params: Promise.resolve({ taskId: "task-123" }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.requiresReauth).toBe(true);
+      expect(data.error).toMatch(/Google Tasks/);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
