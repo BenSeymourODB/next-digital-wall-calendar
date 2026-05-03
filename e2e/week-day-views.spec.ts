@@ -58,6 +58,31 @@ test.describe("Week Calendar", () => {
     await page.goto("/test/calendar?events=default&view=week");
     await expect(page.getByTestId("week-calendar-now-line")).toBeVisible();
   });
+
+  // Regression: #234 — when "today" sits on the last day of the visible week
+  // (Saturday in Sunday-first weeks), `getEventsForWeek` was filtering every
+  // boundary-day event out because the upper bound was Saturday at 00:00.
+  // Pin the system clock to a Saturday and verify the count and rendering.
+  test("renders events on the last day of the week when today is Saturday", async ({
+    page,
+  }) => {
+    // Sat May 2 2026 at 12:00 local. The mock event set anchors events to
+    // `new Date()` at module load, so installing the clock before navigation
+    // lands "today" on Saturday and produces a Saturday-boundary scenario.
+    await page.clock.install({ time: new Date("2026-05-02T12:00:00") });
+    await page.goto("/test/calendar?events=default&view=week");
+
+    // The default mock set places 4 timed events on "today" (Morning Standup,
+    // Team Lunch, Project Review, One-on-One). With today = Saturday, all
+    // four would have been dropped by the pre-fix filter.
+    const count = page.getByTestId("week-calendar-event-count");
+    await expect(count).toBeVisible();
+    const text = await count.textContent();
+    expect(text).toMatch(/[1-9]\d* events?/);
+
+    await expect(page.getByText("Morning Standup")).toBeVisible();
+    await expect(page.getByText("Project Review")).toBeVisible();
+  });
 });
 
 test.describe("Day Calendar", () => {
