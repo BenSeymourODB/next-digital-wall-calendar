@@ -130,6 +130,70 @@ describe("/api/calendar/events", () => {
       );
     });
 
+    it("preserves extended Google Calendar v3 fields on each event", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const enrichedEvent = {
+        id: "evt-rich",
+        summary: "Design review",
+        start: { dateTime: "2026-05-01T14:00:00Z" },
+        end: { dateTime: "2026-05-01T15:00:00Z" },
+        status: "confirmed",
+        location: "Room 1",
+        htmlLink: "https://www.google.com/calendar/event?eid=abc",
+        iCalUID: "evt-rich@google.com",
+        etag: '"etag-xyz"',
+        organizer: { email: "alice@example.com", displayName: "Alice" },
+        attendees: [
+          {
+            email: "bob@example.com",
+            displayName: "Bob",
+            responseStatus: "accepted",
+          },
+        ],
+        recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"],
+        eventType: "default",
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [enrichedEvent],
+            summary: "Primary Calendar",
+            timeZone: "UTC",
+          }),
+      });
+
+      const request = createMockRequest("/api/calendar/events");
+      const response = await GET(request);
+      const { status, data } = await parseResponse<{
+        events: Array<
+          typeof enrichedEvent & {
+            calendarId: string;
+          }
+        >;
+      }>(response);
+
+      expect(status).toBe(200);
+      expect(data.events).toHaveLength(1);
+      const returned = data.events[0];
+      expect(returned.calendarId).toBe("primary");
+      expect(returned.status).toBe("confirmed");
+      expect(returned.location).toBe("Room 1");
+      expect(returned.htmlLink).toBe(enrichedEvent.htmlLink);
+      expect(returned.iCalUID).toBe("evt-rich@google.com");
+      expect(returned.etag).toBe('"etag-xyz"');
+      expect(returned.organizer?.email).toBe("alice@example.com");
+      expect(returned.attendees).toHaveLength(1);
+      expect(returned.attendees?.[0]?.responseStatus).toBe("accepted");
+      expect(returned.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO"]);
+      expect(returned.eventType).toBe("default");
+    });
+
     it("returns empty array when no events exist", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
       vi.mocked(getAccessToken).mockResolvedValue(

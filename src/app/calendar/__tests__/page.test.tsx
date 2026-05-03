@@ -1,0 +1,114 @@
+/**
+ * Tests for /calendar page layout.
+ *
+ * The mini-calendar sidebar duplicates content the active view already
+ * provides on month (full month grid), year (twelve-month overview), and
+ * clock (built-in all-day aside), so it's hidden on those views and shown
+ * on day and week. (Pre-#150 it also showed on agenda, which is now an
+ * internal mode of Day/Week rather than a peer view.) See issues #146,
+ * #150, #152.
+ */
+import type { TCalendarView } from "@/types/calendar";
+import type { ReactNode } from "react";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import CalendarPage from "../page";
+
+const mockUseCalendar = vi.fn();
+
+vi.mock("@/components/providers/CalendarProvider", () => ({
+  CalendarProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useCalendar: () => mockUseCalendar(),
+}));
+
+vi.mock("@/components/calendar/AccountManager", () => ({
+  AccountManager: () => <div data-testid="mock-account-manager" />,
+}));
+
+vi.mock("@/components/calendar/SimpleCalendar", () => ({
+  SimpleCalendar: () => <div data-testid="mock-simple-calendar" />,
+}));
+
+vi.mock("@/components/calendar/DayCalendar", () => ({
+  DayCalendar: () => <div data-testid="mock-day-calendar" />,
+}));
+
+vi.mock("@/components/calendar/WeekCalendar", () => ({
+  WeekCalendar: () => <div data-testid="mock-week-calendar" />,
+}));
+
+vi.mock("@/components/calendar/YearCalendar", () => ({
+  YearCalendar: () => <div data-testid="mock-year-calendar" />,
+}));
+
+vi.mock("@/components/calendar/AnalogClockView", () => ({
+  AnalogClockView: () => <div data-testid="mock-analog-clock-view" />,
+}));
+
+vi.mock("@/components/calendar/MiniCalendarSidebar", () => ({
+  MiniCalendarSidebar: () => <aside data-testid="mini-calendar-sidebar" />,
+}));
+
+vi.mock("@/components/calendar/ViewSwitcher", () => ({
+  ViewSwitcher: () => <div data-testid="mock-view-switcher" />,
+}));
+
+vi.mock("@/components/calendar/CalendarFilterPanel", () => ({
+  CalendarFilterPanel: () => <div data-testid="mock-filter-panel" />,
+}));
+
+vi.mock("@/components/theme/theme-toggle", () => ({
+  ThemeToggle: () => <div data-testid="mock-theme-toggle" />,
+}));
+
+vi.mock("@/components/ui/sonner", () => ({
+  Toaster: () => <div data-testid="mock-toaster" />,
+}));
+
+function setView(view: TCalendarView): void {
+  mockUseCalendar.mockReturnValue({ view });
+}
+
+describe("CalendarPage — mini-calendar sidebar visibility", () => {
+  it("hides the mini-calendar sidebar when the active view is month", () => {
+    setView("month");
+    render(<CalendarPage />);
+    expect(
+      screen.queryByTestId("mini-calendar-sidebar")
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the mini-calendar sidebar when the active view is day", () => {
+    setView("day");
+    render(<CalendarPage />);
+    expect(screen.getByTestId("mini-calendar-sidebar")).toBeInTheDocument();
+  });
+
+  it("shows the mini-calendar sidebar when the active view is week", () => {
+    setView("week");
+    render(<CalendarPage />);
+    expect(screen.getByTestId("mini-calendar-sidebar")).toBeInTheDocument();
+  });
+
+  // Pre-#150 there was a separate "agenda" view that this suite asserted
+  // showed the sidebar. Agenda is now an internal mode of Day/Week
+  // (`agendaMode: true`) and the sidebar rule keys on the top-level view
+  // only — already covered by the day/week cases above.
+
+  it("hides the mini-calendar sidebar when the active view is year", () => {
+    setView("year");
+    render(<CalendarPage />);
+    expect(
+      screen.queryByTestId("mini-calendar-sidebar")
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides the mini-calendar sidebar when the active view is clock", () => {
+    setView("clock");
+    render(<CalendarPage />);
+    expect(
+      screen.queryByTestId("mini-calendar-sidebar")
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("mock-analog-clock-view")).toBeInTheDocument();
+  });
+});
