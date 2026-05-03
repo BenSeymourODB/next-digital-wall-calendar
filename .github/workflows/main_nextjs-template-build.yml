@@ -41,5 +41,8 @@ jobs:
             exit 1
           }
 
+      - name: Validate Prisma migration naming convention
+        run: pnpm db:migrate:check-names
+
       - name: Build
         run: pnpm build
