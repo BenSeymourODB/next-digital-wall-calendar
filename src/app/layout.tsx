@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/navigation/app-shell";
+import { ProfileProvider } from "@/components/profiles/profile-context";
 import { AppInsightsProvider } from "@/components/providers/AppInsightsProvider";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
@@ -27,7 +28,9 @@ export default function RootLayout({
         <SessionProvider>
           <ThemeProvider>
             <AppInsightsProvider>
-              <AppShell>{children}</AppShell>
+              <ProfileProvider>
+                <AppShell>{children}</AppShell>
+              </ProfileProvider>
             </AppInsightsProvider>
           </ThemeProvider>
         </SessionProvider>
