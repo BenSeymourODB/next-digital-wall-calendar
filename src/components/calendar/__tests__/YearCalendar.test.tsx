@@ -397,4 +397,36 @@ describe("YearCalendar", () => {
       expect(screen.getByText(/loading events/i)).toBeInTheDocument();
     });
   });
+
+  describe("All-day timezone correctness (#203 bug 1)", () => {
+    it("renders the dot on the calendar-local day for an all-day bare-date startDate", () => {
+      // All-day events from non-canonical sources may carry a bare YYYY-MM-DD
+      // string (the canonical Google → IEvent transformer appends T00:00:00,
+      // but the year grid must not depend on that). `new Date("2026-06-15")`
+      // is parsed as UTC midnight, which slips to 2026-06-14 in negative-
+      // offset zones. The grid must treat the bare date as the local calendar
+      // day so the dot renders on 2026-06-15 regardless of harness TZ.
+      const events = [
+        createMockEvent({
+          id: "all-day-bare",
+          color: "blue",
+          startDate: "2026-06-15",
+          endDate: "2026-06-15",
+          isAllDay: true,
+        }),
+      ];
+
+      renderWithContext({ selectedDate: new Date(2026, 5, 15), events });
+
+      const correctCell = screen.getByTestId("year-calendar-day-2026-06-15");
+      expect(
+        within(correctCell).getAllByTestId("year-calendar-dot")
+      ).toHaveLength(1);
+
+      const previousCell = screen.getByTestId("year-calendar-day-2026-06-14");
+      expect(
+        within(previousCell).queryAllByTestId("year-calendar-dot")
+      ).toHaveLength(0);
+    });
+  });
 });
