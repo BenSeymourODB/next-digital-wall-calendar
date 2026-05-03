@@ -65,6 +65,18 @@ describe("createDefaultSequence", () => {
     expect(seq1.id).not.toBe(seq2.id);
   });
 
+  // Regression: issue #221 bug 5 — earlier implementations relied on a
+  // module-level mutable `idCounter` that risked collisions across SSR
+  // hydration boundaries and test runs. `crypto.randomUUID()` is now used,
+  // and any future regression to a counter would surface here.
+  it("regression (issue #221, bug 5): produces distinct ids across many calls", () => {
+    const ids = new Set<string>();
+    for (let i = 0; i < 64; i += 1) {
+      ids.add(createDefaultSequence().id);
+    }
+    expect(ids.size).toBe(64);
+  });
+
   it("uses SCHEDULER_DEFAULTS when no overrides provided", () => {
     const seq = createDefaultSequence();
     expect(seq.intervalSeconds).toBe(SCHEDULER_DEFAULTS.intervalSeconds);
@@ -129,6 +141,16 @@ describe("createDefaultTimeSpecific", () => {
     const nav1 = createDefaultTimeSpecific();
     const nav2 = createDefaultTimeSpecific();
     expect(nav1.id).not.toBe(nav2.id);
+  });
+
+  // Regression: issue #221 bug 5 — see `createDefaultSequence`'s matching
+  // regression above. Same root cause, different factory.
+  it("regression (issue #221, bug 5): produces distinct ids across many calls", () => {
+    const ids = new Set<string>();
+    for (let i = 0; i < 64; i += 1) {
+      ids.add(createDefaultTimeSpecific().id);
+    }
+    expect(ids.size).toBe(64);
   });
 
   it("is enabled by default", () => {
