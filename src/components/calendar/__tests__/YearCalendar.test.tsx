@@ -101,22 +101,31 @@ describe("YearCalendar", () => {
     });
 
     it("displays total event count for the year", () => {
+      // Each fixture event is bounded entirely within its intended year so
+      // the overlap-based count (#203 bug 2) is deterministic. The
+      // "other-year" event must end inside 2025 — leaving its endDate at
+      // the createMockEvent default ("now") would let it correctly overlap
+      // into 2026 and inflate the count.
       const events = [
         createMockEvent({
           id: "e1",
-          startDate: new Date(2026, 0, 5).toISOString(),
+          startDate: new Date(2026, 0, 5, 9).toISOString(),
+          endDate: new Date(2026, 0, 5, 10).toISOString(),
         }),
         createMockEvent({
           id: "e2",
-          startDate: new Date(2026, 5, 10).toISOString(),
+          startDate: new Date(2026, 5, 10, 9).toISOString(),
+          endDate: new Date(2026, 5, 10, 10).toISOString(),
         }),
         createMockEvent({
           id: "e3",
-          startDate: new Date(2026, 11, 20).toISOString(),
+          startDate: new Date(2026, 11, 20, 9).toISOString(),
+          endDate: new Date(2026, 11, 20, 10).toISOString(),
         }),
         createMockEvent({
           id: "e-other-year",
-          startDate: new Date(2025, 6, 4).toISOString(),
+          startDate: new Date(2025, 6, 4, 9).toISOString(),
+          endDate: new Date(2025, 6, 4, 10).toISOString(),
         }),
       ];
 
@@ -131,7 +140,8 @@ describe("YearCalendar", () => {
       const events = [
         createMockEvent({
           id: "e1",
-          startDate: new Date(2026, 0, 5).toISOString(),
+          startDate: new Date(2026, 0, 5, 9).toISOString(),
+          endDate: new Date(2026, 0, 5, 10).toISOString(),
         }),
       ];
 
@@ -395,6 +405,49 @@ describe("YearCalendar", () => {
     it("shows a loading message when isLoading is true", () => {
       renderWithContext({ isLoading: true });
       expect(screen.getByText(/loading events/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("Multi-year yearEventCount overlap (#203 bug 2)", () => {
+    it("counts an event spanning Dec → Jan in both years", () => {
+      // The previous filter checked `isSameYear(event.startDate, selectedDate)`
+      // and so missed Dec 2025 → Jan 2026 events when viewing 2026.
+      // The fix delegates to getEventsForYear, which uses overlap logic.
+      const overlappingEvent = createMockEvent({
+        id: "yearend",
+        startDate: new Date(2025, 11, 30, 18, 0).toISOString(),
+        endDate: new Date(2026, 0, 2, 12, 0).toISOString(),
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider
+          value={createMockContext({
+            selectedDate: new Date(2026, 5, 15),
+            events: [overlappingEvent],
+          })}
+        >
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(screen.getByTestId("year-calendar-event-count")).toHaveTextContent(
+        "1 event"
+      );
+
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({
+            selectedDate: new Date(2025, 5, 15),
+            events: [overlappingEvent],
+          })}
+        >
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(screen.getByTestId("year-calendar-event-count")).toHaveTextContent(
+        "1 event"
+      );
     });
   });
 

@@ -2,6 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { getEventsForYear } from "@/lib/calendar-helpers";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import {
   eachDayOfInterval,
@@ -169,9 +170,10 @@ export function YearCalendar() {
 
   const months = Array.from({ length: 12 }, (_, i) => new Date(year, i, 1));
 
-  const yearEventCount = events.filter((event) =>
-    isSameYear(new Date(event.startDate), selectedDate)
-  ).length;
+  // Use overlap logic so an event spanning Dec → Jan is counted in both
+  // years. Filtering only by `startDate` would drop the Dec 30 → Jan 2
+  // case from the Jan-side year's count.
+  const yearEventCount = getEventsForYear(events, selectedDate).length;
 
   const previousYear = () => {
     setSelectedDate(new Date(year - 1, selectedDate.getMonth(), 1));
