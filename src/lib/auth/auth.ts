@@ -3,6 +3,10 @@ import { logger } from "@/lib/logger";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import {
+  createDefaultTokenRefreshDeps,
+  getOrStartTokenRefresh,
+} from "./token-refresh";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -38,58 +42,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return session;
       }
 
-      // Check if access token has expired
+      // Access token expired? Refresh via the singleflight queue so
+      // concurrent sessions don't all hit the Google OAuth endpoint.
       if (
         googleAccount.expires_at &&
         googleAccount.expires_at * 1000 < Date.now()
       ) {
-        // Access token has expired, try to refresh it
         try {
-          if (!googleAccount.refresh_token) {
-            throw new Error("No refresh token available");
-          }
-
-          const response = await fetch("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams({
-              client_id: process.env.GOOGLE_CLIENT_ID!,
-              client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-              grant_type: "refresh_token",
-              refresh_token: googleAccount.refresh_token,
-            }),
-          });
-
-          const tokensOrError = await response.json();
-
-          if (!response.ok) {
-            throw tokensOrError;
-          }
-
-          const newTokens = tokensOrError as {
-            access_token: string;
-            expires_in: number;
-            refresh_token?: string;
-          };
-
-          // Update tokens in database
-          await prisma.account.update({
-            data: {
-              access_token: newTokens.access_token,
-              expires_at: Math.floor(Date.now() / 1000 + newTokens.expires_in),
-              refresh_token:
-                newTokens.refresh_token ?? googleAccount.refresh_token,
-            },
-            where: {
-              provider_providerAccountId: {
-                provider: "google",
-                providerAccountId: googleAccount.providerAccountId,
-              },
-            },
-          });
-
+          await getOrStartTokenRefresh(
+            googleAccount,
+            createDefaultTokenRefreshDeps()
+          );
           logger.event("TokenRefreshed", {
             userId: user.id,
             success: true,
@@ -99,7 +62,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             context: "TokenRefreshFailed",
             userId: user.id,
           });
-          // Return error so we can handle it on the client
           session.error = "RefreshTokenError";
         }
       }
