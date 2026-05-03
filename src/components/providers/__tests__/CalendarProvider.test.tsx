@@ -398,6 +398,42 @@ describe("CalendarProvider — initialView / initialAgendaMode overrides", () =>
       expect(screen.getByTestId("view")).toHaveTextContent("week");
     });
   });
+
+  // Regression: legacy localStorage may carry `view: "agenda"` (pre-#150)
+  // at the same time the user deep-links to `?view=year`. The migration
+  // and the deep-link override are merged into a single atomic write —
+  // this test guards against any future refactor that splits them and
+  // accidentally lets the migration clobber the override (a `?view=year`
+  // bookmark would silently land on `day` if the order ever flipped).
+  // The migration's `agendaMode: true` is preserved because the URL
+  // override only specifies the view; that's intentional — the user's
+  // pre-#150 preference for agenda mode survives the migration.
+  it("override wins when localStorage holds the legacy agenda value AND initialView is provided", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "agenda",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderWithOverrides({ initialView: "year" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("year");
+    });
+    await waitFor(() => {
+      const parsed = JSON.parse(
+        window.localStorage.getItem("calendar-settings") ?? "{}"
+      );
+      expect(parsed.view).toBe("year");
+      // The legacy `"agenda"` literal must not survive the write.
+      expect(parsed.view).not.toBe("agenda");
+    });
+  });
 });
 
 vi.mock("@/lib/calendar-transform", () => ({

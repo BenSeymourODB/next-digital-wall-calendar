@@ -179,18 +179,7 @@ export function CalendarProvider({
   );
   const settings = migrateLegacySettings(rawSettings) as CalendarSettings;
 
-  // Flush the migrated payload back to localStorage so the legacy value is
-  // overwritten on the first render after a #150 upgrade. Subsequent loads
-  // see the new shape directly and skip the migration branch.
   const rawView = rawSettings.view;
-  useEffect(() => {
-    if (rawView === "agenda") {
-      setSettings(
-        (prev) =>
-          migrateLegacySettings(prev) as unknown as LegacyCalendarSettings
-      );
-    }
-  }, [rawView, setSettings]);
 
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     settings.badgeVariant ?? DEFAULT_SETTINGS.badgeVariant
@@ -211,12 +200,28 @@ export function CalendarProvider({
     settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay
   );
 
-  // Persist the URL-deep-link override (#238) once on mount so the user's
-  // requested view survives a reload without the query string. Subsequent
-  // setView/setAgendaMode calls flow through the existing handlers; this
-  // effect runs only with the initial values captured at mount time.
+  // Single mount-only write that handles two concerns atomically:
+  //
+  //   1. **Legacy `view: "agenda"` migration (#150)** — pre-#150 the
+  //      "agenda" view was a peer of day/week; it's now a sub-toggle.
+  //      The first render after the upgrade rewrites the persisted
+  //      payload so subsequent loads see the new shape directly.
+  //   2. **URL deep-link override (#238)** — the production /calendar
+  //      page reads `?view=...` and forwards it via `initialView` /
+  //      `initialAgendaMode`. The override wins over the persisted
+  //      value and is written through so the deep-linked choice
+  //      survives a reload.
+  //
+  // Folding both into one `setSettings` call removes any ordering
+  // dependency between separate effects: migration's `view: "day"` /
+  // `agendaMode: true` is applied first, then the override fields (when
+  // defined) replace it. A reordering refactor cannot break the
+  // override.
   useEffect(() => {
-    if (initialView === undefined && initialAgendaMode === undefined) {
+    const needsMigration = rawView === "agenda";
+    const needsOverride =
+      initialView !== undefined || initialAgendaMode !== undefined;
+    if (!needsMigration && !needsOverride) {
       return;
     }
     setSettings((prev) => {
@@ -229,9 +234,9 @@ export function CalendarProvider({
           : {}),
       } as unknown as LegacyCalendarSettings;
     });
-    // Mount-only: capturing the props once is intentional. Subsequent URL
-    // changes (back/forward) reach the page component, which remounts the
-    // provider with fresh props.
+    // Mount-only: capturing the props/raw value once is intentional.
+    // Subsequent URL changes (back/forward) reach the page component,
+    // which remounts the provider with fresh props.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

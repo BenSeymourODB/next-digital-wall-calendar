@@ -226,6 +226,26 @@ describe("CalendarPage — URL ?view= deep linking (#238)", () => {
     expect(props.initialAgendaMode).toBeUndefined();
   });
 
+  // Regression: a stray `?agendaMode=true` without a paired `?view=` would
+  // previously seed agenda-mode on top of whatever view localStorage held,
+  // and the provider's mount-effect would write it through — silently
+  // corrupting the persisted setting. The page must keep
+  // `initialAgendaMode` undefined in that scenario so the existing
+  // localStorage value is preserved.
+  it("ignores ?agendaMode=true when no view param is present", () => {
+    setView("month");
+    setSearchParams("agendaMode=true");
+
+    render(<CalendarPage />);
+
+    const props = calendarProviderProps.mock.calls.at(-1)?.[0] as {
+      initialView?: TCalendarView;
+      initialAgendaMode?: boolean;
+    };
+    expect(props.initialView).toBeUndefined();
+    expect(props.initialAgendaMode).toBeUndefined();
+  });
+
   it("leaves overrides undefined when no view param is present", () => {
     setView("month");
     setSearchParams("");
