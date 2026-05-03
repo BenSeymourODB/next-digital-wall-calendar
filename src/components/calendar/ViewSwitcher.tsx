@@ -22,14 +22,24 @@ import {
 /**
  * Top-level calendar view switcher.
  *
- * Day and Week are dropdown triggers (Day ▾ / Week ▾) that surface
- * "Grid" and "Agenda" as the two display modes — matches the
- * Windows 11 / Microsoft Teams Calendar widget UX (issue #150).
- * Month, Year, and Clock are plain toggle buttons.
+ * Day and Week are split buttons:
  *
- * The dropdown commits both `setView(view)` and `setAgendaMode(mode)`
- * in a single user action so jumping from e.g. Month → Day+Agenda
- * lands in the right place without an intermediate grid flash.
+ *   ┌─────────────┬───┐
+ *   │ ☐ Day · …   │ ▾ │
+ *   └─────────────┴───┘
+ *      primary    caret
+ *
+ * The primary button switches to that view (preserving the user's global
+ * `agendaMode`). The caret opens a small Grid/Agenda RadioGroup that commits
+ * `setView(view)` AND `setAgendaMode(mode === "agenda")` in a single action,
+ * so jumping from e.g. Month → Week+Agenda lands in the right place without
+ * an intermediate grid flash.
+ *
+ * The DropdownMenu is rendered with `modal={false}` so Radix does not install
+ * the body-level overlay that was leaking pointer events to sibling buttons
+ * after dismissal (see issue #235).
+ *
+ * Month, Year, and Clock are plain primary buttons.
  */
 export function ViewSwitcher() {
   const { view, setView, agendaMode, setAgendaMode } = useCalendar();
@@ -46,21 +56,23 @@ export function ViewSwitcher() {
       aria-label="Calendar view"
       data-testid="view-switcher"
     >
-      <ModeDropdown
+      <SplitViewControl
         view="day"
         label="Day"
         icon={<CalendarDays className="h-4 w-4" />}
         active={view === "day"}
         agendaMode={agendaMode}
-        onSelect={(mode) => selectMode("day", mode)}
+        onSwitchView={() => setView("day")}
+        onSelectMode={(mode) => selectMode("day", mode)}
       />
-      <ModeDropdown
+      <SplitViewControl
         view="week"
         label="Week"
         icon={<CalendarRange className="h-4 w-4" />}
         active={view === "week"}
         agendaMode={agendaMode}
-        onSelect={(mode) => selectMode("week", mode)}
+        onSwitchView={() => setView("week")}
+        onSelectMode={(mode) => selectMode("week", mode)}
       />
       <PrimaryButton
         view="month"
@@ -118,54 +130,76 @@ function PrimaryButton({
   );
 }
 
-interface ModeDropdownProps {
+interface SplitViewControlProps {
   view: "day" | "week";
   label: string;
   icon: React.ReactNode;
   active: boolean;
   agendaMode: boolean;
-  onSelect: (mode: "grid" | "agenda") => void;
+  onSwitchView: () => void;
+  onSelectMode: (mode: "grid" | "agenda") => void;
 }
 
-function ModeDropdown({
+function SplitViewControl({
   view,
   label,
   icon,
   active,
   agendaMode,
-  onSelect,
-}: ModeDropdownProps) {
-  // Reflect the current sub-mode in the trigger label only when this
-  // dropdown's view is active; otherwise the bare label is fine.
+  onSwitchView,
+  onSelectMode,
+}: SplitViewControlProps) {
+  // Reflect the current sub-mode in the primary label only when this
+  // control's view is active; otherwise the bare label is fine.
   const subModeLabel = active && agendaMode ? `${label} · Agenda` : label;
   const currentValue = active && agendaMode ? "agenda" : "grid";
+  const variant = active ? "default" : "ghost";
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant={active ? "default" : "ghost"}
-          size="sm"
-          aria-pressed={active}
-          aria-haspopup="menu"
-          data-testid={`view-switcher-${view}`}
-          className="flex items-center gap-2"
-        >
-          {icon}
-          <span>{subModeLabel}</span>
-          <ChevronDown className="h-3 w-3 opacity-70" aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuRadioGroup
-          value={currentValue}
-          onValueChange={(value) => onSelect(value as "grid" | "agenda")}
-        >
-          <DropdownMenuRadioItem value="grid">Grid</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="agenda">Agenda</DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div
+      role="group"
+      aria-label={`${label} view`}
+      className="inline-flex items-stretch"
+    >
+      <Button
+        type="button"
+        variant={variant}
+        size="sm"
+        aria-pressed={active}
+        onClick={onSwitchView}
+        data-testid={`view-switcher-${view}`}
+        className="flex items-center gap-2 rounded-r-none pr-2"
+      >
+        {icon}
+        <span>{subModeLabel}</span>
+      </Button>
+      {/* `modal={false}` prevents Radix from installing the body-level
+          overlay that previously left sibling buttons unclickable after
+          dismissal (issue #235). */}
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant={variant}
+            size="sm"
+            aria-pressed={active}
+            aria-label={`Choose ${label.toLowerCase()} display mode`}
+            data-testid={`view-switcher-${view}-mode`}
+            className="rounded-l-none border-l border-l-black/10 px-1.5 dark:border-l-white/15"
+          >
+            <ChevronDown className="h-3 w-3 opacity-70" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuRadioGroup
+            value={currentValue}
+            onValueChange={(value) => onSelectMode(value as "grid" | "agenda")}
+          >
+            <DropdownMenuRadioItem value="grid">Grid</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="agenda">Agenda</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }

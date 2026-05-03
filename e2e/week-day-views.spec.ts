@@ -124,18 +124,16 @@ test.describe("View switcher navigation", () => {
     await page.goto("/test/calendar?events=default&view=month");
     await expect(page.getByText("Sun", { exact: true }).first()).toBeVisible();
 
-    // After #150, Day and Week are dropdown triggers — opening the menu
-    // and picking "Grid" lands on the time-grid view.
+    // After #235, Day and Week are split buttons — primary click switches
+    // view directly; the caret opens the Grid/Agenda menu.
     await page.getByTestId("view-switcher-week").click();
-    await page.getByRole("menuitemradio", { name: /grid/i }).click();
     await expect(page.getByTestId("week-calendar-range")).toBeVisible();
 
     await page.getByTestId("view-switcher-day").click();
-    await page.getByRole("menuitemradio", { name: /grid/i }).click();
     await expect(page.getByTestId("day-calendar-heading")).toBeVisible();
 
-    // Day → Day+Agenda via the dropdown's Agenda sub-option (#150).
-    await page.getByTestId("view-switcher-day").click();
+    // Day → Day+Agenda via the caret's Agenda sub-option (#150 + #235).
+    await page.getByTestId("view-switcher-day-mode").click();
     await page.getByRole("menuitemradio", { name: /agenda/i }).click();
     await expect(page.getByTestId("agenda-list")).toBeVisible();
 
