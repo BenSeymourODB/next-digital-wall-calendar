@@ -289,6 +289,117 @@ describe("CalendarProvider — settings state", () => {
   });
 });
 
+// Issue #238 — the production /calendar page deep-links to a view via
+// `?view=year` etc. The page reads the URL with `useSearchParams` and
+// passes the result to CalendarProvider, which must seed initial state
+// from those props (overriding any persisted localStorage value) and
+// write the override through so the user's choice persists across
+// reloads.
+describe("CalendarProvider — initialView / initialAgendaMode overrides", () => {
+  beforeEach(() => {
+    mockSessionState.current = { data: null, status: "unauthenticated" };
+    window.localStorage.clear();
+  });
+
+  function renderWithOverrides(props: {
+    initialView?: import("@/types/calendar").TCalendarView;
+    initialAgendaMode?: boolean;
+  }) {
+    return render(
+      <SessionProvider session={null}>
+        <CalendarProvider {...props}>
+          <SettingsProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+  }
+
+  it("seeds the initial view from initialView when nothing is persisted", async () => {
+    renderWithOverrides({ initialView: "year" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("year");
+    });
+  });
+
+  it("overrides a persisted localStorage view when initialView is provided", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderWithOverrides({ initialView: "year" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("year");
+    });
+  });
+
+  it("writes the initialView override through to localStorage so it persists across reloads", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderWithOverrides({ initialView: "year" });
+
+    await waitFor(() => {
+      const parsed = JSON.parse(
+        window.localStorage.getItem("calendar-settings") ?? "{}"
+      );
+      expect(parsed.view).toBe("year");
+    });
+  });
+
+  it("seeds initialAgendaMode and persists it when provided", async () => {
+    renderWithOverrides({ initialView: "day", initialAgendaMode: true });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("day");
+    });
+    expect(screen.getByTestId("agenda-mode")).toHaveTextContent("true");
+
+    await waitFor(() => {
+      const parsed = JSON.parse(
+        window.localStorage.getItem("calendar-settings") ?? "{}"
+      );
+      expect(parsed.view).toBe("day");
+      expect(parsed.agendaMode).toBe(true);
+    });
+  });
+
+  it("preserves persisted view when initialView is undefined", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "week",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderWithOverrides({});
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("week");
+    });
+  });
+});
+
 vi.mock("@/lib/calendar-transform", () => ({
   // Honour `colorOverride` on the test fixture so the filter test
   // can assert that filtering by color actually drops the right

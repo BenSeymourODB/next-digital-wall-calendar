@@ -19,8 +19,25 @@ import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import type { TCalendarView } from "@/types/calendar";
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Settings } from "lucide-react";
+
+const VIEW_PARAM_VALUES = [
+  "day",
+  "week",
+  "month",
+  "year",
+  "clock",
+  "agenda",
+] as const;
+type TViewParam = (typeof VIEW_PARAM_VALUES)[number];
+
+function isViewParam(value: string | null): value is TViewParam {
+  return (
+    value !== null && (VIEW_PARAM_VALUES as readonly string[]).includes(value)
+  );
+}
 
 const VIEW_FADE_DURATION_MS = 250;
 
@@ -116,11 +133,43 @@ function CalendarContent() {
   );
 }
 
-export default function CalendarPage() {
+function CalendarPageBody() {
+  // Issue #238 — honour ?view=year (and other view= URL params) so deep
+  // links and bookmarks land on the requested view even when the user's
+  // persisted localStorage points elsewhere. Mirrors the test page
+  // pattern. Legacy ?view=agenda maps to day + agendaMode=true to match
+  // the provider's pre-#150 → post-#150 migration.
+  const searchParams = useSearchParams();
+  const rawView = searchParams.get("view");
+  const isLegacyAgenda = rawView === "agenda";
+  const initialView: TCalendarView | undefined = isViewParam(rawView)
+    ? isLegacyAgenda
+      ? "day"
+      : (rawView as TCalendarView)
+    : undefined;
+  const initialAgendaMode = isLegacyAgenda
+    ? true
+    : searchParams.get("agendaMode") === "true"
+      ? true
+      : undefined;
+
   return (
-    <CalendarProvider>
+    <CalendarProvider
+      initialView={initialView}
+      initialAgendaMode={initialAgendaMode}
+    >
       <CalendarContent />
       <Toaster />
     </CalendarProvider>
+  );
+}
+
+export default function CalendarPage() {
+  return (
+    <Suspense
+      fallback={<div className="bg-background min-h-screen p-4 sm:p-8" />}
+    >
+      <CalendarPageBody />
+    </Suspense>
   );
 }

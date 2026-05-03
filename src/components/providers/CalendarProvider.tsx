@@ -136,10 +136,27 @@ export function CalendarProvider({
   children,
   badge = "colored",
   view = "month",
+  initialView,
+  initialAgendaMode,
 }: {
   children: React.ReactNode;
   view?: TCalendarView;
   badge?: "dot" | "colored";
+  /**
+   * One-shot view override that wins over the persisted localStorage value
+   * for the initial mount, and is written back to storage so the user's
+   * deep-linked choice survives a reload. Used by the production
+   * `/calendar` page to honour `?view=` URL params (issue #238). Pass
+   * `undefined` to keep the default (use stored value or fall back to
+   * the `view` prop / `"month"`).
+   */
+  initialView?: TCalendarView;
+  /**
+   * Companion to `initialView` for the agenda sub-toggle, e.g. legacy
+   * `?view=agenda` deep links resolve to `initialView="day"` +
+   * `initialAgendaMode=true` (#150 + #238). Same override semantics.
+   */
+  initialAgendaMode?: boolean;
 }) {
   // Use NextAuth session for authentication
   const { data: session, status } = useSession();
@@ -179,13 +196,13 @@ export function CalendarProvider({
     settings.badgeVariant ?? DEFAULT_SETTINGS.badgeVariant
   );
   const [currentView, setCurrentViewState] = useState<TCalendarView>(
-    settings.view ?? DEFAULT_SETTINGS.view
+    initialView ?? settings.view ?? DEFAULT_SETTINGS.view
   );
   const [use24HourFormat, setUse24HourFormatState] = useState<boolean>(
     settings.use24HourFormat ?? DEFAULT_SETTINGS.use24HourFormat
   );
   const [agendaMode, setAgendaModeState] = useState<boolean>(
-    settings.agendaMode ?? DEFAULT_SETTINGS.agendaMode
+    initialAgendaMode ?? settings.agendaMode ?? DEFAULT_SETTINGS.agendaMode
   );
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
@@ -193,6 +210,30 @@ export function CalendarProvider({
   const [weekStartDay, setWeekStartDayState] = useState<TWeekStartDay>(
     settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay
   );
+
+  // Persist the URL-deep-link override (#238) once on mount so the user's
+  // requested view survives a reload without the query string. Subsequent
+  // setView/setAgendaMode calls flow through the existing handlers; this
+  // effect runs only with the initial values captured at mount time.
+  useEffect(() => {
+    if (initialView === undefined && initialAgendaMode === undefined) {
+      return;
+    }
+    setSettings((prev) => {
+      const migrated = migrateLegacySettings(prev) as Partial<CalendarSettings>;
+      return {
+        ...migrated,
+        ...(initialView !== undefined ? { view: initialView } : {}),
+        ...(initialAgendaMode !== undefined
+          ? { agendaMode: initialAgendaMode }
+          : {}),
+      } as unknown as LegacyCalendarSettings;
+    });
+    // Mount-only: capturing the props once is intentional. Subsequent URL
+    // changes (back/forward) reach the page component, which remounts the
+    // provider with fresh props.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
