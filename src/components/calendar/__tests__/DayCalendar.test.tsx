@@ -394,6 +394,21 @@ describe("DayCalendar", () => {
     });
   });
 
+  describe("Initial scroll position (#214)", () => {
+    // HOUR_HEIGHT_PX = 48; working hours start at 07:00
+    // Expected scrollTop: 7 * 48 = 336
+    it("auto-scrolls the time grid to ~7am on mount", () => {
+      renderWithContext({ selectedDate: new Date() });
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(336);
+    });
+
+    it("does not render the grid (and thus does not scroll) in agenda mode", () => {
+      renderWithContext({ selectedDate: new Date(), agendaMode: true });
+      expect(screen.queryByTestId("day-calendar-grid")).not.toBeInTheDocument();
+    });
+  });
+
   describe("Multi-day events", () => {
     it("shows a multi-day all-day event in the all-day section even when the user is mid-span", () => {
       const selectedDate = startOfDay(new Date(2026, 3, 15)); // Wed
