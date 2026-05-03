@@ -386,6 +386,38 @@ describe("WeekCalendar", () => {
         screen.queryByTestId("week-calendar-now-line")
       ).not.toBeInTheDocument();
     });
+
+    // Regression: #234 — event count and timed events must include events that
+    // start on the last day of the visible week (Saturday with WEEK_STARTS_ON = 0).
+    it("renders timed events that start on the last day of the week", () => {
+      const selectedDate = midday(new Date(2026, 4, 2)); // Sat May 2, 2026
+      const weekStart = startOfWeek(selectedDate, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const saturday = addDays(weekStart, 6);
+
+      const start = new Date(saturday);
+      start.setHours(14, 0, 0, 0);
+      const end = new Date(saturday);
+      end.setHours(15, 0, 0, 0);
+
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "sat-afternoon",
+            title: "Project Review",
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+          }),
+        ],
+      });
+
+      expect(screen.getByTestId("week-calendar-event-count")).toHaveTextContent(
+        "1 event"
+      );
+      expect(screen.getByText("Project Review")).toBeInTheDocument();
+    });
   });
 
   describe("Multi-day spanning bars", () => {

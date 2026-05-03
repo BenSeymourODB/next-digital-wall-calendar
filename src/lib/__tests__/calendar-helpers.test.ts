@@ -354,6 +354,54 @@ describe("getEventsForWeek", () => {
     const result = getEventsForWeek(events, new Date(2024, 2, 13));
     expect(result.length).toBe(2);
   });
+
+  // Regression: #234 — events that start on the last day of the week (Saturday
+  // when WEEK_STARTS_ON = 0) at any time after 00:00 were being filtered out
+  // because the upper bound was `weekDates[6]`, i.e. Saturday at midnight.
+  it("includes events that start on the last day of the week", () => {
+    // Sat May 2, 2026 is the last day of the Apr 26 – May 2 Sunday-first week.
+    const saturday = new Date(2026, 4, 2);
+    const referenceDate = new Date(2026, 4, 2); // selectedDate sits on Saturday
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "sat-morning",
+        startDate: new Date(saturday.setHours(9, 0, 0, 0)).toISOString(),
+        endDate: new Date(saturday.setHours(10, 0, 0, 0)).toISOString(),
+      }),
+      createMockEvent({
+        id: "sat-afternoon",
+        startDate: new Date(saturday.setHours(14, 0, 0, 0)).toISOString(),
+        endDate: new Date(saturday.setHours(15, 0, 0, 0)).toISOString(),
+      }),
+      createMockEvent({
+        id: "sat-late-night",
+        startDate: new Date(saturday.setHours(23, 30, 0, 0)).toISOString(),
+        endDate: new Date(saturday.setHours(23, 59, 0, 0)).toISOString(),
+      }),
+    ];
+
+    const result = getEventsForWeek(events, referenceDate);
+    expect(result.map((e) => e.id).sort()).toEqual([
+      "sat-afternoon",
+      "sat-late-night",
+      "sat-morning",
+    ]);
+  });
+
+  it("excludes events that start the day after the week ends", () => {
+    // Sun May 3, 2026 is the first day of the next week.
+    const referenceDate = new Date(2026, 4, 2); // selectedDate sits on Saturday
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "next-week",
+        startDate: "2026-05-03T00:30:00",
+        endDate: "2026-05-03T01:30:00",
+      }),
+    ];
+
+    const result = getEventsForWeek(events, referenceDate);
+    expect(result).toEqual([]);
+  });
 });
 
 describe("getEventsForMonth", () => {
