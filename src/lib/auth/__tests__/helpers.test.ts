@@ -3,8 +3,17 @@
  */
 import { prisma } from "@/lib/db";
 import type { Session } from "next-auth";
+import { randomBytes } from "node:crypto";
 import type { MockedFunction } from "vitest";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { auth } from "../auth";
 import {
   AuthError,
@@ -47,6 +56,16 @@ vi.mock("@/lib/logger", () => ({
     event: vi.fn(),
   },
 }));
+
+// Pin a deterministic TOKEN_ENCRYPTION_KEY for the whole file so the cipher
+// module can encrypt within the test and the helpers decrypt with the same key.
+const TEST_KEY_B64 = randomBytes(32).toString("base64");
+beforeAll(() => {
+  vi.stubEnv("TOKEN_ENCRYPTION_KEY", TEST_KEY_B64);
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 // Type the mocked auth function correctly
 // NextAuth's auth has complex overloads, so we need to cast it
@@ -123,6 +142,35 @@ describe("auth helpers", () => {
       await expect(getAccessToken()).rejects.toThrow(
         "No Google account linked. Please sign in with Google."
       );
+    });
+
+    it("decrypts a v1-enveloped access_token before returning it", async () => {
+      const { encryptToken } = await import("@/lib/crypto/token-cipher");
+      mockAuth.mockResolvedValue(mockSession);
+      const plainAccessToken = "ya29.fresh-access-token";
+      vi.mocked(prisma.account.findMany).mockResolvedValue([
+        {
+          ...mockGoogleAccount,
+          access_token: encryptToken(plainAccessToken)!,
+        },
+      ]);
+
+      const token = await getAccessToken();
+
+      expect(token).toBe(plainAccessToken);
+      expect(token).not.toContain("v1:");
+    });
+
+    it("returns legacy plaintext access_token unchanged (backwards compat)", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      const legacyPlaintext = "ya29.legacy-plaintext-token";
+      vi.mocked(prisma.account.findMany).mockResolvedValue([
+        { ...mockGoogleAccount, access_token: legacyPlaintext },
+      ]);
+
+      const token = await getAccessToken();
+
+      expect(token).toBe(legacyPlaintext);
     });
   });
 
@@ -235,6 +283,63 @@ describe("auth helpers", () => {
       const account = await getGoogleAccount();
 
       expect(account).toBeUndefined();
+    });
+
+    it("decrypts access_token, refresh_token, and id_token fields", async () => {
+      const { encryptToken } = await import("@/lib/crypto/token-cipher");
+      mockAuth.mockResolvedValue(mockSession);
+
+      const plainAccess = "ya29.fresh-access";
+      const plainRefresh = "1//refresh-token-abc";
+      const plainIdToken = "eyJhbGciOi...";
+      vi.mocked(prisma.account.findMany).mockResolvedValue([
+        {
+          ...mockGoogleAccount,
+          access_token: encryptToken(plainAccess)!,
+          refresh_token: encryptToken(plainRefresh)!,
+          id_token: encryptToken(plainIdToken)!,
+        },
+      ]);
+
+      const account = await getGoogleAccount();
+
+      expect(account?.access_token).toBe(plainAccess);
+      expect(account?.refresh_token).toBe(plainRefresh);
+      expect(account?.id_token).toBe(plainIdToken);
+      // Non-token fields pass through untouched
+      expect(account?.provider).toBe(mockGoogleAccount.provider);
+      expect(account?.userId).toBe(mockGoogleAccount.userId);
+      expect(account?.expires_at).toBe(mockGoogleAccount.expires_at);
+    });
+
+    it("leaves legacy plaintext token fields unchanged (backwards compat)", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      // mockGoogleAccount fixture uses plaintext strings like "mock-access-token"
+      vi.mocked(prisma.account.findMany).mockResolvedValue([mockGoogleAccount]);
+
+      const account = await getGoogleAccount();
+
+      expect(account?.access_token).toBe(mockGoogleAccount.access_token);
+      expect(account?.refresh_token).toBe(mockGoogleAccount.refresh_token);
+      expect(account?.id_token).toBe(mockGoogleAccount.id_token);
+    });
+
+    it("preserves null token fields", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findMany).mockResolvedValue([
+        {
+          ...mockGoogleAccount,
+          access_token: null,
+          refresh_token: null,
+          id_token: null,
+        },
+      ]);
+
+      const account = await getGoogleAccount();
+
+      expect(account?.access_token).toBeNull();
+      expect(account?.refresh_token).toBeNull();
+      expect(account?.id_token).toBeNull();
     });
   });
 

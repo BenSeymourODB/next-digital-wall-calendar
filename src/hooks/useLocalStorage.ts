@@ -4,10 +4,12 @@ function getServerSnapshot<T>(initialValue: T): () => T {
   return () => initialValue;
 }
 
+type SetStateAction<T> = T | ((prev: T) => T);
+
 export function useLocalStorage<T>(
   key: string,
   initialValue: T
-): [T, (value: T) => void] {
+): [T, (value: SetStateAction<T>) => void] {
   // Subscribe to storage events so the hook re-renders when another tab writes
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
@@ -40,21 +42,31 @@ export function useLocalStorage<T>(
   const value: T = raw !== null ? JSON.parse(raw) : initialValue;
 
   const setValue = useCallback(
-    (newValue: T) => {
+    (newValue: SetStateAction<T>) => {
       try {
-        window.localStorage.setItem(key, JSON.stringify(newValue));
+        // Read the latest value directly from storage so rapid successive
+        // updater calls in the same tick compose correctly — `value` from
+        // the render scope may be stale between batched writes.
+        const latestRaw = window.localStorage.getItem(key);
+        const latest: T =
+          latestRaw !== null ? (JSON.parse(latestRaw) as T) : initialValue;
+        const resolved =
+          typeof newValue === "function"
+            ? (newValue as (prev: T) => T)(latest)
+            : newValue;
+        window.localStorage.setItem(key, JSON.stringify(resolved));
         // Dispatch a storage event so useSyncExternalStore re-renders
         window.dispatchEvent(
           new StorageEvent("storage", {
             key,
-            newValue: JSON.stringify(newValue),
+            newValue: JSON.stringify(resolved),
           })
         );
       } catch (error) {
         console.error("Error saving to localStorage:", error);
       }
     },
-    [key]
+    [key, initialValue]
   );
 
   return [value, setValue];

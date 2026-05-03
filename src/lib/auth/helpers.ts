@@ -1,6 +1,25 @@
+import { decryptToken } from "@/lib/crypto/token-cipher";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { auth } from "./auth";
+
+type AccountRow = Awaited<ReturnType<typeof prisma.account.findFirst>>;
+
+/**
+ * Return an Account clone whose `access_token`, `refresh_token`, and
+ * `id_token` have been decrypted. Legacy plaintext values pass through
+ * unchanged (see `decryptToken`).
+ */
+function decryptAccountTokens<T extends NonNullable<AccountRow>>(
+  account: T
+): T {
+  return {
+    ...account,
+    access_token: decryptToken(account.access_token),
+    refresh_token: decryptToken(account.refresh_token),
+    id_token: decryptToken(account.id_token),
+  };
+}
 
 /**
  * Google OAuth scope required to read or write Google Tasks. The same string
@@ -57,7 +76,11 @@ export async function getAccessToken(): Promise<string> {
     throw new Error("No Google account linked. Please sign in with Google.");
   }
 
-  return googleAccount.access_token;
+  const plaintext = decryptToken(googleAccount.access_token);
+  if (!plaintext) {
+    throw new Error("No Google account linked. Please sign in with Google.");
+  }
+  return plaintext;
 }
 
 /**
@@ -112,7 +135,11 @@ export async function getGoogleAccount() {
     where: { userId: session.user.id, provider: "google" },
   });
 
-  return googleAccount;
+  if (!googleAccount) {
+    return googleAccount;
+  }
+
+  return decryptAccountTokens(googleAccount);
 }
 
 /**

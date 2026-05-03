@@ -20,6 +20,8 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+const MAX_DOT_COLORS = 3;
+
 const DOW_LABELS = [
   { short: "S", full: "Sunday" },
   { short: "M", full: "Monday" },
@@ -39,6 +41,18 @@ const COLOR_DOT_CLASS: Record<TEventColor, string> = {
   orange: "bg-orange-500",
 };
 
+function uniqueDayColors(dayEvents: IEvent[]): TEventColor[] {
+  const seen = new Set<TEventColor>();
+  const result: TEventColor[] = [];
+  for (const event of dayEvents) {
+    if (seen.has(event.color)) continue;
+    seen.add(event.color);
+    result.push(event.color);
+    if (result.length >= MAX_DOT_COLORS) break;
+  }
+  return result;
+}
+
 function formatEventTime(event: IEvent, use24HourFormat: boolean): string {
   if (event.isAllDay) {
     return "All day";
@@ -50,19 +64,41 @@ function formatEventTime(event: IEvent, use24HourFormat: boolean): string {
 }
 
 export function MiniCalendarSidebar() {
-  const { selectedDate, setSelectedDate, events, use24HourFormat } =
-    useCalendar();
+  const {
+    selectedDate,
+    setSelectedDate,
+    events,
+    use24HourFormat,
+    weekStartDay,
+  } = useCalendar();
 
   const [viewMonth, setViewMonth] = useState<Date>(() =>
     startOfMonth(selectedDate)
   );
+  // Track the month we last synced viewMonth from. When the parent calendar
+  // navigates selectedDate to a *different* month, this lets us pull viewMonth
+  // along so the highlighted day stays on screen. Local chevron browsing
+  // doesn't update this tracker (it doesn't change selectedDate), so the
+  // scouting view is preserved across same-month selectedDate updates.
+  const [syncedMonth, setSyncedMonth] = useState<Date>(() =>
+    startOfMonth(selectedDate)
+  );
+  const targetMonth = startOfMonth(selectedDate);
+  if (!isSameMonth(targetMonth, syncedMonth)) {
+    setSyncedMonth(targetMonth);
+    setViewMonth(targetMonth);
+  }
 
   const today = new Date();
 
   const monthStart = startOfMonth(viewMonth);
   const monthEnd = endOfMonth(viewMonth);
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
-  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const gridStart = startOfWeek(monthStart, { weekStartsOn: weekStartDay });
+  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: weekStartDay });
+  const rotatedDowLabels = [
+    ...DOW_LABELS.slice(weekStartDay),
+    ...DOW_LABELS.slice(0, weekStartDay),
+  ];
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
   const weekRows: Date[][] = [];
   for (let i = 0; i < days.length; i += 7) {
@@ -128,7 +164,7 @@ export function MiniCalendarSidebar() {
         aria-label={format(viewMonth, "MMMM yyyy")}
       >
         <div role="row" className="mb-1 grid grid-cols-7">
-          {DOW_LABELS.map((label, i) => (
+          {rotatedDowLabels.map((label, i) => (
             <div
               key={`dow-${i}`}
               role="columnheader"
@@ -148,7 +184,7 @@ export function MiniCalendarSidebar() {
                 const isSelected = isSameDay(day, selectedDate);
                 const inMonth = isSameMonth(day, viewMonth);
                 const dayEvents = getEventsForDay(events, day);
-                const firstColor = dayEvents[0]?.color;
+                const dotColors = uniqueDayColors(dayEvents);
 
                 return (
                   <div key={day.toISOString()} role="gridcell">
@@ -178,11 +214,21 @@ export function MiniCalendarSidebar() {
                         .join(" ")}
                     >
                       <span>{format(day, "d")}</span>
-                      {firstColor && (
+                      {dotColors.length > 0 && (
                         <span
-                          data-testid="mini-calendar-event-dot"
-                          className={`absolute bottom-0.5 h-1 w-1 rounded-full ${COLOR_DOT_CLASS[firstColor]}`}
-                        />
+                          data-testid="mini-calendar-event-dots"
+                          className="absolute bottom-0.5 flex items-center gap-0.5"
+                          aria-hidden="true"
+                        >
+                          {dotColors.map((color) => (
+                            <span
+                              key={color}
+                              data-testid="mini-calendar-event-dot"
+                              data-color={color}
+                              className={`h-1 w-1 rounded-full ${COLOR_DOT_CLASS[color]}`}
+                            />
+                          ))}
+                        </span>
                       )}
                     </button>
                   </div>

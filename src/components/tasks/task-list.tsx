@@ -8,10 +8,13 @@
  * - Loading, error, and empty states
  * - List of TaskItem components
  * - Task completion toggling
+ * - Footer "+ Add Task" button that launches NewTaskModal
  */
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, RefreshCw, Settings } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Plus, RefreshCw, Settings } from "lucide-react";
+import { NewTaskModal } from "./new-task-modal";
 import { TaskItem } from "./task-item";
 import { type TaskListConfig, type TaskWithMeta } from "./types";
 import { useTasks } from "./use-tasks";
@@ -31,6 +34,7 @@ export function TaskList({
   className = "",
 }: TaskListProps) {
   const { tasks, loading, error, refreshTasks, updateTask } = useTasks(config);
+  const [isAddOpen, setIsAddOpen] = useState(false);
 
   const handleTaskToggle = async (task: TaskWithMeta) => {
     const newStatus = task.status === "completed" ? "needsAction" : "completed";
@@ -38,6 +42,10 @@ export function TaskList({
   };
 
   const title = config.title || "My Tasks";
+
+  const enabledLists = config.lists.filter((list) => list.enabled);
+  const defaultListId =
+    enabledLists.length === 1 ? enabledLists[0].listId : undefined;
 
   return (
     <Card className={className}>
@@ -114,7 +122,30 @@ export function TaskList({
             ))}
           </ul>
         )}
+
+        {/* Add Task footer */}
+        <div className="-mx-6 mt-2 border-t border-gray-100">
+          <Button
+            variant="ghost"
+            className="w-full justify-center gap-2 rounded-none py-3 text-blue-600 hover:bg-blue-50"
+            onClick={() => setIsAddOpen(true)}
+            disabled={enabledLists.length === 0}
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Task</span>
+          </Button>
+        </div>
       </CardContent>
+
+      <NewTaskModal
+        open={isAddOpen}
+        onOpenChange={setIsAddOpen}
+        availableLists={enabledLists}
+        defaultListId={defaultListId}
+        onSuccess={() => {
+          refreshTasks();
+        }}
+      />
     </Card>
   );
 }
