@@ -1,4 +1,5 @@
 import type { IEvent, TCalendarView } from "@/types/calendar";
+import { parseISO } from "date-fns";
 import { describe, expect, it } from "vitest";
 import {
   WEEK_STARTS_ON,
@@ -360,23 +361,24 @@ describe("getEventsForWeek", () => {
   // because the upper bound was `weekDates[6]`, i.e. Saturday at midnight.
   it("includes events that start on the last day of the week", () => {
     // Sat May 2, 2026 is the last day of the Apr 26 – May 2 Sunday-first week.
-    const saturday = new Date(2026, 4, 2);
-    const referenceDate = new Date(2026, 4, 2); // selectedDate sits on Saturday
+    const sat = (h: number, m = 0): string =>
+      new Date(2026, 4, 2, h, m, 0, 0).toISOString();
+    const referenceDate = new Date(2026, 4, 2);
     const events: IEvent[] = [
       createMockEvent({
         id: "sat-morning",
-        startDate: new Date(saturday.setHours(9, 0, 0, 0)).toISOString(),
-        endDate: new Date(saturday.setHours(10, 0, 0, 0)).toISOString(),
+        startDate: sat(9),
+        endDate: sat(10),
       }),
       createMockEvent({
         id: "sat-afternoon",
-        startDate: new Date(saturday.setHours(14, 0, 0, 0)).toISOString(),
-        endDate: new Date(saturday.setHours(15, 0, 0, 0)).toISOString(),
+        startDate: sat(14),
+        endDate: sat(15),
       }),
       createMockEvent({
         id: "sat-late-night",
-        startDate: new Date(saturday.setHours(23, 30, 0, 0)).toISOString(),
-        endDate: new Date(saturday.setHours(23, 59, 0, 0)).toISOString(),
+        startDate: sat(23, 30),
+        endDate: sat(23, 59),
       }),
     ];
 
@@ -386,6 +388,15 @@ describe("getEventsForWeek", () => {
       "sat-late-night",
       "sat-morning",
     ]);
+
+    // Spot-check that the timestamps actually match the variable names
+    // (catches accidental shared-Date mutation).
+    const morning = result.find((e) => e.id === "sat-morning")!;
+    expect(parseISO(morning.startDate).getHours()).toBe(9);
+    const afternoon = result.find((e) => e.id === "sat-afternoon")!;
+    expect(parseISO(afternoon.startDate).getHours()).toBe(14);
+    const lateNight = result.find((e) => e.id === "sat-late-night")!;
+    expect(parseISO(lateNight.startDate).getHours()).toBe(23);
   });
 
   it("excludes events that start the day after the week ends", () => {
