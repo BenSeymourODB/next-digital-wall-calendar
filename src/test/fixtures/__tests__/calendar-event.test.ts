@@ -29,11 +29,10 @@ describe("createMockEvent", () => {
     expect(event.id).toBe("custom");
   });
 
-  it("does not increment the counter for calls that pass an explicit id", () => {
-    // Implementation note: even if the counter ticks for an overridden call,
-    // the visible behaviour we care about is that the *next* default-id call
-    // is still unique. This test guards against any future change that breaks
-    // either the uniqueness or the readable monotonic sequence.
+  it("an explicit id override does not break the uniqueness of subsequent default ids", () => {
+    // The counter increments unconditionally — that's the documented trade-off.
+    // What matters from the caller's perspective is that interleaving an
+    // override-id call with default-id calls still hands out unique defaults.
     createMockEvent({ id: "custom-1" });
     const next = createMockEvent();
     const after = createMockEvent();

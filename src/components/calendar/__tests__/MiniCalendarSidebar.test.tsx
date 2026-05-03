@@ -2,39 +2,14 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
-import type {
-  IEvent,
-  IUser,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
+import type { IUser, TCalendarView, TEventColor } from "@/types/calendar";
 import type React from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { addMonths, format, isSameDay, subMonths } from "date-fns";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MiniCalendarSidebar } from "../MiniCalendarSidebar";
-
-let mockEventSeq = 0;
-function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
-  mockEventSeq += 1;
-  return {
-    id: `test-event-${mockEventSeq}`,
-    title: "Test Event",
-    startDate: new Date().toISOString(),
-    endDate: new Date().toISOString(),
-    color: "blue",
-    description: "",
-    isAllDay: false,
-    calendarId: "primary",
-    user: {
-      id: "user-1",
-      name: "Test User",
-      picturePath: null,
-    },
-    ...overrides,
-  };
-}
 
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
