@@ -307,32 +307,43 @@ export function AgendaCalendar() {
         </div>
       </div>
 
-      <div className="relative">
-        <Search
-          className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
-          aria-hidden="true"
-        />
-        <Input
-          type="search"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search events by title, description, or attendee…"
-          aria-label="Search events"
-          data-testid="agenda-search-input"
-          className="pr-9 pl-9"
-        />
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search
+            className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+            aria-hidden="true"
+          />
+          <Input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search events by title, description, or attendee…"
+            aria-label="Search events"
+            data-testid="agenda-search-input"
+            className="pr-9 pl-9"
+          />
+          {searchActive && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
+              data-testid="agenda-search-clear"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
         {searchActive && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => setSearchQuery("")}
-            aria-label="Clear search"
-            data-testid="agenda-search-clear"
-            className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
+          <span
+            className="text-muted-foreground shrink-0 text-xs tabular-nums"
+            data-testid="agenda-search-match-count"
+            aria-hidden="true"
           >
-            <X className="h-4 w-4" />
-          </Button>
+            {resultCount} {resultCount === 1 ? "match" : "matches"}
+          </span>
         )}
       </div>
 

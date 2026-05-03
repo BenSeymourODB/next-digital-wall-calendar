@@ -416,6 +416,66 @@ describe("AgendaCalendar", () => {
       expect(screen.getByText("Soccer Practice")).toBeInTheDocument();
       expect(screen.getByText("Birthday Party")).toBeInTheDocument();
     });
+
+    describe("Visible match count badge (#214)", () => {
+      it("does not render the badge when the query is empty", () => {
+        renderWithContext(buildEvents());
+        expect(
+          screen.queryByTestId("agenda-search-match-count")
+        ).not.toBeInTheDocument();
+      });
+
+      it("does not render the badge for a whitespace-only query", async () => {
+        const user = userEvent.setup();
+        renderWithContext(buildEvents());
+
+        await user.type(screen.getByPlaceholderText(/search events/i), "   ");
+
+        expect(
+          screen.queryByTestId("agenda-search-match-count")
+        ).not.toBeInTheDocument();
+      });
+
+      it("shows '1 match' (singular) when exactly one event matches", async () => {
+        const user = userEvent.setup();
+        renderWithContext(buildEvents());
+
+        await user.type(
+          screen.getByPlaceholderText(/search events/i),
+          "soccer"
+        );
+
+        expect(
+          screen.getByTestId("agenda-search-match-count")
+        ).toHaveTextContent("1 match");
+      });
+
+      it("shows 'N matches' (plural) when multiple events match", async () => {
+        const user = userEvent.setup();
+        renderWithContext(buildEvents());
+
+        // All three fixture titles include the letter "e".
+        await user.type(screen.getByPlaceholderText(/search events/i), "e");
+
+        expect(
+          screen.getByTestId("agenda-search-match-count")
+        ).toHaveTextContent("3 matches");
+      });
+
+      it("shows '0 matches' when no events match", async () => {
+        const user = userEvent.setup();
+        renderWithContext(buildEvents());
+
+        await user.type(
+          screen.getByPlaceholderText(/search events/i),
+          "nothing-matches-this"
+        );
+
+        expect(
+          screen.getByTestId("agenda-search-match-count")
+        ).toHaveTextContent("0 matches");
+      });
+    });
   });
 
   describe("Group by", () => {
