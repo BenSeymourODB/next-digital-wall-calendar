@@ -1,119 +1,255 @@
 /**
- * Tests for /test/tasks page — live-mode list-picker localStorage persistence (#289)
+ * Tests for `/test/tasks` page (#236).
  *
- * The page always renders a live-mode section with a <select> that lets the
- * tester pick which Google Tasks list to display. The selection is persisted
- * to localStorage under the key "test-tasks.live-list" so it survives reloads.
+ * The page exposes three modes:
+ * - `?lists=single` — renders a hard-coded single-list mock harness
+ * - `?lists=multi`  — renders a hard-coded multi-list mock harness
+ * - default         — live mode: fetches the user's real lists from
+ *                     `/api/tasks/lists`, auto-selects the first, and
+ *                     exposes a picker so the user can switch between
+ *                     them. Renders loading / error / empty states.
  */
-import { render, screen, waitFor } from "@testing-library/react";
+import { TaskList } from "@/components/tasks/task-list";
+import type { TaskListConfig } from "@/components/tasks/types";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-// ---- component import (after mocks) -------------------------------------- //
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TestTasksPage from "../page";
 
-// ---- localStorage stub --------------------------------------------------- //
-const mockStorage: Record<string, string> = {};
-vi.stubGlobal("localStorage", {
-  getItem: (key: string) => mockStorage[key] ?? null,
-  setItem: (key: string, value: string) => {
-    mockStorage[key] = value;
-  },
-  removeItem: (key: string) => {
-    delete mockStorage[key];
-  },
-  clear: () => {
-    Object.keys(mockStorage).forEach((k) => delete mockStorage[k]);
-  },
-});
+let mockSearch = new URLSearchParams();
 
-// ---- next/navigation stub ------------------------------------------------ //
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => ({
-    get: () => null,
-  }),
+  useSearchParams: () => mockSearch,
 }));
 
-// ---- fetch stub ---------------------------------------------------------- //
+vi.mock("@/components/tasks/task-list", () => ({
+  TaskList: vi.fn(() => null),
+}));
+
+const mockTaskList = vi.mocked(TaskList);
+
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+global.fetch = mockFetch as unknown as typeof fetch;
 
-const MOCK_LISTS = [
-  { id: "list-1", title: "Groceries", updated: "2024-01-01T00:00:00Z" },
-  { id: "list-2", title: "Work", updated: "2024-01-01T00:00:00Z" },
-];
-
-function makeFetchResponse(data: unknown) {
-  return Promise.resolve({
-    ok: true,
-    json: () => Promise.resolve(data),
-  } as Response);
+function jsonResponse(body: unknown, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
 }
 
-// -------------------------------------------------------------------------- //
+function getRenderedConfig(callIndex = 0): TaskListConfig {
+  const call = mockTaskList.mock.calls[callIndex];
+  if (!call) {
+    throw new Error(
+      `TaskList was not rendered (looking for call ${callIndex}, ` +
+        `received ${mockTaskList.mock.calls.length})`
+    );
+  }
+  return (call[0] as { config: TaskListConfig }).config;
+}
 
-const LS_KEY = "test-tasks.live-list";
-
-describe("/test/tasks page — live-mode list picker", () => {
+describe("/test/tasks page", () => {
   beforeEach(() => {
-    // Clear storage and mock state between tests
-    Object.keys(mockStorage).forEach((k) => delete mockStorage[k]);
+    mockSearch = new URLSearchParams();
     mockFetch.mockReset();
-    mockFetch.mockReturnValue(makeFetchResponse({ lists: MOCK_LISTS }));
+    mockTaskList.mockClear();
   });
 
-  it("renders a list picker select element", async () => {
-    render(<TestTasksPage />);
-    await waitFor(() => {
-      expect(
-        screen.getByRole("combobox", { name: /live list/i })
-      ).toBeInTheDocument();
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe("mock harness mode", () => {
+    it("renders the single-list mock when ?lists=single", async () => {
+      mockSearch = new URLSearchParams("lists=single");
+      render(<TestTasksPage />);
+      await waitFor(() => expect(mockTaskList).toHaveBeenCalled());
+
+      const config = getRenderedConfig();
+      expect(config.lists).toHaveLength(1);
+      expect(config.lists[0]).toMatchObject({
+        listId: "list-groceries",
+        listTitle: "Groceries",
+        enabled: true,
+      });
+    });
+
+    it("renders the multi-list mock when ?lists=multi", async () => {
+      mockSearch = new URLSearchParams("lists=multi");
+      render(<TestTasksPage />);
+      await waitFor(() => expect(mockTaskList).toHaveBeenCalled());
+
+      const config = getRenderedConfig();
+      expect(config.lists).toHaveLength(2);
+      expect(config.lists.map((l) => l.listId)).toEqual([
+        "list-groceries",
+        "list-work",
+      ]);
+    });
+
+    it("does not call the lists API in mock mode", async () => {
+      mockSearch = new URLSearchParams("lists=single");
+      render(<TestTasksPage />);
+      await waitFor(() => expect(mockTaskList).toHaveBeenCalled());
+
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
-  it("populates the picker with fetched lists", async () => {
-    render(<TestTasksPage />);
-    await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: "Groceries" })
-      ).toBeInTheDocument();
-      expect(screen.getByRole("option", { name: "Work" })).toBeInTheDocument();
-    });
-  });
-
-  it("persists selection to localStorage when user changes the picker", async () => {
-    const user = userEvent.setup();
-    render(<TestTasksPage />);
-
-    const select = await screen.findByRole("combobox", { name: /live list/i });
-    await user.selectOptions(select, "list-2");
-
-    expect(mockStorage[LS_KEY]).toBe(JSON.stringify("list-2"));
-  });
-
-  it("restores a previously saved selection on remount", async () => {
-    // Pre-seed storage with a saved list id
-    mockStorage[LS_KEY] = JSON.stringify("list-2");
-
-    render(<TestTasksPage />);
-
-    const select = await screen.findByRole("combobox", { name: /live list/i });
-    await waitFor(() => {
-      expect((select as HTMLSelectElement).value).toBe("list-2");
-    });
-  });
-
-  it("falls back to default when persisted id is not in the fetched lists (stale)", async () => {
-    // Persisted id references a list that no longer exists
-    mockStorage[LS_KEY] = JSON.stringify("list-stale-deleted");
-
-    render(<TestTasksPage />);
-
-    const select = await screen.findByRole("combobox", { name: /live list/i });
-    await waitFor(() => {
-      // Should not throw; value should fall back to an empty/default selection
-      expect((select as HTMLSelectElement).value).not.toBe(
-        "list-stale-deleted"
+  describe("live mode", () => {
+    it("shows a loading state while /api/tasks/lists is in flight", async () => {
+      let resolveFetch: ((value: Response) => void) | undefined;
+      mockFetch.mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          })
       );
+
+      render(<TestTasksPage />);
+
+      expect(screen.getByTestId("test-tasks-live-loading")).toBeInTheDocument();
+      expect(mockFetch).toHaveBeenCalledWith("/api/tasks/lists");
+      expect(mockTaskList).not.toHaveBeenCalled();
+
+      // Cleanup: resolve the promise so the test doesn't leak.
+      await act(async () => {
+        resolveFetch?.(jsonResponse({ lists: [] }));
+        await Promise.resolve();
+      });
+    });
+
+    it("renders the error state when the lists fetch fails", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500));
+
+      render(<TestTasksPage />);
+
+      const errorBox = await screen.findByTestId("test-tasks-live-error");
+      expect(errorBox).toBeInTheDocument();
+      expect(errorBox).toHaveTextContent(/couldn.?t load your task lists/i);
+      expect(
+        screen.getByRole("button", { name: /try again/i })
+      ).toBeInTheDocument();
+      expect(mockTaskList).not.toHaveBeenCalled();
+    });
+
+    it("retries the fetch when 'Try again' is clicked", async () => {
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500))
+        .mockResolvedValueOnce(
+          jsonResponse({
+            lists: [
+              { id: "abc", title: "Personal", updated: "2026-05-01T00:00Z" },
+            ],
+          })
+        );
+
+      const user = userEvent.setup();
+      render(<TestTasksPage />);
+
+      await screen.findByTestId("test-tasks-live-error");
+      await user.click(screen.getByRole("button", { name: /try again/i }));
+
+      await waitFor(() => expect(mockTaskList).toHaveBeenCalled());
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(getRenderedConfig().lists[0].listId).toBe("abc");
+    });
+
+    it("renders the empty state when the user has no task lists", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ lists: [] }));
+
+      render(<TestTasksPage />);
+
+      const empty = await screen.findByTestId("test-tasks-live-empty");
+      expect(empty).toBeInTheDocument();
+      expect(empty).toHaveTextContent(/no task lists/i);
+      expect(mockTaskList).not.toHaveBeenCalled();
+    });
+
+    it("auto-selects the first list and renders TaskList for it", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          lists: [
+            { id: "list-a", title: "Personal", updated: "2026-05-01T00:00Z" },
+            { id: "list-b", title: "Work", updated: "2026-05-01T00:00Z" },
+          ],
+        })
+      );
+
+      render(<TestTasksPage />);
+
+      await waitFor(() => expect(mockTaskList).toHaveBeenCalled());
+
+      const picker = screen.getByLabelText(/^task list$/i);
+      expect((picker as HTMLSelectElement).value).toBe("list-a");
+
+      const config = getRenderedConfig();
+      expect(config.lists).toHaveLength(1);
+      expect(config.lists[0]).toMatchObject({
+        listId: "list-a",
+        listTitle: "Personal",
+        enabled: true,
+      });
+    });
+
+    it("re-renders TaskList for the chosen list when the picker changes", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          lists: [
+            { id: "list-a", title: "Personal", updated: "2026-05-01T00:00Z" },
+            { id: "list-b", title: "Work", updated: "2026-05-01T00:00Z" },
+          ],
+        })
+      );
+
+      const user = userEvent.setup();
+      render(<TestTasksPage />);
+
+      await waitFor(() => expect(mockTaskList).toHaveBeenCalled());
+
+      const picker = screen.getByLabelText(/^task list$/i);
+      await user.selectOptions(picker, "list-b");
+
+      await waitFor(() => {
+        const latest =
+          mockTaskList.mock.calls[mockTaskList.mock.calls.length - 1];
+        const cfg = (latest?.[0] as { config: TaskListConfig }).config;
+        expect(cfg.lists[0].listId).toBe("list-b");
+      });
+    });
+
+    it("renders only the picker (no TaskList) until the fetch resolves", async () => {
+      let resolveFetch: ((value: Response) => void) | undefined;
+      mockFetch.mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          })
+      );
+
+      render(<TestTasksPage />);
+
+      // Loading skeleton, no TaskList
+      expect(screen.getByTestId("test-tasks-live-loading")).toBeInTheDocument();
+      expect(mockTaskList).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveFetch?.(
+          jsonResponse({
+            lists: [
+              { id: "list-a", title: "Personal", updated: "2026-05-01T00:00Z" },
+            ],
+          })
+        );
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(mockTaskList).toHaveBeenCalled());
+      expect(
+        screen.queryByTestId("test-tasks-live-loading")
+      ).not.toBeInTheDocument();
     });
   });
 });
