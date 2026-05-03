@@ -27,6 +27,13 @@ describe("MIGRATION_NAME_PATTERN", () => {
     expect(MIGRATION_NAME_PATTERN.test("0001")).toBe(false);
     expect(MIGRATION_NAME_PATTERN.test("0001_")).toBe(false);
   });
+
+  it("rejects trailing or doubled underscores in the description", () => {
+    expect(MIGRATION_NAME_PATTERN.test("0001_add_")).toBe(false);
+    expect(MIGRATION_NAME_PATTERN.test("0001___")).toBe(false);
+    expect(MIGRATION_NAME_PATTERN.test("0001_add__settings")).toBe(false);
+    expect(MIGRATION_NAME_PATTERN.test("0001__initial")).toBe(false);
+  });
 });
 
 describe("validateMigrationNames", () => {
@@ -90,18 +97,26 @@ describe("validateMigrationNames", () => {
     ];
 
     const errors = validateMigrationNames(entries);
-    // Both 0002s sort after 0001; the second one in sort order is at index 2,
-    // expects prefix 0003. Either way, at least one ordering error is reported.
-    expect(errors.length).toBeGreaterThan(0);
-    expect(errors.some((e) => e.includes("0002"))).toBe(true);
+    // After sort: ["0001_initial", "0002_first", "0002_second"]. The second
+    // 0002 sits at index 2 where prefix 0003 is expected, so exactly one
+    // sequential-error is emitted (for "0002_second"). Tighter than
+    // toBeGreaterThan(0) so a future regression that double-reports or
+    // suppresses errors fails the test.
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('"0002_second"');
+    expect(errors[0]).toContain("expected 0003");
   });
 
   it("flags a sequence that does not start at 0001", () => {
     const entries = [dir("0002_skipped_one"), dir("0003_second")];
 
     const errors = validateMigrationNames(entries);
+    // Both entries are wrong: "0002_skipped_one" is at index 0 (expected 0001)
+    // and "0003_second" is at index 1 (expected 0002), so the validator emits
+    // one error per entry.
     expect(errors).toHaveLength(2);
     expect(errors[0]).toContain("expected 0001");
+    expect(errors[1]).toContain("expected 0002");
   });
 
   it("returns multiple errors when several names break the rules", () => {
@@ -112,7 +127,13 @@ describe("validateMigrationNames", () => {
     ];
 
     const errors = validateMigrationNames(entries);
+    // Expected: one regex error for "not-a-migration", one sequential error
+    // for "0003_skipped_two" (expected 0002 at index 1 of the sorted valid
+    // list). Asserting on both messages — not just the count — guards against
+    // a refactor that merges or drops one of them.
     expect(errors).toHaveLength(2);
+    expect(errors.some((e) => e.includes('"not-a-migration"'))).toBe(true);
+    expect(errors.some((e) => e.includes('"0003_skipped_two"'))).toBe(true);
   });
 
   it("treats an empty migrations directory as valid", () => {

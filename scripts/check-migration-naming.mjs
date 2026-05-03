@@ -2,11 +2,13 @@
 // Validates Prisma migration directory names match the project convention:
 // NNNN_snake_case_description, with NNNN a strictly increasing 4-digit prefix
 // starting at 0001. See docs/database.md for the rationale.
-import { readdirSync, statSync } from "node:fs";
+import { lstatSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const MIGRATION_NAME_PATTERN = /^[0-9]{4}_[a-z0-9_]+$/;
+// Forbids a trailing underscore and double-underscores (e.g. "0001_add_",
+// "0001___") while still accepting "0001_initial" and "0004_add_calendar_settings".
+export const MIGRATION_NAME_PATTERN = /^[0-9]{4}_[a-z0-9]+(?:_[a-z0-9]+)*$/;
 
 /**
  * @typedef {{ name: string; isDirectory: boolean }} MigrationEntry
@@ -21,6 +23,9 @@ export const MIGRATION_NAME_PATTERN = /^[0-9]{4}_[a-z0-9_]+$/;
 export function validateMigrationNames(entries) {
   const errors = [];
 
+  // Lexicographic sort equals numeric order because prefixes are always
+  // zero-padded to exactly 4 digits (0001–9999). Do not switch to a numeric
+  // comparator without revisiting the ordering invariant below.
   const dirNames = entries
     .filter((e) => e.isDirectory)
     .map((e) => e.name)
@@ -58,9 +63,13 @@ export function validateMigrationNames(entries) {
  * @returns {MigrationEntry[]}
  */
 export function readMigrationEntries(dir) {
+  // lstatSync (not statSync) so a directory-typed symlink is reported as a
+  // symlink, not as a directory. Migration directories should never be
+  // symlinks — surfacing them as non-directory entries means they are
+  // skipped from validation rather than silently treated as real migrations.
   return readdirSync(dir).map((name) => {
     const fullPath = join(dir, name);
-    return { name, isDirectory: statSync(fullPath).isDirectory() };
+    return { name, isDirectory: lstatSync(fullPath).isDirectory() };
   });
 }
 
@@ -87,10 +96,6 @@ function main() {
   );
 }
 
-const invokedDirectly =
-  import.meta.url === `file://${process.argv[1]}` ||
-  import.meta.url === `file://${resolve(process.argv[1] ?? "")}`;
-
-if (invokedDirectly) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main();
 }

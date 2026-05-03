@@ -48,7 +48,35 @@ Decision: trade the small friction of explicitly naming each new migration `NNNN
 
 `pnpm db:migrate:check-names` (also wired into CI) validates that every entry under `prisma/migrations/` matches the convention and that prefixes are strictly sequential. Run it locally before pushing if you've added a migration.
 
-When `pnpm db:migrate` prompts for a name, answer with the snake-case description only — `add_scheduler_settings`, not `0005_add_scheduler_settings`. Prisma normally prepends a timestamp, so after the migration is created, **rename the directory** from `<timestamp>_add_scheduler_settings/` to the next sequential prefix (`0005_add_scheduler_settings/`) before committing. The check script will reject the timestamp form so a forgotten rename fails CI.
+### Renaming a freshly-created migration
+
+When `pnpm db:migrate` prompts for a name, answer with the snake-case description only — `add_scheduler_settings`, not `0005_add_scheduler_settings`. Prisma still prepends a timestamp to the directory it creates on disk, and **also writes a row into the local `_prisma_migrations` table under the same timestamp name**. Renaming the directory only — without touching the DB row — leaves the two out of sync, and the next `pnpm db:migrate` run will fail with a "migration not found" / drift error.
+
+The full rename ritual is:
+
+```bash
+# 1. Find the timestamp directory Prisma just created.
+TIMESTAMP_DIR=$(ls -1d prisma/migrations/[0-9]*_add_scheduler_settings | head -1)
+NEXT_PREFIX=$(printf "%04d" $(($(ls -1d prisma/migrations/[0-9]*/ | wc -l))))
+NEW_NAME="${NEXT_PREFIX}_add_scheduler_settings"
+
+# 2. Rename the directory.
+mv "$TIMESTAMP_DIR" "prisma/migrations/$NEW_NAME"
+
+# 3. Update the local _prisma_migrations row so Prisma still recognises it.
+#    Either (a) rewrite the row in place:
+psql "$DATABASE_URL" -c "UPDATE _prisma_migrations SET migration_name = '$NEW_NAME' \
+  WHERE migration_name = '$(basename "$TIMESTAMP_DIR")';"
+
+#    or (b) reset the local DB and re-apply from scratch — simplest in dev:
+pnpm db:migrate:reset
+
+# 4. Verify.
+pnpm db:migrate:check-names
+pnpm db:migrate:status
+```
+
+The check script rejects the timestamp form, so a forgotten rename fails CI. Production databases are not affected — `prisma migrate deploy` reads the renamed directory directly, and the `_prisma_migrations` row is created on first apply with the correct (renamed) value.
 
 ## Development Workflow
 
@@ -82,9 +110,12 @@ pnpm db:migrate
 # Enter migration name: add_scheduler_interval
 # Migration created and applied!
 
-# Rename to the next sequential prefix (see Migration Naming Convention):
+# Rename to the next sequential prefix (replace <NNNN> with the actual next
+# number — check prisma/migrations/ or run pnpm db:migrate:check-names).
+# Remember to also update the local _prisma_migrations row, or reset the
+# dev DB. See "Renaming a freshly-created migration" above.
 mv prisma/migrations/<timestamp>_add_scheduler_interval \
-   prisma/migrations/0005_add_scheduler_interval
+   prisma/migrations/<NNNN>_add_scheduler_interval
 
 pnpm db:migrate:check-names  # Verify
 ```
