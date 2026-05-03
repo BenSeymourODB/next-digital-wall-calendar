@@ -2,6 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { getEventsForYear } from "@/lib/calendar-helpers";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import {
   eachDayOfInterval,
@@ -45,10 +46,25 @@ function formatDayKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+const BARE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+// All-day events from non-canonical sources can carry a bare YYYY-MM-DD
+// startDate. `new Date("YYYY-MM-DD")` parses it as UTC midnight, which slips
+// to the previous day in negative-offset zones — so the dot would render on
+// the wrong cell. Construct the date from local Y/M/D parts in that case.
+function parseEventStartLocal(event: IEvent): Date {
+  const match = BARE_DATE_RE.exec(event.startDate);
+  if (match) {
+    const [, y, m, d] = match;
+    return new Date(Number(y), Number(m) - 1, Number(d));
+  }
+  return new Date(event.startDate);
+}
+
 function getUniqueColorsForDay(events: IEvent[], day: Date): TEventColor[] {
   const colors = new Set<TEventColor>();
   for (const event of events) {
-    if (isSameDay(new Date(event.startDate), day)) {
+    if (isSameDay(parseEventStartLocal(event), day)) {
       colors.add(event.color);
     }
   }
@@ -154,9 +170,10 @@ export function YearCalendar() {
 
   const months = Array.from({ length: 12 }, (_, i) => new Date(year, i, 1));
 
-  const yearEventCount = events.filter((event) =>
-    isSameYear(new Date(event.startDate), selectedDate)
-  ).length;
+  // Use overlap logic so an event spanning Dec → Jan is counted in both
+  // years. Filtering only by `startDate` would drop the Dec 30 → Jan 2
+  // case from the Jan-side year's count.
+  const yearEventCount = getEventsForYear(events, selectedDate).length;
 
   const previousYear = () => {
     setSelectedDate(new Date(year - 1, selectedDate.getMonth(), 1));
