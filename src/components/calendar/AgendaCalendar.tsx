@@ -3,6 +3,7 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useEventDelete } from "@/hooks/useEventDelete";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useRef, useState } from "react";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";
@@ -247,6 +248,7 @@ export function AgendaCalendar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  const handleDelete = useEventDelete();
 
   const openModal = (event: IEvent, trigger: HTMLElement) => {
     triggerRef.current = trigger;
@@ -416,6 +418,7 @@ export function AgendaCalendar() {
         onClose={() => setSelectedEvent(null)}
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
+        onDelete={handleDelete}
       />
     </div>
   );
