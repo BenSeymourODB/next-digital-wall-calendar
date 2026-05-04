@@ -188,6 +188,10 @@ export function MockCalendarProvider({
     }
   };
 
+  // No-op: the mock provider holds a static fixture, so widening the
+  // year window doesn't need to fetch anything.
+  const loadEventsForYear = async () => {};
+
   // Derive filtered events at render time. React Compiler memoizes the
   // result automatically; manual `useMemo` is forbidden by CLAUDE.md.
   let filteredEvents = allEvents;

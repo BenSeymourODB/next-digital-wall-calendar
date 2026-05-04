@@ -752,9 +752,9 @@ describe("CalendarProvider", () => {
       const params = new URLSearchParams(lastUrl.split("?")[1] ?? "");
       const tMax = new Date(params.get("timeMax") ?? "").getTime();
       expect(tMax).toBeGreaterThanOrEqual(yearEndTs);
-    });  
+    });
   });
-  
+
   describe("createEvent (#116)", () => {
     /**
      * Probe that exposes `createEvent` and the current event list. Tests
