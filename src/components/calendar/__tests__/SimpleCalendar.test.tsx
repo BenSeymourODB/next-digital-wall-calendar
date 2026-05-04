@@ -22,6 +22,7 @@ import { SimpleCalendar } from "../SimpleCalendar";
  * - Today button rendering and behavior
  * - Event count badge
  * - Date range display
+ * - Day overflow popover (+X more trigger, event list, close behavior, focus)
  */
 
 function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
@@ -50,6 +51,8 @@ function createMockContext(
     selectedDate: new Date(),
     view: "month" as TCalendarView,
     setView: vi.fn(),
+    agendaMode: false,
+    setAgendaMode: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
     weekStartDay: 0,
@@ -69,6 +72,8 @@ function createMockContext(
     addEvent: vi.fn(),
     updateEvent: vi.fn(),
     removeEvent: vi.fn(),
+    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
+    deleteEvent: vi.fn().mockResolvedValue(undefined),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     loadEventsForYear: vi.fn(),
@@ -932,6 +937,239 @@ describe("SimpleCalendar", () => {
       expect(
         screen.queryByRole("heading", { name: "Doctor Appointment" })
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Day overflow popover", () => {
+    const overflowDate = new Date(2026, 3, 15); // April 15, 2026 (Wed)
+    const dayKey = "2026-04-15";
+
+    function makeOverflowEvents(count: number): IEvent[] {
+      return Array.from({ length: count }, (_, i) =>
+        createMockEvent({
+          id: `ov-${i}`,
+          title: `Event ${i + 1}`,
+          startDate: new Date(2026, 3, 15, 8 + i, 0).toISOString(),
+          endDate: new Date(2026, 3, 15, 9 + i, 0).toISOString(),
+        })
+      );
+    }
+
+    it("renders +X more as an accessible button when more than 3 events exist", () => {
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(5),
+      });
+
+      const trigger = screen.getByTestId(`day-overflow-trigger-${dayKey}`);
+      expect(trigger).toBeInTheDocument();
+      expect(trigger.tagName).toBe("BUTTON");
+      expect(trigger).toHaveTextContent("+2 more");
+      expect(trigger).toHaveAccessibleName(
+        "Show all 5 events for Wednesday, April 15, 2026"
+      );
+    });
+
+    it("does not render a popover trigger when 3 or fewer events exist", () => {
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(3),
+      });
+
+      expect(
+        screen.queryByTestId(`day-overflow-trigger-${dayKey}`)
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders '+1 more' at the boundary of exactly 4 events", () => {
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(4),
+      });
+
+      const trigger = screen.getByTestId(`day-overflow-trigger-${dayKey}`);
+      expect(trigger).toHaveTextContent("+1 more");
+      expect(trigger).toHaveAccessibleName(
+        "Show all 4 events for Wednesday, April 15, 2026"
+      );
+    });
+
+    it("opens a popover listing all events for the day when clicked", async () => {
+      const user = userEvent.setup();
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(5),
+      });
+
+      // Popover content not rendered until trigger is clicked
+      expect(
+        screen.queryByTestId(`day-events-popover-${dayKey}`)
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+
+      const popover = await screen.findByTestId(`day-events-popover-${dayKey}`);
+      expect(popover).toBeVisible();
+      expect(popover).toHaveTextContent("Events on Wednesday, April 15, 2026");
+
+      // All 5 events (not just overflow ones) appear inside the popover
+      for (let i = 1; i <= 5; i++) {
+        expect(popover).toHaveTextContent(`Event ${i}`);
+      }
+    });
+
+    it("renders event start and end times in the popover", async () => {
+      const user = userEvent.setup();
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(4),
+        use24HourFormat: true,
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+
+      const popover = await screen.findByTestId(`day-events-popover-${dayKey}`);
+      expect(popover).toHaveTextContent("08:00 - 09:00");
+      expect(popover).toHaveTextContent("11:00 - 12:00");
+    });
+
+    it("shows 'All day' for all-day events in the popover", async () => {
+      const user = userEvent.setup();
+      const events: IEvent[] = [
+        ...makeOverflowEvents(3),
+        createMockEvent({
+          id: "allday-1",
+          title: "Holiday",
+          startDate: new Date(2026, 3, 15, 0, 0).toISOString(),
+          endDate: new Date(2026, 3, 15, 23, 59).toISOString(),
+          isAllDay: true,
+        }),
+      ];
+
+      renderWithContext({ selectedDate: overflowDate, events });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+
+      const popover = await screen.findByTestId(`day-events-popover-${dayKey}`);
+      expect(popover).toHaveTextContent("Holiday");
+      expect(popover).toHaveTextContent("All day");
+    });
+
+    it("closes the popover when the close button is clicked", async () => {
+      const user = userEvent.setup();
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(5),
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+      await screen.findByTestId(`day-events-popover-${dayKey}`);
+
+      const closeBtn = screen.getByTestId(`day-events-popover-close-${dayKey}`);
+      expect(closeBtn).toHaveAccessibleName(
+        "Close events for Wednesday, April 15, 2026"
+      );
+
+      await user.click(closeBtn);
+
+      await vi.waitFor(() => {
+        expect(
+          screen.queryByTestId(`day-events-popover-${dayKey}`)
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it("returns focus to the trigger after the popover is closed", async () => {
+      const user = userEvent.setup();
+      renderWithContext({
+        selectedDate: overflowDate,
+        events: makeOverflowEvents(5),
+      });
+
+      const trigger = screen.getByTestId(`day-overflow-trigger-${dayKey}`);
+      await user.click(trigger);
+      await screen.findByTestId(`day-events-popover-${dayKey}`);
+
+      await user.click(
+        screen.getByTestId(`day-events-popover-close-${dayKey}`)
+      );
+
+      await vi.waitFor(() => {
+        expect(trigger).toHaveFocus();
+      });
+    });
+
+    it("tags each popover event card with data-event-id for #81 wiring", async () => {
+      const user = userEvent.setup();
+      const events = makeOverflowEvents(5);
+      renderWithContext({
+        selectedDate: overflowDate,
+        events,
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+
+      const popover = await screen.findByTestId(`day-events-popover-${dayKey}`);
+      for (const event of events) {
+        expect(
+          popover.querySelector(`[data-event-id="${event.id}"]`)
+        ).not.toBeNull();
+      }
+    });
+
+    it("opens the event detail modal when a popover event card is clicked", async () => {
+      const user = userEvent.setup();
+      const events = makeOverflowEvents(5);
+      renderWithContext({
+        selectedDate: overflowDate,
+        events,
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+      await screen.findByTestId(`day-events-popover-${dayKey}`);
+
+      // Click the 4th event (one of the overflow ones, only visible in popover)
+      await user.click(
+        screen.getByTestId(`day-events-popover-event-${events[3].id}`)
+      );
+
+      // Modal opens with the clicked event's title as the heading
+      expect(
+        await screen.findByRole("heading", { name: "Event 4" })
+      ).toBeInTheDocument();
+
+      // Popover dismisses when modal opens (Radix moves focus into the dialog)
+      await vi.waitFor(() => {
+        expect(
+          screen.queryByTestId(`day-events-popover-${dayKey}`)
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it("returns focus to the +N more trigger after closing the modal opened from the popover", async () => {
+      const user = userEvent.setup();
+      const events = makeOverflowEvents(5);
+      renderWithContext({
+        selectedDate: overflowDate,
+        events,
+      });
+
+      const trigger = screen.getByTestId(`day-overflow-trigger-${dayKey}`);
+      await user.click(trigger);
+      await screen.findByTestId(`day-events-popover-${dayKey}`);
+
+      await user.click(
+        screen.getByTestId(`day-events-popover-event-${events[4].id}`)
+      );
+      await screen.findByRole("heading", { name: "Event 5" });
+
+      await user.click(screen.getByRole("button", { name: /close/i }));
+
+      // The popover trigger receives focus back so keyboard users land where
+      // they were (the popover itself unmounted when the modal grabbed focus).
+      await vi.waitFor(() => {
+        expect(trigger).toHaveFocus();
+      });
     });
   });
 });

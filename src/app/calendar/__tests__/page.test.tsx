@@ -4,7 +4,9 @@
  * The mini-calendar sidebar duplicates content the active view already
  * provides on month (full month grid), year (twelve-month overview), and
  * clock (built-in all-day aside), so it's hidden on those views and shown
- * on day, week, and agenda. See issues #146 and #152.
+ * on day and week. (Pre-#150 it also showed on agenda, which is now an
+ * internal mode of Day/Week rather than a peer view.) See issues #146,
+ * #150, #152.
  */
 import type { TCalendarView } from "@/types/calendar";
 import type { ReactNode } from "react";
@@ -37,10 +39,6 @@ vi.mock("@/components/calendar/WeekCalendar", () => ({
 
 vi.mock("@/components/calendar/YearCalendar", () => ({
   YearCalendar: () => <div data-testid="mock-year-calendar" />,
-}));
-
-vi.mock("@/components/calendar/AgendaCalendar", () => ({
-  AgendaCalendar: () => <div data-testid="mock-agenda-calendar" />,
 }));
 
 vi.mock("@/components/calendar/AnalogClockView", () => ({
@@ -92,11 +90,10 @@ describe("CalendarPage — mini-calendar sidebar visibility", () => {
     expect(screen.getByTestId("mini-calendar-sidebar")).toBeInTheDocument();
   });
 
-  it("shows the mini-calendar sidebar when the active view is agenda", () => {
-    setView("agenda");
-    render(<CalendarPage />);
-    expect(screen.getByTestId("mini-calendar-sidebar")).toBeInTheDocument();
-  });
+  // Pre-#150 there was a separate "agenda" view that this suite asserted
+  // showed the sidebar. Agenda is now an internal mode of Day/Week
+  // (`agendaMode: true`) and the sidebar rule keys on the top-level view
+  // only — already covered by the day/week cases above.
 
   it("hides the mini-calendar sidebar when the active view is year", () => {
     setView("year");

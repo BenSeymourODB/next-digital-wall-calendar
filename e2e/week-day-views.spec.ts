@@ -58,6 +58,34 @@ test.describe("Week Calendar", () => {
     await page.goto("/test/calendar?events=default&view=week");
     await expect(page.getByTestId("week-calendar-now-line")).toBeVisible();
   });
+
+  // Regression: #234 — when "today" sits on the last day of the visible week
+  // (Saturday in Sunday-first weeks), `getEventsForWeek` was filtering every
+  // boundary-day event out because the upper bound was Saturday at 00:00.
+  // The `?anchor=` URL param pins the relative event timestamps to a fixed
+  // Saturday so the boundary case is deterministic on every CI run.
+  test("renders events on the last day of the week when today is Saturday", async ({
+    page,
+  }) => {
+    // Sat May 2 2026 — last day of the Apr 26 – May 2 Sunday-first week.
+    await page.goto(
+      "/test/calendar?events=default&view=week&anchor=2026-05-02"
+    );
+
+    // The default mock set places 4 timed events on "today" (Morning Standup,
+    // Team Lunch, Project Review, One-on-One). With anchor = Saturday, all
+    // four would have been dropped by the pre-fix filter.
+    const count = page.getByTestId("week-calendar-event-count");
+    await expect(count).toBeVisible();
+    const text = await count.textContent();
+    expect(text).toMatch(/[1-9]\d* events?/);
+
+    // Each title should appear inside the Saturday day column, not just
+    // somewhere in the DOM, so we scope the search to the Sat 2026-05-02 cell.
+    const saturdayCol = page.getByTestId("week-calendar-day-col-2026-05-02");
+    await expect(saturdayCol.getByText("Morning Standup")).toBeVisible();
+    await expect(saturdayCol.getByText("Project Review")).toBeVisible();
+  });
 });
 
 test.describe("Day Calendar", () => {
@@ -118,22 +146,29 @@ test.describe("Day Calendar", () => {
 });
 
 test.describe("View switcher navigation", () => {
-  test("cycles Month → Week → Day → Agenda and back to Month", async ({
+  test("cycles Month → Week → Day → Day+Agenda and back to Month", async ({
     page,
   }) => {
     await page.goto("/test/calendar?events=default&view=month");
     await expect(page.getByText("Sun", { exact: true }).first()).toBeVisible();
 
-    await page.getByRole("tab", { name: "Week" }).click();
+    // After #150, Day and Week are dropdown triggers — opening the menu
+    // and picking "Grid" lands on the time-grid view.
+    await page.getByTestId("view-switcher-week").click();
+    await page.getByRole("menuitemradio", { name: /grid/i }).click();
     await expect(page.getByTestId("week-calendar-range")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Day" }).click();
+    await page.getByTestId("view-switcher-day").click();
+    await page.getByRole("menuitemradio", { name: /grid/i }).click();
     await expect(page.getByTestId("day-calendar-heading")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Agenda" }).click();
-    await expect(page.getByText("Upcoming Events")).toBeVisible();
+    // Day → Day+Agenda via the dropdown's Agenda sub-option (#150).
+    await page.getByTestId("view-switcher-day").click();
+    await page.getByRole("menuitemradio", { name: /agenda/i }).click();
+    await expect(page.getByTestId("agenda-list")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Month" }).click();
+    // Month is a plain button — single click switches view.
+    await page.getByTestId("view-switcher-month").click();
     await expect(page.getByText("Sun", { exact: true }).first()).toBeVisible();
   });
 });

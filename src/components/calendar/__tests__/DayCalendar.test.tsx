@@ -53,6 +53,8 @@ function createMockContext(
     selectedDate: new Date(),
     view: "day" as TCalendarView,
     setView: vi.fn(),
+    agendaMode: false,
+    setAgendaMode: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
     use24HourFormat: true,
@@ -70,6 +72,8 @@ function createMockContext(
     addEvent: vi.fn(),
     updateEvent: vi.fn(),
     removeEvent: vi.fn(),
+    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
+    deleteEvent: vi.fn().mockResolvedValue(undefined),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     loadEventsForYear: vi.fn(),
@@ -478,6 +482,50 @@ describe("DayCalendar", () => {
       });
       expect(screen.getByText("Visible")).toBeInTheDocument();
       expect(screen.queryByText("Hidden")).not.toBeInTheDocument();
+    });
+  });
+
+  // Issue #150 — agendaMode replaces the time-grid with a chronological
+  // list of the selected day's events.
+  describe("Agenda mode", () => {
+    it("renders the time grid when agendaMode is false", () => {
+      renderWithContext({ agendaMode: false });
+      expect(screen.getByTestId("day-calendar-grid")).toBeInTheDocument();
+      expect(screen.queryByTestId("agenda-list")).not.toBeInTheDocument();
+    });
+
+    it("renders the agenda list when agendaMode is true", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        agendaMode: true,
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "morning",
+            title: "MorningStandup",
+            startDate: at(selectedDate, 9),
+            endDate: at(selectedDate, 10),
+          }),
+        ],
+      });
+      // Time-grid is gone, agenda list is in.
+      expect(screen.queryByTestId("day-calendar-grid")).not.toBeInTheDocument();
+      expect(screen.getByTestId("agenda-list")).toBeInTheDocument();
+      expect(screen.getByText("MorningStandup")).toBeInTheDocument();
+    });
+
+    it("shows a Day-scoped empty state when agendaMode is on with no events", () => {
+      renderWithContext({ agendaMode: true, events: [] });
+      expect(screen.getByTestId("agenda-list-empty")).toBeInTheDocument();
+    });
+
+    it("keeps the Day header + prev/next navigation visible in agenda mode", async () => {
+      const user = userEvent.setup();
+      const { contextValue } = renderWithContext({ agendaMode: true });
+      expect(screen.getByTestId("day-calendar-heading")).toBeInTheDocument();
+
+      await user.click(screen.getByTestId("day-calendar-next"));
+      expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
     });
   });
 });

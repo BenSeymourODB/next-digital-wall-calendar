@@ -3,6 +3,7 @@
 import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { useEventDelete } from "@/hooks/useEventDelete";
 import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import {
   applyCalendarKeyboardAction,
@@ -28,6 +29,7 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AddEventButton } from "./AddEventButton";
+import { DayOverflowPopover, EVENT_COLOR_CLASSES } from "./DayOverflowPopover";
 import { EventDetailModal } from "./EventDetailModal";
 
 const CELL_DATE_ATTR = "data-date";
@@ -56,6 +58,7 @@ export function SimpleCalendar() {
   } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  const handleDelete = useEventDelete();
 
   const weekdayHeaders = getShortWeekdayLabels(weekStartDay);
 
@@ -376,27 +379,22 @@ export function SimpleCalendar() {
                               triggerRef.current = e.currentTarget;
                               setSelectedEvent(event);
                             }}
-                            className={`block w-full cursor-pointer truncate rounded px-2 py-1 text-left text-xs transition-opacity hover:opacity-80 focus:ring-2 focus:ring-offset-1 focus:outline-none ${
-                              event.color === "blue"
-                                ? "bg-blue-100 text-blue-800 focus:ring-blue-500 dark:bg-blue-900 dark:text-blue-200 dark:focus:ring-blue-400"
-                                : event.color === "green"
-                                  ? "bg-green-100 text-green-800 focus:ring-green-500 dark:bg-green-900 dark:text-green-200 dark:focus:ring-green-400"
-                                  : event.color === "red"
-                                    ? "bg-red-100 text-red-800 focus:ring-red-500 dark:bg-red-900 dark:text-red-200 dark:focus:ring-red-400"
-                                    : event.color === "yellow"
-                                      ? "bg-yellow-100 text-yellow-800 focus:ring-yellow-500 dark:bg-yellow-900 dark:text-yellow-200 dark:focus:ring-yellow-400"
-                                      : event.color === "purple"
-                                        ? "bg-purple-100 text-purple-800 focus:ring-purple-500 dark:bg-purple-900 dark:text-purple-200 dark:focus:ring-purple-400"
-                                        : "bg-orange-100 text-orange-800 focus:ring-orange-500 dark:bg-orange-900 dark:text-orange-200 dark:focus:ring-orange-400"
-                            }`}
+                            className={`block w-full cursor-pointer truncate rounded px-2 py-1 text-left text-xs transition-opacity hover:opacity-80 focus:ring-2 focus:ring-offset-1 focus:outline-none ${EVENT_COLOR_CLASSES[event.color]}`}
                           >
                             {event.title}
                           </button>
                         ))}
                         {dayEvents.length > maxEventsPerDay && (
-                          <div className="text-muted-foreground text-xs">
-                            +{dayEvents.length - maxEventsPerDay} more
-                          </div>
+                          <DayOverflowPopover
+                            day={date}
+                            dayEvents={dayEvents}
+                            use24HourFormat={use24HourFormat}
+                            inlineLimit={maxEventsPerDay}
+                            onSelectEvent={(event, focusReturn) => {
+                              triggerRef.current = focusReturn;
+                              setSelectedEvent(event);
+                            }}
+                          />
                         )}
                       </div>
                     </div>
@@ -413,6 +411,7 @@ export function SimpleCalendar() {
         onClose={() => setSelectedEvent(null)}
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
+        onDelete={handleDelete}
       />
     </div>
   );

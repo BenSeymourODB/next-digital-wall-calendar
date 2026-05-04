@@ -1,4 +1,5 @@
 import type { IEvent, TCalendarView } from "@/types/calendar";
+import { parseISO } from "date-fns";
 import { describe, expect, it } from "vitest";
 import {
   WEEK_STARTS_ON,
@@ -65,11 +66,6 @@ describe("rangeText", () => {
   it("returns correct range for year view", () => {
     const result = rangeText("year", testDate);
     expect(result).toBe("Jan 1, 2024 - Dec 31, 2024");
-  });
-
-  it("returns correct range for agenda view", () => {
-    const result = rangeText("agenda", testDate);
-    expect(result).toBe("Mar 1, 2024 - Mar 31, 2024");
   });
 
   it("returns single date for clock view (12-hour period of selected day)", () => {
@@ -358,6 +354,64 @@ describe("getEventsForWeek", () => {
 
     const result = getEventsForWeek(events, new Date(2024, 2, 13));
     expect(result.length).toBe(2);
+  });
+
+  // Regression: #234 — events that start on the last day of the week (Saturday
+  // when WEEK_STARTS_ON = 0) at any time after 00:00 were being filtered out
+  // because the upper bound was `weekDates[6]`, i.e. Saturday at midnight.
+  it("includes events that start on the last day of the week", () => {
+    // Sat May 2, 2026 is the last day of the Apr 26 – May 2 Sunday-first week.
+    const sat = (h: number, m = 0): string =>
+      new Date(2026, 4, 2, h, m, 0, 0).toISOString();
+    const referenceDate = new Date(2026, 4, 2);
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "sat-morning",
+        startDate: sat(9),
+        endDate: sat(10),
+      }),
+      createMockEvent({
+        id: "sat-afternoon",
+        startDate: sat(14),
+        endDate: sat(15),
+      }),
+      createMockEvent({
+        id: "sat-late-night",
+        startDate: sat(23, 30),
+        endDate: sat(23, 59),
+      }),
+    ];
+
+    const result = getEventsForWeek(events, referenceDate);
+    expect(result.map((e) => e.id).sort()).toEqual([
+      "sat-afternoon",
+      "sat-late-night",
+      "sat-morning",
+    ]);
+
+    // Spot-check that the timestamps actually match the variable names
+    // (catches accidental shared-Date mutation).
+    const morning = result.find((e) => e.id === "sat-morning")!;
+    expect(parseISO(morning.startDate).getHours()).toBe(9);
+    const afternoon = result.find((e) => e.id === "sat-afternoon")!;
+    expect(parseISO(afternoon.startDate).getHours()).toBe(14);
+    const lateNight = result.find((e) => e.id === "sat-late-night")!;
+    expect(parseISO(lateNight.startDate).getHours()).toBe(23);
+  });
+
+  it("excludes events that start the day after the week ends", () => {
+    // Sun May 3, 2026 is the first day of the next week.
+    const referenceDate = new Date(2026, 4, 2); // selectedDate sits on Saturday
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "next-week",
+        startDate: "2026-05-03T00:30:00",
+        endDate: "2026-05-03T01:30:00",
+      }),
+    ];
+
+    const result = getEventsForWeek(events, referenceDate);
+    expect(result).toEqual([]);
   });
 });
 
