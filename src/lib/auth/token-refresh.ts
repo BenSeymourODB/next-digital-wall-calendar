@@ -34,13 +34,27 @@ type PrismaLike = {
   };
 };
 
+type LoggerLike = {
+  dependency: (
+    name: string,
+    target: string,
+    duration: number,
+    success: boolean,
+    resultCode?: number | string,
+    type?: string
+  ) => void;
+};
+
 export type TokenRefreshDeps = {
   fetch: typeof fetch;
   prisma: PrismaLike;
   clientId: string;
   clientSecret: string;
   now?: () => number;
+  logger?: LoggerLike;
 };
+
+const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 const inflight = new Map<string, Promise<RefreshedTokens>>();
 
@@ -62,18 +76,40 @@ export async function refreshGoogleAccessToken(
     throw new Error("No refresh token available");
   }
 
-  const response = await deps.fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      client_id: deps.clientId,
-      client_secret: deps.clientSecret,
-      grant_type: "refresh_token",
-      refresh_token: account.refresh_token,
-    }).toString(),
-  });
+  const now = deps.now ?? (() => Date.now());
+  const startedAt = now();
+  let response: Response;
+  try {
+    response = await deps.fetch(GOOGLE_OAUTH_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: deps.clientId,
+        client_secret: deps.clientSecret,
+        grant_type: "refresh_token",
+        refresh_token: account.refresh_token,
+      }).toString(),
+    });
+  } catch (err) {
+    deps.logger?.dependency(
+      "GoogleOAuthRefresh",
+      GOOGLE_OAUTH_TOKEN_URL,
+      now() - startedAt,
+      false,
+      "ERR"
+    );
+    throw err;
+  }
+
+  deps.logger?.dependency(
+    "GoogleOAuthRefresh",
+    GOOGLE_OAUTH_TOKEN_URL,
+    now() - startedAt,
+    response.ok,
+    response.status
+  );
 
   if (!response.ok) {
     let errorBody: unknown;
@@ -89,7 +125,6 @@ export async function refreshGoogleAccessToken(
   }
 
   const tokens = (await response.json()) as RefreshedTokens;
-  const now = deps.now ?? (() => Date.now());
 
   await deps.prisma.account.update({
     where: {
@@ -132,9 +167,11 @@ export function getOrStartTokenRefresh(
 }
 
 /**
- * Reset the in-flight cache. Test-only helper; production code never calls this.
+ * Reset the in-flight cache. Test-only helper — gated on NODE_ENV so an
+ * accidental production call is a no-op.
  */
 export function __resetTokenRefreshCache(): void {
+  if (process.env.NODE_ENV === "production") return;
   inflight.clear();
 }
 

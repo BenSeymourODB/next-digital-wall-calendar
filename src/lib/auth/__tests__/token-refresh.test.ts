@@ -256,4 +256,56 @@ describe("getOrStartTokenRefresh (singleflight)", () => {
     expect(failOnce).toHaveBeenCalledTimes(2);
     expect(second.access_token).toBe("second-try-access");
   });
+
+  it("does not pollute the cache when the account has no refresh_token", async () => {
+    const deps = makeDeps();
+    const accountNoToken = { ...baseAccount, refresh_token: null };
+
+    // First call: synchronous reject from the inner function.
+    await expect(getOrStartTokenRefresh(accountNoToken, deps)).rejects.toThrow(
+      /refresh token/i
+    );
+
+    // Microtask boundary: the .finally() purge has had a chance to run.
+    // A subsequent call with a *valid* refresh_token on the same account key
+    // should see an empty slot and trigger a real fetch.
+    const result = await getOrStartTokenRefresh(baseAccount, deps);
+    expect(deps.fetch).toHaveBeenCalledTimes(1);
+    expect(result.access_token).toBe("new-access-token");
+  });
+
+  it("forwards the dependency telemetry call when a logger is provided", async () => {
+    const dependency = vi.fn();
+    const deps = makeDeps({ logger: { dependency } });
+
+    await getOrStartTokenRefresh(baseAccount, deps);
+
+    expect(dependency).toHaveBeenCalledTimes(1);
+    const call = dependency.mock.calls[0];
+    expect(call[0]).toBe("GoogleOAuthRefresh");
+    expect(call[1]).toBe("https://oauth2.googleapis.com/token");
+    expect(typeof call[2]).toBe("number");
+    expect(call[3]).toBe(true);
+    expect(call[4]).toBe(200);
+  });
+
+  it("logs a failed dependency on non-OK response", async () => {
+    const dependency = vi.fn();
+    const deps = makeDeps({
+      logger: { dependency },
+      fetch: vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: "invalid_grant" }), {
+            status: 400,
+          })
+      ) as unknown as TokenRefreshDeps["fetch"],
+    });
+
+    await expect(getOrStartTokenRefresh(baseAccount, deps)).rejects.toThrow();
+
+    expect(dependency).toHaveBeenCalledTimes(1);
+    const call = dependency.mock.calls[0];
+    expect(call[3]).toBe(false);
+    expect(call[4]).toBe(400);
+  });
 });

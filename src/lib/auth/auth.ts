@@ -4,9 +4,21 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import {
+  type TokenRefreshDeps,
   createDefaultTokenRefreshDeps,
   getOrStartTokenRefresh,
 } from "./token-refresh";
+
+// Lazy-cached so a missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET surfaces as
+// a real server error on the first refresh attempt rather than getting
+// silently caught and turned into a per-user RefreshTokenError.
+let cachedRefreshDeps: TokenRefreshDeps | undefined;
+function getRefreshDeps(): TokenRefreshDeps {
+  if (!cachedRefreshDeps) {
+    cachedRefreshDeps = createDefaultTokenRefreshDeps();
+  }
+  return cachedRefreshDeps;
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -48,11 +60,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         googleAccount.expires_at &&
         googleAccount.expires_at * 1000 < Date.now()
       ) {
+        // Resolve deps outside the try so a misconfigured
+        // GOOGLE_CLIENT_ID/_SECRET surfaces as a server error instead of
+        // a per-user RefreshTokenError.
+        const deps = getRefreshDeps();
         try {
-          await getOrStartTokenRefresh(
-            googleAccount,
-            createDefaultTokenRefreshDeps()
-          );
+          await getOrStartTokenRefresh(googleAccount, deps);
           logger.event("TokenRefreshed", {
             userId: user.id,
             success: true,
