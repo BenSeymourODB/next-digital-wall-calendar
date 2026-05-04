@@ -67,11 +67,6 @@ describe("rangeText", () => {
     expect(result).toBe("Jan 1, 2024 - Dec 31, 2024");
   });
 
-  it("returns correct range for agenda view", () => {
-    const result = rangeText("agenda", testDate);
-    expect(result).toBe("Mar 1, 2024 - Mar 31, 2024");
-  });
-
   it("returns single date for clock view (12-hour period of selected day)", () => {
     const result = rangeText("clock", testDate);
     expect(result).toBe("Mar 15, 2024");

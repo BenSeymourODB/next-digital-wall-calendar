@@ -1,9 +1,10 @@
 /**
  * Tests for TaskList component
  */
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NewTaskModal } from "../new-task-modal";
 import { TaskList } from "../task-list";
 import type { TaskListConfig } from "../types";
 // Import after mocking
@@ -14,7 +15,14 @@ vi.mock("../use-tasks", () => ({
   useTasks: vi.fn(),
 }));
 
+// Stub NewTaskModal so we can assert on the props TaskList passes in
+// without re-testing the modal's internals here.
+vi.mock("../new-task-modal", () => ({
+  NewTaskModal: vi.fn(() => null),
+}));
+
 const mockUseTasks = vi.mocked(useTasks);
+const mockNewTaskModal = vi.mocked(NewTaskModal);
 
 describe("TaskList", () => {
   const mockConfig: TaskListConfig = {
@@ -239,6 +247,134 @@ describe("TaskList", () => {
 
       const heading = screen.getByRole("heading", { name: "My Tasks" });
       expect(heading).toBeInTheDocument();
+    });
+  });
+
+  describe("add task footer", () => {
+    function lastModalProps() {
+      const calls = mockNewTaskModal.mock.calls;
+      return calls[calls.length - 1]?.[0];
+    }
+
+    it("renders an Add Task footer button", () => {
+      render(<TaskList config={mockConfig} />);
+      expect(
+        screen.getByRole("button", { name: /add task/i })
+      ).toBeInTheDocument();
+    });
+
+    it("disables the Add Task button when no lists are enabled", () => {
+      const noEnabledConfig: TaskListConfig = {
+        ...mockConfig,
+        lists: mockConfig.lists.map((l) => ({ ...l, enabled: false })),
+      };
+      render(<TaskList config={noEnabledConfig} />);
+      expect(screen.getByRole("button", { name: /add task/i })).toBeDisabled();
+      expect(lastModalProps()?.availableLists).toEqual([]);
+      expect(lastModalProps()?.defaultListId).toBeUndefined();
+    });
+
+    it("renders the modal closed by default", () => {
+      render(<TaskList config={mockConfig} />);
+      expect(lastModalProps()?.open).toBe(false);
+    });
+
+    it("opens the modal when the Add Task button is clicked", async () => {
+      const user = userEvent.setup();
+      render(<TaskList config={mockConfig} />);
+
+      await user.click(screen.getByRole("button", { name: /add task/i }));
+
+      expect(lastModalProps()?.open).toBe(true);
+    });
+
+    it("passes only enabled lists as availableLists", () => {
+      const config: TaskListConfig = {
+        ...mockConfig,
+        lists: [
+          {
+            listId: "list-1",
+            listTitle: "Work",
+            color: "#3b82f6",
+            enabled: true,
+          },
+          {
+            listId: "list-2",
+            listTitle: "Disabled",
+            color: "#999",
+            enabled: false,
+          },
+          {
+            listId: "list-3",
+            listTitle: "Personal",
+            color: "#ef4444",
+            enabled: true,
+          },
+        ],
+      };
+      render(<TaskList config={config} />);
+
+      const props = lastModalProps();
+      expect(props?.availableLists.map((l) => l.listId)).toEqual([
+        "list-1",
+        "list-3",
+      ]);
+    });
+
+    it("pre-selects the only enabled list as the default", () => {
+      render(<TaskList config={mockConfig} />);
+      expect(lastModalProps()?.defaultListId).toBe("list-1");
+    });
+
+    it("leaves defaultListId undefined when multiple lists are enabled", () => {
+      const config: TaskListConfig = {
+        ...mockConfig,
+        lists: [
+          {
+            listId: "list-1",
+            listTitle: "Work",
+            color: "#3b82f6",
+            enabled: true,
+          },
+          {
+            listId: "list-2",
+            listTitle: "Personal",
+            color: "#ef4444",
+            enabled: true,
+          },
+        ],
+      };
+      render(<TaskList config={config} />);
+      expect(lastModalProps()?.defaultListId).toBeUndefined();
+    });
+
+    it("refreshes tasks when the modal reports a successful create", () => {
+      render(<TaskList config={mockConfig} />);
+
+      const props = lastModalProps();
+      props?.onSuccess?.({
+        id: "new-1",
+        title: "Buy milk",
+        status: "needsAction",
+        updated: "2024-06-14T00:00:00Z",
+        position: "0",
+      });
+
+      expect(mockRefreshTasks).toHaveBeenCalled();
+    });
+
+    it("closes the modal when onOpenChange(false) fires", async () => {
+      const user = userEvent.setup();
+      render(<TaskList config={mockConfig} />);
+
+      await user.click(screen.getByRole("button", { name: /add task/i }));
+      expect(lastModalProps()?.open).toBe(true);
+
+      act(() => {
+        lastModalProps()?.onOpenChange(false);
+      });
+
+      expect(lastModalProps()?.open).toBe(false);
     });
   });
 });

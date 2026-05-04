@@ -42,6 +42,8 @@ function makeContext(
     selectedDate: new Date(2026, 3, 20),
     view: "month" as TCalendarView,
     setView: vi.fn(),
+    agendaMode: false,
+    setAgendaMode: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
     use24HourFormat: true,
@@ -62,6 +64,7 @@ function makeContext(
     createEvent: vi
       .fn()
       .mockImplementation((event: IEvent) => Promise.resolve(event)),
+    deleteEvent: vi.fn().mockResolvedValue(undefined),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     isLoading: false,

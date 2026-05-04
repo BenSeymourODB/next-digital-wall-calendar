@@ -83,9 +83,9 @@ test.describe("Year calendar view", () => {
     const key = `${year}-${mm}-15`;
     await page.getByTestId(`year-calendar-day-${key}`).click();
 
-    // ViewSwitcher should now mark the Month tab as selected
-    await expect(page.getByRole("tab", { name: /month/i })).toHaveAttribute(
-      "aria-selected",
+    // ViewSwitcher should now mark the Month button as pressed.
+    await expect(page.getByTestId("view-switcher-month")).toHaveAttribute(
+      "aria-pressed",
       "true"
     );
 
@@ -93,11 +93,11 @@ test.describe("Year calendar view", () => {
     await expect(page.getByTestId("calendar-date-range")).toBeVisible();
   });
 
-  test("clicking the Year tab from Month view switches to the year grid", async ({
+  test("clicking the Year button from Month view switches to the year grid", async ({
     page,
   }) => {
     await page.goto("/test/calendar?events=default&view=month");
-    await page.getByRole("tab", { name: /year/i }).click();
+    await page.getByTestId("view-switcher-year").click();
 
     await expect(page.getByTestId("year-calendar-grid")).toBeVisible();
     await expect(page.getByTestId("year-calendar-month-0")).toBeVisible();
@@ -135,8 +135,8 @@ test.describe("Year calendar view", () => {
     const cell = page.getByTestId(`year-calendar-day-${key}`);
     await cell.focus();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("tab", { name: /month/i })).toHaveAttribute(
-      "aria-selected",
+    await expect(page.getByTestId("view-switcher-month")).toHaveAttribute(
+      "aria-pressed",
       "true"
     );
   });
