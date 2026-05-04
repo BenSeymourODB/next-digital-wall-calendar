@@ -597,6 +597,61 @@ describe("/api/calendar/events", () => {
         expect(data.events[0].calendarId).toBe("primary");
       });
     });
+
+    describe("transient failure retries", () => {
+      // Acceptance criterion of #217: this route's outbound fetch goes through
+      // `fetchWithRetry`, so a 503 followed by a 200 should yield a single
+      // 200 response without bubbling the transient failure to the client.
+      it("retries a transient 503 from Google and returns the eventual 200", async () => {
+        vi.useFakeTimers();
+        try {
+          vi.mocked(getSession).mockResolvedValue(mockSession);
+          vi.mocked(getAccessToken).mockResolvedValue(
+            mockGoogleAccount.access_token!
+          );
+
+          mockFetch
+            .mockResolvedValueOnce({
+              ok: false,
+              status: 503,
+              headers: new Headers(),
+              json: () =>
+                Promise.resolve({ error: { message: "Service Unavailable" } }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: () =>
+                Promise.resolve({
+                  items: [
+                    {
+                      id: "event-1",
+                      summary: "Recovered",
+                      start: { dateTime: "2024-03-15T10:00:00Z" },
+                      end: { dateTime: "2024-03-15T11:00:00Z" },
+                    },
+                  ],
+                  summary: "Primary Calendar",
+                }),
+            });
+
+          const request = createMockRequest("/api/calendar/events");
+          const promise = GET(request);
+          // Advance the retry sleep so the second attempt fires.
+          await vi.runAllTimersAsync();
+          const response = await promise;
+          const { status, data } = await parseResponse<{
+            events: Array<{ id: string; summary: string }>;
+          }>(response);
+
+          expect(mockFetch).toHaveBeenCalledTimes(2);
+          expect(status).toBe(200);
+          expect(data.events).toHaveLength(1);
+          expect(data.events[0].summary).toBe("Recovered");
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
   });
 
   describe("POST /api/calendar/events", () => {
