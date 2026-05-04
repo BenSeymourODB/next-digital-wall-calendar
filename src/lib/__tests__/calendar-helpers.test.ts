@@ -1,3 +1,4 @@
+import { createMockEvent as createBaseMockEvent } from "@/test/fixtures/calendar-event";
 import type { IEvent, TCalendarView } from "@/types/calendar";
 import { parseISO } from "date-fns";
 import { describe, expect, it } from "vitest";
@@ -26,23 +27,15 @@ import {
   toCapitalize,
 } from "../calendar-helpers";
 
-// Test fixtures
-const createMockEvent = (overrides: Partial<IEvent> = {}): IEvent => ({
-  id: "test-event-1",
-  title: "Test Event",
-  startDate: "2024-03-15T10:00:00",
-  endDate: "2024-03-15T11:00:00",
-  color: "blue",
-  description: "Test description",
-  isAllDay: false,
-  calendarId: "primary",
-  user: {
-    id: "user-1",
-    name: "Test User",
-    picturePath: null,
-  },
-  ...overrides,
-});
+// Local wrapper that pins the date defaults this file's tests assume.
+// Sequenced default ids come from the shared fixture.
+const createMockEvent = (overrides: Partial<IEvent> = {}): IEvent =>
+  createBaseMockEvent({
+    startDate: "2024-03-15T10:00:00",
+    endDate: "2024-03-15T11:00:00",
+    description: "Test description",
+    ...overrides,
+  });
 
 describe("rangeText", () => {
   const testDate = new Date(2024, 2, 15); // March 15, 2024

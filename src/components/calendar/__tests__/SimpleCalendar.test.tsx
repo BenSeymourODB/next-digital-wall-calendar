@@ -3,6 +3,7 @@ import {
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
 import type {
   IEvent,
   IUser,
@@ -24,25 +25,6 @@ import { SimpleCalendar } from "../SimpleCalendar";
  * - Date range display
  * - Day overflow popover (+X more trigger, event list, close behavior, focus)
  */
-
-function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
-  return {
-    id: "test-event-1",
-    title: "Test Event",
-    startDate: new Date().toISOString(),
-    endDate: new Date().toISOString(),
-    color: "blue",
-    description: "",
-    isAllDay: false,
-    calendarId: "primary",
-    user: {
-      id: "user-1",
-      name: "Test User",
-      picturePath: null,
-    },
-    ...overrides,
-  };
-}
 
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
