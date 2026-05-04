@@ -22,8 +22,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useId, useState } from "react";
+import { signIn } from "next-auth/react";
 import type { GoogleTask, TaskListSelection } from "./types";
-import { useCreateTask } from "./use-create-task";
+import { TaskApiError, useCreateTask } from "./use-create-task";
 
 export interface NewTaskModalProps {
   open: boolean;
@@ -254,13 +255,36 @@ export function NewTaskModal({
           </div>
 
           {submitError && (
-            <p
+            <div
               id={submitErrorId}
               role="alert"
-              className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+              className="space-y-2 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700"
             >
-              {submitError.message}
-            </p>
+              <p>{submitError.message}</p>
+              {submitError instanceof TaskApiError &&
+                submitError.requiresReauth && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      signIn("google", {
+                        // pathname + search keeps the user on their current
+                        // view (e.g. /calendar?date=…&view=week) after the
+                        // OAuth round-trip; pathname alone would drop the
+                        // selection. NextAuth validates callbackUrl against
+                        // NEXTAUTH_URL, so there is no open-redirect risk.
+                        callbackUrl:
+                          typeof window === "undefined"
+                            ? "/"
+                            : window.location.pathname + window.location.search,
+                      })
+                    }
+                  >
+                    Sign in again
+                  </Button>
+                )}
+            </div>
           )}
 
           <DialogFooter>
