@@ -178,6 +178,7 @@ model PointTransaction {
   awardedByProfile Profile?             @relation("AwardedBy", fields: [awardedBy], references: [id], map: "PointTransaction_awardedBy_fkey")
   rewardPoints     ProfileRewardPoints? @relation(fields: [rewardPointsId], references: [id], onDelete: Cascade, map: "PointTransaction_rewardPoints_fkey")
 
+  @@unique([profileId, taskId, reason], map: "PointTransaction_profileId_taskId_reason_key")
   @@index([profileId, createdAt])
 }
 
