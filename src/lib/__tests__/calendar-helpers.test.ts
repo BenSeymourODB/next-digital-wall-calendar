@@ -57,6 +57,12 @@ describe("rangeText", () => {
     expect(result).toBe("Mar 10, 2024 - Mar 16, 2024");
   });
 
+  it("returns Monday-first range when weekStartsOn=1", () => {
+    // March 15, 2024 is a Friday. Monday-first week is Mar 11 – Mar 17.
+    const result = rangeText("week", testDate, 1);
+    expect(result).toBe("Mar 11, 2024 - Mar 17, 2024");
+  });
+
   it("returns single date for day view", () => {
     const result = rangeText("day", testDate);
     expect(result).toBe("Mar 15, 2024");
@@ -164,6 +170,20 @@ describe("getEventsCount", () => {
     ];
     expect(getEventsCount(weekEvents, testDate, "week")).toBe(1);
   });
+
+  it("counts events for the same week with Monday-first weekStartsOn=1", () => {
+    // testDate = Fri Mar 15 2024. With weekStartsOn = 1 (Monday), the week
+    // runs Mon Mar 11 – Sun Mar 17. Mar 10 falls into the prior week.
+    // Note: getEventsCount uses isSameWeek, which is boundary-safe (compares
+    // calendar-week membership, not raw timestamps), so unlike
+    // getEventsForWeek this test isn't affected by the midnight-boundary
+    // bug discussed in #201/PR #228.
+    const weekEvents: IEvent[] = [
+      createMockEvent({ id: "prior-week", startDate: "2024-03-10T10:00:00" }),
+      createMockEvent({ id: "same-week", startDate: "2024-03-17T10:00:00" }),
+    ];
+    expect(getEventsCount(weekEvents, testDate, "week", 1)).toBe(1);
+  });
 });
 
 describe("groupEvents", () => {
@@ -248,6 +268,34 @@ describe("getCalendarCells", () => {
     const date = new Date(2024, 2, 15); // March 2024
     const cells = getCalendarCells(date);
     expect(cells[0].date.getDay()).toBe(WEEK_STARTS_ON);
+  });
+
+  it("starts the grid on Monday when weekStartsOn=1", () => {
+    // March 2024 starts on Friday. Sunday-first → leading padding 5 (Sun–Thu
+    // of Feb). Monday-first → leading padding 4 (Mon–Thu of Feb).
+    const date = new Date(2024, 2, 15);
+    const cells = getCalendarCells(date, 1);
+    expect(cells[0].date.getDay()).toBe(1);
+
+    // Spot check: the grid should still cover all 31 days of March and pad
+    // to a multiple of 7.
+    expect(cells.length % 7).toBe(0);
+    expect(cells.filter((c) => c.currentMonth).length).toBe(31);
+  });
+
+  it("aligns the leading padding correctly for Monday-first when month starts on Sunday", () => {
+    // September 2024 starts on Sunday.
+    // - Sunday-first: 0 leading cells.
+    // - Monday-first: 6 leading cells (Mon Aug 26 – Sat Aug 31).
+    const date = new Date(2024, 8, 15);
+    const sundayFirst = getCalendarCells(date, 0);
+    const mondayFirst = getCalendarCells(date, 1);
+
+    expect(sundayFirst[0].date.getDay()).toBe(0);
+    expect(sundayFirst[0].currentMonth).toBe(true); // Sun Sep 1
+    expect(mondayFirst[0].date.getDay()).toBe(1);
+    expect(mondayFirst[0].currentMonth).toBe(false); // Mon Aug 26
+    expect(mondayFirst[6].date.getDay()).toBe(0); // Sun Sep 1
   });
 });
 
@@ -354,6 +402,40 @@ describe("getEventsForWeek", () => {
     const result = getEventsForWeek(events, new Date(2024, 2, 13));
     expect(result.length).toBe(2);
   });
+
+  it("respects weekStartsOn when bucketing the leading Sunday", () => {
+    // testDate = Wed Mar 13 2024.
+    // - Sunday-first (0): week is Sun Mar 10 – Sat Mar 16, so a noon event on
+    //   Sun Mar 10 is *in* the week.
+    // - Monday-first (1): week is Mon Mar 11 – Sun Mar 17, so the same event
+    //   is in the *prior* week and must be excluded.
+    // Note: the symmetric case at the end-of-week boundary is intentionally
+    // not exercised here because it depends on the `endOfWeekDate` semantics
+    // owned by #201 (PR #228); both fixes compose cleanly when they land.
+    // TODO(#201/PR #228): when endOfWeekDate becomes endOfDay(weekDates[6]),
+    // also assert that a Mon-first week includes a noon event on Sun Mar 17
+    // (currently excluded by the midnight bound, same as the Sun-first
+    // Saturday-afternoon case).
+    const sundayMar10Noon = createMockEvent({
+      id: "sun-mar-10-noon",
+      startDate: "2024-03-10T12:00:00",
+      endDate: "2024-03-10T13:00:00",
+    });
+
+    const sundayFirst = getEventsForWeek(
+      [sundayMar10Noon],
+      new Date(2024, 2, 13),
+      0
+    );
+    expect(sundayFirst.map((e) => e.id)).toEqual(["sun-mar-10-noon"]);
+
+    const mondayFirst = getEventsForWeek(
+      [sundayMar10Noon],
+      new Date(2024, 2, 13),
+      1
+    );
+    expect(mondayFirst).toEqual([]);
+  });
 });
 
 describe("getEventsForMonth", () => {
@@ -434,6 +516,21 @@ describe("getWeekDates", () => {
       "2024-03-14",
       "2024-03-15",
       "2024-03-16",
+    ]);
+  });
+
+  it("returns Monday-first dates when weekStartsOn=1", () => {
+    // March 15, 2024 is a Friday. Monday-first week runs Mon Mar 11 – Sun Mar 17.
+    const result = getWeekDates(new Date(2024, 2, 15), 1);
+    expect(result[0].getDay()).toBe(1);
+    expect(result.map((d) => d.toISOString().slice(0, 10))).toEqual([
+      "2024-03-11",
+      "2024-03-12",
+      "2024-03-13",
+      "2024-03-14",
+      "2024-03-15",
+      "2024-03-16",
+      "2024-03-17",
     ]);
   });
 });

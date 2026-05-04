@@ -259,6 +259,30 @@ describe("WeekCalendar", () => {
       const todayCell = screen.getByTestId("week-calendar-today-cell");
       expect(todayCell).toBeInTheDocument();
     });
+
+    it("flips the rendered week to Monday-first when weekStartDay=1", () => {
+      // Wed Apr 15 2026.
+      // - Sunday-first: range Apr 12 (Sun) – Apr 18 (Sat); first column = Apr 12.
+      // - Monday-first: range Apr 13 (Mon) – Apr 19 (Sun); first column = Apr 13.
+      const selectedDate = new Date(2026, 3, 15);
+
+      renderWithContext({ selectedDate, weekStartDay: 1 });
+
+      expect(screen.getByTestId("week-calendar-range")).toHaveTextContent(
+        "Apr 13, 2026 – Apr 19, 2026"
+      );
+      // First weekday header is "Mon" not "Sun".
+      expect(
+        screen.getAllByText("Mon", { exact: true }).length
+      ).toBeGreaterThan(0);
+      // The Apr 13 (Mon) column exists; the Apr 12 (Sun) column does not.
+      expect(
+        screen.getByTestId("week-calendar-day-col-2026-04-13")
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("week-calendar-day-col-2026-04-12")
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe("Events per day", () => {

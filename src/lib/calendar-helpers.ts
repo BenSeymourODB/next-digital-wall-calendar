@@ -71,7 +71,11 @@ export const getShortWeekdayLabels = (
   ...SHORT_WEEKDAY_LABELS.slice(0, weekStartsOn),
 ];
 
-export function rangeText(view: TCalendarView, date: Date): string {
+export function rangeText(
+  view: TCalendarView,
+  date: Date,
+  weekStartsOn: Day = WEEK_STARTS_ON
+): string {
   let start: Date;
   let end: Date;
 
@@ -81,8 +85,8 @@ export function rangeText(view: TCalendarView, date: Date): string {
       end = endOfMonth(date);
       break;
     case "week":
-      start = startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
-      end = endOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
+      start = startOfWeek(date, { weekStartsOn });
+      end = endOfWeek(date, { weekStartsOn });
       break;
     case "day":
     case "clock":
@@ -117,11 +121,12 @@ export function navigateDate(
 export function getEventsCount(
   events: IEvent[],
   date: Date,
-  view: TCalendarView
+  view: TCalendarView,
+  weekStartsOn: Day = WEEK_STARTS_ON
 ): number {
   const compareFns: Record<TCalendarView, (d1: Date, d2: Date) => boolean> = {
     day: isSameDay,
-    week: (d1, d2) => isSameWeek(d1, d2, { weekStartsOn: WEEK_STARTS_ON }),
+    week: (d1, d2) => isSameWeek(d1, d2, { weekStartsOn }),
     month: isSameMonth,
     year: isSameYear,
     clock: isSameDay,
@@ -159,14 +164,17 @@ export function groupEvents(dayEvents: IEvent[]): IEvent[][] {
   return groups;
 }
 
-export function getCalendarCells(selectedDate: Date): ICalendarCell[] {
+export function getCalendarCells(
+  selectedDate: Date,
+  weekStartsOn: Day = WEEK_STARTS_ON
+): ICalendarCell[] {
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth();
 
   const daysInMonth = endOfMonth(selectedDate).getDate(); // Faster than new Date(year, month + 1, 0)
-  // Offset of the 1st relative to WEEK_STARTS_ON (0..6).
+  // Offset of the 1st relative to weekStartsOn (0..6).
   const firstDayOffset =
-    (startOfMonth(selectedDate).getDay() - WEEK_STARTS_ON + 7) % 7;
+    (startOfMonth(selectedDate).getDay() - weekStartsOn + 7) % 7;
   const daysInPrevMonth = endOfMonth(new Date(year, month - 1)).getDate();
   const totalDays = firstDayOffset + daysInMonth;
 
@@ -348,13 +356,20 @@ export const getEventsForDay = (
     });
 };
 
-export const getWeekDates = (date: Date): Date[] => {
-  const startDate = startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
+export const getWeekDates = (
+  date: Date,
+  weekStartsOn: Day = WEEK_STARTS_ON
+): Date[] => {
+  const startDate = startOfWeek(date, { weekStartsOn });
   return Array.from({ length: 7 }, (_, i) => addDays(startDate, i));
 };
 
-export const getEventsForWeek = (events: IEvent[], date: Date): IEvent[] => {
-  const weekDates = getWeekDates(date);
+export const getEventsForWeek = (
+  events: IEvent[],
+  date: Date,
+  weekStartsOn: Day = WEEK_STARTS_ON
+): IEvent[] => {
+  const weekDates = getWeekDates(date, weekStartsOn);
   const startOfWeekDate = weekDates[0];
   const endOfWeekDate = weekDates[6];
 
@@ -435,14 +450,15 @@ export const getBgColor = (color: string): string => {
 export const getEventsByMode = (
   events: IEvent[],
   view: TCalendarView,
-  selectedDate: Date
+  selectedDate: Date,
+  weekStartsOn: Day = WEEK_STARTS_ON
 ) => {
   switch (view) {
     case "day":
     case "clock":
       return getEventsForDay(events, selectedDate);
     case "week":
-      return getEventsForWeek(events, selectedDate);
+      return getEventsForWeek(events, selectedDate, weekStartsOn);
     case "month":
       return getEventsForMonth(events, selectedDate);
     case "year":

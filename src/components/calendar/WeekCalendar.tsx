@@ -3,7 +3,6 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import {
-  WEEK_STARTS_ON,
   assignBarRows,
   computeEventColumns,
   formatTime,
@@ -118,18 +117,19 @@ export function WeekCalendar() {
     isLoading,
     use24HourFormat,
     agendaMode,
+    weekStartDay,
   } = useCalendar();
 
-  const weekdayHeaders = getShortWeekdayLabels();
-  const weekDates = getWeekDates(selectedDate);
-  const weekStart = startOfWeek(selectedDate, { weekStartsOn: WEEK_STARTS_ON });
-  const weekEnd = endOfWeek(selectedDate, { weekStartsOn: WEEK_STARTS_ON });
+  const weekdayHeaders = getShortWeekdayLabels(weekStartDay);
+  const weekDates = getWeekDates(selectedDate, weekStartDay);
+  const weekStart = startOfWeek(selectedDate, { weekStartsOn: weekStartDay });
+  const weekEnd = endOfWeek(selectedDate, { weekStartsOn: weekStartDay });
 
-  const weekEvents = getEventsForWeek(events, selectedDate);
+  const weekEvents = getEventsForWeek(events, selectedDate, weekStartDay);
   const weekEventCount = weekEvents.length;
 
   const isCurrentWeek = isSameWeek(selectedDate, today, {
-    weekStartsOn: WEEK_STARTS_ON,
+    weekStartsOn: weekStartDay,
   });
 
   const previousWeek = () => setSelectedDate(subWeeks(selectedDate, 1));
