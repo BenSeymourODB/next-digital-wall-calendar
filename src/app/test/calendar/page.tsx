@@ -329,9 +329,7 @@ function CalendarDisplay() {
   // agenda mode within day/week, so the grid <-> agenda transition gets
   // the same fade treatment as a primary view change (#150 + #87).
   const swapKey =
-    (view === "day" || view === "week") && agendaMode
-      ? `${view}:agenda`
-      : view;
+    (view === "day" || view === "week") && agendaMode ? `${view}:agenda` : view;
 
   return (
     <div data-testid="calendar-display">
