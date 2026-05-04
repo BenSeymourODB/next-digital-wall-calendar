@@ -354,9 +354,8 @@ export const getWeekDates = (date: Date): Date[] => {
 };
 
 export const getEventsForWeek = (events: IEvent[], date: Date): IEvent[] => {
-  const weekDates = getWeekDates(date);
-  const startOfWeekDate = weekDates[0];
-  const endOfWeekDate = weekDates[6];
+  const startOfWeekDate = startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
+  const endOfWeekDate = endOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
 
   return events.filter((event) => {
     const eventStart = parseISO(event.startDate);

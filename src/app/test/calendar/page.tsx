@@ -21,27 +21,16 @@ import { type ReactNode, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 /**
- * Helper to create dates relative to today for consistent test data
+ * Create a mock event. Every caller in `mockEventSets` overrides
+ * `startDate`/`endDate`, so the defaults below are placeholders only —
+ * if a caller omits them they should treat the values as undefined
+ * behaviour rather than rely on a particular date.
  */
-function getRelativeDate(
-  daysFromToday: number,
-  hours = 9,
-  minutes = 0
-): string {
-  const date = new Date();
-  date.setDate(date.getDate() + daysFromToday);
-  date.setHours(hours, minutes, 0, 0);
-  return date.toISOString();
-}
-
-/**
- * Create a mock event with defaults
- */
-function createMockEvent(overrides: Partial<IEvent> & { id: string }): IEvent {
+function createMockEvent(
+  overrides: Partial<IEvent> & Pick<IEvent, "id" | "startDate" | "endDate">
+): IEvent {
   return {
     title: "Test Event",
-    startDate: getRelativeDate(0, 10, 0),
-    endDate: getRelativeDate(0, 11, 0),
     color: "blue",
     description: "",
     isAllDay: false,
@@ -56,250 +45,275 @@ function createMockEvent(overrides: Partial<IEvent> & { id: string }): IEvent {
 }
 
 /**
- * Mock event sets for different test scenarios
+ * Mock event sets for different test scenarios.
+ *
+ * Built from an `anchor` Date so the page can be pinned to a specific
+ * "today" via the `?anchor=YYYY-MM-DD` URL param (E2E determinism, e.g.
+ * issue #234 boundary cases). When no anchor is provided callers should
+ * pass `new Date()` to preserve the original behaviour.
  */
-const mockEventSets: Record<string, IEvent[]> = {
-  // Default: Rich set of events across multiple days
-  default: [
-    // Today's events
-    createMockEvent({
-      id: "today-1",
-      title: "Morning Standup",
-      startDate: getRelativeDate(0, 9, 0),
-      endDate: getRelativeDate(0, 9, 30),
-      color: "blue",
-      description: "Daily team standup meeting",
-    }),
-    createMockEvent({
-      id: "today-2",
-      title: "Project Review",
-      startDate: getRelativeDate(0, 14, 0),
-      endDate: getRelativeDate(0, 15, 0),
-      color: "green",
-    }),
-    createMockEvent({
-      id: "today-3",
-      title: "Team Lunch",
-      startDate: getRelativeDate(0, 12, 0),
-      endDate: getRelativeDate(0, 13, 0),
-      color: "yellow",
-    }),
-    createMockEvent({
-      id: "today-4",
-      title: "One-on-One",
-      startDate: getRelativeDate(0, 16, 0),
-      endDate: getRelativeDate(0, 16, 30),
-      color: "purple",
-    }),
+function buildMockEventSets(anchor: Date): Record<string, IEvent[]> {
+  const getRelativeDate = (
+    daysFromToday: number,
+    hours = 9,
+    minutes = 0
+  ): string => {
+    const date = new Date(anchor);
+    date.setDate(date.getDate() + daysFromToday);
+    date.setHours(hours, minutes, 0, 0);
+    return date.toISOString();
+  };
 
-    // Tomorrow
-    createMockEvent({
-      id: "tomorrow-1",
-      title: "Client Call",
-      startDate: getRelativeDate(1, 10, 0),
-      endDate: getRelativeDate(1, 11, 0),
-      color: "red",
-      description: "Important client meeting",
-    }),
-    createMockEvent({
-      id: "tomorrow-2",
-      title: "Code Review",
-      startDate: getRelativeDate(1, 14, 0),
-      endDate: getRelativeDate(1, 15, 0),
-      color: "blue",
-    }),
+  return {
+    // Default: Rich set of events across multiple days
+    default: [
+      // Today's events
+      createMockEvent({
+        id: "today-1",
+        title: "Morning Standup",
+        startDate: getRelativeDate(0, 9, 0),
+        endDate: getRelativeDate(0, 9, 30),
+        color: "blue",
+        description: "Daily team standup meeting",
+      }),
+      createMockEvent({
+        id: "today-2",
+        title: "Project Review",
+        startDate: getRelativeDate(0, 14, 0),
+        endDate: getRelativeDate(0, 15, 0),
+        color: "green",
+      }),
+      createMockEvent({
+        id: "today-3",
+        title: "Team Lunch",
+        startDate: getRelativeDate(0, 12, 0),
+        endDate: getRelativeDate(0, 13, 0),
+        color: "yellow",
+      }),
+      createMockEvent({
+        id: "today-4",
+        title: "One-on-One",
+        startDate: getRelativeDate(0, 16, 0),
+        endDate: getRelativeDate(0, 16, 30),
+        color: "purple",
+      }),
 
-    // Day 2
-    createMockEvent({
-      id: "day2-1",
-      title: "Workshop",
-      startDate: getRelativeDate(2, 9, 0),
-      endDate: getRelativeDate(2, 12, 0),
-      color: "orange",
-    }),
+      // Tomorrow
+      createMockEvent({
+        id: "tomorrow-1",
+        title: "Client Call",
+        startDate: getRelativeDate(1, 10, 0),
+        endDate: getRelativeDate(1, 11, 0),
+        color: "red",
+        description: "Important client meeting",
+      }),
+      createMockEvent({
+        id: "tomorrow-2",
+        title: "Code Review",
+        startDate: getRelativeDate(1, 14, 0),
+        endDate: getRelativeDate(1, 15, 0),
+        color: "blue",
+      }),
 
-    // Day 3 - Multiple events for overflow testing
-    createMockEvent({
-      id: "day3-1",
-      title: "Planning Meeting",
-      startDate: getRelativeDate(3, 9, 0),
-      endDate: getRelativeDate(3, 10, 0),
-      color: "blue",
-    }),
-    createMockEvent({
-      id: "day3-2",
-      title: "Design Review",
-      startDate: getRelativeDate(3, 11, 0),
-      endDate: getRelativeDate(3, 12, 0),
-      color: "purple",
-    }),
-    createMockEvent({
-      id: "day3-3",
-      title: "Tech Sync",
-      startDate: getRelativeDate(3, 14, 0),
-      endDate: getRelativeDate(3, 15, 0),
-      color: "green",
-    }),
-    createMockEvent({
-      id: "day3-4",
-      title: "Retrospective",
-      startDate: getRelativeDate(3, 16, 0),
-      endDate: getRelativeDate(3, 17, 0),
-      color: "yellow",
-    }),
-    createMockEvent({
-      id: "day3-5",
-      title: "Team Social",
-      startDate: getRelativeDate(3, 18, 0),
-      endDate: getRelativeDate(3, 19, 0),
-      color: "orange",
-    }),
+      // Day 2
+      createMockEvent({
+        id: "day2-1",
+        title: "Workshop",
+        startDate: getRelativeDate(2, 9, 0),
+        endDate: getRelativeDate(2, 12, 0),
+        color: "orange",
+      }),
 
-    // Week ahead
-    createMockEvent({
-      id: "day5-1",
-      title: "Demo Day",
-      startDate: getRelativeDate(5, 14, 0),
-      endDate: getRelativeDate(5, 16, 0),
-      color: "red",
-    }),
-    createMockEvent({
-      id: "day6-1",
-      title: "Training Session",
-      startDate: getRelativeDate(6, 10, 0),
-      endDate: getRelativeDate(6, 12, 0),
-      color: "blue",
-    }),
-  ],
+      // Day 3 - Multiple events for overflow testing
+      createMockEvent({
+        id: "day3-1",
+        title: "Planning Meeting",
+        startDate: getRelativeDate(3, 9, 0),
+        endDate: getRelativeDate(3, 10, 0),
+        color: "blue",
+      }),
+      createMockEvent({
+        id: "day3-2",
+        title: "Design Review",
+        startDate: getRelativeDate(3, 11, 0),
+        endDate: getRelativeDate(3, 12, 0),
+        color: "purple",
+      }),
+      createMockEvent({
+        id: "day3-3",
+        title: "Tech Sync",
+        startDate: getRelativeDate(3, 14, 0),
+        endDate: getRelativeDate(3, 15, 0),
+        color: "green",
+      }),
+      createMockEvent({
+        id: "day3-4",
+        title: "Retrospective",
+        startDate: getRelativeDate(3, 16, 0),
+        endDate: getRelativeDate(3, 17, 0),
+        color: "yellow",
+      }),
+      createMockEvent({
+        id: "day3-5",
+        title: "Team Social",
+        startDate: getRelativeDate(3, 18, 0),
+        endDate: getRelativeDate(3, 19, 0),
+        color: "orange",
+      }),
 
-  // Empty state
-  empty: [],
+      // Week ahead
+      createMockEvent({
+        id: "day5-1",
+        title: "Demo Day",
+        startDate: getRelativeDate(5, 14, 0),
+        endDate: getRelativeDate(5, 16, 0),
+        color: "red",
+      }),
+      createMockEvent({
+        id: "day6-1",
+        title: "Training Session",
+        startDate: getRelativeDate(6, 10, 0),
+        endDate: getRelativeDate(6, 12, 0),
+        color: "blue",
+      }),
+    ],
 
-  // Single event
-  single: [
-    createMockEvent({
-      id: "single-1",
-      title: "Single Event",
-      startDate: getRelativeDate(0, 10, 0),
-      endDate: getRelativeDate(0, 11, 0),
-      color: "blue",
-    }),
-  ],
+    // Empty state
+    empty: [],
 
-  // Color test - one of each color
-  colors: (
-    ["blue", "green", "red", "yellow", "purple", "orange"] as TEventColor[]
-  ).map((color, index) =>
-    createMockEvent({
-      id: `color-${color}`,
-      title: `${color.charAt(0).toUpperCase() + color.slice(1)} Event`,
-      startDate: getRelativeDate(0, 9 + index, 0),
-      endDate: getRelativeDate(0, 10 + index, 0),
-      color,
-    })
-  ),
+    // Single event
+    single: [
+      createMockEvent({
+        id: "single-1",
+        title: "Single Event",
+        startDate: getRelativeDate(0, 10, 0),
+        endDate: getRelativeDate(0, 11, 0),
+        color: "blue",
+      }),
+    ],
 
-  // Overflow test - many events on one day
-  overflow: Array.from({ length: 10 }, (_, i) =>
-    createMockEvent({
-      id: `overflow-${i}`,
-      title: `Event ${i + 1}`,
-      startDate: getRelativeDate(0, 8 + i, 0),
-      endDate: getRelativeDate(0, 9 + i, 0),
-      color: (
-        ["blue", "green", "red", "yellow", "purple", "orange"] as TEventColor[]
-      )[i % 6],
-    })
-  ),
+    // Color test - one of each color
+    colors: (
+      ["blue", "green", "red", "yellow", "purple", "orange"] as TEventColor[]
+    ).map((color, index) =>
+      createMockEvent({
+        id: `color-${color}`,
+        title: `${color.charAt(0).toUpperCase() + color.slice(1)} Event`,
+        startDate: getRelativeDate(0, 9 + index, 0),
+        endDate: getRelativeDate(0, 10 + index, 0),
+        color,
+      })
+    ),
 
-  // Multi-day event scenario for week-view spanning bars
-  multiDay: [
-    createMockEvent({
-      id: "trip",
-      title: "Family Trip",
-      startDate: getRelativeDate(1, 0, 0),
-      endDate: getRelativeDate(4, 23, 59),
-      color: "purple",
-    }),
-    createMockEvent({
-      id: "all-day-holiday",
-      title: "Holiday",
-      startDate: getRelativeDate(0, 0, 0),
-      endDate: getRelativeDate(0, 23, 59),
-      color: "red",
-      isAllDay: true,
-    }),
-    createMockEvent({
-      id: "morning-meeting",
-      title: "Morning Standup",
-      startDate: getRelativeDate(0, 9, 0),
-      endDate: getRelativeDate(0, 9, 30),
-      color: "blue",
-    }),
-  ],
+    // Overflow test - many events on one day
+    overflow: Array.from({ length: 10 }, (_, i) =>
+      createMockEvent({
+        id: `overflow-${i}`,
+        title: `Event ${i + 1}`,
+        startDate: getRelativeDate(0, 8 + i, 0),
+        endDate: getRelativeDate(0, 9 + i, 0),
+        color: (
+          [
+            "blue",
+            "green",
+            "red",
+            "yellow",
+            "purple",
+            "orange",
+          ] as TEventColor[]
+        )[i % 6],
+      })
+    ),
 
-  // Family calendar scenario
-  family: [
-    createMockEvent({
-      id: "family-1",
-      title: "Work Meeting",
-      startDate: getRelativeDate(0, 9, 0),
-      endDate: getRelativeDate(0, 10, 0),
-      color: "blue",
-      user: { id: "parent-1", name: "Mom", picturePath: null },
-    }),
-    createMockEvent({
-      id: "family-2",
-      title: "Grocery Shopping",
-      startDate: getRelativeDate(1, 17, 0),
-      endDate: getRelativeDate(1, 18, 0),
-      color: "green",
-      user: { id: "parent-1", name: "Mom", picturePath: null },
-    }),
-    createMockEvent({
-      id: "family-3",
-      title: "Soccer Practice",
-      startDate: getRelativeDate(0, 16, 0),
-      endDate: getRelativeDate(0, 17, 30),
-      color: "green",
-      user: { id: "kid-1", name: "Emma", picturePath: null },
-    }),
-    createMockEvent({
-      id: "family-4",
-      title: "Piano Lesson",
-      startDate: getRelativeDate(2, 15, 0),
-      endDate: getRelativeDate(2, 16, 0),
-      color: "purple",
-      user: { id: "kid-1", name: "Emma", picturePath: null },
-    }),
-    createMockEvent({
-      id: "family-5",
-      title: "Art Class",
-      startDate: getRelativeDate(1, 15, 30),
-      endDate: getRelativeDate(1, 17, 0),
-      color: "yellow",
-      user: { id: "kid-2", name: "Jack", picturePath: null },
-    }),
-    createMockEvent({
-      id: "family-6",
-      title: "Family Dinner",
-      startDate: getRelativeDate(0, 18, 0),
-      endDate: getRelativeDate(0, 19, 30),
-      color: "yellow",
-      description: "Grandma's house",
-      user: { id: "family", name: "Family", picturePath: null },
-    }),
-    createMockEvent({
-      id: "family-7",
-      title: "Birthday Party",
-      startDate: getRelativeDate(3, 14, 0),
-      endDate: getRelativeDate(3, 17, 0),
-      color: "red",
-      description: "Tommy's birthday at the park",
-      user: { id: "kid-2", name: "Jack", picturePath: null },
-    }),
-  ],
-};
+    // Multi-day event scenario for week-view spanning bars
+    multiDay: [
+      createMockEvent({
+        id: "trip",
+        title: "Family Trip",
+        startDate: getRelativeDate(1, 0, 0),
+        endDate: getRelativeDate(4, 23, 59),
+        color: "purple",
+      }),
+      createMockEvent({
+        id: "all-day-holiday",
+        title: "Holiday",
+        startDate: getRelativeDate(0, 0, 0),
+        endDate: getRelativeDate(0, 23, 59),
+        color: "red",
+        isAllDay: true,
+      }),
+      createMockEvent({
+        id: "morning-meeting",
+        title: "Morning Standup",
+        startDate: getRelativeDate(0, 9, 0),
+        endDate: getRelativeDate(0, 9, 30),
+        color: "blue",
+      }),
+    ],
+
+    // Family calendar scenario
+    family: [
+      createMockEvent({
+        id: "family-1",
+        title: "Work Meeting",
+        startDate: getRelativeDate(0, 9, 0),
+        endDate: getRelativeDate(0, 10, 0),
+        color: "blue",
+        user: { id: "parent-1", name: "Mom", picturePath: null },
+      }),
+      createMockEvent({
+        id: "family-2",
+        title: "Grocery Shopping",
+        startDate: getRelativeDate(1, 17, 0),
+        endDate: getRelativeDate(1, 18, 0),
+        color: "green",
+        user: { id: "parent-1", name: "Mom", picturePath: null },
+      }),
+      createMockEvent({
+        id: "family-3",
+        title: "Soccer Practice",
+        startDate: getRelativeDate(0, 16, 0),
+        endDate: getRelativeDate(0, 17, 30),
+        color: "green",
+        user: { id: "kid-1", name: "Emma", picturePath: null },
+      }),
+      createMockEvent({
+        id: "family-4",
+        title: "Piano Lesson",
+        startDate: getRelativeDate(2, 15, 0),
+        endDate: getRelativeDate(2, 16, 0),
+        color: "purple",
+        user: { id: "kid-1", name: "Emma", picturePath: null },
+      }),
+      createMockEvent({
+        id: "family-5",
+        title: "Art Class",
+        startDate: getRelativeDate(1, 15, 30),
+        endDate: getRelativeDate(1, 17, 0),
+        color: "yellow",
+        user: { id: "kid-2", name: "Jack", picturePath: null },
+      }),
+      createMockEvent({
+        id: "family-6",
+        title: "Family Dinner",
+        startDate: getRelativeDate(0, 18, 0),
+        endDate: getRelativeDate(0, 19, 30),
+        color: "yellow",
+        description: "Grandma's house",
+        user: { id: "family", name: "Family", picturePath: null },
+      }),
+      createMockEvent({
+        id: "family-7",
+        title: "Birthday Party",
+        startDate: getRelativeDate(3, 14, 0),
+        endDate: getRelativeDate(3, 17, 0),
+        color: "red",
+        description: "Tommy's birthday at the park",
+        user: { id: "kid-2", name: "Jack", picturePath: null },
+      }),
+    ],
+  };
+}
 
 function CalendarDisplay({
   legacyAgenda = false,
@@ -458,12 +472,24 @@ function TestCalendarContent() {
   const showSidebar = searchParams.get("sidebar") === "true";
   const showFilters = searchParams.get("filters") === "true";
 
+  // Optional `?anchor=YYYY-MM-DD` pins the relative event timestamps to a
+  // deterministic "today" and also seeds `MockCalendarProvider`'s
+  // `initialDate`, so the calendar lands on the same day. Falling back to
+  // `new Date()` preserves the original behaviour for E2E specs and manual
+  // exploration that don't need date determinism.
+  const anchorParam = searchParams.get("anchor");
+  const parsedAnchor = anchorParam ? new Date(anchorParam) : null;
+  const anchor =
+    parsedAnchor && !isNaN(parsedAnchor.getTime()) ? parsedAnchor : new Date();
+  const mockEventSets = buildMockEventSets(anchor);
+
   // Get events for the specified set
   const events = mockEventSets[eventSet] || mockEventSets.default;
 
   return (
     <MockCalendarProvider
       initialEvents={events}
+      initialDate={anchorParam ? anchor : undefined}
       view={view}
       agendaMode={agendaModeParam}
       isLoading={loading}
@@ -514,6 +540,9 @@ function TestCalendarContent() {
  * - 24hour: Use 24-hour format (true/false)
  * - sidebar: Show the mini-calendar sidebar (true/false)
  * - filters: Show the calendar filter panel (true/false)
+ * - anchor: Pin relative event timestamps to a fixed date (YYYY-MM-DD).
+ *   Defaults to the wall-clock "today". Useful for deterministic E2E
+ *   coverage of date-dependent code paths (e.g. issue #234 boundary).
  *
  * Examples:
  * - /test/calendar - Default events, month view

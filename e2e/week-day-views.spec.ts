@@ -58,6 +58,34 @@ test.describe("Week Calendar", () => {
     await page.goto("/test/calendar?events=default&view=week");
     await expect(page.getByTestId("week-calendar-now-line")).toBeVisible();
   });
+
+  // Regression: #234 — when "today" sits on the last day of the visible week
+  // (Saturday in Sunday-first weeks), `getEventsForWeek` was filtering every
+  // boundary-day event out because the upper bound was Saturday at 00:00.
+  // The `?anchor=` URL param pins the relative event timestamps to a fixed
+  // Saturday so the boundary case is deterministic on every CI run.
+  test("renders events on the last day of the week when today is Saturday", async ({
+    page,
+  }) => {
+    // Sat May 2 2026 — last day of the Apr 26 – May 2 Sunday-first week.
+    await page.goto(
+      "/test/calendar?events=default&view=week&anchor=2026-05-02"
+    );
+
+    // The default mock set places 4 timed events on "today" (Morning Standup,
+    // Team Lunch, Project Review, One-on-One). With anchor = Saturday, all
+    // four would have been dropped by the pre-fix filter.
+    const count = page.getByTestId("week-calendar-event-count");
+    await expect(count).toBeVisible();
+    const text = await count.textContent();
+    expect(text).toMatch(/[1-9]\d* events?/);
+
+    // Each title should appear inside the Saturday day column, not just
+    // somewhere in the DOM, so we scope the search to the Sat 2026-05-02 cell.
+    const saturdayCol = page.getByTestId("week-calendar-day-col-2026-05-02");
+    await expect(saturdayCol.getByText("Morning Standup")).toBeVisible();
+    await expect(saturdayCol.getByText("Project Review")).toBeVisible();
+  });
 });
 
 test.describe("Day Calendar", () => {
