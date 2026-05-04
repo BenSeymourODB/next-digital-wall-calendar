@@ -14,7 +14,7 @@ import {
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GET } from "../route";
+import { GET, POST } from "../route";
 
 // Mock modules BEFORE imports
 vi.mock("@/lib/auth", () => ({
@@ -651,6 +651,555 @@ describe("/api/calendar/events", () => {
           vi.useRealTimers();
         }
       });
+    });
+  });
+
+  describe("POST /api/calendar/events", () => {
+    /**
+     * Build a minimal valid POST body. Defaults are a 60-minute timed event in
+     * May 2026 on the primary calendar so individual tests can override only
+     * the fields they care about.
+     */
+    function makeBody(
+      overrides: Partial<{
+        title: string;
+        startDate: string;
+        endDate: string;
+        color: string;
+        description: string;
+        isAllDay: boolean;
+        calendarId: string;
+      }> = {}
+    ) {
+      return {
+        title: "Team offsite",
+        startDate: "2026-05-01T14:00:00.000Z",
+        endDate: "2026-05-01T15:00:00.000Z",
+        color: "blue",
+        description: "Quarterly planning",
+        isAllDay: false,
+        calendarId: "primary",
+        ...overrides,
+      };
+    }
+
+    it("returns 401 when no session", async () => {
+      vi.mocked(getSession).mockResolvedValue(null);
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody(),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(401);
+      expect(data.error).toBe("Unauthorized");
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("returns 401 with requiresReauth when RefreshTokenError", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSessionWithError);
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody(),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(401);
+      expect(data.requiresReauth).toBe(true);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when title is missing", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody({ title: "   " }),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toMatch(/title/i);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when startDate is missing or invalid", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody({ startDate: "not-a-date" }),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toMatch(/start/i);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when end is not after start", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody({
+          startDate: "2026-05-01T10:00:00.000Z",
+          endDate: "2026-05-01T10:00:00.000Z",
+        }),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toMatch(/end/i);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when color is not one of the supported values", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody({ color: "magenta" }),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toMatch(/color/i);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when JSON body is malformed", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const request = new Request("http://localhost:3000/api/calendar/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{not-valid-json",
+      }) as unknown as Parameters<typeof POST>[0];
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toMatch(/json|body/i);
+    });
+
+    it("forwards a timed event to Google with calendarId in the URL", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const googleResponse = {
+        id: "google-event-id-1",
+        summary: "Team offsite",
+        description: "Quarterly planning",
+        start: { dateTime: "2026-05-01T14:00:00.000Z" },
+        end: { dateTime: "2026-05-01T15:00:00.000Z" },
+        colorId: "1",
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(googleResponse),
+      });
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody({ calendarId: "work@example.com" }),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<{
+        event: typeof googleResponse & { calendarId: string };
+      }>(response);
+
+      expect(status).toBe(201);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      const [calledUrl, calledOptions] = mockFetch.mock.calls[0] as [
+        string,
+        RequestInit,
+      ];
+      expect(calledUrl).toContain("/calendars/work%40example.com/events");
+      expect(calledOptions.method).toBe("POST");
+      expect(
+        (calledOptions.headers as Record<string, string>).Authorization
+      ).toBe(`Bearer ${mockGoogleAccount.access_token}`);
+
+      const sentBody = JSON.parse(calledOptions.body as string);
+      expect(sentBody.summary).toBe("Team offsite");
+      expect(sentBody.description).toBe("Quarterly planning");
+      expect(sentBody.start).toEqual({ dateTime: "2026-05-01T14:00:00.000Z" });
+      expect(sentBody.end).toEqual({ dateTime: "2026-05-01T15:00:00.000Z" });
+      expect(sentBody.colorId).toBe("1"); // blue
+      expect(sentBody.start.date).toBeUndefined();
+
+      expect(data.event.id).toBe("google-event-id-1");
+      expect(data.event.calendarId).toBe("work@example.com");
+    });
+
+    it("defaults calendarId to 'primary' when not specified", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            id: "evt-default",
+            summary: "Default cal",
+            start: { dateTime: "2026-05-01T14:00:00.000Z" },
+            end: { dateTime: "2026-05-01T15:00:00.000Z" },
+          }),
+      });
+
+      const body = makeBody();
+      const { calendarId: _omit, ...rest } = body;
+      void _omit;
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: rest,
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<{
+        event: { calendarId: string };
+      }>(response);
+
+      expect(status).toBe(201);
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toContain("/calendars/primary/events");
+      expect(data.event.calendarId).toBe("primary");
+    });
+
+    it("formats all-day events as YYYY-MM-DD with exclusive end date", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            id: "evt-allday",
+            summary: "Vacation",
+            start: { date: "2026-07-04" },
+            end: { date: "2026-07-08" },
+          }),
+      });
+
+      // Use Date.UTC to lock the input to a TZ-independent moment so the
+      // assertion holds whether the test runs in CI (UTC) or a developer's
+      // local box. Convention: the dialog encodes local-midnight start and
+      // local-end-of-day end as UTC ISOs; we reproduce a UTC-client send
+      // here (UTC == local) so the route's UTC-component math is exercised.
+      const start = new Date(Date.UTC(2026, 6, 4, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(2026, 6, 7, 23, 59, 59, 999));
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody({
+          isAllDay: true,
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          title: "Vacation",
+        }),
+      });
+      const response = await POST(request);
+      const { status } = await parseResponse(response);
+
+      expect(status).toBe(201);
+      const sentBody = JSON.parse(
+        mockFetch.mock.calls[0][1].body as string
+      ) as {
+        start: { date?: string; dateTime?: string };
+        end: { date?: string; dateTime?: string };
+      };
+
+      // Google's all-day convention: end.date is EXCLUSIVE (the day after
+      // the last included day). Jul 4–7 inclusive => end.date = "2026-07-08".
+      expect(sentBody.start.date).toBe("2026-07-04");
+      expect(sentBody.end.date).toBe("2026-07-08");
+      expect(sentBody.start.dateTime).toBeUndefined();
+      expect(sentBody.end.dateTime).toBeUndefined();
+    });
+
+    it("formats a single all-day event with end exclusive of the next day", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            id: "evt-allday-single",
+            summary: "Birthday",
+            start: { date: "2026-04-20" },
+            end: { date: "2026-04-21" },
+          }),
+      });
+
+      const start = new Date(Date.UTC(2026, 3, 20, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(2026, 3, 20, 23, 59, 59, 999));
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody({
+          isAllDay: true,
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          title: "Birthday",
+        }),
+      });
+      const response = await POST(request);
+      await parseResponse(response);
+
+      const sentBody = JSON.parse(
+        mockFetch.mock.calls[0][1].body as string
+      ) as { start: { date: string }; end: { date: string } };
+      expect(sentBody.start.date).toBe("2026-04-20");
+      expect(sentBody.end.date).toBe("2026-04-21");
+    });
+
+    it("emits the correct exclusive-end for a UTC-7 client (negative offset)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            id: "evt-allday-pdt",
+            summary: "Birthday",
+            start: { date: "2026-04-20" },
+            end: { date: "2026-04-21" },
+          }),
+      });
+
+      // Simulate what a UTC-7 (PDT) browser sends for "Apr 20 all-day":
+      // local midnight Apr 20 PDT = Apr 20 07:00:00 UTC. Local end-of-day
+      // Apr 20 23:59:59.999 PDT = Apr 21 06:59:59.999 UTC. Without the
+      // duration-based exclusive-end, `setUTCHours(0)` + `+1 day` would
+      // emit "2026-04-22" here.
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody({
+          isAllDay: true,
+          startDate: "2026-04-20T07:00:00.000Z",
+          endDate: "2026-04-21T06:59:59.999Z",
+          title: "Birthday",
+        }),
+      });
+      await parseResponse(await POST(request));
+
+      const sentBody = JSON.parse(
+        mockFetch.mock.calls[0][1].body as string
+      ) as { start: { date: string }; end: { date: string } };
+      expect(sentBody.start.date).toBe("2026-04-20");
+      expect(sentBody.end.date).toBe("2026-04-21");
+    });
+
+    it("rejects an array body with a 400", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: ["not", "an", "object"],
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toMatch(/object/i);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("maps each TEventColor to a Google colorId", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      const expected: Record<string, string> = {
+        blue: "1",
+        green: "2",
+        purple: "3",
+        red: "4",
+        yellow: "5",
+        orange: "6",
+      };
+
+      for (const [color, colorId] of Object.entries(expected)) {
+        mockFetch.mockClear();
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              id: `evt-${color}`,
+              summary: "x",
+              start: { dateTime: "2026-05-01T14:00:00.000Z" },
+              end: { dateTime: "2026-05-01T15:00:00.000Z" },
+            }),
+        });
+
+        const request = createMockRequest("/api/calendar/events", {
+          method: "POST",
+          body: makeBody({ color }),
+        });
+        const response = await POST(request);
+        expect(response.status).toBe(201);
+
+        const sentBody = JSON.parse(
+          mockFetch.mock.calls[0][1].body as string
+        ) as { colorId?: string };
+        expect(sentBody.colorId).toBe(colorId);
+      }
+    });
+
+    it("treats Google 401 as requiresReauth", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: () =>
+          Promise.resolve({ error: { message: "Invalid Credentials" } }),
+      });
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody(),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(401);
+      expect(data.requiresReauth).toBe(true);
+    });
+
+    it("treats Google 403 as a permission error", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 403,
+        json: () => Promise.resolve({ error: { message: "Forbidden" } }),
+      });
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody(),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(403);
+      expect(data.error).toMatch(/permission/i);
+    });
+
+    it("treats Google 404 as calendar-not-found", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ error: { message: "Not Found" } }),
+      });
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody({ calendarId: "missing@example.com" }),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(404);
+      expect(data.error).toMatch(/not found/i);
+    });
+
+    it("returns 502 for other Google errors", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: () =>
+          Promise.resolve({ error: { message: "Internal Server Error" } }),
+      });
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody(),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(502);
+      expect(data.error).toMatch(/failed/i);
+    });
+
+    it("returns 500 on unexpected error", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockRejectedValue(new Error("kaboom"));
+
+      const request = createMockRequest("/api/calendar/events", {
+        method: "POST",
+        body: makeBody(),
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(500);
+      expect(data.error).toBe("An unexpected error occurred");
     });
   });
 });
