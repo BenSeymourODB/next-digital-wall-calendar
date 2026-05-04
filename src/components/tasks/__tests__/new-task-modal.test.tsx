@@ -337,6 +337,55 @@ describe("NewTaskModal", () => {
       );
     });
 
+    it("preserves query params in the re-auth callbackUrl so the user lands back on their current view", async () => {
+      const user = userEvent.setup();
+      // Drive jsdom's location to a URL with both a path and a query so the
+      // assertion exercises the full preserved value, not just the path.
+      const originalUrl = window.location.href;
+      window.history.replaceState(
+        {},
+        "",
+        "/calendar?date=2026-05-04&view=week"
+      );
+
+      try {
+        const reauthError = new TaskApiError(
+          "Re-authentication required: Google Tasks scope missing.",
+          403,
+          true
+        );
+        mockUseCreateTask.mockReturnValue({
+          createTask: mockCreateTask,
+          loading: false,
+          error: reauthError,
+        });
+
+        render(
+          <NewTaskModal
+            open={true}
+            onOpenChange={mockOnOpenChange}
+            onSuccess={mockOnSuccess}
+            availableLists={lists}
+            defaultListId="list-1"
+          />
+        );
+
+        const reauthButton = await screen.findByRole("button", {
+          name: /sign in again/i,
+        });
+        await user.click(reauthButton);
+
+        expect(signIn).toHaveBeenCalledWith(
+          "google",
+          expect.objectContaining({
+            callbackUrl: "/calendar?date=2026-05-04&view=week",
+          })
+        );
+      } finally {
+        window.history.replaceState({}, "", originalUrl);
+      }
+    });
+
     it("does not render the re-auth CTA on a generic error", () => {
       mockUseCreateTask.mockReturnValue({
         createTask: mockCreateTask,

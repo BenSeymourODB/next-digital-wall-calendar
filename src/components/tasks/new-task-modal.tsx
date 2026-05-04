@@ -269,10 +269,15 @@ export function NewTaskModal({
                     variant="outline"
                     onClick={() =>
                       signIn("google", {
+                        // pathname + search keeps the user on their current
+                        // view (e.g. /calendar?date=…&view=week) after the
+                        // OAuth round-trip; pathname alone would drop the
+                        // selection. NextAuth validates callbackUrl against
+                        // NEXTAUTH_URL, so there is no open-redirect risk.
                         callbackUrl:
                           typeof window === "undefined"
                             ? "/"
-                            : window.location.pathname,
+                            : window.location.pathname + window.location.search,
                       })
                     }
                   >

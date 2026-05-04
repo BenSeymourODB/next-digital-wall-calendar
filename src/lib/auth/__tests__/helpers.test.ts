@@ -443,6 +443,18 @@ describe("auth helpers", () => {
       expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(true);
     });
 
+    it("returns true when the scope is present with comma separators", () => {
+      // Defensive: Google's spec uses spaces, but a manual DB seed or a
+      // legacy Prisma adapter version may have stored comma-delimited
+      // grants. Accept the broader form so those rows still resolve.
+      const account = {
+        ...mockGoogleAccount,
+        scope:
+          "openid,email,profile,https://www.googleapis.com/auth/tasks,https://www.googleapis.com/auth/calendar.readonly",
+      };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(true);
+    });
+
     it("returns false when the scope is missing", () => {
       const account = {
         ...mockGoogleAccount,
