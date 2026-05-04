@@ -2,6 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import {
   eachDayOfInterval,
@@ -146,7 +147,7 @@ export function YearCalendar() {
   const { selectedDate, setSelectedDate, setView, events, isLoading } =
     useCalendar();
 
-  const today = new Date();
+  const today = useDateNow();
   const year = selectedDate.getFullYear();
   const yearStart = startOfYear(selectedDate);
   const yearEnd = endOfYear(selectedDate);

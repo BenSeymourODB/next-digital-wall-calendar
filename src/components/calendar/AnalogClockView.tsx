@@ -3,6 +3,7 @@
 import { AnalogClock } from "@/components/calendar/analog-clock";
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { getColorClass } from "@/lib/calendar-helpers";
+import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
 import { format, parseISO } from "date-fns";
 
@@ -26,7 +27,7 @@ function isAllDayToday(event: IEvent, today: Date): boolean {
  */
 export function AnalogClockView() {
   const { events } = useCalendar();
-  const today = new Date();
+  const today = useDateNow();
 
   const allDayToday = events
     .filter((event) => isAllDayToday(event, today))

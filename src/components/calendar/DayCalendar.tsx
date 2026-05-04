@@ -8,6 +8,7 @@ import {
   getCurrentTimePosition,
   getEventTimePosition,
 } from "@/lib/calendar-helpers";
+import { useTodayStartOfDay } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useState } from "react";
 import {
@@ -25,8 +26,6 @@ import { AgendaList } from "./AgendaList";
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 48;
 const TIME_GRID_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
-
-const today = startOfDay(new Date());
 
 function getEventBlockClasses(color: TEventColor): string {
   const classes: Record<TEventColor, string> = {
@@ -111,6 +110,7 @@ export function DayCalendar() {
     use24HourFormat,
     agendaMode,
   } = useCalendar();
+  const today = useTodayStartOfDay();
 
   const isToday = isSameDay(selectedDate, today);
 

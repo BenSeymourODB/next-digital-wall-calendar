@@ -3,6 +3,7 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { getEventsForDay } from "@/lib/calendar-helpers";
+import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useState } from "react";
 import {
@@ -89,7 +90,7 @@ export function MiniCalendarSidebar() {
     setViewMonth(targetMonth);
   }
 
-  const today = new Date();
+  const today = useDateNow();
 
   const monthStart = startOfMonth(viewMonth);
   const monthEnd = endOfMonth(viewMonth);
