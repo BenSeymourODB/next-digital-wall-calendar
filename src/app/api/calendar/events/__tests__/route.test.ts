@@ -860,20 +860,14 @@ describe("/api/calendar/events", () => {
           }),
       });
 
-      // Use Date.UTC to lock the input to a TZ-independent moment so the
-      // assertion holds whether the test runs in CI (UTC) or a developer's
-      // local box. Convention: the dialog encodes local-midnight start and
-      // local-end-of-day end as UTC ISOs; we reproduce a UTC-client send
-      // here (UTC == local) so the route's UTC-component math is exercised.
-      const start = new Date(Date.UTC(2026, 6, 4, 0, 0, 0, 0));
-      const end = new Date(Date.UTC(2026, 6, 7, 23, 59, 59, 999));
-
+      // New wire format (#267): client sends YYYY-MM-DD strings directly.
+      // Jul 4–7 inclusive (endDate = last included day).
       const request = createMockRequest("/api/calendar/events", {
         method: "POST",
         body: makeBody({
           isAllDay: true,
-          startDate: start.toISOString(),
-          endDate: end.toISOString(),
+          startDate: "2026-07-04",
+          endDate: "2026-07-07",
           title: "Vacation",
         }),
       });
@@ -914,15 +908,13 @@ describe("/api/calendar/events", () => {
           }),
       });
 
-      const start = new Date(Date.UTC(2026, 3, 20, 0, 0, 0, 0));
-      const end = new Date(Date.UTC(2026, 3, 20, 23, 59, 59, 999));
-
+      // New wire format (#267): single-day event sends same date for start/end.
       const request = createMockRequest("/api/calendar/events", {
         method: "POST",
         body: makeBody({
           isAllDay: true,
-          startDate: start.toISOString(),
-          endDate: end.toISOString(),
+          startDate: "2026-04-20",
+          endDate: "2026-04-20",
           title: "Birthday",
         }),
       });
@@ -936,29 +928,14 @@ describe("/api/calendar/events", () => {
       expect(sentBody.end.date).toBe("2026-04-21");
     });
 
-    it("emits the correct exclusive-end for a UTC-7 client (negative offset)", async () => {
+    it("rejects an all-day request where startDate is an ISO datetime string (old wire format)", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
       vi.mocked(getAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            id: "evt-allday-pdt",
-            summary: "Birthday",
-            start: { date: "2026-04-20" },
-            end: { date: "2026-04-21" },
-          }),
-      });
-
-      // Simulate what a UTC-7 (PDT) browser sends for "Apr 20 all-day":
-      // local midnight Apr 20 PDT = Apr 20 07:00:00 UTC. Local end-of-day
-      // Apr 20 23:59:59.999 PDT = Apr 21 06:59:59.999 UTC. Without the
-      // duration-based exclusive-end, `setUTCHours(0)` + `+1 day` would
-      // emit "2026-04-22" here.
+      // Pre-#267 clients sent ISO strings for all-day events. The new route
+      // correctly rejects them so callers know to upgrade.
       const request = createMockRequest("/api/calendar/events", {
         method: "POST",
         body: makeBody({
@@ -968,13 +945,12 @@ describe("/api/calendar/events", () => {
           title: "Birthday",
         }),
       });
-      await parseResponse(await POST(request));
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
 
-      const sentBody = JSON.parse(
-        mockFetch.mock.calls[0][1].body as string
-      ) as { start: { date: string }; end: { date: string } };
-      expect(sentBody.start.date).toBe("2026-04-20");
-      expect(sentBody.end.date).toBe("2026-04-21");
+      expect(status).toBe(400);
+      expect(data.error).toMatch(/YYYY-MM-DD/i);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it("rejects an array body with a 400", async () => {
@@ -1145,6 +1121,175 @@ describe("/api/calendar/events", () => {
 
       expect(status).toBe(500);
       expect(data.error).toBe("An unexpected error occurred");
+    });
+
+    /**
+     * Wire-format tests for the YYYY-MM-DD all-day fix (#267).
+     *
+     * When isAllDay is true the client now sends YYYY-MM-DD strings for
+     * startDate/endDate rather than ISO datetime strings. These tests verify
+     * that the route records the correct local date regardless of the client's
+     * UTC offset — the positive-offset case (UTC+12 / NZST) is the regression
+     * scenario from #267.
+     */
+    describe("all-day YYYY-MM-DD wire format (#267)", () => {
+      function makeAllDaySuccessResponse(
+        startDate: string,
+        endDate: string
+      ): typeof mockFetch extends (...args: unknown[]) => unknown
+        ? ReturnType<typeof mockFetch>
+        : unknown {
+        return mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              id: "evt-allday-tz",
+              summary: "Holiday",
+              start: { date: startDate },
+              end: { date: endDate },
+            }),
+        });
+      }
+
+      it("UTC+12 (NZST): Apr-20 local sends YYYY-MM-DD and route passes Apr-20, not Apr-19", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+        makeAllDaySuccessResponse("2026-04-20", "2026-04-21");
+
+        // New wire format: client sends YYYY-MM-DD strings directly — no UTC
+        // offset shift. A UTC+12 browser picking "Apr 20" sends "2026-04-20".
+        const request = createMockRequest("/api/calendar/events", {
+          method: "POST",
+          body: makeBody({
+            isAllDay: true,
+            startDate: "2026-04-20",
+            endDate: "2026-04-20",
+            title: "Holiday",
+          }),
+        });
+        const response = await POST(request);
+        const { status } = await parseResponse(response);
+
+        expect(status).toBe(201);
+        const sentBody = JSON.parse(
+          mockFetch.mock.calls[0][1].body as string
+        ) as { start: { date?: string }; end: { date?: string } };
+
+        expect(sentBody.start.date).toBe("2026-04-20");
+        expect(sentBody.end.date).toBe("2026-04-21");
+      });
+
+      it("UTC+0 (London): Apr-20 local sends YYYY-MM-DD and route passes Apr-20", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+        makeAllDaySuccessResponse("2026-04-20", "2026-04-21");
+
+        const request = createMockRequest("/api/calendar/events", {
+          method: "POST",
+          body: makeBody({
+            isAllDay: true,
+            startDate: "2026-04-20",
+            endDate: "2026-04-20",
+            title: "Holiday",
+          }),
+        });
+        const response = await POST(request);
+        const { status } = await parseResponse(response);
+
+        expect(status).toBe(201);
+        const sentBody = JSON.parse(
+          mockFetch.mock.calls[0][1].body as string
+        ) as { start: { date?: string }; end: { date?: string } };
+
+        expect(sentBody.start.date).toBe("2026-04-20");
+        expect(sentBody.end.date).toBe("2026-04-21");
+      });
+
+      it("UTC-7 (PST): Apr-20 local sends YYYY-MM-DD and route passes Apr-20", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+        makeAllDaySuccessResponse("2026-04-20", "2026-04-21");
+
+        const request = createMockRequest("/api/calendar/events", {
+          method: "POST",
+          body: makeBody({
+            isAllDay: true,
+            startDate: "2026-04-20",
+            endDate: "2026-04-20",
+            title: "Holiday",
+          }),
+        });
+        const response = await POST(request);
+        const { status } = await parseResponse(response);
+
+        expect(status).toBe(201);
+        const sentBody = JSON.parse(
+          mockFetch.mock.calls[0][1].body as string
+        ) as { start: { date?: string }; end: { date?: string } };
+
+        expect(sentBody.start.date).toBe("2026-04-20");
+        expect(sentBody.end.date).toBe("2026-04-21");
+      });
+
+      it("multi-day: sends correct inclusive start and exclusive end", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+        makeAllDaySuccessResponse("2026-07-04", "2026-07-08");
+
+        const request = createMockRequest("/api/calendar/events", {
+          method: "POST",
+          body: makeBody({
+            isAllDay: true,
+            startDate: "2026-07-04",
+            endDate: "2026-07-07",
+            title: "Vacation",
+          }),
+        });
+        const response = await POST(request);
+        const { status } = await parseResponse(response);
+
+        expect(status).toBe(201);
+        const sentBody = JSON.parse(
+          mockFetch.mock.calls[0][1].body as string
+        ) as { start: { date?: string }; end: { date?: string } };
+
+        // Inclusive Jul 4–7 => exclusive end Jul 8
+        expect(sentBody.start.date).toBe("2026-07-04");
+        expect(sentBody.end.date).toBe("2026-07-08");
+      });
+
+      it("rejects an all-day request where startDate is not a valid YYYY-MM-DD string", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        const request = createMockRequest("/api/calendar/events", {
+          method: "POST",
+          body: makeBody({
+            isAllDay: true,
+            startDate: "not-a-date",
+            endDate: "2026-04-20",
+            title: "Holiday",
+          }),
+        });
+        const response = await POST(request);
+        const { status, data } =
+          await parseResponse<ApiErrorResponse>(response);
+
+        expect(status).toBe(400);
+        expect(data.error).toMatch(/start/i);
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
     });
   });
 });
