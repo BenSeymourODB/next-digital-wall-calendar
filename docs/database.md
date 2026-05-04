@@ -173,6 +173,61 @@ prisma/
 5. **Use `prisma migrate deploy`** for production (applies only, never creates)
 6. **Don't use `prisma db push`** anymore — it bypasses the migration system
 
+## Index Creation: CONCURRENTLY vs Blocking
+
+PostgreSQL's default `CREATE INDEX` (and `CREATE UNIQUE INDEX`) takes an **AccessShareLock** on the table for the duration of the build. On a small or empty table this is instantaneous and harmless; on a large, hot production table it can block every read and write until the index is finished — minutes or longer.
+
+### When to use `CREATE INDEX CONCURRENTLY`
+
+Use the `CONCURRENTLY` keyword whenever the migration will run against a table that:
+
+- already has rows in production (any non-greenfield table), or
+- receives live traffic at the time the migration is applied.
+
+The concurrent form builds the index in the background without holding a table lock. It takes longer overall but allows normal reads and writes throughout.
+
+```sql
+-- Safe on a live table: no table lock, reads and writes continue normally.
+CREATE UNIQUE INDEX CONCURRENTLY "PointTransaction_profileId_taskId_key"
+    ON "PointTransaction"("profileId", "taskId");
+```
+
+> **Prisma note:** Prisma does not emit `CONCURRENTLY` in auto-generated migrations. Always hand-edit the migration SQL for indexes added to populated tables.
+
+### When the blocking variant is acceptable
+
+The non-concurrent form is acceptable when:
+
+- the table is **greenfield** (created in the same migration, so it has zero rows at migration time), or
+- the migration runs only in **development** or pre-launch environments where no live traffic exists, or
+- the table is provably tiny and the lock duration is negligible.
+
+```sql
+-- Fine in the same migration that creates the table (zero rows at run time).
+CREATE UNIQUE INDEX "PointTransaction_profileId_taskId_key"
+    ON "PointTransaction"("profileId", "taskId");
+```
+
+### Existing pre-launch migrations
+
+The migration `0003_unique_account_user_provider` (`CREATE UNIQUE INDEX "Account_userId_provider_key"`) and the `0001_initial` baseline both use the blocking form. This was intentional — both ran pre-launch against empty tables. **Do not copy this pattern** when adding indexes to tables that may contain data in any target environment.
+
+If a future migration introduces an index on an existing populated table, write:
+
+```sql
+-- Template: unique index on a populated table.
+CREATE UNIQUE INDEX CONCURRENTLY "<IndexName>"
+    ON "<TableName>"("<column1>", "<column2>");
+```
+
+### Migration naming reminder
+
+Remember to follow the `NNNN_snake_case` convention for the migration directory name (e.g. `0005_add_point_transaction_unique_idx`). CI enforces this with `pnpm db:migrate:check-names`. See [Migration Naming Convention](#migration-naming-convention).
+
+### Forward-looking note
+
+A future CI step could lint migration SQL for bare `CREATE INDEX` / `CREATE UNIQUE INDEX` statements that target tables created in a prior migration and flag them as candidates for `CONCURRENTLY` review — but that automation is out of scope for now.
+
 ## Troubleshooting
 
 ### Migration Drift
