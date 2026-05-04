@@ -22,10 +22,11 @@ pnpm lint:fix && pnpm format:fix && pnpm check-types
 pnpm test                # Run all tests
 
 # Database
-pnpm db:migrate          # Create migration (dev)
-pnpm db:migrate:deploy   # Apply migrations (prod)
-pnpm db:migrate:reset    # Reset + reapply all
-pnpm db:migrate:status   # Check status
+pnpm db:migrate              # Create migration (dev)
+pnpm db:migrate:deploy       # Apply migrations (prod)
+pnpm db:migrate:reset        # Reset + reapply all
+pnpm db:migrate:status       # Check status
+pnpm db:migrate:check-names  # Validate NNNN_snake_case naming
 
 # Dependencies
 pnpm bump-deps           # Update to @latest
@@ -171,4 +172,4 @@ A task is **not complete** until:
 2. All code quality checks pass (`pnpm lint:fix && pnpm format:fix && pnpm check-types`)
 3. Feature matches the plan spec (if implementing from `.claude/plans/`)
 4. Never commit test output artifacts (`test-results/`, `playwright-report/`, `blob-report/`)
-5. Use `pnpm db:migrate` for schema changes (never `prisma db push`). See [docs/database.md](./docs/database.md)
+5. Use `pnpm db:migrate` for schema changes (never `prisma db push`). Migrations follow the `NNNN_snake_case` naming convention (e.g. `0005_add_meal_planning`); CI runs `pnpm db:migrate:check-names` to enforce it. See [docs/database.md](./docs/database.md)
