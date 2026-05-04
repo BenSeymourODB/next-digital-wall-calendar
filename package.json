@@ -30,6 +30,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:reset": "prisma migrate reset",
     "db:migrate:status": "prisma migrate status",
+    "db:migrate:check-names": "node scripts/check-migration-naming.mjs",
     "bump-deps-minor": "ncu --target minor -u && pnpm install",
     "bump-deps": "ncu -x recharts -u && pnpm install",
     "bump-ui": "npx shadcn@latest add --all --overwrite",
