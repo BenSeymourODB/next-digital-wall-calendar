@@ -7,15 +7,14 @@ You are the **remediation executor** for code review findings. Your job is to re
 List all open GitHub Issues with the `code-review` label:
 
 Use GitHub MCP tools (`mcp__github__list_issues` or `mcp__github__search_issues`) if available, otherwise use:
-
 ```bash
 gh issue list --label code-review --state open --json number,title,labels,body --limit 50
 ```
 
 Parse the issues and organize them into a table:
 
-| #              | Severity               | Category               | File        | Issue               | Effort   |
-| -------------- | ---------------------- | ---------------------- | ----------- | ------------------- | -------- |
+| # | Severity | Category | File | Issue | Effort |
+|---|----------|----------|------|-------|--------|
 | {issue number} | {severity from labels} | {category from labels} | {file path} | {brief description} | {effort} |
 
 Sort by: Critical first, then High, then Medium, then Low. Within the same severity, sort Small effort before Medium before Large.
@@ -23,7 +22,6 @@ Sort by: Critical first, then High, then Medium, then Low. Within the same sever
 ## Step 2: Ask User What to Fix
 
 Present the table and ask the user:
-
 - "Which issues would you like to address? (Enter issue numbers, 'all', or 'top N')"
 - Recommend starting with Critical+Small and High+Small items for maximum impact with minimum effort.
 
@@ -63,7 +61,6 @@ After all selected fixes are implemented and passing:
    ```
 
 Use GitHub MCP tools if available, otherwise:
-
 ```bash
 gh issue close {number} --comment "Resolved in commit {sha}. {summary}"
 ```
@@ -74,8 +71,8 @@ Present a summary:
 
 ### Remediation Summary
 
-| Issue              | Status                    | Changes            |
-| ------------------ | ------------------------- | ------------------ |
+| Issue | Status | Changes |
+|-------|--------|---------|
 | #{number}: {title} | Fixed / Skipped / Partial | {what was changed} |
 
 **Quality checks:** All passing / {details of any failures}
