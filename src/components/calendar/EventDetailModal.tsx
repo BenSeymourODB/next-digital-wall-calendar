@@ -1,16 +1,29 @@
 "use client";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { IEvent, TEventColor } from "@/types/calendar";
-import type { RefObject } from "react";
+import { type RefObject, useState } from "react";
 import { format, isSameDay } from "date-fns";
+import { Trash2 } from "lucide-react";
 
 const COLOR_INDICATOR_CLASSES: Record<TEventColor, string> = {
   blue: "bg-blue-500",
@@ -31,6 +44,13 @@ interface EventDetailModalProps {
    * (WCAG 2.4.3), since the triggers are not wrapped in a Radix DialogTrigger.
    */
   returnFocusTo?: RefObject<HTMLElement | null>;
+  /**
+   * Optional delete handler. When provided, a "Delete event" button renders
+   * in the footer behind a confirmation dialog. When the handler resolves,
+   * `onClose` is called so the modal dismisses; when it rejects, the modal
+   * stays open (the caller is expected to surface a toast).
+   */
+  onDelete?: (event: IEvent) => Promise<void>;
 }
 
 function getInitials(name: string): string {
@@ -66,12 +86,32 @@ export function EventDetailModal({
   onClose,
   use24HourFormat,
   returnFocusTo,
+  onDelete,
 }: EventDetailModalProps) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   if (!event) return null;
 
   const timeRange = formatTimeRange(event, use24HourFormat);
   const dateLabel = formatDateLabel(event);
   const hasDescription = Boolean(event.description?.trim());
+
+  const handleConfirmDelete = async () => {
+    if (!onDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(event);
+      // onClose unmounts the modal; no need to reset confirmingDelete first.
+      onClose();
+    } catch {
+      // Caller surfaces the toast; keep the detail modal open so the user
+      // sees the event still present and can retry.
+      setConfirmingDelete(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <Dialog
@@ -139,7 +179,57 @@ export function EventDetailModal({
             <span className="text-foreground text-sm">{event.user.name}</span>
           </div>
         </div>
+
+        {onDelete && (
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={isDeleting}
+            >
+              <Trash2 aria-hidden="true" />
+              Delete event
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
+
+      {onDelete && (
+        <AlertDialog
+          open={confirmingDelete}
+          onOpenChange={(open) => {
+            if (!isDeleting) setConfirmingDelete(open);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this event?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Deleting &ldquo;{event.title}&rdquo; removes it from Google
+                Calendar. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  // Run the async handler ourselves so we can keep the
+                  // alert open while the request is in-flight; otherwise
+                  // Radix would close it before we know the result.
+                  e.preventDefault();
+                  void handleConfirmDelete();
+                }}
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Deleting…" : "Yes, delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </Dialog>
   );
 }

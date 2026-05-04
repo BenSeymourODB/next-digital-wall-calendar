@@ -118,22 +118,29 @@ test.describe("Day Calendar", () => {
 });
 
 test.describe("View switcher navigation", () => {
-  test("cycles Month → Week → Day → Agenda and back to Month", async ({
+  test("cycles Month → Week → Day → Day+Agenda and back to Month", async ({
     page,
   }) => {
     await page.goto("/test/calendar?events=default&view=month");
     await expect(page.getByText("Sun", { exact: true }).first()).toBeVisible();
 
-    await page.getByRole("tab", { name: "Week" }).click();
+    // After #150, Day and Week are dropdown triggers — opening the menu
+    // and picking "Grid" lands on the time-grid view.
+    await page.getByTestId("view-switcher-week").click();
+    await page.getByRole("menuitemradio", { name: /grid/i }).click();
     await expect(page.getByTestId("week-calendar-range")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Day" }).click();
+    await page.getByTestId("view-switcher-day").click();
+    await page.getByRole("menuitemradio", { name: /grid/i }).click();
     await expect(page.getByTestId("day-calendar-heading")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Agenda" }).click();
-    await expect(page.getByText("Upcoming Events")).toBeVisible();
+    // Day → Day+Agenda via the dropdown's Agenda sub-option (#150).
+    await page.getByTestId("view-switcher-day").click();
+    await page.getByRole("menuitemradio", { name: /agenda/i }).click();
+    await expect(page.getByTestId("agenda-list")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Month" }).click();
+    // Month is a plain button — single click switches view.
+    await page.getByTestId("view-switcher-month").click();
     await expect(page.getByText("Sun", { exact: true }).first()).toBeVisible();
   });
 });

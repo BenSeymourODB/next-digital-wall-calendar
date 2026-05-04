@@ -18,7 +18,7 @@ const STORAGE_KEYS = {
 
 export interface CalendarSettings {
   refreshInterval: number; // minutes
-  defaultView: "day" | "week" | "month" | "year" | "agenda";
+  defaultView: "day" | "week" | "month" | "year";
   theme: "light" | "dark" | "auto";
   use24HourFormat: boolean;
 }

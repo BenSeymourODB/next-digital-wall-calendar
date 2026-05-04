@@ -60,6 +60,8 @@ function createMockContext(
     selectedDate: new Date(),
     view: "week" as TCalendarView,
     setView: vi.fn(),
+    agendaMode: false,
+    setAgendaMode: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
     use24HourFormat: true,
@@ -77,6 +79,8 @@ function createMockContext(
     addEvent: vi.fn(),
     updateEvent: vi.fn(),
     removeEvent: vi.fn(),
+    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
+    deleteEvent: vi.fn().mockResolvedValue(undefined),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     isLoading: false,
@@ -439,6 +443,59 @@ describe("WeekCalendar", () => {
       expect(
         screen.queryByTestId("week-calendar-multi-day-row")
       ).not.toBeInTheDocument();
+    });
+  });
+
+  // Issue #150 — agendaMode replaces the time-grid with a chronological list
+  // grouped by day for the selected week.
+  describe("Agenda mode", () => {
+    it("renders the time grid when agendaMode is false", () => {
+      renderWithContext({ selectedDate: new Date(2026, 3, 15) });
+      // The role=grid wrapper is the week time-grid.
+      expect(
+        screen.getByRole("grid", { name: /week of/i })
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId("agenda-list")).not.toBeInTheDocument();
+    });
+
+    it("renders the agenda list when agendaMode is true", () => {
+      const selectedDate = new Date(2026, 3, 15); // Wed Apr 15 2026
+      const weekStart = startOfWeek(selectedDate, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const eventDate = addDays(weekStart, 1); // Within the week
+      const start = new Date(eventDate);
+      start.setHours(10, 0, 0, 0);
+      const end = new Date(eventDate);
+      end.setHours(11, 0, 0, 0);
+
+      renderWithContext({
+        agendaMode: true,
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "wed-event",
+            title: "WeekEvent",
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+          }),
+        ],
+      });
+
+      expect(
+        screen.queryByRole("grid", { name: /week of/i })
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("agenda-list")).toBeInTheDocument();
+      expect(screen.getByText("WeekEvent")).toBeInTheDocument();
+    });
+
+    it("keeps the week range header + prev/next navigation visible in agenda mode", async () => {
+      const user = userEvent.setup();
+      const { contextValue } = renderWithContext({ agendaMode: true });
+      expect(screen.getByTestId("week-calendar-range")).toBeInTheDocument();
+
+      await user.click(screen.getByTestId("week-calendar-next"));
+      expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -1,14 +1,19 @@
 /**
  * Integration tests for the view-mode fade wiring (#87).
  *
- * Verifies that when the calendar's `view` toggles between Month and Agenda,
- * the AnimatedSwap wrapper renders both view containers simultaneously while
- * the fade is in flight, then collapses to just the new view after the
- * duration elapses, and skips animation under prefers-reduced-motion.
+ * Verifies that when the calendar's `view` toggles between two top-level
+ * views (e.g. Month <-> Year), the AnimatedSwap wrapper renders both
+ * containers simultaneously while the fade is in flight, then collapses to
+ * just the new view after the duration elapses, and skips animation under
+ * prefers-reduced-motion.
  *
  * Mirrors the integration the production calendar page wires up — the same
  * AnimatedSwap call lives in `src/app/calendar/page.tsx` and
  * `src/app/test/calendar/page.tsx`.
+ *
+ * Note: pre-#150 this test used `"agenda"` as the second view. Agenda is
+ * now a sub-mode of Day/Week, so we use Year as the swap counterpart and
+ * cover the grid<->agenda fade in the test-page integration / E2E suite.
  */
 import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import {
@@ -28,6 +33,8 @@ function createMockContext(
     selectedDate: new Date(),
     view: "month" as TCalendarView,
     setView: vi.fn(),
+    agendaMode: false,
+    setAgendaMode: vi.fn(),
     agendaModeGroupBy: "date",
     setAgendaModeGroupBy: vi.fn(),
     use24HourFormat: true,
@@ -45,6 +52,8 @@ function createMockContext(
     addEvent: vi.fn(),
     updateEvent: vi.fn(),
     removeEvent: vi.fn(),
+    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
+    deleteEvent: vi.fn().mockResolvedValue(undefined),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     isLoading: false,
@@ -67,7 +76,7 @@ function CalendarSurface({ view }: { view: TCalendarView }) {
       {view === "month" ? (
         <div data-testid="month-surface">Month surface</div>
       ) : (
-        <div data-testid="agenda-surface">Agenda surface</div>
+        <div data-testid="year-surface">Year surface</div>
       )}
     </AnimatedSwap>
   );
@@ -103,29 +112,29 @@ afterEach(() => {
 });
 
 describe("Calendar view-mode animation (integration)", () => {
-  it("renders both Month and Agenda surfaces simultaneously while the fade is in flight", () => {
+  it("renders both Month and Year surfaces simultaneously while the fade is in flight", () => {
     const { rerender } = renderCalendarSurface("month");
     expect(screen.getByTestId("month-surface")).toBeInTheDocument();
-    expect(screen.queryByTestId("agenda-surface")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("year-surface")).not.toBeInTheDocument();
 
     rerender(
-      <CalendarContext.Provider value={createMockContext({ view: "agenda" })}>
-        <CalendarSurface view="agenda" />
+      <CalendarContext.Provider value={createMockContext({ view: "year" })}>
+        <CalendarSurface view="year" />
       </CalendarContext.Provider>
     );
 
-    // The animation snapshot keeps the Month surface alive while Agenda
+    // The animation snapshot keeps the Month surface alive while Year
     // fades in. Both must be in the DOM mid-transition.
     expect(screen.getByTestId("month-surface")).toBeInTheDocument();
-    expect(screen.getByTestId("agenda-surface")).toBeInTheDocument();
+    expect(screen.getByTestId("year-surface")).toBeInTheDocument();
   });
 
-  it("settles to only the Agenda surface after the fade completes", () => {
+  it("settles to only the Year surface after the fade completes", () => {
     const { rerender } = renderCalendarSurface("month");
 
     rerender(
-      <CalendarContext.Provider value={createMockContext({ view: "agenda" })}>
-        <CalendarSurface view="agenda" />
+      <CalendarContext.Provider value={createMockContext({ view: "year" })}>
+        <CalendarSurface view="year" />
       </CalendarContext.Provider>
     );
 
@@ -134,7 +143,7 @@ describe("Calendar view-mode animation (integration)", () => {
     });
 
     expect(screen.queryByTestId("month-surface")).not.toBeInTheDocument();
-    expect(screen.getByTestId("agenda-surface")).toBeInTheDocument();
+    expect(screen.getByTestId("year-surface")).toBeInTheDocument();
   });
 
   it("swaps instantly under prefers-reduced-motion (no simultaneous render)", () => {
@@ -151,12 +160,12 @@ describe("Calendar view-mode animation (integration)", () => {
     const { rerender } = renderCalendarSurface("month");
 
     rerender(
-      <CalendarContext.Provider value={createMockContext({ view: "agenda" })}>
-        <CalendarSurface view="agenda" />
+      <CalendarContext.Provider value={createMockContext({ view: "year" })}>
+        <CalendarSurface view="year" />
       </CalendarContext.Provider>
     );
 
     expect(screen.queryByTestId("month-surface")).not.toBeInTheDocument();
-    expect(screen.getByTestId("agenda-surface")).toBeInTheDocument();
+    expect(screen.getByTestId("year-surface")).toBeInTheDocument();
   });
 });

@@ -301,23 +301,48 @@ const mockEventSets: Record<string, IEvent[]> = {
   ],
 };
 
-function CalendarDisplay() {
-  const { view } = useCalendar();
+function CalendarDisplay({
+  legacyAgenda = false,
+}: {
+  /**
+   * When true, render the search-driven AgendaCalendar (the pre-#150
+   * agenda view). The test page exposes this via `?view=agenda` so existing
+   * E2E specs that exercise the search UX keep working without change. New
+   * agenda-mode behavior (Day / Week chronological list) is reached via
+   * `?view=day&agendaMode=true` instead.
+   */
+  legacyAgenda?: boolean;
+}) {
+  const { view, agendaMode } = useCalendar();
+
+  // Compose a swap key that switches the animation when the user toggles
+  // agenda mode within day/week, so the grid <-> agenda transition gets
+  // the same fade treatment as a primary view change (#150 + #87).
+  const swapKey = legacyAgenda
+    ? "legacy-agenda"
+    : (view === "day" || view === "week") && agendaMode
+      ? `${view}:agenda`
+      : view;
 
   return (
     <div data-testid="calendar-display">
       <AnimatedSwap
-        swapKey={view}
+        swapKey={swapKey}
         type="fade"
         direction="forward"
         durationMs={250}
       >
-        {view === "day" && <DayCalendar />}
-        {view === "week" && <WeekCalendar />}
-        {view === "month" && <SimpleCalendar />}
-        {view === "year" && <YearCalendar />}
-        {view === "agenda" && <AgendaCalendar />}
-        {view === "clock" && <AnalogClockView />}
+        {legacyAgenda ? (
+          <AgendaCalendar />
+        ) : (
+          <>
+            {view === "day" && <DayCalendar />}
+            {view === "week" && <WeekCalendar />}
+            {view === "month" && <SimpleCalendar />}
+            {view === "year" && <YearCalendar />}
+            {view === "clock" && <AnalogClockView />}
+          </>
+        )}
       </AnimatedSwap>
     </div>
   );
@@ -419,7 +444,13 @@ function TestCalendarContent() {
 
   // Get test configuration from URL params
   const eventSet = searchParams.get("events") || "default";
-  const view = (searchParams.get("view") as TCalendarView) || "month";
+  const rawView = searchParams.get("view") ?? "month";
+  // Legacy `view=agenda` (pre-#150) maps to day + agendaMode=true so existing
+  // bookmarks, screenshots, and E2E specs keep working without a hard cutover.
+  const legacyAgenda = rawView === "agenda";
+  const view: TCalendarView = legacyAgenda ? "day" : (rawView as TCalendarView);
+  const agendaModeParam =
+    legacyAgenda || searchParams.get("agendaMode") === "true";
   const loading = searchParams.get("loading") === "true";
   const loadingDelay = parseInt(searchParams.get("loadingDelay") || "0", 10);
   const showControls = searchParams.get("controls") !== "false";
@@ -434,6 +465,7 @@ function TestCalendarContent() {
     <MockCalendarProvider
       initialEvents={events}
       view={view}
+      agendaMode={agendaModeParam}
       isLoading={loading}
       loadingDelay={loadingDelay}
       use24HourFormat={use24Hour}
@@ -460,10 +492,10 @@ function TestCalendarContent() {
 
         {showSidebar ? (
           <SidebarAwareLayout>
-            <CalendarDisplay />
+            <CalendarDisplay legacyAgenda={legacyAgenda} />
           </SidebarAwareLayout>
         ) : (
-          <CalendarDisplay />
+          <CalendarDisplay legacyAgenda={legacyAgenda} />
         )}
       </div>
     </MockCalendarProvider>
