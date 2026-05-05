@@ -50,12 +50,18 @@ export function EventArc({
   const { id, cleanTitle, color, eventEmoji, startAngle, endAngle } = event;
   const isInteractive = Boolean(onEventClick);
 
+  // Compose the accessible name without a trailing comma when no emoji is set,
+  // so screen readers don't vocalise a stray "comma" at the end.
+  const ariaLabel = eventEmoji
+    ? `Event: ${cleanTitle}, ${eventEmoji}`
+    : `Event: ${cleanTitle}`;
+
   const handleKeyDown = (e: ReactKeyboardEvent<SVGGElement>) => {
     if (!onEventClick) return;
     if (e.key === "Enter" || e.key === " ") {
       // Prevent the page from scrolling on Space.
       e.preventDefault();
-      onEventClick(id);
+      onEventClick(id, e.currentTarget);
     }
   };
 
@@ -112,13 +118,15 @@ export function EventArc({
     <g
       data-testid={`event-arc-group-${id}`}
       role={isInteractive ? "button" : "img"}
-      aria-label={`Event: ${cleanTitle}, ${eventEmoji || ""}`}
+      aria-label={ariaLabel}
       tabIndex={isInteractive ? 0 : undefined}
-      onClick={onEventClick ? () => onEventClick(id) : undefined}
+      onClick={
+        onEventClick ? (e) => onEventClick(id, e.currentTarget) : undefined
+      }
       onKeyDown={isInteractive ? handleKeyDown : undefined}
       className={
         isInteractive
-          ? "cursor-pointer focus:outline-none focus-visible:[&>path]:stroke-blue-500 focus-visible:[&>path]:stroke-[3px]"
+          ? "cursor-pointer focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
           : undefined
       }
     >

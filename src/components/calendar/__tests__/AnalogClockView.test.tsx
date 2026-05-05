@@ -257,17 +257,5 @@ describe("AnalogClockView", () => {
       fireEvent.click(screen.getByRole("button", { name: /close/i }));
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-
-    it("does not open the modal when no event matches the id", () => {
-      // Defensive: should not crash if the clicked id no longer exists.
-      // Render with one event, then synthesise a click for a stale id.
-      renderView({ events: [makeTimedEvent()] });
-      // Sanity — modal not open
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      // Click an arc that does exist; modal opens, then we close and remain
-      // resilient. (This tests the wiring stays intact.)
-      fireEvent.click(screen.getByTestId("event-arc-group-timed"));
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
   });
 });

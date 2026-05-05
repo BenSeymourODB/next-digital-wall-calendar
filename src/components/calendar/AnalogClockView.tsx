@@ -32,14 +32,17 @@ export function AnalogClockView() {
   const { events, use24HourFormat } = useCalendar();
   const today = useDateNow();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
 
   const allDayToday = events
     .filter((event) => isAllDayToday(event, today))
     .sort((a, b) => a.title.localeCompare(b.title));
 
-  const openEventById = (eventId: string, trigger: HTMLElement | null) => {
+  const openEventById = (
+    eventId: string,
+    trigger: HTMLElement | SVGElement | null
+  ) => {
     const match = events.find((e) => e.id === eventId);
     if (!match) return;
     triggerRef.current = trigger;
@@ -65,7 +68,7 @@ export function AnalogClockView() {
             size={CLOCK_MAX_PX}
             rawEvents={events}
             arcThickness={CLOCK_MAX_PX * ARC_THICKNESS_RATIO}
-            onEventClick={(eventId) => openEventById(eventId, null)}
+            onEventClick={(eventId, trigger) => openEventById(eventId, trigger)}
           />
         </div>
       </div>

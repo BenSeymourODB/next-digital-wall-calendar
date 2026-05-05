@@ -54,9 +54,11 @@ export interface AnalogClockProps {
   /**
    * Click handler for an event arc. When provided, each arc becomes a
    * focusable role="button" that fires this handler on click and on
-   * Enter/Space keypress. The clock surface is read-only when omitted.
+   * Enter/Space keypress. The `trigger` element is the focused arc <g>;
+   * callers should stash it so a modal can restore focus on close.
+   * The clock surface is read-only when omitted.
    */
-  onEventClick?: (eventId: string) => void;
+  onEventClick?: (eventId: string, trigger: SVGGElement) => void;
 }
 
 /** Props for the ClockFace component */
@@ -90,6 +92,8 @@ export interface EventArcProps {
   /**
    * Optional click handler. When provided, the arc group becomes a
    * focusable role="button" that fires on click and on Enter/Space.
+   * The `trigger` is the focused arc <g> so callers can restore focus
+   * after a modal closes.
    */
-  onEventClick?: (eventId: string) => void;
+  onEventClick?: (eventId: string, trigger: SVGGElement) => void;
 }

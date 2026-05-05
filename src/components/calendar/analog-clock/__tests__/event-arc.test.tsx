@@ -94,6 +94,17 @@ describe("EventArc", () => {
     expect(group.getAttribute("aria-label")).toContain("Family Game Night");
   });
 
+  it("omits the trailing ', ' from aria-label when the event has no emoji", () => {
+    const noEmojiEvent = {
+      ...baseEvent,
+      id: "evt-no-emoji",
+      eventEmoji: undefined,
+    };
+    renderArc({ event: noEmojiEvent });
+    const group = screen.getByTestId("event-arc-group-evt-no-emoji");
+    expect(group.getAttribute("aria-label")).toBe("Event: Family Game Night");
+  });
+
   it("renders different colored arcs for different events", () => {
     const redEvent: ClockEvent = {
       ...baseEvent,
@@ -138,13 +149,13 @@ describe("EventArc", () => {
       expect(group.getAttribute("aria-label")).toContain("Family Game Night");
     });
 
-    it("calls onEventClick with the event id when the group is clicked", () => {
+    it("calls onEventClick with the event id and the <g> element when clicked", () => {
       const onEventClick = vi.fn();
       renderArc({ onEventClick });
       const group = screen.getByTestId("event-arc-group-evt-1");
       fireEvent.click(group);
       expect(onEventClick).toHaveBeenCalledTimes(1);
-      expect(onEventClick).toHaveBeenCalledWith("evt-1");
+      expect(onEventClick).toHaveBeenCalledWith("evt-1", group);
     });
 
     it("calls onEventClick when Enter is pressed on the focused group", () => {
@@ -152,7 +163,7 @@ describe("EventArc", () => {
       renderArc({ onEventClick });
       const group = screen.getByTestId("event-arc-group-evt-1");
       fireEvent.keyDown(group, { key: "Enter" });
-      expect(onEventClick).toHaveBeenCalledWith("evt-1");
+      expect(onEventClick).toHaveBeenCalledWith("evt-1", group);
     });
 
     it("calls onEventClick when Space is pressed on the focused group", () => {
@@ -160,7 +171,7 @@ describe("EventArc", () => {
       renderArc({ onEventClick });
       const group = screen.getByTestId("event-arc-group-evt-1");
       fireEvent.keyDown(group, { key: " " });
-      expect(onEventClick).toHaveBeenCalledWith("evt-1");
+      expect(onEventClick).toHaveBeenCalledWith("evt-1", group);
     });
 
     it("does not call onEventClick for other keys", () => {

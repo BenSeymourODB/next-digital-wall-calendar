@@ -115,13 +115,18 @@ export function AnalogClock({
   const ringGap = ringCount > 1 ? Math.max(2, arcThickness * 0.06) : 0;
   const ringThickness = (arcThickness - (ringCount - 1) * ringGap) / ringCount;
 
+  // When the clock is interactive (onEventClick provided), the inner arcs are
+  // role="button" descendants. role="img" on the parent <svg> would tell AT to
+  // treat the whole SVG as a single opaque graphic, hiding those buttons from
+  // screen readers — so widen to role="group" in that mode. The non-interactive
+  // mode keeps role="img" because the SVG is then a single graphic.
   return (
     <svg
       data-testid="analog-clock"
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
-      role="img"
+      role={onEventClick ? "group" : "img"}
       aria-label={`Analog clock showing ${time.toLocaleTimeString()} with ${resolvedEvents.length} events`}
       className="select-none"
     >
