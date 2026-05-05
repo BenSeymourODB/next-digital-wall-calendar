@@ -22,7 +22,10 @@ export type { TaskListSettingsProps } from "./task-list-settings";
 export { useTasks } from "./use-tasks";
 export type { UseTasksReturn } from "./use-tasks";
 
-export { TaskApiError, parseTaskApiError } from "./task-api-error";
+// `parseTaskApiError` is intentionally not re-exported — it's an internal
+// fetch-response parser coupled to the route contract; only `TaskApiError`
+// (the class consumers need for `instanceof` checks) is public.
+export { TaskApiError } from "./task-api-error";
 
 export { ReauthCta } from "./reauth-cta";
 export type { ReauthCtaProps } from "./reauth-cta";

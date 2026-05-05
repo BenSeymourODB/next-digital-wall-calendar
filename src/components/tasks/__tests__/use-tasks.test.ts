@@ -404,6 +404,34 @@ describe("useTasks", () => {
       expect(result.current.tasks).toEqual([]);
     });
 
+    it("rejects with TaskApiError carrying status + requiresReauth on 401 session expiry (#261)", async () => {
+      // 401 + requiresReauth: true is the most common real-world trigger —
+      // see /api/tasks routes when the session is expired or
+      // RefreshTokenError fires.
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: () =>
+          Promise.resolve({
+            error: "Session expired. Please sign in again.",
+            requiresReauth: true,
+          }),
+      });
+
+      const config = createMockConfig();
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      const captured = result.current.error;
+      expect(captured).toBeInstanceOf(TaskApiError);
+      expect((captured as TaskApiError).status).toBe(401);
+      expect((captured as TaskApiError).requiresReauth).toBe(true);
+      expect(captured?.message).toMatch(/sign in again/i);
+    });
+
     it("rejects with TaskApiError carrying status + requiresReauth on 403 (#261)", async () => {
       mockFetch.mockResolvedValue({
         ok: false,

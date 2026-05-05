@@ -37,10 +37,20 @@ export function TaskList({
 }: TaskListProps) {
   const { tasks, loading, error, refreshTasks, updateTask } = useTasks(config);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  // Toggle errors are scoped to a single PATCH and must NOT replace the
+  // rendered task list (`error` from the hook does, since fetch failure
+  // means we have nothing to show). A separate slot keeps them transient
+  // and clears on the next successful toggle.
+  const [toggleError, setToggleError] = useState<Error | null>(null);
 
   const handleTaskToggle = async (task: TaskWithMeta) => {
     const newStatus = task.status === "completed" ? "needsAction" : "completed";
-    await updateTask(task.id, task.listId, { status: newStatus });
+    try {
+      await updateTask(task.id, task.listId, { status: newStatus });
+      setToggleError(null);
+    } catch (err) {
+      setToggleError(err instanceof Error ? err : new Error(String(err)));
+    }
   };
 
   const title = config.title || "My Tasks";
@@ -76,6 +86,19 @@ export function TaskList({
         </div>
       </CardHeader>
       <CardContent className="pt-0">
+        {/* Toggle-error banner — scoped to a single failed PATCH; does not
+            wipe the rendered task list. */}
+        {toggleError && (
+          <div
+            role="alert"
+            className="mb-3 space-y-2 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          >
+            <p>{toggleError.message}</p>
+            {toggleError instanceof TaskApiError &&
+              toggleError.requiresReauth && <ReauthCta />}
+          </div>
+        )}
+
         {/* Loading state */}
         {loading && tasks.length === 0 && (
           <div className="flex items-center justify-center py-8 text-gray-500">

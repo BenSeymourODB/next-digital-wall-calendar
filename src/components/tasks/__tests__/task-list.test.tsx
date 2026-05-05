@@ -263,6 +263,73 @@ describe("TaskList", () => {
         status: "needsAction",
       });
     });
+
+    it("renders a Sign in again CTA when toggling a task fails with requiresReauth (#261)", async () => {
+      const user = userEvent.setup();
+      mockUpdateTask.mockRejectedValueOnce(
+        new TaskApiError(
+          "Re-authentication required: Google Tasks scope missing.",
+          403,
+          true
+        )
+      );
+
+      render(<TaskList config={mockConfig} />);
+
+      const checkboxes = screen.getAllByRole("checkbox");
+      await user.click(checkboxes[0]);
+
+      const reauthButton = await screen.findByRole("button", {
+        name: /sign in again/i,
+      });
+      await user.click(reauthButton);
+
+      expect(mockSignIn).toHaveBeenCalledWith(
+        "google",
+        expect.objectContaining({ callbackUrl: expect.any(String) })
+      );
+
+      // The task list must NOT be wiped — toggle errors are scoped, not screen-level.
+      expect(screen.getByText("Task 1")).toBeInTheDocument();
+      expect(screen.getByText("Task 2")).toBeInTheDocument();
+    });
+
+    it("does not render the CTA when a toggle fails with a generic error", async () => {
+      const user = userEvent.setup();
+      mockUpdateTask.mockRejectedValueOnce(new Error("Network failure"));
+
+      render(<TaskList config={mockConfig} />);
+
+      const checkboxes = screen.getAllByRole("checkbox");
+      await user.click(checkboxes[0]);
+
+      // The toggle-error banner shows the message but no CTA on a non-reauth failure.
+      expect(await screen.findByText(/network failure/i)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /sign in again/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("clears the toggle-error banner on the next successful toggle", async () => {
+      const user = userEvent.setup();
+      mockUpdateTask
+        .mockRejectedValueOnce(new TaskApiError("Re-auth required", 403, true))
+        .mockResolvedValueOnce(undefined);
+
+      render(<TaskList config={mockConfig} />);
+
+      const checkboxes = screen.getAllByRole("checkbox");
+      await user.click(checkboxes[0]);
+      expect(
+        await screen.findByRole("button", { name: /sign in again/i })
+      ).toBeInTheDocument();
+
+      await user.click(checkboxes[1]);
+
+      expect(
+        screen.queryByRole("button", { name: /sign in again/i })
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe("settings", () => {
