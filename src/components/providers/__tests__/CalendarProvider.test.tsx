@@ -293,15 +293,12 @@ vi.mock("@/lib/calendar-transform", () => ({
   // Honour `colorOverride` on the test fixture so the filter test
   // can assert that filtering by color actually drops the right
   // events. Defaults to "blue" when no override is given.
-  transformGoogleEvent: (
-    event: {
-      id: string;
-      summary?: string;
-      start?: { dateTime?: string };
-      colorOverride?: string;
-    },
-    _mappings: unknown
-  ) => ({
+  transformGoogleEvent: (event: {
+    id: string;
+    summary?: string;
+    start?: { dateTime?: string };
+    colorOverride?: string;
+  }) => ({
     id: event.id,
     title: event.summary ?? "Mock",
     description: "",
