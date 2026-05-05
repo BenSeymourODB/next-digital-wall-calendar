@@ -195,6 +195,15 @@ describe("ViewSwitcher (#235 split-button affordance)", () => {
       expect(caret).toHaveAccessibleName(/day display mode/i);
     });
 
+    it("caret does not carry aria-pressed (its state is aria-expanded)", () => {
+      renderWithContext({ view: "day", agendaMode: true });
+      // aria-pressed would mis-announce a menu trigger as a toggle button;
+      // Radix injects aria-expanded on open, which is the correct signal.
+      expect(screen.getByTestId("view-switcher-day-mode")).not.toHaveAttribute(
+        "aria-pressed"
+      );
+    });
+
     it("clicking the caret opens a menu with Grid and Agenda options", async () => {
       const user = userEvent.setup();
       renderWithContext({ view: "day" });
@@ -342,6 +351,65 @@ describe("ViewSwitcher (#235 split-button affordance)", () => {
       ]) {
         expect(screen.getByTestId(id)).not.toHaveAttribute("aria-haspopup");
       }
+    });
+  });
+
+  describe("Keyboard interaction", () => {
+    it("Enter on the caret opens the menu", async () => {
+      const user = userEvent.setup();
+      renderWithContext({ view: "day" });
+
+      const caret = screen.getByTestId("view-switcher-day-mode");
+      caret.focus();
+      await user.keyboard("{Enter}");
+
+      expect(
+        screen.getByRole("menuitemradio", { name: /grid/i })
+      ).toBeInTheDocument();
+    });
+
+    it("Escape dismisses the open caret menu", async () => {
+      const user = userEvent.setup();
+      renderWithContext({ view: "day" });
+
+      await user.click(screen.getByTestId("view-switcher-day-mode"));
+      expect(
+        screen.getByRole("menuitemradio", { name: /agenda/i })
+      ).toBeInTheDocument();
+
+      await user.keyboard("{Escape}");
+
+      expect(
+        screen.queryByRole("menuitemradio", { name: /agenda/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("ArrowDown moves focus from Grid to Agenda inside the menu", async () => {
+      const user = userEvent.setup();
+      renderWithContext({ view: "day", agendaMode: false });
+
+      await user.click(screen.getByTestId("view-switcher-day-mode"));
+      const grid = screen.getByRole("menuitemradio", { name: /grid/i });
+      const agenda = screen.getByRole("menuitemradio", { name: /agenda/i });
+
+      // Radix doesn't auto-focus a specific item in jsdom on open; explicitly
+      // focus Grid (the checked item) and assert ArrowDown advances to Agenda.
+      grid.focus();
+      expect(grid).toHaveFocus();
+
+      await user.keyboard("{ArrowDown}");
+      expect(agenda).toHaveFocus();
+    });
+
+    it("Space on the primary button switches view", async () => {
+      const user = userEvent.setup();
+      const { contextValue } = renderWithContext({ view: "month" });
+
+      const primary = screen.getByTestId("view-switcher-week");
+      primary.focus();
+      await user.keyboard(" ");
+
+      expect(contextValue.setView).toHaveBeenCalledWith("week");
     });
   });
 });
