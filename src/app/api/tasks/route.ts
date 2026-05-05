@@ -11,6 +11,7 @@ import {
 import { createTask, listTasks } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
+import { getTaskAssignmentsByTaskIds } from "@/lib/services/task-assignments";
 import { NextRequest, NextResponse } from "next/server";
 
 interface CreateTaskBody {
@@ -18,6 +19,11 @@ interface CreateTaskBody {
   title?: string;
   notes?: string;
   due?: string;
+}
+
+interface GoogleTaskItem {
+  id: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -85,7 +91,37 @@ export async function GET(request: NextRequest) {
       userId: session.user.id,
     });
 
-    return NextResponse.json({ tasks, nextPageToken });
+    const includeAssignments =
+      searchParams.get("includeAssignments") === "true";
+
+    if (!includeAssignments) {
+      return NextResponse.json({
+        tasks,
+        nextPageToken,
+      });
+    }
+
+    // Embed per-task profile assignments so the client can filter by
+    // active profile without a second round-trip per task. Scoped to
+    // the caller's userId so two accounts with the same Google task
+    // ID don't see each other's assignments.
+    const assignmentMap =
+      tasks.length === 0
+        ? new Map()
+        : await getTaskAssignmentsByTaskIds(
+            tasks.map((t) => t.id),
+            session.user.id
+          );
+
+    const tasksWithAssignments = tasks.map((task) => ({
+      ...task,
+      assignments: assignmentMap.get(task.id) ?? [],
+    }));
+
+    return NextResponse.json({
+      tasks: tasksWithAssignments,
+      nextPageToken,
+    });
   } catch (error) {
     return handleTasksApiError(error, "fetch_tasks");
   }

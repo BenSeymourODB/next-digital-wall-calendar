@@ -51,6 +51,7 @@ describe("TaskList", () => {
       listTitle: "Work",
       listColor: "#3b82f6",
       isOverdue: false,
+      assignments: [],
     },
     {
       id: "task-2",
@@ -62,6 +63,7 @@ describe("TaskList", () => {
       listTitle: "Work",
       listColor: "#3b82f6",
       isOverdue: false,
+      assignments: [],
     },
   ];
 
