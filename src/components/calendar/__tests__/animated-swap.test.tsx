@@ -6,6 +6,8 @@
  * timer behavior under rapid swaps, and same-key re-render.
  */
 import { act, render, screen } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnimatedSwap } from "../animated-swap";
 
@@ -406,11 +408,13 @@ describe("AnimatedSwap", () => {
 
   describe("reduced motion mid-animation", () => {
     it("collapses to idle and clears pending timers when reduced-motion turns on mid-animation", () => {
-      // First mount with reduced-motion off.
+      // First mount with reduced-motion off. useSyncExternalStore re-reads
+      // the live snapshot when notified, so the mock must be a shared object
+      // whose `matches` field flips before the listener fires.
       let mqlListeners: ((e: MediaQueryListEvent) => void)[] = [];
-      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      const sharedMql = {
         matches: false,
-        media: query,
+        media: "(prefers-reduced-motion: reduce)",
         addEventListener: (
           _evt: string,
           handler: (e: MediaQueryListEvent) => void
@@ -426,7 +430,12 @@ describe("AnimatedSwap", () => {
         addListener: vi.fn(),
         removeListener: vi.fn(),
         dispatchEvent: vi.fn(),
-      }));
+      };
+      window.matchMedia = vi
+        .fn()
+        .mockImplementation(
+          () => sharedMql
+        ) as unknown as typeof window.matchMedia;
 
       const { rerender } = render(
         <AnimatedSwap
@@ -452,8 +461,10 @@ describe("AnimatedSwap", () => {
 
       expect(screen.getByTestId("animated-swap-outgoing")).toBeInTheDocument();
 
-      // OS-level reduced motion turns on; hook's subscribed listener fires.
+      // OS-level reduced motion turns on; the live snapshot must reflect the
+      // new value before the listener fires so React picks it up.
       act(() => {
+        sharedMql.matches = true;
         mqlListeners.forEach((h) =>
           h({ matches: true } as MediaQueryListEvent)
         );
@@ -463,6 +474,97 @@ describe("AnimatedSwap", () => {
         screen.queryByTestId("animated-swap-outgoing")
       ).not.toBeInTheDocument();
       expect(screen.getByTestId("b")).toBeInTheDocument();
+    });
+  });
+
+  // Regression coverage for #306. Before the useReducedMotion fix, the SSR
+  // pass and the client's first render produced structurally different trees
+  // when the user had `prefers-reduced-motion: reduce` set, which surfaced as
+  // a hydration warning anchored at SimpleCalendar.
+  describe("hydration with prefers-reduced-motion (regression for #306)", () => {
+    it("server renders the idle wrapper so the client's first render matches", () => {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(prefers-reduced-motion: reduce)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+
+      const ssrHtml = renderToString(
+        <AnimatedSwap
+          swapKey="a"
+          type="fade"
+          direction="forward"
+          durationMs={300}
+        >
+          <div data-testid="content">A</div>
+        </AnimatedSwap>
+      );
+
+      // The SSR pass must show the idle wrapper, not the skip-animation
+      // shortcut. Otherwise the client (which initializes useReducedMotion to
+      // false to match SSR) would diverge on hydration.
+      expect(ssrHtml).toContain("animated-swap-idle");
+    });
+
+    it("hydrates without React hydration warnings", () => {
+      // This test exercises the real React hydration path with prefers-reduced
+      // -motion enabled. Use real timers so the post-mount useEffect that
+      // syncs the live preference can run (it doesn't depend on timers, but
+      // hydrateRoot's own scheduling can interact with fake timers).
+      vi.useRealTimers();
+
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(prefers-reduced-motion: reduce)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+
+      const tree = (
+        <AnimatedSwap
+          swapKey="a"
+          type="fade"
+          direction="forward"
+          durationMs={300}
+        >
+          <div data-testid="content">A</div>
+        </AnimatedSwap>
+      );
+
+      const ssrHtml = renderToString(tree);
+      const container = document.createElement("div");
+      container.innerHTML = ssrHtml;
+      document.body.appendChild(container);
+
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+
+      let root: ReturnType<typeof hydrateRoot> | null = null;
+      act(() => {
+        root = hydrateRoot(container, tree);
+      });
+
+      const hydrationErrors = errorSpy.mock.calls.filter((call) =>
+        call.some((arg) =>
+          typeof arg === "string" ? /hydrat/i.test(arg) : false
+        )
+      );
+
+      expect(hydrationErrors).toEqual([]);
+
+      act(() => {
+        root?.unmount();
+      });
+      errorSpy.mockRestore();
+      document.body.removeChild(container);
     });
   });
 
