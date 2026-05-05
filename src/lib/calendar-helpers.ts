@@ -46,6 +46,27 @@ const FORMAT_STRING = "MMM d, yyyy";
  */
 export const WEEK_STARTS_ON: Day = 0;
 
+/**
+ * Hour of day the Day/Week time grids scroll to on mount so working-hours
+ * events are immediately visible. (#214)
+ *
+ * 0 = midnight, 7 = 7am, etc. Plumbed through `getInitialScrollTop` so
+ * each calendar can derive its scrollTop from its own row height.
+ */
+export const WORKING_HOURS_START_HOUR = 7;
+
+/**
+ * Compute the scrollTop in pixels needed to position the time grid at a
+ * specific hour of day. Used by Day/Week views to land on the start of
+ * working hours when the grid mounts.
+ */
+export function getInitialScrollTop(
+  hour: number,
+  hourHeightPx: number
+): number {
+  return hour * hourHeightPx;
+}
+
 const SHORT_WEEKDAY_LABELS = [
   "Sun",
   "Mon",

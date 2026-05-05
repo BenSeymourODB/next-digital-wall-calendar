@@ -87,12 +87,58 @@ export interface TaskListConfig {
   showCompleted: boolean;
   /** Sort order for tasks */
   sortBy: TaskSortOption;
+  /**
+   * Profile ID to filter the list by. When set, the list shows only
+   * tasks assigned to this profile (plus optionally the unassigned
+   * ones, see `showUnassigned`). When `null`/`undefined`, no profile
+   * filtering is applied β€" useful for the "family" view mode.
+   */
+  profileFilter?: string | null;
+  /**
+   * If `profileFilter` is set, also include tasks that have no profile
+   * assignments. Defaults to `false` β€" strict per-profile view.
+   */
+  showUnassigned?: boolean;
 }
 
 /**
  * Sort options for tasks
  */
 export type TaskSortOption = "dueDate" | "created" | "manual";
+
+/**
+ * Avatar shape for an assigned profile, mirroring the `ProfileAvatar`
+ * type from the profile context but kept loose here so this module
+ * stays free of cross-feature imports. Shared with the service layer
+ * (`@/lib/services/task-assignments`) and the API response type.
+ */
+export interface AssignmentProfileSummary {
+  id: string;
+  name: string;
+  color: string;
+  avatar: {
+    type: "initials" | "photo" | "emoji";
+    value: string;
+    backgroundColor?: string;
+  };
+}
+
+/**
+ * One profile-task assignment row, as returned by
+ * `GET /api/tasks?includeAssignments=true`.
+ */
+export interface AssignmentSummary {
+  profileId: string;
+  profile: AssignmentProfileSummary;
+}
+
+/**
+ * A Google task as returned by `GET /api/tasks`, with the extra
+ * `assignments` field populated when the request opts into enrichment.
+ */
+export interface GoogleTaskWithAssignments extends GoogleTask {
+  assignments?: AssignmentSummary[];
+}
 
 /**
  * Task with additional display metadata
@@ -107,6 +153,11 @@ export interface TaskWithMeta extends GoogleTask {
   listColor: string;
   /** Whether the task is overdue (computed from due date) */
   isOverdue: boolean;
+  /**
+   * Profiles this task is assigned to. Empty array means "unassigned"
+   * β€" the task is not owned by any profile.
+   */
+  assignments: AssignmentSummary[];
 }
 
 /**
@@ -215,7 +266,7 @@ export function sortTasks(
  * API response types
  */
 export interface TasksApiResponse {
-  tasks: GoogleTask[];
+  tasks: GoogleTaskWithAssignments[];
   nextPageToken?: string;
 }
 

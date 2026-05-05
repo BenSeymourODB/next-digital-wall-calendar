@@ -525,6 +525,193 @@ describe("useTasks", () => {
     });
   });
 
+  describe("profile filtering", () => {
+    const dad = {
+      id: "profile-dad",
+      name: "Dad",
+      color: "#3b82f6",
+      avatar: { type: "initials", value: "D" },
+    };
+    const mom = {
+      id: "profile-mom",
+      name: "Mom",
+      color: "#ef4444",
+      avatar: { type: "initials", value: "M" },
+    };
+
+    it("does not request assignments when no profileFilter is set", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ tasks: [createMockTask({ id: "t1" })] }),
+      });
+
+      const config = createMockConfig();
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      const calledUrls = mockFetch.mock.calls.map(
+        (c) => c[0] as string
+      ) as string[];
+      expect(
+        calledUrls.some((url) => url.includes("includeAssignments=true"))
+      ).toBe(false);
+    });
+
+    it("appends includeAssignments=true when profileFilter is set", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            tasks: [
+              { ...createMockTask({ id: "t1" }), assignments: [] },
+              {
+                ...createMockTask({ id: "t2" }),
+                assignments: [{ profileId: dad.id, profile: dad }],
+              },
+            ],
+          }),
+      });
+
+      const config = createMockConfig({ profileFilter: dad.id });
+      renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        const calledUrls = mockFetch.mock.calls.map(
+          (c) => c[0] as string
+        ) as string[];
+        expect(
+          calledUrls.some((url) => url.includes("includeAssignments=true"))
+        ).toBe(true);
+      });
+    });
+
+    it("returns only tasks assigned to the active profile by default", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            tasks: [
+              {
+                ...createMockTask({ id: "t-dad", title: "Dad task" }),
+                assignments: [{ profileId: dad.id, profile: dad }],
+              },
+              {
+                ...createMockTask({ id: "t-mom", title: "Mom task" }),
+                assignments: [{ profileId: mom.id, profile: mom }],
+              },
+              {
+                ...createMockTask({ id: "t-unassigned", title: "Family task" }),
+                assignments: [],
+              },
+            ],
+          }),
+      });
+
+      const config = createMockConfig({ profileFilter: dad.id });
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      const titles = result.current.tasks.map((t) => t.title);
+      expect(titles).toEqual(["Dad task"]);
+    });
+
+    it("includes unassigned tasks when showUnassigned is true", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            tasks: [
+              {
+                ...createMockTask({ id: "t-dad", title: "Dad task" }),
+                assignments: [{ profileId: dad.id, profile: dad }],
+              },
+              {
+                ...createMockTask({ id: "t-mom", title: "Mom task" }),
+                assignments: [{ profileId: mom.id, profile: mom }],
+              },
+              {
+                ...createMockTask({ id: "t-unassigned", title: "Family task" }),
+                assignments: [],
+              },
+            ],
+          }),
+      });
+
+      const config = createMockConfig({
+        profileFilter: dad.id,
+        showUnassigned: true,
+      });
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      const titles = result.current.tasks.map((t) => t.title).sort();
+      expect(titles).toEqual(["Dad task", "Family task"]);
+    });
+
+    it("includes a task assigned to multiple profiles when one matches", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            tasks: [
+              {
+                ...createMockTask({ id: "t-shared", title: "Shared task" }),
+                assignments: [
+                  { profileId: dad.id, profile: dad },
+                  { profileId: mom.id, profile: mom },
+                ],
+              },
+            ],
+          }),
+      });
+
+      const config = createMockConfig({ profileFilter: dad.id });
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      expect(result.current.tasks).toHaveLength(1);
+      expect(result.current.tasks[0].assignments).toHaveLength(2);
+    });
+
+    it("treats missing assignments field as unassigned", async () => {
+      // If the server somehow omits the assignments key, the filter
+      // shouldn't crash β€" the task is treated as unassigned and only
+      // surfaces when showUnassigned is true.
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            tasks: [createMockTask({ id: "t1", title: "Legacy task" })],
+          }),
+      });
+
+      const config = createMockConfig({
+        profileFilter: dad.id,
+        showUnassigned: true,
+      });
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      expect(result.current.tasks).toHaveLength(1);
+      expect(result.current.tasks[0].assignments).toEqual([]);
+    });
+  });
+
   describe("refreshTasks", () => {
     it("refetches tasks when called", async () => {
       mockFetch
