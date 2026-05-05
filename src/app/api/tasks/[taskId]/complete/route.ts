@@ -4,19 +4,15 @@
  *
  * POST - Complete a task and update streak
  */
-import { getAccessToken, getSession } from "@/lib/auth/helpers";
+import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import { patchTask } from "@/lib/google/tasks-api";
+import { GoogleTasksApiError } from "@/lib/google/tasks-types";
+import { logger } from "@/lib/logger";
 import { updateProfileStreak } from "@/lib/services/streak";
 import { NextRequest, NextResponse } from "next/server";
 
 interface RouteContext {
   params: Promise<{ taskId: string }>;
-}
-
-interface GoogleTask {
-  id: string;
-  title: string;
-  status: "needsAction" | "completed";
-  updated?: string;
 }
 
 interface RequestBody {
@@ -40,65 +36,96 @@ export async function POST(
   request: NextRequest,
   { params }: RouteContext
 ): Promise<NextResponse> {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const accessToken = await getAccessToken();
-  if (!accessToken) {
-    return NextResponse.json(
-      { error: "Unauthorized - No access token" },
-      { status: 401 }
-    );
-  }
-
-  const { taskId } = await params;
-
-  let body: RequestBody = {};
   try {
-    body = await request.json();
-  } catch {
-    // Empty body is fine
-  }
-
-  const { listId, profileId } = body;
-
-  if (!listId) {
-    return NextResponse.json({ error: "listId is required" }, { status: 400 });
-  }
-
-  if (!profileId) {
-    return NextResponse.json(
-      { error: "profileId is required" },
-      { status: 400 }
-    );
-  }
-
-  // Mark task as completed in Google Tasks API
-  const googleResponse = await fetch(
-    `https://tasks.googleapis.com/tasks/v1/lists/${listId}/tasks/${taskId}`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ status: "completed" }),
+    const session = await getSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-  );
 
-  if (!googleResponse.ok) {
-    const error = await googleResponse.json();
+    if (session.error === "RefreshTokenError") {
+      return NextResponse.json(
+        {
+          error: "Session expired. Please sign in again.",
+          requiresReauth: true,
+        },
+        { status: 401 }
+      );
+    }
+
+    const { taskId } = await params;
+
+    let body: RequestBody = {};
+    try {
+      body = await request.json();
+    } catch {
+      // Empty body is fine
+    }
+
+    const { listId, profileId } = body;
+
+    if (!listId) {
+      return NextResponse.json(
+        { error: "listId is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!profileId) {
+      return NextResponse.json(
+        { error: "profileId is required" },
+        { status: 400 }
+      );
+    }
+
+    const accessToken = await getAccessToken();
+    const task = await patchTask(accessToken, listId, taskId, {
+      status: "completed",
+    });
+
+    const streak = await updateProfileStreak(profileId);
+
+    return NextResponse.json({ task, streak });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message, requiresReauth: error.status === 401 },
+        { status: error.status }
+      );
+    }
+
+    if (error instanceof GoogleTasksApiError) {
+      logger.error(error, {
+        endpoint: "/api/tasks/[taskId]/complete",
+        status: error.status,
+      });
+
+      if (error.status === 401 || error.status === 403) {
+        return NextResponse.json(
+          {
+            error:
+              error.status === 403
+                ? "Missing Google Tasks scope. Please sign in again to grant access."
+                : "Google authentication failed. Please sign in again.",
+            requiresReauth: true,
+          },
+          { status: error.status }
+        );
+      }
+
+      return NextResponse.json(
+        { error: "Failed to complete task" },
+        { status: error.status }
+      );
+    }
+
+    logger.error(error as Error, {
+      endpoint: "/api/tasks/[taskId]/complete",
+      errorType: "complete_task",
+    });
+
     return NextResponse.json(
-      { error: error.error?.message || "Failed to complete task" },
-      { status: googleResponse.status }
+      { error: "An unexpected error occurred" },
+      { status: 500 }
     );
   }
-
-  const task = (await googleResponse.json()) as GoogleTask;
-
-  const streak = await updateProfileStreak(profileId);
-
-  return NextResponse.json({ task, streak });
 }

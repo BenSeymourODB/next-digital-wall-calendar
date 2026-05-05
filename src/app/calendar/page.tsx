@@ -1,7 +1,6 @@
 "use client";
 
 import { AccountManager } from "@/components/calendar/AccountManager";
-import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
 import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { CalendarSettingsPanel } from "@/components/calendar/CalendarSettingsPanel";
@@ -33,8 +32,6 @@ function CalendarView({ view }: { view: TCalendarView }) {
       return <WeekCalendar />;
     case "year":
       return <YearCalendar />;
-    case "agenda":
-      return <AgendaCalendar />;
     case "clock":
       return <AnalogClockView />;
     case "month":

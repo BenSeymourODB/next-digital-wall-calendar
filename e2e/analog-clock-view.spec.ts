@@ -8,23 +8,23 @@ test.describe("AnalogClockView (calendar page wiring)", () => {
     await expect(page.getByTestId("analog-clock")).toBeVisible();
   });
 
-  test("Clock tab in ViewSwitcher is highlighted when active", async ({
+  test("Clock button in ViewSwitcher is highlighted when active", async ({
     page,
   }) => {
     await page.goto("/test/calendar?events=default&view=clock");
 
-    const clockTab = page.getByRole("tab", { name: /clock/i });
-    await expect(clockTab).toHaveAttribute("data-state", "active");
+    const clockBtn = page.getByTestId("view-switcher-clock");
+    await expect(clockBtn).toHaveAttribute("aria-pressed", "true");
   });
 
-  test("switches into clock view from month via the Clock tab", async ({
+  test("switches into clock view from month via the Clock button", async ({
     page,
   }) => {
     await page.goto("/test/calendar?events=default&view=month");
 
     await expect(page.getByTestId("analog-clock-view")).toHaveCount(0);
 
-    await page.getByRole("tab", { name: /clock/i }).click();
+    await page.getByTestId("view-switcher-clock").click();
 
     await expect(page.getByTestId("analog-clock-view")).toBeVisible();
     await expect(page.getByTestId("analog-clock")).toBeVisible();
@@ -36,10 +36,10 @@ test.describe("AnalogClockView (calendar page wiring)", () => {
     await page.goto("/test/calendar?events=default&view=clock");
     await expect(page.getByTestId("analog-clock-view")).toBeVisible();
 
-    await page.getByRole("tab", { name: /month/i }).click();
+    await page.getByTestId("view-switcher-month").click();
     await expect(page.getByTestId("analog-clock-view")).toHaveCount(0);
 
-    await page.getByRole("tab", { name: /clock/i }).click();
+    await page.getByTestId("view-switcher-clock").click();
     await expect(page.getByTestId("analog-clock-view")).toBeVisible();
     await expect(page.getByTestId("analog-clock")).toBeVisible();
   });

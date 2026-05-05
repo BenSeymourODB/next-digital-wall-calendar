@@ -14,7 +14,7 @@ test.use({
 });
 
 test.describe("Calendar transition animations", () => {
-  test("fades between Month and Agenda view when the view switcher changes", async ({
+  test("fades between Month and Day-Agenda when the view switcher changes (#150)", async ({
     page,
   }) => {
     await page.goto("/test/calendar?events=default&view=month");
@@ -26,14 +26,13 @@ test.describe("Calendar transition animations", () => {
     // Initially we are in Month view — header reads "MMMM yyyy".
     await expect(page.locator("h2").first()).toBeVisible();
 
-    // Switch to Agenda by clicking the Agenda tab in the view switcher.
-    await page.getByRole("tab", { name: /agenda/i }).click();
+    // Open the Day dropdown and pick Agenda — composite swap key
+    // `day:agenda` triggers the same fade as a top-level view change.
+    await page.getByTestId("view-switcher-day").click();
+    await page.getByRole("menuitemradio", { name: /agenda/i }).click();
 
-    // During the transition the outgoing snapshot of Month and the
-    // incoming Agenda root are both present in the same wrapper.
-    // The transition completes within ~250ms; the assertion below races
-    // for the entering or idle state and confirms Agenda is rendered.
-    await expect(page.getByText("Morning Standup").first()).toBeVisible({
+    // The Day-agenda renderer is now visible.
+    await expect(page.getByTestId("agenda-list")).toBeVisible({
       timeout: 5000,
     });
   });
@@ -97,19 +96,20 @@ test.describe("Calendar transition animations", () => {
 
       // With reduced motion, AnimatedSwap renders a single wrapper with
       // its child directly — no outgoing/incoming/entering nodes.
-      await page.getByRole("tab", { name: /agenda/i }).click();
+      await page.getByTestId("view-switcher-day").click();
+      await page.getByRole("menuitemradio", { name: /agenda/i }).click();
 
       // Outgoing should never appear when animations are disabled.
       const outgoing = page.getByTestId("animated-swap-outgoing");
       await expect(outgoing).toHaveCount(0);
 
-      // Agenda content is visible immediately.
-      await expect(page.getByText("Morning Standup").first()).toBeVisible({
+      // Day-agenda content is visible immediately.
+      await expect(page.getByTestId("agenda-list")).toBeVisible({
         timeout: 5000,
       });
 
       // Same for month navigation.
-      await page.getByRole("tab", { name: /month/i }).click();
+      await page.getByTestId("view-switcher-month").click();
       await page.getByTestId("calendar-next-month").click();
       await expect(outgoing).toHaveCount(0);
     } finally {

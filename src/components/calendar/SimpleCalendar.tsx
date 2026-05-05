@@ -3,6 +3,7 @@
 import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { useEventDelete } from "@/hooks/useEventDelete";
 import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import {
   applyCalendarKeyboardAction,
@@ -57,6 +58,7 @@ export function SimpleCalendar() {
   } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  const handleDelete = useEventDelete();
 
   const weekdayHeaders = getShortWeekdayLabels(weekStartDay);
 
@@ -409,6 +411,7 @@ export function SimpleCalendar() {
         onClose={() => setSelectedEvent(null)}
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
+        onDelete={handleDelete}
       />
     </div>
   );

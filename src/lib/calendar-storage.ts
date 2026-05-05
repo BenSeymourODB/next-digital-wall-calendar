@@ -1,13 +1,14 @@
 /**
  * Browser storage utilities for calendar data
- * Handles localStorage for accounts and IndexedDB for event caching
+ * Handles localStorage for accounts; the IndexedDB event cache lives in
+ * `./event-cache` and is re-exported here for callers that import via this
+ * module.
  */
 import { logger } from "@/lib/logger";
 import type { TEventColor } from "@/types/calendar";
-import type {
-  GoogleCalendarAccount,
-  GoogleCalendarEvent,
-} from "./google-calendar";
+import type { GoogleCalendarAccount } from "./google-calendar";
+
+export { eventCache } from "./event-cache";
 
 const STORAGE_KEYS = {
   ACCOUNTS: "calendar_accounts",
@@ -18,7 +19,7 @@ const STORAGE_KEYS = {
 
 export interface CalendarSettings {
   refreshInterval: number; // minutes
-  defaultView: "day" | "week" | "month" | "year" | "agenda";
+  defaultView: "day" | "week" | "month" | "year";
   theme: "light" | "dark" | "auto";
   use24HourFormat: boolean;
 }
@@ -273,137 +274,3 @@ export function clearAllData(): void {
     throw error;
   }
 }
-
-/**
- * IndexedDB storage for cached events
- */
-class EventCache {
-  private dbName = "CalendarEventsDB";
-  private storeName = "events";
-  private db: IDBDatabase | null = null;
-
-  async init(): Promise<void> {
-    if (this.db) {
-      return;
-    }
-
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 1);
-
-      request.onerror = () => {
-        logger.error(new Error("Failed to open IndexedDB"), {
-          context: "EventCache.init",
-        });
-        reject(request.error);
-      };
-
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve();
-      };
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(this.storeName)) {
-          const objectStore = db.createObjectStore(this.storeName, {
-            keyPath: "id",
-          });
-          objectStore.createIndex("calendarId", "calendarId", {
-            unique: false,
-          });
-          objectStore.createIndex("start", "start", { unique: false });
-        }
-      };
-    });
-  }
-
-  async saveEvents(events: GoogleCalendarEvent[]): Promise<void> {
-    await this.init();
-    if (!this.db) {
-      throw new Error("Database not initialized");
-    }
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.storeName], "readwrite");
-      const objectStore = transaction.objectStore(this.storeName);
-
-      // Clear existing events first
-      objectStore.clear();
-
-      // Add new events
-      events.forEach((event) => {
-        objectStore.add({
-          ...event,
-          // Store start date as timestamp for indexing
-          start: event.start.dateTime || event.start.date,
-        });
-      });
-
-      transaction.oncomplete = () => {
-        logger.log("Cached events in IndexedDB", { count: events.length });
-        resolve();
-      };
-
-      transaction.onerror = () => {
-        logger.error(new Error("Failed to cache events"), {
-          context: "EventCache.saveEvents",
-        });
-        reject(transaction.error);
-      };
-    });
-  }
-
-  async getEvents(): Promise<GoogleCalendarEvent[]> {
-    await this.init();
-    if (!this.db) {
-      throw new Error("Database not initialized");
-    }
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.storeName], "readonly");
-      const objectStore = transaction.objectStore(this.storeName);
-      const request = objectStore.getAll();
-
-      request.onsuccess = () => {
-        logger.log("Retrieved cached events", {
-          count: request.result.length,
-        });
-        resolve(request.result);
-      };
-
-      request.onerror = () => {
-        logger.error(new Error("Failed to retrieve cached events"), {
-          context: "EventCache.getEvents",
-        });
-        reject(request.error);
-      };
-    });
-  }
-
-  async clearEvents(): Promise<void> {
-    await this.init();
-    if (!this.db) {
-      throw new Error("Database not initialized");
-    }
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.storeName], "readwrite");
-      const objectStore = transaction.objectStore(this.storeName);
-      const request = objectStore.clear();
-
-      request.onsuccess = () => {
-        logger.log("Cleared cached events");
-        resolve();
-      };
-
-      request.onerror = () => {
-        logger.error(new Error("Failed to clear cached events"), {
-          context: "EventCache.clearEvents",
-        });
-        reject(request.error);
-      };
-    });
-  }
-}
-
-export const eventCache = new EventCache();

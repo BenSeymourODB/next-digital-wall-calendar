@@ -3,7 +3,11 @@
  * GET /api/profiles - List all profiles for authenticated user
  * POST /api/profiles - Create a new profile
  */
-import { getSession } from "@/lib/auth";
+import {
+  ApiError,
+  requireUserSession,
+  withApiHandler,
+} from "@/lib/api/handler";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
@@ -32,13 +36,14 @@ interface CreateProfileBody {
 /**
  * GET /api/profiles - List all profiles for authenticated user
  */
-export async function GET() {
-  try {
-    const session = await getSession();
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const GET = withApiHandler(
+  {
+    endpoint: "/api/profiles",
+    method: "GET",
+    errorMessage: "Failed to fetch profiles",
+  },
+  async () => {
+    const session = await requireUserSession();
 
     const profiles = await prisma.profile.findMany({
       where: {
@@ -54,29 +59,20 @@ export async function GET() {
     });
 
     return NextResponse.json(profiles);
-  } catch (error) {
-    logger.error(error as Error, {
-      endpoint: "/api/profiles",
-      method: "GET",
-    });
-
-    return NextResponse.json(
-      { error: "Failed to fetch profiles" },
-      { status: 500 }
-    );
   }
-}
+);
 
 /**
  * POST /api/profiles - Create a new profile
  */
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const POST = withApiHandler(
+  {
+    endpoint: "/api/profiles",
+    method: "POST",
+    errorMessage: "Failed to create profile",
+  },
+  async (request: NextRequest) => {
+    const session = await requireUserSession();
 
     const body = (await request.json()) as CreateProfileBody;
     const {
@@ -87,12 +83,10 @@ export async function POST(request: NextRequest) {
       avatar,
     } = body;
 
-    // Validate input
     if (!name || name.trim().length === 0) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+      throw new ApiError("Name is required", 400);
     }
 
-    // Check profile limit and first profile validation
     const existingCount = await prisma.profile.count({
       where: {
         userId: session.user.id,
@@ -102,10 +96,7 @@ export async function POST(request: NextRequest) {
 
     // First profile must be admin
     if (existingCount === 0 && type !== "admin") {
-      return NextResponse.json(
-        { error: "First profile must be an admin" },
-        { status: 400 }
-      );
+      throw new ApiError("First profile must be an admin", 400);
     }
 
     const user = await prisma.user.findUnique({
@@ -116,20 +107,15 @@ export async function POST(request: NextRequest) {
     const maxProfiles = user?.maxProfiles ?? 10;
 
     if (existingCount >= maxProfiles) {
-      return NextResponse.json(
-        { error: "Profile limit reached" },
-        { status: 400 }
-      );
+      throw new ApiError("Profile limit reached", 400);
     }
 
-    // Generate default avatar if not provided
     const defaultAvatar: ProfileAvatar = avatar ?? {
       type: "initials",
       value: name.substring(0, 2).toUpperCase(),
       backgroundColor: color,
     };
 
-    // Create profile with reward points and settings
     const profile = await prisma.profile.create({
       data: {
         userId: session.user.id,
@@ -166,15 +152,5 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(profile, { status: 201 });
-  } catch (error) {
-    logger.error(error as Error, {
-      endpoint: "/api/profiles",
-      method: "POST",
-    });
-
-    return NextResponse.json(
-      { error: "Failed to create profile" },
-      { status: 500 }
-    );
   }
-}
+);

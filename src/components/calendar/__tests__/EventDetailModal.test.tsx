@@ -262,4 +262,125 @@ describe("EventDetailModal", () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("delete (#115)", () => {
+    it("does not render a delete button when no onDelete handler is provided", () => {
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders a delete button when onDelete is provided", () => {
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
+    });
+
+    it("opens a confirmation dialog when the delete button is clicked", async () => {
+      const user = userEvent.setup();
+
+      render(
+        <EventDetailModal
+          event={mockEvent({ title: "Quarterly Review" })}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          use24HourFormat
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /^delete event$/i }));
+
+      expect(
+        screen.getByRole("alertdialog", { name: /delete this event\?/i })
+      ).toBeInTheDocument();
+      // The confirmation should reference the event title to prevent confusion
+      // when multiple modals/popovers can be visible.
+      expect(screen.getByRole("alertdialog")).toHaveTextContent(
+        "Quarterly Review"
+      );
+    });
+
+    it("calls onDelete with the event when confirmation is accepted, then closes the modal", async () => {
+      const user = userEvent.setup();
+      const onDelete = vi.fn().mockResolvedValue(undefined);
+      const onClose = vi.fn();
+      const event = mockEvent({ id: "evt-99", calendarId: "primary" });
+
+      render(
+        <EventDetailModal
+          event={event}
+          onClose={onClose}
+          onDelete={onDelete}
+          use24HourFormat
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /^delete event$/i }));
+      await user.click(screen.getByRole("button", { name: /yes, delete/i }));
+
+      expect(onDelete).toHaveBeenCalledTimes(1);
+      expect(onDelete).toHaveBeenCalledWith(event);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call onDelete when the user cancels the confirmation", async () => {
+      const user = userEvent.setup();
+      const onDelete = vi.fn().mockResolvedValue(undefined);
+      const onClose = vi.fn();
+
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={onClose}
+          onDelete={onDelete}
+          use24HourFormat
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /^delete event$/i }));
+      await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+      expect(onDelete).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("keeps the modal open and does not throw when onDelete rejects", async () => {
+      const user = userEvent.setup();
+      const onDelete = vi.fn().mockRejectedValue(new Error("network down"));
+      const onClose = vi.fn();
+
+      render(
+        <EventDetailModal
+          event={mockEvent({ title: "Quarterly Review" })}
+          onClose={onClose}
+          onDelete={onDelete}
+          use24HourFormat
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /^delete event$/i }));
+      await user.click(screen.getByRole("button", { name: /yes, delete/i }));
+
+      // The modal stays open so the user can retry / read the toast.
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onDelete).toHaveBeenCalledTimes(1);
+    });
+  });
 });

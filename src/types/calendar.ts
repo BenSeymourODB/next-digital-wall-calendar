@@ -2,13 +2,13 @@
  * Calendar type definitions
  */
 
-export type TCalendarView =
-  | "day"
-  | "week"
-  | "month"
-  | "year"
-  | "agenda"
-  | "clock";
+/**
+ * Top-level calendar views. `agenda` is no longer a peer view — it's now an
+ * `agendaMode` toggle that applies inside `day` and `week` (issue #150). Old
+ * persisted `"agenda"` values are migrated at provider boot to
+ * `view: "day", agendaMode: true`.
+ */
+export type TCalendarView = "day" | "week" | "month" | "year" | "clock";
 
 /**
  * Which day a user-visible calendar week begins on.
