@@ -2,7 +2,12 @@
  * Integration tests for /api/tasks route
  */
 // Import after mocks
-import { getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  assertGoogleTasksScope,
+  getAccessToken,
+  getSession,
+} from "@/lib/auth";
 import {
   mockGoogleAccount,
   mockSession,
@@ -20,6 +25,7 @@ import { GET, POST } from "../route";
 vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
   getAccessToken: vi.fn(),
+  assertGoogleTasksScope: vi.fn(),
   AuthError: class AuthError extends Error {
     status: number;
     constructor(message: string, status: number = 401) {
@@ -67,6 +73,8 @@ global.fetch = mockFetch;
 describe("/api/tasks", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: scope check passes. Specific tests override to throw.
+    vi.mocked(assertGoogleTasksScope).mockResolvedValue(undefined);
   });
 
   describe("GET /api/tasks", () => {
@@ -102,6 +110,26 @@ describe("/api/tasks", () => {
 
       expect(status).toBe(400);
       expect(data.error).toBe("listId is required");
+    });
+
+    it("returns 403 with requiresReauth when stored grant is missing the Tasks scope (#237)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(assertGoogleTasksScope).mockRejectedValue(
+        new AuthError(
+          "Re-authentication required: Google Tasks scope missing.",
+          403
+        )
+      );
+
+      const request = createMockRequest("/api/tasks?listId=list-123");
+      const response = await GET(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(403);
+      expect(data.requiresReauth).toBe(true);
+      expect(data.error).toMatch(/Google Tasks/);
+      // Pre-flight failure must NOT hit the upstream API.
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it("returns tasks on success", async () => {
@@ -359,6 +387,29 @@ describe("/api/tasks", () => {
 
       expect(status).toBe(400);
       expect(data.error).toBe("listId and title are required");
+    });
+
+    it("returns 403 with requiresReauth when stored grant is missing the Tasks scope (#237)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(assertGoogleTasksScope).mockRejectedValue(
+        new AuthError(
+          "Re-authentication required: Google Tasks scope missing.",
+          403
+        )
+      );
+
+      const request = createMockRequest("/api/tasks", {
+        method: "POST",
+        body: { listId: "list-123", title: "New Task" },
+      });
+      const response = await POST(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(403);
+      expect(data.requiresReauth).toBe(true);
+      expect(data.error).toMatch(/Google Tasks/);
+      // Pre-flight failure must NOT hit the upstream API.
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it("creates task and returns 201 on success", async () => {

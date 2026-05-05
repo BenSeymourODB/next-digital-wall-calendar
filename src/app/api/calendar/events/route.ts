@@ -8,6 +8,7 @@ import {
   type GoogleCalendarEvent,
   normalizeFetchedEvent,
 } from "@/lib/google-calendar-mappers";
+import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import type { TEventColor } from "@/types/calendar";
 import { NextRequest, NextResponse } from "next/server";
@@ -64,7 +65,7 @@ async function fetchEventsFromCalendar(
   apiUrl.searchParams.set("singleEvents", String(singleEvents));
   apiUrl.searchParams.set("orderBy", "startTime");
 
-  const response = await fetch(apiUrl.toString(), {
+  const response = await fetchWithRetry(apiUrl.toString(), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
@@ -238,10 +239,21 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Body accepted by `POST /api/calendar/events`. The shape is the dialog's
- * submission payload plus an optional target `calendarId` (defaults to
- * `"primary"`). Dates are ISO strings; for all-day events the route reduces
- * them to `YYYY-MM-DD` and applies Google's exclusive-end convention.
+ * Wire format for `POST /api/calendar/events`.
+ *
+ * For **timed** events (`isAllDay` absent or `false`):
+ * - `startDate` / `endDate` are ISO-8601 datetime strings (e.g.
+ *   `"2026-05-01T14:00:00.000Z"`).
+ *
+ * For **all-day** events (`isAllDay: true`):
+ * - `startDate` / `endDate` are `YYYY-MM-DD` date strings (e.g.
+ *   `"2026-04-20"`). Using plain date strings avoids the UTC-offset skew
+ *   that occurs when a positive-offset client (e.g. NZST UTC+12) encodes
+ *   local midnight as a UTC ISO string — Apr-20 00:00 NZST is Apr-19 in UTC.
+ * - `endDate` is the **last included** day (inclusive). The route adds one
+ *   calendar day to produce Google's exclusive-end `end.date`.
+ *
+ * Optional: `calendarId` (defaults to `"primary"`).
  */
 interface CreateEventBody {
   title: string;
@@ -253,15 +265,29 @@ interface CreateEventBody {
   calendarId?: string;
 }
 
-interface ValidatedEvent {
+interface ValidatedTimedEvent {
   title: string;
   description: string;
   color: TEventColor;
-  isAllDay: boolean;
+  isAllDay: false;
   start: Date;
   end: Date;
   calendarId: string;
 }
+
+interface ValidatedAllDayEvent {
+  title: string;
+  description: string;
+  color: TEventColor;
+  isAllDay: true;
+  /** Inclusive start date as YYYY-MM-DD string. */
+  startDateStr: string;
+  /** Inclusive end date as YYYY-MM-DD string. */
+  endDateStr: string;
+  calendarId: string;
+}
+
+type ValidatedEvent = ValidatedTimedEvent | ValidatedAllDayEvent;
 
 type ValidationResult =
   | { ok: true; event: ValidatedEvent }
@@ -271,6 +297,21 @@ function isSupportedColor(value: unknown): value is TEventColor {
   return (
     typeof value === "string" && (SUPPORTED_COLORS as string[]).includes(value)
   );
+}
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Advance a `YYYY-MM-DD` string by one calendar day, returning a new
+ * `YYYY-MM-DD` string. Used to compute Google's exclusive end date for
+ * all-day events.
+ */
+function addOneDay(dateStr: string): string {
+  // Split to avoid any TZ interpretation by `new Date(dateStr)`.
+  const [y, m, d] = dateStr.split("-").map(Number) as [number, number, number];
+  const next = new Date(y, m - 1, d + 1);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`;
 }
 
 function validateCreateBody(body: unknown): ValidationResult {
@@ -286,21 +327,7 @@ function validateCreateBody(body: unknown): ValidationResult {
   }
 
   if (typeof raw.startDate !== "string" || typeof raw.endDate !== "string") {
-    return { ok: false, error: "startDate and endDate must be ISO strings" };
-  }
-
-  const start = new Date(raw.startDate);
-  if (Number.isNaN(start.getTime())) {
-    return { ok: false, error: "startDate is not a valid ISO date" };
-  }
-
-  const end = new Date(raw.endDate);
-  if (Number.isNaN(end.getTime())) {
-    return { ok: false, error: "endDate is not a valid ISO date" };
-  }
-
-  if (end.getTime() <= start.getTime()) {
-    return { ok: false, error: "endDate must be after startDate" };
+    return { ok: false, error: "startDate and endDate must be strings" };
   }
 
   if (!isSupportedColor(raw.color)) {
@@ -318,13 +345,59 @@ function validateCreateBody(body: unknown): ValidationResult {
   const description =
     typeof raw.description === "string" ? raw.description : "";
 
+  if (raw.isAllDay === true) {
+    // All-day wire format: YYYY-MM-DD strings (timezone-independent).
+    if (!DATE_ONLY_RE.test(raw.startDate)) {
+      return {
+        ok: false,
+        error: "startDate must be a YYYY-MM-DD string for all-day events",
+      };
+    }
+    if (!DATE_ONLY_RE.test(raw.endDate)) {
+      return {
+        ok: false,
+        error: "endDate must be a YYYY-MM-DD string for all-day events",
+      };
+    }
+    if (raw.endDate < raw.startDate) {
+      return { ok: false, error: "endDate must be after startDate" };
+    }
+    return {
+      ok: true,
+      event: {
+        title,
+        description,
+        color: raw.color,
+        isAllDay: true,
+        startDateStr: raw.startDate,
+        endDateStr: raw.endDate,
+        calendarId,
+      },
+    };
+  }
+
+  // Timed event: ISO datetime strings.
+  const start = new Date(raw.startDate);
+  if (Number.isNaN(start.getTime())) {
+    return { ok: false, error: "startDate is not a valid ISO date" };
+  }
+
+  const end = new Date(raw.endDate);
+  if (Number.isNaN(end.getTime())) {
+    return { ok: false, error: "endDate is not a valid ISO date" };
+  }
+
+  if (end.getTime() <= start.getTime()) {
+    return { ok: false, error: "endDate must be after startDate" };
+  }
+
   return {
     ok: true,
     event: {
       title,
       description,
       color: raw.color,
-      isAllDay: raw.isAllDay === true,
+      isAllDay: false,
       start,
       end,
       calendarId,
@@ -333,38 +406,18 @@ function validateCreateBody(body: unknown): ValidationResult {
 }
 
 /**
- * Format a `Date` as a `YYYY-MM-DD` string using its UTC components, so the
- * route's behaviour is independent of the server's timezone.
- *
- * This is the right choice for Google's all-day shape AND for the wire
- * format the dialog produces: `start = local-midnight Date.toISOString()`
- * and `end = local-end-of-day Date.toISOString()`. Using `getUTC*` here
- * keeps the start date stable across server TZs, and the duration-based
- * `exclusiveEnd` below avoids the off-by-one that `setHours(0,0,0,0)` +
- * `getDate()+1` produces on a server in a different TZ to the client.
- *
- * Caveat: a client in a positive UTC offset (e.g., NZST = UTC+12) creating
- * an all-day event for "Apr 20 local" sends UTC = Apr 19. The route still
- * sees Apr 19 here. Fully fixing that needs a wire-format change so the
- * dialog emits `YYYY-MM-DD` strings (or a `tzOffsetMinutes`) rather than
- * encoding local-midnight as a UTC ISO. Tracked as follow-up.
- */
-function formatUTCDate(d: Date): string {
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-}
-
-const MS_PER_DAY = 86_400_000;
-
-/**
  * Build the Google Calendar `events.insert` body from a validated event.
  *
- * For all-day events we emit `start.date` / `end.date` and apply Google's
+ * For all-day events we emit `start.date` / `end.date` using Google's
  * exclusive-end convention: a single-day event on Apr 20 sends
- * `start.date = "2026-04-20"` / `end.date = "2026-04-21"`. The exclusive
- * end is computed as `start + N * MS_PER_DAY` where N is the inclusive
- * day-count rounded from the input span (`24h - 1ms` per day), so the
- * result is server-TZ-independent and survives DST boundaries.
+ * `start.date = "2026-04-20"` / `end.date = "2026-04-21"`.
+ *
+ * `startDateStr` and `endDateStr` on `ValidatedAllDayEvent` are the
+ * client's local YYYY-MM-DD strings — already timezone-correct since they
+ * come straight from the `<input type="date">` value rather than being
+ * derived from a UTC-adjusted `Date`. The exclusive end is simply
+ * `addOneDay(endDateStr)`, which adds one calendar day without touching
+ * UTC at all.
  */
 function buildGoogleInsertBody(event: ValidatedEvent) {
   const insertBody: {
@@ -385,16 +438,8 @@ function buildGoogleInsertBody(event: ValidatedEvent) {
   }
 
   if (event.isAllDay) {
-    const inclusiveDays = Math.max(
-      1,
-      Math.round((event.end.getTime() - event.start.getTime()) / MS_PER_DAY)
-    );
-    const exclusiveEnd = new Date(
-      event.start.getTime() + inclusiveDays * MS_PER_DAY
-    );
-
-    insertBody.start.date = formatUTCDate(event.start);
-    insertBody.end.date = formatUTCDate(exclusiveEnd);
+    insertBody.start.date = event.startDateStr;
+    insertBody.end.date = addOneDay(event.endDateStr);
   } else {
     insertBody.start.dateTime = event.start.toISOString();
     insertBody.end.dateTime = event.end.toISOString();

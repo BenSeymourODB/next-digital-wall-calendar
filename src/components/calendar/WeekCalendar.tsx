@@ -12,6 +12,7 @@ import {
   getShortWeekdayLabels,
   getWeekDates,
 } from "@/lib/calendar-helpers";
+import { useTodayStartOfDay } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useState } from "react";
 import {
@@ -24,7 +25,6 @@ import {
   isSameDay,
   isSameWeek,
   parseISO,
-  startOfDay,
   startOfWeek,
   subWeeks,
 } from "date-fns";
@@ -35,8 +35,6 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 40;
 const TIME_GRID_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
 const BAR_ROW_HEIGHT_PX = 22;
-
-const today = startOfDay(new Date());
 
 function getEventBlockClasses(color: TEventColor): string {
   const classes: Record<TEventColor, string> = {
@@ -120,6 +118,7 @@ export function WeekCalendar() {
     weekStartDay,
   } = useCalendar();
 
+  const today = useTodayStartOfDay();
   const weekdayHeaders = getShortWeekdayLabels(weekStartDay);
   const weekDates = getWeekDates(selectedDate, weekStartDay);
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: weekStartDay });
