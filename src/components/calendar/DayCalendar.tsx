@@ -3,10 +3,12 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import {
+  WORKING_HOURS_START_HOUR,
   computeEventColumns,
   formatTime,
   getCurrentTimePosition,
   getEventTimePosition,
+  getInitialScrollTop,
 } from "@/lib/calendar-helpers";
 import { useTodayStartOfDay } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
@@ -26,10 +28,10 @@ import { AgendaList } from "./AgendaList";
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 48;
 const TIME_GRID_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
-// Hour the time grid scrolls to on mount so working-hours events are
-// immediately visible without a manual scroll. (#214)
-const WORKING_HOURS_START_HOUR = 7;
-const INITIAL_SCROLL_TOP_PX = WORKING_HOURS_START_HOUR * HOUR_HEIGHT_PX;
+const INITIAL_SCROLL_TOP_PX = getInitialScrollTop(
+  WORKING_HOURS_START_HOUR,
+  HOUR_HEIGHT_PX
+);
 
 function getEventBlockClasses(color: TEventColor): string {
   const classes: Record<TEventColor, string> = {
