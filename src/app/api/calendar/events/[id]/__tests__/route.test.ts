@@ -262,26 +262,37 @@ describe("DELETE /api/calendar/events/[id]", () => {
   });
 
   it("returns 502 when Google returns an unexpected 5xx", async () => {
-    vi.mocked(getSession).mockResolvedValue(mockSession);
-    vi.mocked(getAccessToken).mockResolvedValue(
-      mockGoogleAccount.access_token!
-    );
+    // 5xx responses go through `fetchWithRetry`, so use fake timers to skip
+    // the inter-attempt sleeps and `headers` so the retry's Retry-After
+    // lookup doesn't trip over a partial mock.
+    vi.useFakeTimers();
+    try {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
 
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: () => Promise.resolve({ error: { message: "Internal" } }),
-    });
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        headers: new Headers(),
+        json: () => Promise.resolve({ error: { message: "Internal" } }),
+      });
 
-    const request = createMockRequest(
-      "/api/calendar/events/evt-1?calendarId=primary",
-      { method: "DELETE" }
-    );
-    const response = await DELETE(request, { params: createParams("evt-1") });
-    const { status, data } = await parseResponse<ApiErrorResponse>(response);
+      const request = createMockRequest(
+        "/api/calendar/events/evt-1?calendarId=primary",
+        { method: "DELETE" }
+      );
+      const promise = DELETE(request, { params: createParams("evt-1") });
+      await vi.runAllTimersAsync();
+      const response = await promise;
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
 
-    expect(status).toBe(502);
-    expect(data.error).toMatch(/calendar/i);
+      expect(status).toBe(502);
+      expect(data.error).toMatch(/calendar/i);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("returns 500 when an unexpected exception occurs", async () => {

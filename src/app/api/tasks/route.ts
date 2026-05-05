@@ -2,7 +2,12 @@
  * API endpoint for Google Tasks
  * Uses server-side authentication with NextAuth.js
  */
-import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  assertGoogleTasksScope,
+  getAccessToken,
+  getSession,
+} from "@/lib/auth";
 import { createTask, listTasks } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
@@ -38,6 +43,10 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    // Short-circuit users whose stored grant is missing the Tasks scope so we
+    // never burn an upstream call we already know will 403 (#237).
+    await assertGoogleTasksScope();
 
     const { searchParams } = new URL(request.url);
     const listId = searchParams.get("listId");
@@ -103,6 +112,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Short-circuit users whose stored grant is missing the Tasks scope so we
+    // never burn an upstream call we already know will 403 (#237).
+    await assertGoogleTasksScope();
+
     const body = (await request.json()) as CreateTaskBody;
     const { listId, title, notes, due } = body;
 
@@ -134,8 +147,11 @@ function handleTasksApiError(
   errorType: "fetch_tasks" | "create_task"
 ): NextResponse {
   if (error instanceof AuthError) {
+    // Both 401 (no/expired session) and 403 (scope missing) are recoverable
+    // by re-authenticating, so the client uses the same `requiresReauth` flow.
+    const requiresReauth = error.status === 401 || error.status === 403;
     return NextResponse.json(
-      { error: error.message, requiresReauth: error.status === 401 },
+      { error: error.message, requiresReauth },
       { status: error.status }
     );
   }

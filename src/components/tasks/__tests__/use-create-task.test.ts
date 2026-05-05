@@ -4,7 +4,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GoogleTask } from "../types";
-import { useCreateTask } from "../use-create-task";
+import { TaskApiError, useCreateTask } from "../use-create-task";
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -168,6 +168,31 @@ describe("useCreateTask", () => {
         result.current.createTask({ listId: "list-1", title: "Buy milk" })
       ).rejects.toThrow(/session expired/i);
     });
+  });
+
+  it("rejects with a TaskApiError carrying status and requiresReauth on 403 (#237)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        error: "Re-authentication required: Google Tasks scope missing.",
+        requiresReauth: true,
+      }),
+    });
+
+    const { result } = renderHook(() => useCreateTask());
+
+    await act(async () => {
+      await expect(
+        result.current.createTask({ listId: "list-1", title: "Buy milk" })
+      ).rejects.toBeInstanceOf(TaskApiError);
+    });
+
+    const captured = result.current.error as TaskApiError | null;
+    expect(captured).toBeInstanceOf(TaskApiError);
+    expect(captured?.status).toBe(403);
+    expect(captured?.requiresReauth).toBe(true);
+    expect(captured?.message).toMatch(/Google Tasks/i);
   });
 
   it("propagates network failures into the error state", async () => {
