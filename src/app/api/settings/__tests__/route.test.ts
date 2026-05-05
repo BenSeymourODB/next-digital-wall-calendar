@@ -513,5 +513,59 @@ describe("/api/settings", () => {
       expect(status).toBe(500);
       expect(data.error).toBe("Failed to update settings");
     });
+
+    it("rejects unknown calendarTransitionSpeed values", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const request = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarTransitionSpeed: "ludicrous" },
+      });
+
+      const response = await PUT(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toContain("calendarTransitionSpeed");
+    });
+
+    it("rejects non-string calendarTransitionSpeed values", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const request = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarTransitionSpeed: 300 },
+      });
+
+      const response = await PUT(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toContain("calendarTransitionSpeed");
+    });
+
+    it.each(["off", "fast", "normal", "slow"])(
+      "accepts %s as a valid calendarTransitionSpeed",
+      async (speed) => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        const updatedSettings = {
+          ...mockSettings,
+          calendarTransitionSpeed: speed,
+        };
+        mockPrisma.userSettings.upsert.mockResolvedValue(updatedSettings);
+
+        const request = createMockRequest("/api/settings", {
+          method: "PUT",
+          body: { calendarTransitionSpeed: speed },
+        });
+
+        const response = await PUT(request);
+        const { status, data } =
+          await parseResponse<typeof updatedSettings>(response);
+
+        expect(status).toBe(200);
+        expect(data.calendarTransitionSpeed).toBe(speed);
+      }
+    );
   });
 });
