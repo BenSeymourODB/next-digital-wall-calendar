@@ -60,6 +60,7 @@ function createMockContext(
     removeEvent: vi.fn(),
     createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
     deleteEvent: vi.fn().mockResolvedValue(undefined),
+    canEditCalendar: () => true,
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     loadEventsForYear: vi.fn(),

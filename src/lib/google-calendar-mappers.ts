@@ -12,6 +12,27 @@
  */
 
 /**
+ * The user's permission on a calendar, mirroring Google Calendar's
+ * `accessRole`. The UI uses this to gate write actions (e.g. delete) on
+ * calendars where the user is read-only — see issue #266.
+ */
+export type CalendarAccessRole =
+  | "freeBusyReader"
+  | "reader"
+  | "writer"
+  | "owner";
+
+/**
+ * Returns true when the access role permits write actions
+ * (event create, update, delete). `undefined` defers to the optimistic
+ * default — assume writable so unsupported responses don't silently
+ * disable UI for owner/writer calendars.
+ */
+export function canWriteToCalendar(role: CalendarAccessRole | undefined) {
+  return role === undefined || role === "owner" || role === "writer";
+}
+
+/**
  * Canonical shape of a Google Calendar event inside the app.
  *
  * Extends `Omit<gapi.client.calendar.Event, "summary">` so every field on the
@@ -48,7 +69,7 @@ export interface UserCalendar {
   timeZone?: string;
   summaryOverride?: string;
   selected?: boolean;
-  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
+  accessRole?: CalendarAccessRole;
 }
 
 /**

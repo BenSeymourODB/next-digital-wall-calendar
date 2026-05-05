@@ -10,6 +10,10 @@ import {
 } from "@/lib/calendar-storage";
 import { transformGoogleEvent } from "@/lib/calendar-transform";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
+import {
+  type CalendarAccessRole,
+  canWriteToCalendar,
+} from "@/lib/google-calendar-mappers";
 import { logger } from "@/lib/logger";
 import type {
   IEvent,
@@ -96,6 +100,14 @@ export interface ICalendarContext {
    * The promise rejects on failure so the caller can surface a toast.
    */
   deleteEvent: (eventId: string, calendarId: string) => Promise<void>;
+  /**
+   * Whether the current user has write access on the calendar that owns
+   * `calendarId`. Resolves to `true` for `owner`/`writer` roles, `false`
+   * for `reader`/`freeBusyReader`, and `true` (permissive default) when
+   * the calendar's role is unknown — the server-side 403 toast remains
+   * the safety net for mid-session permission changes (issue #266).
+   */
+  canEditCalendar: (calendarId: string) => boolean;
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
   /**
@@ -284,8 +296,19 @@ export function CalendarProvider({
     }
   );
   const [calendarIds, setCalendarIds] = useState<string[]>([]);
+  // Map of calendarId → access role for the current user. Populated when
+  // the calendar list resolves; consumed by `canEditCalendar` so callers
+  // can gate write actions (#266).
+  const [calendarAccessRoles, setCalendarAccessRoles] = useState<
+    Record<string, CalendarAccessRole | undefined>
+  >({});
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
+
+  const canEditCalendar = useCallback(
+    (calendarId: string) => canWriteToCalendar(calendarAccessRoles[calendarId]),
+    [calendarAccessRoles]
+  );
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
     setSettings((prev) => ({
@@ -501,7 +524,10 @@ export function CalendarProvider({
   );
 
   /**
-   * Fetch calendar list and return calendar IDs
+   * Fetch calendar list and return calendar IDs.
+   * Side effect: snapshots each calendar's `accessRole` into
+   * `calendarAccessRoles` so `canEditCalendar` can gate write actions
+   * (#266) without a separate round-trip.
    */
   const fetchCalendarList = useCallback(async (): Promise<string[]> => {
     try {
@@ -513,10 +539,17 @@ export function CalendarProvider({
 
       const data = await response.json();
       if (data.calendars && data.calendars.length > 0) {
-        // Return IDs of all calendars (user can filter later)
-        const ids = data.calendars.map(
-          (cal: { id: string; selected?: boolean }) => cal.id
-        );
+        const calendars = data.calendars as Array<{
+          id: string;
+          selected?: boolean;
+          accessRole?: CalendarAccessRole;
+        }>;
+        const ids = calendars.map((cal) => cal.id);
+        const roles: Record<string, CalendarAccessRole | undefined> = {};
+        for (const cal of calendars) {
+          roles[cal.id] = cal.accessRole;
+        }
+        setCalendarAccessRoles(roles);
         logger.log("Fetched calendar list", { count: ids.length });
         return ids;
       }
@@ -954,6 +987,7 @@ export function CalendarProvider({
     removeEvent,
     createEvent,
     deleteEvent,
+    canEditCalendar,
     clearFilter,
     refreshEvents,
     loadEventsForYear,
