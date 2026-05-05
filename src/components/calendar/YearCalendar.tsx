@@ -2,6 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { useSlideDirection } from "@/hooks/use-slide-direction";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useRef } from "react";
@@ -17,6 +18,9 @@ import {
   startOfYear,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AnimatedSwap } from "./animated-swap";
+
+const INTRA_VIEW_SLIDE_DURATION_MS = 300;
 
 const DOT_COLOR_CLASS: Record<TEventColor, string> = {
   blue: "bg-blue-500",
@@ -209,6 +213,8 @@ export function YearCalendar() {
     setView("month");
   };
 
+  const slideDirection = useSlideDirection(year);
+
   return (
     <div className="w-full space-y-4">
       <div className="flex items-center justify-between">
@@ -271,21 +277,28 @@ export function YearCalendar() {
         </div>
       )}
 
-      <div
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-        data-testid="year-calendar-grid"
+      <AnimatedSwap
+        swapKey={String(year)}
+        type="slide"
+        direction={slideDirection}
+        durationMs={INTRA_VIEW_SLIDE_DURATION_MS}
       >
-        {months.map((monthDate) => (
-          <MonthPanel
-            key={monthDate.getMonth()}
-            monthDate={monthDate}
-            today={today}
-            events={events}
-            onDayClick={handleDayClick}
-            onMonthClick={handleMonthClick}
-          />
-        ))}
-      </div>
+        <div
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          data-testid="year-calendar-grid"
+        >
+          {months.map((monthDate) => (
+            <MonthPanel
+              key={monthDate.getMonth()}
+              monthDate={monthDate}
+              today={today}
+              events={events}
+              onDayClick={handleDayClick}
+              onMonthClick={handleMonthClick}
+            />
+          ))}
+        </div>
+      </AnimatedSwap>
     </div>
   );
 }
