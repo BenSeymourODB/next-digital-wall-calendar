@@ -3,9 +3,8 @@
  */
 import {
   AuthError,
-  assertGoogleTasksScope,
-  getAccessToken,
   getSession,
+  requireGoogleTasksAccessToken,
 } from "@/lib/auth";
 import {
   mockGoogleAccount,
@@ -23,8 +22,7 @@ import { PATCH } from "../route";
 // Mock modules BEFORE imports
 vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
-  getAccessToken: vi.fn(),
-  assertGoogleTasksScope: vi.fn(),
+  requireGoogleTasksAccessToken: vi.fn(),
   AuthError: class AuthError extends Error {
     status: number;
     constructor(message: string, status: number = 401) {
@@ -71,7 +69,11 @@ global.fetch = mockFetch;
 describe("/api/tasks/[taskId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(assertGoogleTasksScope).mockResolvedValue(undefined);
+    // Default: combined helper resolves with the mock token. Specific tests
+    // override to throw for the no-account / missing-scope / no-token paths.
+    vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
+      mockGoogleAccount.access_token!
+    );
   });
 
   describe("PATCH /api/tasks/[taskId]", () => {
@@ -80,7 +82,7 @@ describe("/api/tasks/[taskId]", () => {
 
     it("returns 403 with requiresReauth when stored grant is missing the Tasks scope (#237)", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(assertGoogleTasksScope).mockRejectedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockRejectedValue(
         new AuthError(
           "Re-authentication required: Google Tasks scope missing.",
           403
@@ -180,7 +182,7 @@ describe("/api/tasks/[taskId]", () => {
 
     it("updates task and returns 200 on success", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
@@ -224,7 +226,7 @@ describe("/api/tasks/[taskId]", () => {
 
     it("passes task updates to Google API correctly", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
@@ -256,7 +258,7 @@ describe("/api/tasks/[taskId]", () => {
 
     it("returns 401 with requiresReauth when Google API returns 401", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
@@ -284,7 +286,7 @@ describe("/api/tasks/[taskId]", () => {
 
     it("returns error status from Google API for other errors", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
@@ -312,7 +314,9 @@ describe("/api/tasks/[taskId]", () => {
 
     it("returns 500 on unexpected error", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockRejectedValue(new Error("Unexpected"));
+      vi.mocked(requireGoogleTasksAccessToken).mockRejectedValue(
+        new Error("Unexpected")
+      );
 
       const request = createMockRequest(
         `/api/tasks/${taskId}?listId=${listId}`,
@@ -332,7 +336,7 @@ describe("/api/tasks/[taskId]", () => {
 
     it("accepts needsAction status to mark task incomplete", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
@@ -367,7 +371,7 @@ describe("/api/tasks/[taskId]", () => {
 
     it("retries a transient 503 on PATCH and returns the eventual 200 (issue #68)", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
@@ -402,6 +406,28 @@ describe("/api/tasks/[taskId]", () => {
       const [[, firstInit], [, secondInit]] = mockFetch.mock.calls;
       expect(firstInit?.body).toBe(secondInit?.body);
       expect(firstInit?.method).toBe("PATCH");
+    });
+
+    it("calls getSession and the combined helper exactly once each per request (#260)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({ id: taskId, title: "T", status: "completed" }),
+      });
+
+      const request = createMockRequest(
+        `/api/tasks/${taskId}?listId=${listId}`,
+        { method: "PATCH", body: { status: "completed" } }
+      );
+      await PATCH(request, { params: Promise.resolve({ taskId }) });
+
+      expect(getSession).toHaveBeenCalledTimes(1);
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledTimes(1);
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(
+        mockSession.user.id
+      );
     });
   });
 });
