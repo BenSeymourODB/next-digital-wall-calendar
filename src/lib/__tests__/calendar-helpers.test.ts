@@ -3,6 +3,7 @@ import { parseISO } from "date-fns";
 import { describe, expect, it } from "vitest";
 import {
   WEEK_STARTS_ON,
+  WORKING_HOURS_START_HOUR,
   assignBarRows,
   computeEventColumns,
   formatTime,
@@ -18,6 +19,7 @@ import {
   getEventsForWeek,
   getEventsForYear,
   getFirstLetters,
+  getInitialScrollTop,
   getShortWeekdayLabels,
   getWeekDates,
   groupEvents,
@@ -437,7 +439,7 @@ describe("getEventsForWeek", () => {
     const result = getEventsForWeek([spanningOut], new Date(2024, 2, 13));
     expect(result.map((e) => e.id)).toEqual(["span-out"]);
   });
-  
+
   // Regression: #234 — events that start on the last day of the week (Saturday
   // when WEEK_STARTS_ON = 0) at any time after 00:00 were being filtered out
   // because the upper bound was `weekDates[6]`, i.e. Saturday at midnight.
@@ -732,6 +734,18 @@ describe("getCurrentTimePosition", () => {
       (23 * 60 + 59) / 14.4,
       5
     );
+  });
+});
+
+describe("getInitialScrollTop (#214)", () => {
+  it("multiplies the hour by the row height", () => {
+    expect(getInitialScrollTop(7, 48)).toBe(336);
+    expect(getInitialScrollTop(7, 40)).toBe(280);
+    expect(getInitialScrollTop(0, 48)).toBe(0);
+  });
+
+  it("WORKING_HOURS_START_HOUR defaults to 7 (start of working day)", () => {
+    expect(WORKING_HOURS_START_HOUR).toBe(7);
   });
 });
 

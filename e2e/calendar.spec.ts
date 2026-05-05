@@ -324,8 +324,8 @@ test.describe("View Switcher", () => {
   }) => {
     await page.goto("/test/calendar?events=default&view=month");
 
-    // Day is a dropdown — open it and pick Agenda.
-    await page.getByTestId("view-switcher-day").click();
+    // Day is a split button — open the caret menu and pick Agenda (#235).
+    await page.getByTestId("view-switcher-day-mode").click();
     await page.getByRole("menuitemradio", { name: /agenda/i }).click();
 
     // Day-view agenda renders the AgendaList.
@@ -350,8 +350,8 @@ test.describe("View Switcher", () => {
     // Verify event in month view
     await expect(page.getByText("Morning Standup")).toBeVisible();
 
-    // Switch to day-agenda mode via the dropdown.
-    await page.getByTestId("view-switcher-day").click();
+    // Switch to day-agenda mode via the caret menu (#235).
+    await page.getByTestId("view-switcher-day-mode").click();
     await page.getByRole("menuitemradio", { name: /agenda/i }).click();
 
     // Event should still be visible in agenda mode for the same date range.
