@@ -195,8 +195,11 @@ export function EventCreateDialog({
       description: state.description.trim(),
       color: state.color,
       isAllDay: state.isAllDay,
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
+      // For all-day events, send YYYY-MM-DD strings directly from the date
+      // input values — avoids UTC-offset skew on positive-offset clients
+      // (e.g. NZST UTC+12) where local midnight encodes as the prior UTC day.
+      startDate: state.isAllDay ? state.startAllDay : start.toISOString(),
+      endDate: state.isAllDay ? state.endAllDay : end.toISOString(),
     });
     onOpenChange(false);
   };

@@ -22,6 +22,30 @@ function decryptAccountTokens<T extends NonNullable<AccountRow>>(
 }
 
 /**
+ * Google OAuth scope required to read or write Google Tasks. The same string
+ * is requested at sign-in (see `auth.ts`); centralised here so callers can
+ * verify it against the user's stored grant before hitting the upstream API.
+ */
+export const GOOGLE_TASKS_SCOPE = "https://www.googleapis.com/auth/tasks";
+
+/**
+ * Test whether the stored OAuth grant on `account` includes `scope` as a
+ * complete token. Splits on any combination of whitespace, `+`, or `,` —
+ * Google's spec uses spaces, the authorisation URL uses `+`-encoded spaces,
+ * and a manual DB seed or legacy adapter version may have stored a
+ * comma-delimited grant. Whole-token matching (rather than substring) keeps
+ * `tasks.readonly` from falsely satisfying a `tasks` check.
+ */
+export function accountHasScope(
+  account: { scope?: string | null } | null | undefined,
+  scope: string
+): boolean {
+  if (!account?.scope) return false;
+  const granted = account.scope.split(/[\s,+]+/).filter(Boolean);
+  return granted.includes(scope);
+}
+
+/**
  * Get the current user's session
  */
 export async function getSession() {
@@ -153,6 +177,41 @@ export async function withAuth<T>(
       userId: session.user.id,
     });
     throw error;
+  }
+}
+
+/**
+ * Asserts that the user's *stored* Google OAuth grant string includes the
+ * Tasks scope. Throws `AuthError(401)` if the user is not signed in or the
+ * session is in `RefreshTokenError`, and `AuthError(403)` if the scope is
+ * missing — the 403 is the signal API routes use to return
+ * `requiresReauth: true`.
+ *
+ * Caveat: this is a check against the persisted grant, not a guarantee the
+ * live access token still carries that scope. Google can issue a narrower
+ * token on refresh after a user revokes scopes from their Google account
+ * settings; the stored `scope` field does not reflect that. Routes still
+ * need to handle upstream `GoogleTasksApiError(403)` as a fallback.
+ */
+export async function assertGoogleTasksScope(): Promise<void> {
+  const session = await getSession();
+  if (!session?.user?.id) {
+    throw new AuthError("Not authenticated", 401);
+  }
+  if (session.error === "RefreshTokenError") {
+    throw new AuthError("Session expired. Please sign in again.", 401);
+  }
+
+  const account = await getGoogleAccount();
+  if (!account) {
+    throw new AuthError("No Google account linked.", 401);
+  }
+
+  if (!accountHasScope(account, GOOGLE_TASKS_SCOPE)) {
+    throw new AuthError(
+      "Re-authentication required: Google Tasks scope missing.",
+      403
+    );
   }
 }
 
