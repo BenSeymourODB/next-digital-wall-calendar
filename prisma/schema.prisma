@@ -88,6 +88,11 @@ model UserSettings {
   calendarFetchMonthsBehind      Int @default(1)
   calendarMaxEventsPerDay        Int @default(3)
 
+  // Calendar UI: view-transition speed (off | fast | normal | slow). Stored
+  // as a string so we can extend the enumeration without an enum migration.
+  // Validated in src/lib/calendar/transition-speed.ts.
+  calendarTransitionSpeed String @default("normal")
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
