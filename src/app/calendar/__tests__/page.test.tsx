@@ -91,8 +91,8 @@ vi.mock("@/components/ui/sonner", () => ({
   Toaster: () => <div data-testid="mock-toaster" />,
 }));
 
-function setView(view: TCalendarView): void {
-  mockUseCalendar.mockReturnValue({ view });
+function setView(view: TCalendarView, agendaMode = false): void {
+  mockUseCalendar.mockReturnValue({ view, agendaMode });
 }
 
 function setSearchParams(query: string): void {
@@ -145,6 +145,22 @@ describe("CalendarPage — mini-calendar sidebar visibility", () => {
       screen.queryByTestId("mini-calendar-sidebar")
     ).not.toBeInTheDocument();
     expect(screen.getByTestId("mock-analog-clock-view")).toBeInTheDocument();
+  });
+
+  it("hides the mini-calendar sidebar when day view has agendaMode on (#214)", () => {
+    setView("day", true);
+    render(<CalendarPage />);
+    expect(
+      screen.queryByTestId("mini-calendar-sidebar")
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides the mini-calendar sidebar when week view has agendaMode on (#214)", () => {
+    setView("week", true);
+    render(<CalendarPage />);
+    expect(
+      screen.queryByTestId("mini-calendar-sidebar")
+    ).not.toBeInTheDocument();
   });
 });
 

@@ -77,13 +77,14 @@ function CalendarView({ view }: { view: TCalendarView }) {
  * Extracted to access useCalendar hook
  */
 function CalendarContent() {
-  const { view } = useCalendar();
+  const { view, agendaMode } = useCalendar();
   const [showSettings, setShowSettings] = useState(false);
 
-  // Views that surface the mini-calendar sidebar. Month duplicates the main
-  // grid (issue #146) and the Clock view ships its own all-day events aside,
-  // so neither needs the shared sidebar.
-  const showSidebar = view !== "month" && view !== "clock" && view !== "year";
+  // Sidebar belongs to the day/week time-grid views only. Month, Year,
+  // and Clock have their own primary surface (issue #146 / #152), and
+  // when the user is in agenda mode (#150) the sidebar would compete
+  // with the chronological list. (#214)
+  const showSidebar = (view === "day" || view === "week") && !agendaMode;
 
   return (
     <div className="bg-background min-h-screen p-4 sm:p-8">
