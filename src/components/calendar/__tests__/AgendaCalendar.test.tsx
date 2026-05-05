@@ -2,6 +2,7 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
 import type {
   IEvent,
   IUser,
@@ -20,26 +21,6 @@ import { AgendaCalendar } from "../AgendaCalendar";
  * - Bug 1: All-day event detection uses event.isAllDay (not duration)
  * - Bug 4: Events show on correct dates in agenda view (no offset)
  */
-
-// Helper to create mock events with required isAllDay and calendarId fields
-function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
-  return {
-    id: "test-event-1",
-    title: "Test Event",
-    startDate: new Date().toISOString(),
-    endDate: new Date().toISOString(),
-    color: "blue",
-    description: "",
-    isAllDay: false,
-    calendarId: "primary",
-    user: {
-      id: "user-1",
-      name: "Test User",
-      picturePath: null,
-    },
-    ...overrides,
-  };
-}
 
 // Helper to get a date string for N days from now at specific time
 function getFutureDate(daysFromNow: number, hours = 10, minutes = 0): string {
