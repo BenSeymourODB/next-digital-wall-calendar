@@ -8,6 +8,7 @@
  * the callback already depends on, and the regression that transient 5xx
  * failures are retried instead of bubbling to the caller.
  */
+import { jsonResponse } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GoogleTokenRefreshError,
@@ -16,20 +17,6 @@ import {
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-
-function jsonResponse(
-  body: unknown,
-  init: { ok?: boolean; status?: number } = {}
-): Response {
-  const status = init.status ?? 200;
-  const ok = init.ok ?? (status >= 200 && status < 300);
-  return {
-    ok,
-    status,
-    headers: new Headers(),
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
-}
 
 describe("refreshGoogleAccessToken", () => {
   beforeEach(() => {

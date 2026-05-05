@@ -11,6 +11,7 @@ import {
 import {
   type ApiErrorResponse,
   createMockRequest,
+  jsonResponse,
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,27 +42,6 @@ vi.mock("@/lib/logger", () => ({
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-
-/**
- * Build a `Response`-shaped fixture for `mockFetch`. Always sets
- * `headers: new Headers()` so `fetchWithRetry` can read `Retry-After`
- * without exploding — keeps a future 503 → 503 → 200 exhaustion test a
- * one-liner. Mirrors the helper in
- * `src/lib/auth/__tests__/refresh-google-token.test.ts` (#276).
- */
-function jsonResponse(
-  body: unknown,
-  init: { ok?: boolean; status?: number } = {}
-): Response {
-  const status = init.status ?? 200;
-  const ok = init.ok ?? (status >= 200 && status < 300);
-  return {
-    ok,
-    status,
-    headers: new Headers(),
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
-}
 
 describe("/api/calendar/events", () => {
   beforeEach(() => {
