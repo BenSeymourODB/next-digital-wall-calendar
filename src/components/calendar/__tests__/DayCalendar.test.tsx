@@ -57,6 +57,7 @@ function createMockContext(
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
+    workingHoursStart: 7,
     weekStartDay: 0,
     setWeekStartDay: vi.fn(),
     ...overrides,
@@ -373,8 +374,8 @@ describe("DayCalendar", () => {
     });
   });
 
-  describe("Initial scroll position (#214)", () => {
-    // HOUR_HEIGHT_PX = 48; working hours start at 07:00
+  describe("Initial scroll position (#214, #288)", () => {
+    // HOUR_HEIGHT_PX = 48; working hours start at 07:00 by default.
     // Expected scrollTop: 7 * 48 = 336
     it("auto-scrolls the time grid to ~7am on mount", () => {
       renderWithContext({ selectedDate: new Date() });
@@ -385,6 +386,42 @@ describe("DayCalendar", () => {
     it("does not render the grid (and thus does not scroll) in agenda mode", () => {
       renderWithContext({ selectedDate: new Date(), agendaMode: true });
       expect(screen.queryByTestId("day-calendar-grid")).not.toBeInTheDocument();
+    });
+
+    // Issue #288: the start hour is now a per-user setting threaded
+    // through `workingHoursStart` on `ICalendarContext`. A user who
+    // sets 05:00 should land on row 5 instead of row 7.
+    it("honours a non-default workingHoursStart from context (early shift)", () => {
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 5,
+      });
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(5 * 48);
+    });
+
+    it("honours a non-default workingHoursStart from context (night owl)", () => {
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 14,
+      });
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(14 * 48);
+    });
+
+    it("clamps workingHoursStart at the 0/23 boundaries", () => {
+      const { unmount } = renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 0,
+      });
+      expect(screen.getByTestId("day-calendar-grid").scrollTop).toBe(0);
+      unmount();
+
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 23,
+      });
+      expect(screen.getByTestId("day-calendar-grid").scrollTop).toBe(23 * 48);
     });
   });
 
