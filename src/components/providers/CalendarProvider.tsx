@@ -1,5 +1,6 @@
 "use client";
 
+import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import {
@@ -537,20 +538,14 @@ export function CalendarProvider({
         return { ids: ["primary"], metadata: new Map() };
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as CalendarsResponse;
       if (data.calendars && data.calendars.length > 0) {
-        const calendars = data.calendars as Array<{
-          id: string;
-          summary?: string;
-          summaryOverride?: string;
-          selected?: boolean;
-        }>;
-        const ids = calendars.map((cal) => cal.id);
+        const ids = data.calendars.map((cal) => cal.id);
         const metadata = new Map<string, CalendarAttributionMetadata>(
-          calendars.map((cal) => [
+          data.calendars.map((cal) => [
             cal.id,
             {
-              summary: cal.summary ?? "",
+              summary: cal.summary,
               summaryOverride: cal.summaryOverride,
             },
           ])
@@ -585,18 +580,19 @@ export function CalendarProvider({
         return;
       }
 
-      // Fetch calendar list first (if not already fetched). The metadata
-      // map produced alongside the IDs feeds the user-attribution ladder
-      // for shared-calendar events (#307 Bug B).
-      let calIds = calendarIds;
-      let currentMetadata = calendarMetadata;
-      if (calIds.length === 0) {
-        const list = await fetchCalendarList();
-        calIds = list.ids;
-        currentMetadata = list.metadata;
-        setCalendarIds(calIds);
-        setCalendarMetadata(currentMetadata);
-      }
+      // Always re-fetch the calendar list on every refresh — the same
+      // staleness reasoning that drives the unconditional color refresh
+      // below applies here. If a user adds (or renames, or has the owner
+      // change the override on) a shared calendar in Google, the next
+      // manual refresh has to pick up the new id and metadata; otherwise
+      // the colors update (Bug A fix) but the user-attribution map is
+      // stale and every event from the new calendar falls through to the
+      // humanized-email rung instead of the friendly summary (#307 Bug B).
+      const list = await fetchCalendarList();
+      const calIds = list.ids;
+      const currentMetadata = list.metadata;
+      setCalendarIds(calIds);
+      setCalendarMetadata(currentMetadata);
 
       // Fetch the canonical color mappings from the server on every refresh.
       // localStorage is treated as a paint-fast warm cache, not the source of
@@ -610,6 +606,12 @@ export function CalendarProvider({
         const colorResponse = await fetch("/api/calendar/colors");
         if (colorResponse.ok) {
           const colorData = await colorResponse.json();
+          // Intentionally skip the write when the server returns no mappings:
+          // an empty response could indicate a transient API hiccup or a
+          // momentarily empty calendarList, and overwriting a warm cache with
+          // [] would flash all events to the default blue. True
+          // source-of-truth behaviour is deferred to the server-side
+          // CalendarSettings persistence tracked as a follow-up to #307.
           if (colorData.colorMappings && colorData.colorMappings.length > 0) {
             currentMappings = colorData.colorMappings;
             saveColorMappings(currentMappings);
@@ -687,7 +689,6 @@ export function CalendarProvider({
   }, [
     status,
     session,
-    calendarIds,
     calendarMetadata,
     colorMappings,
     fetchCalendarList,

@@ -371,6 +371,10 @@ describe("transformGoogleEvent", () => {
       const result = transformGoogleEvent(googleEvent, [], new Map());
 
       expect(result.user.name).toBe("Unknown");
+      // `id` always terminates at `calendarId` — the literal "unknown"
+      // string is never used because `calendarId` is required on the
+      // normalized event shape.
+      expect(result.user.id).toBe("lonely-cal");
     });
 
     it("uses creator.email then organizer.email then calendarId for user.id (distinct shared-calendar buckets)", () => {

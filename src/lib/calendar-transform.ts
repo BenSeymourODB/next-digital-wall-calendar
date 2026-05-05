@@ -66,11 +66,13 @@ function humanizeLocalPart(email: string | undefined): string | undefined {
  *   4. Humanised local-part of the chosen email.
  *   5. Literal `"Unknown"`.
  *
- * `id` cascades through `creator.email → organizer.email → calendarId →
- * "unknown"`. The calendarId fallback ensures each shared calendar lands in
- * a *distinct* Filter-By-User bucket (#307 Bug B) — pre-fix every shared
- * calendar without a creator email shared the literal `"unknown"` id and
- * collapsed into one bucket.
+ * `id` cascades through `creator.email → organizer.email → calendarId`.
+ * The calendarId fallback ensures each shared calendar lands in a *distinct*
+ * Filter-By-User bucket (#307 Bug B) — pre-fix every shared calendar without
+ * a creator email shared the literal `"unknown"` id and collapsed into one
+ * bucket. `calendarId` is required on `GoogleCalendarEvent` (stamped by
+ * `normalizeFetchedEvent`), so the cascade always terminates with a
+ * meaningful string; no `"unknown"` literal is needed.
  */
 function resolveUser(
   googleEvent: GoogleCalendarEvent,
@@ -78,10 +80,14 @@ function resolveUser(
 ): { id: string; name: string; picturePath: null } {
   const creatorEmail = googleEvent.creator?.email;
   const organizerEmail = googleEvent.organizer?.email;
-  const id =
-    creatorEmail ?? organizerEmail ?? googleEvent.calendarId ?? "unknown";
+  const id: string = creatorEmail ?? organizerEmail ?? googleEvent.calendarId;
 
   const meta = calendarMetadata?.get(googleEvent.calendarId);
+  // `??` (not `||`) is intentional: a non-empty `summaryOverride` always
+  // wins over `summary`. An empty-string override would survive `??` but
+  // is filtered out by the trim guard below, falling through to
+  // humanizeLocalPart. In practice Google omits the field entirely when
+  // the user hasn't set an override, so this edge case is theoretical.
   const calendarLabel = meta?.summaryOverride ?? meta?.summary;
 
   const name =
