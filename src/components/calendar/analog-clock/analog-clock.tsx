@@ -75,6 +75,7 @@ export function AnalogClock({
   showSeconds = false,
   currentTime,
   arcThickness = DEFAULT_ARC_THICKNESS,
+  onEventClick,
 }: AnalogClockProps) {
   const time = useClockTime(currentTime);
 
@@ -141,6 +142,7 @@ export function AnalogClock({
               cx={cx}
               cy={cy}
               ringIndex={ringIndex}
+              onEventClick={onEventClick}
             />
           );
         })}

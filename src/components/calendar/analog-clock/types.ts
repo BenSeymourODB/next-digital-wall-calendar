@@ -51,6 +51,12 @@ export interface AnalogClockProps {
   currentTime?: Date;
   /** Arc thickness in pixels (default: 48) */
   arcThickness?: number;
+  /**
+   * Click handler for an event arc. When provided, each arc becomes a
+   * focusable role="button" that fires this handler on click and on
+   * Enter/Space keypress. The clock surface is read-only when omitted.
+   */
+  onEventClick?: (eventId: string) => void;
 }
 
 /** Props for the ClockFace component */
@@ -81,4 +87,9 @@ export interface EventArcProps {
   cy: number;
   /** Ring index for stacked overlapping events (0 = outermost) */
   ringIndex?: number;
+  /**
+   * Optional click handler. When provided, the arc group becomes a
+   * focusable role="button" that fires on click and on Enter/Space.
+   */
+  onEventClick?: (eventId: string) => void;
 }

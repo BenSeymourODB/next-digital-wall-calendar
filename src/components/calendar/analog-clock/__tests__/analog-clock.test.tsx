@@ -1,6 +1,6 @@
 import type { IEvent } from "@/types/calendar";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { AnalogClock } from "../analog-clock";
 import type { ClockEvent } from "../types";
 
@@ -170,6 +170,33 @@ describe("AnalogClock", () => {
     render(<AnalogClock rawEvents={rawEvents} currentTime={now} />);
     expect(screen.getByTestId("event-arc-raw-am")).toBeInTheDocument();
     expect(screen.queryByTestId("event-arc-raw-pm")).not.toBeInTheDocument();
+  });
+
+  it("forwards onEventClick to event arcs (clicking an arc fires the callback with the event id)", () => {
+    const onEventClick = vi.fn();
+    render(
+      <AnalogClock
+        events={mockEvents}
+        currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        onEventClick={onEventClick}
+      />
+    );
+    fireEvent.click(screen.getByTestId("event-arc-group-evt-2"));
+    expect(onEventClick).toHaveBeenCalledTimes(1);
+    expect(onEventClick).toHaveBeenCalledWith("evt-2");
+  });
+
+  it("makes arcs focusable buttons when onEventClick is provided", () => {
+    render(
+      <AnalogClock
+        events={mockEvents}
+        currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        onEventClick={vi.fn()}
+      />
+    );
+    const group = screen.getByTestId("event-arc-group-evt-1");
+    expect(group.getAttribute("role")).toBe("button");
+    expect(group.getAttribute("tabindex")).toBe("0");
   });
 
   it("handles overlapping events by stacking at different radii", () => {

@@ -5,6 +5,7 @@
  * Uses SVG textPath for curved text that follows the arc path,
  * with emoji positioned at the midpoint of the arc.
  */
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { describeArc, polarToCartesian, roundCoord } from "./clock-utils";
 import type { EventArcProps } from "./types";
 
@@ -44,8 +45,19 @@ export function EventArc({
   innerRadius,
   cx,
   cy,
+  onEventClick,
 }: EventArcProps) {
   const { id, cleanTitle, color, eventEmoji, startAngle, endAngle } = event;
+  const isInteractive = Boolean(onEventClick);
+
+  const handleKeyDown = (e: ReactKeyboardEvent<SVGGElement>) => {
+    if (!onEventClick) return;
+    if (e.key === "Enter" || e.key === " ") {
+      // Prevent the page from scrolling on Space.
+      e.preventDefault();
+      onEventClick(id);
+    }
+  };
 
   // Generate the donut-arc path for the colored background
   const arcPath = describeArc(
@@ -99,8 +111,16 @@ export function EventArc({
   return (
     <g
       data-testid={`event-arc-group-${id}`}
-      role="img"
+      role={isInteractive ? "button" : "img"}
       aria-label={`Event: ${cleanTitle}, ${eventEmoji || ""}`}
+      tabIndex={isInteractive ? 0 : undefined}
+      onClick={onEventClick ? () => onEventClick(id) : undefined}
+      onKeyDown={isInteractive ? handleKeyDown : undefined}
+      className={
+        isInteractive
+          ? "cursor-pointer focus:outline-none focus-visible:[&>path]:stroke-blue-500 focus-visible:[&>path]:stroke-[3px]"
+          : undefined
+      }
     >
       {/* Colored arc background */}
       <path

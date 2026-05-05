@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { EventArc } from "../event-arc";
 import type { ClockEvent } from "../types";
 
@@ -120,5 +120,70 @@ describe("EventArc", () => {
     // The path should contain the large-arc-flag=1 for arcs > 180 degrees
     // At exactly 180, it won't trigger, but the arc should render
     expect(arc.getAttribute("d")).toBeTruthy();
+  });
+
+  describe("when onEventClick is provided", () => {
+    it("renders the group as role='button' with tabIndex=0", () => {
+      const onEventClick = vi.fn();
+      renderArc({ onEventClick });
+      const group = screen.getByTestId("event-arc-group-evt-1");
+      expect(group.getAttribute("role")).toBe("button");
+      expect(group.getAttribute("tabindex")).toBe("0");
+    });
+
+    it("preserves the aria-label so the button has an accessible name", () => {
+      const onEventClick = vi.fn();
+      renderArc({ onEventClick });
+      const group = screen.getByTestId("event-arc-group-evt-1");
+      expect(group.getAttribute("aria-label")).toContain("Family Game Night");
+    });
+
+    it("calls onEventClick with the event id when the group is clicked", () => {
+      const onEventClick = vi.fn();
+      renderArc({ onEventClick });
+      const group = screen.getByTestId("event-arc-group-evt-1");
+      fireEvent.click(group);
+      expect(onEventClick).toHaveBeenCalledTimes(1);
+      expect(onEventClick).toHaveBeenCalledWith("evt-1");
+    });
+
+    it("calls onEventClick when Enter is pressed on the focused group", () => {
+      const onEventClick = vi.fn();
+      renderArc({ onEventClick });
+      const group = screen.getByTestId("event-arc-group-evt-1");
+      fireEvent.keyDown(group, { key: "Enter" });
+      expect(onEventClick).toHaveBeenCalledWith("evt-1");
+    });
+
+    it("calls onEventClick when Space is pressed on the focused group", () => {
+      const onEventClick = vi.fn();
+      renderArc({ onEventClick });
+      const group = screen.getByTestId("event-arc-group-evt-1");
+      fireEvent.keyDown(group, { key: " " });
+      expect(onEventClick).toHaveBeenCalledWith("evt-1");
+    });
+
+    it("does not call onEventClick for other keys", () => {
+      const onEventClick = vi.fn();
+      renderArc({ onEventClick });
+      const group = screen.getByTestId("event-arc-group-evt-1");
+      fireEvent.keyDown(group, { key: "Tab" });
+      fireEvent.keyDown(group, { key: "a" });
+      expect(onEventClick).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("when onEventClick is NOT provided", () => {
+    it("keeps role='img' (non-interactive presentation)", () => {
+      renderArc();
+      const group = screen.getByTestId("event-arc-group-evt-1");
+      expect(group.getAttribute("role")).toBe("img");
+    });
+
+    it("does not expose tabIndex", () => {
+      renderArc();
+      const group = screen.getByTestId("event-arc-group-evt-1");
+      expect(group.getAttribute("tabindex")).toBeNull();
+    });
   });
 });
