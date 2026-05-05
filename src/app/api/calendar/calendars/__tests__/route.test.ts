@@ -13,7 +13,7 @@ import {
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GET } from "../route";
+import { GET, canWriteToCalendar } from "../route";
 
 // Mock modules BEFORE imports
 vi.mock("@/lib/auth", () => ({
@@ -50,6 +50,7 @@ interface CalendarInfo {
   foregroundColor: string;
   primary: boolean;
   selected: boolean;
+  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
 }
 
 interface CalendarsResponse {
@@ -99,6 +100,7 @@ describe("/api/calendar/calendars", () => {
             foregroundColor: "#ffffff",
             primary: true,
             selected: true,
+            accessRole: "owner",
           },
           {
             id: "family@group.calendar.google.com",
@@ -108,6 +110,7 @@ describe("/api/calendar/calendars", () => {
             foregroundColor: "#ffffff",
             primary: false,
             selected: true,
+            accessRole: "writer",
           },
           {
             id: "work@group.calendar.google.com",
@@ -116,6 +119,7 @@ describe("/api/calendar/calendars", () => {
             foregroundColor: "#ffffff",
             primary: false,
             selected: false,
+            accessRole: "reader",
           },
         ],
       };
@@ -138,6 +142,7 @@ describe("/api/calendar/calendars", () => {
         foregroundColor: "#ffffff",
         primary: true,
         selected: true,
+        accessRole: "owner",
       });
       expect(data.calendars[1]).toEqual({
         id: "family@group.calendar.google.com",
@@ -147,7 +152,79 @@ describe("/api/calendar/calendars", () => {
         foregroundColor: "#ffffff",
         primary: false,
         selected: true,
+        accessRole: "writer",
       });
+    });
+
+    it("passes accessRole through for read-only and freeBusyReader calendars", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [
+              {
+                id: "shared@group.calendar.google.com",
+                summary: "Shared",
+                backgroundColor: "#7986cb",
+                foregroundColor: "#ffffff",
+                primary: false,
+                selected: true,
+                accessRole: "reader",
+              },
+              {
+                id: "busy@group.calendar.google.com",
+                summary: "Busy",
+                backgroundColor: "#7986cb",
+                foregroundColor: "#ffffff",
+                primary: false,
+                selected: true,
+                accessRole: "freeBusyReader",
+              },
+            ],
+          }),
+      });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<CalendarsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.calendars[0].accessRole).toBe("reader");
+      expect(data.calendars[1].accessRole).toBe("freeBusyReader");
+    });
+
+    it("leaves accessRole undefined when missing from Google response", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [
+              {
+                id: "missing-role@group.calendar.google.com",
+                summary: "No role",
+                backgroundColor: "#7986cb",
+                foregroundColor: "#ffffff",
+                primary: false,
+                selected: true,
+              },
+            ],
+          }),
+      });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<CalendarsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.calendars[0].accessRole).toBeUndefined();
     });
 
     it("returns empty array when no calendars exist", async () => {
@@ -243,6 +320,20 @@ describe("/api/calendar/calendars", () => {
 
       expect(status).toBe(500);
       expect(data.error).toBe("An unexpected error occurred");
+    });
+
+    it("canWriteToCalendar permits writes for owner and writer", () => {
+      expect(canWriteToCalendar("owner")).toBe(true);
+      expect(canWriteToCalendar("writer")).toBe(true);
+    });
+
+    it("canWriteToCalendar denies writes for reader and freeBusyReader", () => {
+      expect(canWriteToCalendar("reader")).toBe(false);
+      expect(canWriteToCalendar("freeBusyReader")).toBe(false);
+    });
+
+    it("canWriteToCalendar defaults to permissive when role is undefined", () => {
+      expect(canWriteToCalendar(undefined)).toBe(true);
     });
 
     it("handles calendars with missing optional fields", async () => {

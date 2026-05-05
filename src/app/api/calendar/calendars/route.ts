@@ -10,6 +10,27 @@ import { NextResponse } from "next/server";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
 /**
+ * The user's permission on a calendar, mirroring Google Calendar's
+ * `accessRole`. The UI uses this to gate write actions (e.g. delete) on
+ * calendars where the user is read-only — see issue #266.
+ */
+export type CalendarAccessRole =
+  | "freeBusyReader"
+  | "reader"
+  | "writer"
+  | "owner";
+
+/**
+ * Returns true when the access role permits write actions
+ * (event create, update, delete). `undefined` defers to the optimistic
+ * default — assume writable so unsupported responses don't silently
+ * disable UI for owner/writer calendars.
+ */
+export function canWriteToCalendar(role: CalendarAccessRole | undefined) {
+  return role === undefined || role === "owner" || role === "writer";
+}
+
+/**
  * Calendar information returned by this endpoint
  */
 export interface CalendarInfo {
@@ -20,6 +41,7 @@ export interface CalendarInfo {
   foregroundColor: string;
   primary: boolean;
   selected: boolean;
+  accessRole?: CalendarAccessRole;
 }
 
 /**
@@ -101,6 +123,7 @@ export async function GET() {
       foregroundColor: item.foregroundColor || "#ffffff",
       primary: item.primary || false,
       selected: item.selected || false,
+      accessRole: item.accessRole,
     }));
 
     logger.log("Calendar list fetched", {
