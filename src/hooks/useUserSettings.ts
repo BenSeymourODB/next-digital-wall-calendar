@@ -9,6 +9,8 @@ export interface UserCalendarSettings {
   calendarFetchMonthsAhead: number;
   calendarFetchMonthsBehind: number;
   calendarMaxEventsPerDay: number;
+  /** Hour (0–23) the Day/Week grids auto-scroll to on first render (#288). */
+  calendarWorkingHoursStart: number;
 }
 
 export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
@@ -16,6 +18,7 @@ export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
   calendarFetchMonthsAhead: 6,
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
+  calendarWorkingHoursStart: 7,
 };
 
 interface UseUserSettingsResult {
@@ -87,6 +90,9 @@ function pickCalendarFields(
   }
   if (typeof data.calendarMaxEventsPerDay === "number") {
     picked.calendarMaxEventsPerDay = data.calendarMaxEventsPerDay;
+  }
+  if (typeof data.calendarWorkingHoursStart === "number") {
+    picked.calendarWorkingHoursStart = data.calendarWorkingHoursStart;
   }
   return picked;
 }

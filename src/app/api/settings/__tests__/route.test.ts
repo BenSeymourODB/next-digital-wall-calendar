@@ -60,6 +60,7 @@ const mockSettings = {
   calendarFetchMonthsAhead: 6,
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
+  calendarWorkingHoursStart: 7,
 };
 
 describe("/api/settings", () => {
@@ -494,6 +495,78 @@ describe("/api/settings", () => {
       expect(data.calendarFetchMonthsAhead).toBe(3);
       expect(data.calendarFetchMonthsBehind).toBe(2);
       expect(data.calendarMaxEventsPerDay).toBe(5);
+    });
+
+    it("validates calendarWorkingHoursStart range (0-23)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const requestNegative = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarWorkingHoursStart: -1 },
+      });
+      const responseNegative = await PUT(requestNegative);
+      const { status: statusNegative, data: dataNegative } =
+        await parseResponse<ApiErrorResponse>(responseNegative);
+      expect(statusNegative).toBe(400);
+      expect(dataNegative.error).toContain("calendarWorkingHoursStart");
+
+      const requestHigh = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarWorkingHoursStart: 24 },
+      });
+      const responseHigh = await PUT(requestHigh);
+      const { status: statusHigh } =
+        await parseResponse<ApiErrorResponse>(responseHigh);
+      expect(statusHigh).toBe(400);
+
+      const requestFloat = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarWorkingHoursStart: 7.5 },
+      });
+      const responseFloat = await PUT(requestFloat);
+      const { status: statusFloat } =
+        await parseResponse<ApiErrorResponse>(responseFloat);
+      expect(statusFloat).toBe(400);
+
+      const requestType = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarWorkingHoursStart: "7" },
+      });
+      const responseType = await PUT(requestType);
+      const { status: statusType } =
+        await parseResponse<ApiErrorResponse>(responseType);
+      expect(statusType).toBe(400);
+    });
+
+    it("accepts calendarWorkingHoursStart at boundaries 0 and 23", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.userSettings.upsert.mockResolvedValueOnce({
+        ...mockSettings,
+        calendarWorkingHoursStart: 0,
+      });
+      const requestMin = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarWorkingHoursStart: 0 },
+      });
+      const responseMin = await PUT(requestMin);
+      const { status: statusMin, data: dataMin } =
+        await parseResponse<typeof mockSettings>(responseMin);
+      expect(statusMin).toBe(200);
+      expect(dataMin.calendarWorkingHoursStart).toBe(0);
+
+      mockPrisma.userSettings.upsert.mockResolvedValueOnce({
+        ...mockSettings,
+        calendarWorkingHoursStart: 23,
+      });
+      const requestMax = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarWorkingHoursStart: 23 },
+      });
+      const responseMax = await PUT(requestMax);
+      const { status: statusMax, data: dataMax } =
+        await parseResponse<typeof mockSettings>(responseMax);
+      expect(statusMax).toBe(200);
+      expect(dataMax.calendarWorkingHoursStart).toBe(23);
     });
 
     it("returns 500 on database error", async () => {

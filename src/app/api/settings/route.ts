@@ -185,6 +185,20 @@ export const PUT = withApiHandler(
       }
     }
 
+    if (body.calendarWorkingHoursStart !== undefined) {
+      if (
+        typeof body.calendarWorkingHoursStart !== "number" ||
+        !Number.isInteger(body.calendarWorkingHoursStart) ||
+        body.calendarWorkingHoursStart < 0 ||
+        body.calendarWorkingHoursStart > 23
+      ) {
+        throw new ApiError(
+          "calendarWorkingHoursStart must be an integer between 0 and 23",
+          400
+        );
+      }
+    }
+
     const settings = await prisma.userSettings.upsert({
       where: { userId },
       create: {

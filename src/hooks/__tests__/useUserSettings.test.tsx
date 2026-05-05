@@ -55,6 +55,7 @@ describe("useUserSettings", () => {
       calendarFetchMonthsAhead: 4,
       calendarFetchMonthsBehind: 2,
       calendarMaxEventsPerDay: 5,
+      calendarWorkingHoursStart: 9,
     };
     vi.mocked(global.fetch).mockResolvedValue({
       ok: true,
@@ -162,5 +163,47 @@ describe("useUserSettings", () => {
       ...DEFAULT_USER_CALENDAR_SETTINGS,
       calendarMaxEventsPerDay: 7,
     });
+  });
+
+  it("picks calendarWorkingHoursStart from server response", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarWorkingHoursStart: 5 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.calendarWorkingHoursStart).toBe(5);
+  });
+
+  it("ignores out-of-range calendarWorkingHoursStart from a malformed response", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      // String value that would fail typeof === "number" — simulates a
+      // malformed payload without throwing.
+      json: async () => ({ calendarWorkingHoursStart: "9" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.calendarWorkingHoursStart).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.calendarWorkingHoursStart
+    );
   });
 });
