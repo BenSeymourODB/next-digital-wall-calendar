@@ -12,7 +12,7 @@ import type {
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { YearCalendar } from "../YearCalendar";
+import { YearCalendar, bucketEventColorsByDayKey } from "../YearCalendar";
 
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
@@ -466,6 +466,58 @@ describe("YearCalendar", () => {
       );
 
       expect(loadEventsForYear).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("bucketEventColorsByDayKey (#203 bug 3)", () => {
+    it("returns a map keyed by local YYYY-MM-DD with deduped colors per day", () => {
+      const events = [
+        createMockEvent({
+          id: "a",
+          color: "blue",
+          startDate: new Date(2026, 0, 5, 9).toISOString(),
+        }),
+        createMockEvent({
+          id: "b",
+          color: "blue",
+          startDate: new Date(2026, 0, 5, 14).toISOString(),
+        }),
+        createMockEvent({
+          id: "c",
+          color: "green",
+          startDate: new Date(2026, 0, 5, 16).toISOString(),
+        }),
+        createMockEvent({
+          id: "d",
+          color: "red",
+          startDate: new Date(2026, 5, 12, 10).toISOString(),
+        }),
+      ];
+
+      const map = bucketEventColorsByDayKey(events);
+
+      expect(map.get("2026-01-05")).toEqual(new Set(["blue", "green"]));
+      expect(map.get("2026-06-12")).toEqual(new Set(["red"]));
+      expect(map.get("2026-03-30")).toBeUndefined();
+    });
+
+    it("treats bare YYYY-MM-DD startDates as the local calendar day", () => {
+      // Same defensive parsing the dot-rendering path uses (#203 bug 1) —
+      // bare-date startDates must bucket on the local day, not UTC.
+      const events = [
+        createMockEvent({
+          id: "all-day",
+          color: "purple",
+          startDate: "2026-06-15",
+          endDate: "2026-06-15",
+          isAllDay: true,
+        }),
+      ];
+
+      const map = bucketEventColorsByDayKey(events);
+
+      expect(map.get("2026-06-15")).toEqual(new Set(["purple"]));
+      expect(map.get("2026-06-14")).toBeUndefined();
     });
   });
 

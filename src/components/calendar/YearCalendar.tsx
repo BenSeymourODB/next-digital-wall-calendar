@@ -63,20 +63,42 @@ function parseEventStartLocal(event: IEvent): Date {
   return new Date(event.startDate);
 }
 
-function getUniqueColorsForDay(events: IEvent[], day: Date): TEventColor[] {
-  const colors = new Set<TEventColor>();
+// Pre-bucket events into a Map<dayKey, Set<TEventColor>> so each day cell
+// reduces to an O(1) lookup instead of scanning the whole event array.
+// Drops the year-grid render from O(events × cells) to O(events + cells).
+// Exported for unit testing — the map shape is the contract that lets
+// MonthPanel render dots without ever touching the raw event list.
+export function bucketEventColorsByDayKey(
+  events: IEvent[]
+): Map<string, Set<TEventColor>> {
+  const map = new Map<string, Set<TEventColor>>();
   for (const event of events) {
-    if (isSameDay(parseEventStartLocal(event), day)) {
-      colors.add(event.color);
+    const key = formatDayKey(parseEventStartLocal(event));
+    let colors = map.get(key);
+    if (!colors) {
+      colors = new Set<TEventColor>();
+      map.set(key, colors);
     }
+    colors.add(event.color);
   }
+  return map;
+}
+
+const EMPTY_COLORS: ReadonlySet<TEventColor> = new Set();
+
+function orderedColorsForDay(
+  colorsByDayKey: Map<string, Set<TEventColor>>,
+  dayKey: string
+): TEventColor[] {
+  const colors = colorsByDayKey.get(dayKey) ?? EMPTY_COLORS;
+  if (colors.size === 0) return [];
   return COLOR_DISPLAY_ORDER.filter((c) => colors.has(c));
 }
 
 interface MonthPanelProps {
   monthDate: Date;
   today: Date;
-  events: IEvent[];
+  colorsByDayKey: Map<string, Set<TEventColor>>;
   onDayClick: (date: Date) => void;
   onMonthClick: (monthDate: Date) => void;
 }
@@ -84,7 +106,7 @@ interface MonthPanelProps {
 function MonthPanel({
   monthDate,
   today,
-  events,
+  colorsByDayKey,
   onDayClick,
   onMonthClick,
 }: MonthPanelProps) {
@@ -123,10 +145,10 @@ function MonthPanel({
         ))}
 
         {days.map((day) => {
-          const colors = getUniqueColorsForDay(events, day);
+          const key = formatDayKey(day);
+          const colors = orderedColorsForDay(colorsByDayKey, key);
           const visibleDots = colors.slice(0, MAX_DOTS_PER_DAY);
           const isToday = isSameDay(day, today);
-          const key = formatDayKey(day);
 
           return (
             <button
@@ -198,6 +220,11 @@ export function YearCalendar() {
   }, [year]);
 
   const months = Array.from({ length: 12 }, (_, i) => new Date(year, i, 1));
+
+  // Bucket once per render: each day cell then resolves its dots via an
+  // O(1) Map.get instead of scanning the full event array (was up to
+  // 366 cells × N events). React Compiler memoises identity automatically.
+  const colorsByDayKey = bucketEventColorsByDayKey(events);
 
   // Use overlap logic so an event spanning Dec → Jan is counted in both
   // years. Filtering only by `startDate` would drop the Dec 30 → Jan 2
@@ -297,7 +324,7 @@ export function YearCalendar() {
             key={monthDate.getMonth()}
             monthDate={monthDate}
             today={today}
-            events={events}
+            colorsByDayKey={colorsByDayKey}
             onDayClick={handleDayClick}
             onMonthClick={handleMonthClick}
           />
