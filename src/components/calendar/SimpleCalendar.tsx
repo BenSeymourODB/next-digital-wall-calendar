@@ -56,6 +56,7 @@ export function SimpleCalendar() {
     maxEventsPerDay,
     use24HourFormat,
     weekStartDay,
+    getAccessRole,
   } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -413,6 +414,9 @@ export function SimpleCalendar() {
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
+        accessRole={
+          selectedEvent ? getAccessRole(selectedEvent.calendarId) : undefined
+        }
       />
     </div>
   );
