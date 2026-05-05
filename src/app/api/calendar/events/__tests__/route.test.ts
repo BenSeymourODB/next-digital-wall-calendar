@@ -42,6 +42,27 @@ vi.mock("@/lib/logger", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+/**
+ * Build a `Response`-shaped fixture for `mockFetch`. Always sets
+ * `headers: new Headers()` so `fetchWithRetry` can read `Retry-After`
+ * without exploding — keeps a future 503 → 503 → 200 exhaustion test a
+ * one-liner. Mirrors the helper in
+ * `src/lib/auth/__tests__/refresh-google-token.test.ts` (#276).
+ */
+function jsonResponse(
+  body: unknown,
+  init: { ok?: boolean; status?: number } = {}
+): Response {
+  const status = init.status ?? 200;
+  const ok = init.ok ?? (status >= 200 && status < 300);
+  return {
+    ok,
+    status,
+    headers: new Headers(),
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
+}
+
 describe("/api/calendar/events", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -611,28 +632,25 @@ describe("/api/calendar/events", () => {
           );
 
           mockFetch
-            .mockResolvedValueOnce({
-              ok: false,
-              status: 503,
-              headers: new Headers(),
-              json: () =>
-                Promise.resolve({ error: { message: "Service Unavailable" } }),
-            })
-            .mockResolvedValueOnce({
-              ok: true,
-              json: () =>
-                Promise.resolve({
-                  items: [
-                    {
-                      id: "event-1",
-                      summary: "Recovered",
-                      start: { dateTime: "2024-03-15T10:00:00Z" },
-                      end: { dateTime: "2024-03-15T11:00:00Z" },
-                    },
-                  ],
-                  summary: "Primary Calendar",
-                }),
-            });
+            .mockResolvedValueOnce(
+              jsonResponse(
+                { error: { message: "Service Unavailable" } },
+                { status: 503 }
+              )
+            )
+            .mockResolvedValueOnce(
+              jsonResponse({
+                items: [
+                  {
+                    id: "event-1",
+                    summary: "Recovered",
+                    start: { dateTime: "2024-03-15T10:00:00Z" },
+                    end: { dateTime: "2024-03-15T11:00:00Z" },
+                  },
+                ],
+                summary: "Primary Calendar",
+              })
+            );
 
           const request = createMockRequest("/api/calendar/events");
           const promise = GET(request);
@@ -644,6 +662,10 @@ describe("/api/calendar/events", () => {
           }>(response);
 
           expect(mockFetch).toHaveBeenCalledTimes(2);
+          // Pin that the second call is a retry of the *same* URL — without
+          // this, the test would also pass if retry were disabled and an
+          // unrelated second fetch happened to succeed (#276).
+          expect(mockFetch.mock.calls[0][0]).toBe(mockFetch.mock.calls[1][0]);
           expect(status).toBe(200);
           expect(data.events).toHaveLength(1);
           expect(data.events[0].summary).toBe("Recovered");

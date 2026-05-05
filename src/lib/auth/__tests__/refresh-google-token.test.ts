@@ -131,4 +131,32 @@ describe("refreshGoogleAccessToken", () => {
       vi.useRealTimers();
     }
   });
+
+  it("propagates the underlying TypeError when transient network errors exhaust the retry budget", async () => {
+    // Closes the coverage gap flagged in #276: the outer `catch` branch of
+    // `fetchWithRetry` (DNS / TCP failure after every retry) was not
+    // exercised here. `fetch` throws `TypeError("fetch failed")` for these,
+    // which `isTransientHttpError` classifies as transient — so we expect
+    // the wrapper to retry up to its default budget (3 attempts) and then
+    // re-throw the last TypeError. If a future refactor short-circuits the
+    // retry loop, this test fails because `mockFetch` is no longer called
+    // 3 times.
+    vi.useFakeTimers();
+    try {
+      const networkError = new TypeError("fetch failed");
+      mockFetch.mockRejectedValue(networkError);
+
+      const promise = refreshGoogleAccessToken("rt", "cid", "sec");
+      // Surface the rejection without unhandled-rejection noise while we
+      // pump the retry sleeps.
+      const settled = promise.catch((e: unknown) => e);
+      await vi.runAllTimersAsync();
+      const result = await settled;
+
+      expect(result).toBe(networkError);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
