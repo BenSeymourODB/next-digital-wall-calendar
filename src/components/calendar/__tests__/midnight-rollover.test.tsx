@@ -63,6 +63,7 @@ function makeContext(
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
+    transitionDurationMs: 300,
     weekStartDay: 0,
     setWeekStartDay: vi.fn(),
     ...overrides,

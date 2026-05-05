@@ -323,7 +323,7 @@ function buildMockEventSets(anchor: Date): Record<string, IEvent[]> {
  * component directly. Removal of AgendaCalendar belongs to issue #264.
  */
 function CalendarDisplay() {
-  const { view, agendaMode } = useCalendar();
+  const { view, agendaMode, transitionDurationMs } = useCalendar();
 
   // Compose a swap key that switches the animation when the user toggles
   // agenda mode within day/week, so the grid <-> agenda transition gets
@@ -337,7 +337,7 @@ function CalendarDisplay() {
         swapKey={swapKey}
         type="fade"
         direction="forward"
-        durationMs={250}
+        durationMs={transitionDurationMs}
       >
         <>
           {view === "day" && <DayCalendar />}
