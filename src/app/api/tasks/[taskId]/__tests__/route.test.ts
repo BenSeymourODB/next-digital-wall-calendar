@@ -425,9 +425,7 @@ describe("/api/tasks/[taskId]", () => {
 
       expect(getSession).toHaveBeenCalledTimes(1);
       expect(requireGoogleTasksAccessToken).toHaveBeenCalledTimes(1);
-      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(
-        mockSession.user.id
-      );
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(mockSession);
     });
   });
 });

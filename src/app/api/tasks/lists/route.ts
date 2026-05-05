@@ -35,7 +35,7 @@ export async function GET() {
     // Combined scope check + token decryption in a single DB call (#260).
     // Short-circuits users missing the Tasks scope (#237) without burning a
     // separate prisma.account.findMany.
-    const accessToken = await requireGoogleTasksAccessToken(session.user.id);
+    const accessToken = await requireGoogleTasksAccessToken(session);
     const lists = await listTaskLists(accessToken);
 
     logger.event("TaskListsFetched", {

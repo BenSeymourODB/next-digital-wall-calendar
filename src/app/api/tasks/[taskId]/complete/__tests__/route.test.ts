@@ -332,9 +332,7 @@ describe("Task Complete API", () => {
 
       expect(getSession).toHaveBeenCalledTimes(1);
       expect(requireGoogleTasksAccessToken).toHaveBeenCalledTimes(1);
-      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(
-        mockSession.user.id
-      );
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(mockSession);
     });
   });
 });

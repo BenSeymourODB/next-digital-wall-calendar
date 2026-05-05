@@ -272,9 +272,7 @@ describe("/api/tasks/lists", () => {
 
       expect(getSession).toHaveBeenCalledTimes(1);
       expect(requireGoogleTasksAccessToken).toHaveBeenCalledTimes(1);
-      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(
-        mockSession.user.id
-      );
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(mockSession);
     });
 
     it("does NOT retry a 401 from upstream (non-transient, issue #68)", async () => {

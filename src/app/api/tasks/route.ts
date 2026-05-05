@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     // Combined scope check + token decryption in a single DB call (#260).
     // Short-circuits users missing the Tasks scope (#237) before URL
     // parsing, matching the original assertGoogleTasksScope ordering.
-    const accessToken = await requireGoogleTasksAccessToken(session.user.id);
+    const accessToken = await requireGoogleTasksAccessToken(session);
 
     const { searchParams } = new URL(request.url);
     const listId = searchParams.get("listId");
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Combined scope check + token decryption in a single DB call (#260).
-    const accessToken = await requireGoogleTasksAccessToken(session.user.id);
+    const accessToken = await requireGoogleTasksAccessToken(session);
 
     const body = (await request.json()) as CreateTaskBody;
     const { listId, title, notes, due } = body;

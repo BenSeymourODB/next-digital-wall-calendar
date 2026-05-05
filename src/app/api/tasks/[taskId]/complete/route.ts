@@ -57,7 +57,7 @@ export async function POST(
     }
 
     // Combined scope check + token decryption in a single DB call (#260).
-    const accessToken = await requireGoogleTasksAccessToken(session.user.id);
+    const accessToken = await requireGoogleTasksAccessToken(session);
 
     const { taskId } = await params;
 

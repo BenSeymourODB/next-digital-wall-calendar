@@ -486,9 +486,7 @@ describe("/api/tasks", () => {
 
       expect(getSession).toHaveBeenCalledTimes(1);
       expect(requireGoogleTasksAccessToken).toHaveBeenCalledTimes(1);
-      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(
-        mockSession.user.id
-      );
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(mockSession);
     });
   });
 
@@ -682,9 +680,7 @@ describe("/api/tasks", () => {
 
       expect(getSession).toHaveBeenCalledTimes(1);
       expect(requireGoogleTasksAccessToken).toHaveBeenCalledTimes(1);
-      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(
-        mockSession.user.id
-      );
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(mockSession);
     });
   });
 });
