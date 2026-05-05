@@ -3,6 +3,7 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import type { IEvent, TEventColor } from "@/types/calendar";
+import { useEffect, useRef } from "react";
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -143,14 +144,41 @@ function MonthPanel({
 }
 
 export function YearCalendar() {
-  const { selectedDate, setSelectedDate, setView, events, isLoading } =
-    useCalendar();
+  const {
+    selectedDate,
+    setSelectedDate,
+    setView,
+    events,
+    isLoading,
+    loadEventsForYear,
+  } = useCalendar();
 
   const today = new Date();
   const year = selectedDate.getFullYear();
   const yearStart = startOfYear(selectedDate);
   const yearEnd = endOfYear(selectedDate);
   const isCurrentYear = isSameYear(selectedDate, today);
+
+  // Ask the provider to widen its loaded range to the full year. The
+  // default refresh window (-1mo / +6mo) is too narrow for the year
+  // grid, so without this trigger Dec/Jan cells outside the window
+  // would render blank.
+  //
+  // The loader function from useCalendar() gets a new identity every
+  // time `loadedRange` advances (which is whenever any lazy-load
+  // happens, including from `loadEventsForDate`). Re-firing this
+  // effect on every such churn is wasteful — the loader is idempotent
+  // once the year is covered, but it still burns a guard cycle and
+  // logs a "Loading events for full year" line. Stabilize via a ref
+  // so the effect re-runs only when `year` actually changes.
+  const loadEventsForYearRef = useRef(loadEventsForYear);
+  useEffect(() => {
+    loadEventsForYearRef.current = loadEventsForYear;
+  }, [loadEventsForYear]);
+
+  useEffect(() => {
+    loadEventsForYearRef.current(year);
+  }, [year]);
 
   const months = Array.from({ length: 12 }, (_, i) => new Date(year, i, 1));
 

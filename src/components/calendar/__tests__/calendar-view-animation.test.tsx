@@ -56,6 +56,7 @@ function createMockContext(
     deleteEvent: vi.fn().mockResolvedValue(undefined),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
+    loadEventsForYear: vi.fn(),
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
