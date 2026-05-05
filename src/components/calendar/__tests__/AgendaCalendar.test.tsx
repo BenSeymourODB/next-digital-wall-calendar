@@ -643,5 +643,53 @@ describe("AgendaCalendar", () => {
 
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+
+    it("hides the delete button on read-only calendars (#266)", async () => {
+      const user = userEvent.setup();
+      const events = [
+        createMockEvent({
+          id: "shared-evt",
+          title: "School Pickup",
+          calendarId: "shared@group.calendar.google.com",
+          startDate: getFutureDate(1, 15, 0),
+          endDate: getFutureDate(1, 15, 30),
+        }),
+      ];
+
+      renderWithContext(events, {
+        getAccessRole: (id) =>
+          id === "shared@group.calendar.google.com" ? "reader" : undefined,
+      });
+
+      await user.click(screen.getByRole("button", { name: /School Pickup/i }));
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders the delete button on writable calendars (#266)", async () => {
+      const user = userEvent.setup();
+      const events = [
+        createMockEvent({
+          id: "owned-evt",
+          title: "Standup",
+          calendarId: "primary",
+          startDate: getFutureDate(1, 9, 0),
+          endDate: getFutureDate(1, 9, 15),
+        }),
+      ];
+
+      renderWithContext(events, {
+        getAccessRole: (id) => (id === "primary" ? "owner" : undefined),
+      });
+
+      await user.click(screen.getByRole("button", { name: /Standup/i }));
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
+    });
   });
 });

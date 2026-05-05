@@ -14,6 +14,7 @@ import { logger } from "@/lib/logger";
 import type {
   IEvent,
   IUser,
+  TCalendarAccessRole,
   TCalendarView,
   TEventColor,
   TWeekStartDay,
@@ -37,18 +38,6 @@ interface LoadedRange {
   start: Date;
   end: Date;
 }
-
-/**
- * Per-calendar permission level reported by Google's `CalendarList.list`.
- * Mirrors the union on `gapi.client.calendar.CalendarListEntry.accessRole`.
- * Plumbed through {@link ICalendarContext.getAccessRole} so UI can hide
- * mutating actions on read-only calendars (issue #266).
- */
-export type TCalendarAccessRole =
-  | "freeBusyReader"
-  | "reader"
-  | "writer"
-  | "owner";
 
 /**
  * Server-bound payload for `createEvent`. Mirrors the body of
@@ -311,14 +300,11 @@ export function CalendarProvider({
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
 
-  // Stable lookup so consumers don't re-render every time the role map
-  // gets recomputed (the underlying record only changes when the calendar
-  // list is fetched, so a fresh closure is fine here under React Compiler).
-  const getAccessRole = useCallback(
-    (calendarId: string): TCalendarAccessRole | undefined =>
-      accessRoles[calendarId],
-    [accessRoles]
-  );
+  // Plain closure — React Compiler memoizes automatically (CLAUDE.md
+  // forbids manual useCallback). The role map only changes when the
+  // calendar list is fetched, so identity churn here is a non-issue.
+  const getAccessRole = (calendarId: string): TCalendarAccessRole | undefined =>
+    accessRoles[calendarId];
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
     setSettings((prev) => ({
@@ -599,7 +585,14 @@ export function CalendarProvider({
         return;
       }
 
-      // Fetch calendar list first (if not already fetched)
+      // Fetch calendar list first (if not already fetched).
+      // Side-effect: also populates `accessRoles` for #266's read-only
+      // gating. This is intentionally one-shot per session — if the
+      // user's role on a calendar changes mid-session, we'll keep
+      // serving the stale role and rely on Google's server-side 403 as
+      // the backstop. Refreshing the list every poll would multiply
+      // calendarList.list quota for no UX gain at the typical session
+      // length.
       let calIds = calendarIds;
       if (calIds.length === 0) {
         calIds = await fetchCalendarList();

@@ -4,8 +4,8 @@ import {
   CalendarContext,
   type CreateEventInput,
   type ICalendarContext,
-  type TCalendarAccessRole,
 } from "@/components/providers/CalendarProvider";
+import type { TCalendarAccessRole } from "@/types/calendar";
 import type {
   IEvent,
   IUser,

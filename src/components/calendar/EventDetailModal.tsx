@@ -1,6 +1,5 @@
 "use client";
 
-import type { TCalendarAccessRole } from "@/components/providers/CalendarProvider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +20,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { IEvent, TEventColor } from "@/types/calendar";
+import type {
+  IEvent,
+  TCalendarAccessRole,
+  TEventColor,
+} from "@/types/calendar";
 import { type RefObject, useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { Trash2 } from "lucide-react";

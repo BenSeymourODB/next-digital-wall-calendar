@@ -5,6 +5,7 @@
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
+import type { TCalendarAccessRole } from "@/types/calendar";
 import { NextResponse } from "next/server";
 
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
@@ -26,7 +27,7 @@ export interface CalendarInfo {
    * (delete, edit) for `reader` / `freeBusyReader` calendars before they
    * round-trip and 403 — see issue #266.
    */
-  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
+  accessRole?: TCalendarAccessRole;
 }
 
 /**
