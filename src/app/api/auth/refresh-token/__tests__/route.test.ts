@@ -52,21 +52,22 @@ const SUCCESS_TOKENS = {
   token_type: "Bearer",
 };
 
-const ORIGINAL_ENV = { ...process.env };
-
 describe("POST /api/auth/refresh-token", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Server-only env vars used by the route.
-    process.env.GOOGLE_CLIENT_ID = "server-client-id";
-    process.env.GOOGLE_CLIENT_SECRET = "server-client-secret";
+    // `vi.stubEnv` mutates `process.env` in-place (preserving Node's special
+    // env object) and tracks each stub for `vi.unstubAllEnvs()` to revert in
+    // afterEach. Reassigning `process.env = { ... }` would break the special
+    // descriptor behaviour Node depends on.
+    vi.stubEnv("GOOGLE_CLIENT_ID", "server-client-id");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "server-client-secret");
     // The legacy public var has a different value so any code path that still
     // reads it instead of GOOGLE_CLIENT_ID is caught by the assertion below.
-    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID = "public-client-id-LEAKED";
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "public-client-id-LEAKED");
   });
 
   afterEach(() => {
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
   });
 
   it("returns 400 when refreshToken is missing", async () => {
@@ -84,10 +85,10 @@ describe("POST /api/auth/refresh-token", () => {
   });
 
   it("returns 500 when GOOGLE_CLIENT_ID is missing (does NOT fall back to NEXT_PUBLIC_GOOGLE_CLIENT_ID)", async () => {
-    delete process.env.GOOGLE_CLIENT_ID;
+    vi.stubEnv("GOOGLE_CLIENT_ID", undefined);
     // The public var is still set; if the route falls back to it the test
     // fails, which is the regression-prevention point of this case.
-    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID = "public-client-id-LEAKED";
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "public-client-id-LEAKED");
 
     const request = createMockRequest("/api/auth/refresh-token", {
       method: "POST",
@@ -103,7 +104,7 @@ describe("POST /api/auth/refresh-token", () => {
   });
 
   it("returns 500 when GOOGLE_CLIENT_SECRET is missing", async () => {
-    delete process.env.GOOGLE_CLIENT_SECRET;
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", undefined);
 
     const request = createMockRequest("/api/auth/refresh-token", {
       method: "POST",
