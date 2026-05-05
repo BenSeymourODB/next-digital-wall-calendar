@@ -464,6 +464,16 @@ function TestCalendarContent() {
   const use24Hour = searchParams.get("24hour") !== "false";
   const showSidebar = searchParams.get("sidebar") === "true";
   const showFilters = searchParams.get("filters") === "true";
+  // `?transitionMs=N` lets E2E specs drive the calendar transition speed
+  // (issue #283). Defaults match production "normal"; pass `0` to verify
+  // the off-path swap.
+  const transitionMsParam = searchParams.get("transitionMs");
+  const parsedTransitionMs =
+    transitionMsParam !== null ? parseInt(transitionMsParam, 10) : NaN;
+  const transitionDurationMs =
+    Number.isFinite(parsedTransitionMs) && parsedTransitionMs >= 0
+      ? parsedTransitionMs
+      : undefined;
 
   // Optional `?anchor=YYYY-MM-DD` pins the relative event timestamps to a
   // deterministic "today" and also seeds `MockCalendarProvider`'s
@@ -488,6 +498,7 @@ function TestCalendarContent() {
       isLoading={loading}
       loadingDelay={loadingDelay}
       use24HourFormat={use24Hour}
+      transitionDurationMs={transitionDurationMs}
     >
       <div className="container mx-auto max-w-6xl p-4" data-testid="test-page">
         <h1 className="mb-4 text-2xl font-bold text-gray-900">
