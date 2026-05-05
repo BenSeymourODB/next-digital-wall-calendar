@@ -15,6 +15,14 @@ const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 export interface CalendarInfo {
   id: string;
   summary: string;
+  /**
+   * The user's per-calendar override of `summary` (set in the Google
+   * Calendar UI for shared calendars they don't own). When present it's the
+   * label the user expects to see for that calendar, so downstream code
+   * (e.g. the user-attribution fallback ladder in `transformGoogleEvent`)
+   * should prefer it over `summary`.
+   */
+  summaryOverride?: string;
   description?: string;
   backgroundColor: string;
   foregroundColor: string;
@@ -96,6 +104,7 @@ export async function GET() {
     const calendars: CalendarInfo[] = items.map((item) => ({
       id: item.id,
       summary: item.summary ?? "",
+      summaryOverride: item.summaryOverride,
       description: item.description,
       backgroundColor: item.backgroundColor || "#4285f4", // Default Google blue
       foregroundColor: item.foregroundColor || "#ffffff",

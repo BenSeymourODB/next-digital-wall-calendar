@@ -8,7 +8,11 @@ import {
   loadColorMappings,
   saveColorMappings,
 } from "@/lib/calendar-storage";
-import { transformGoogleEvent } from "@/lib/calendar-transform";
+import {
+  type CalendarAttributionMetadata,
+  type CalendarMetadataMap,
+  transformGoogleEvent,
+} from "@/lib/calendar-transform";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import type {
@@ -284,6 +288,13 @@ export function CalendarProvider({
     }
   );
   const [calendarIds, setCalendarIds] = useState<string[]>([]);
+  // Per-calendar metadata used by `transformGoogleEvent` to pick a
+  // human-readable user attribution for shared-calendar events whose creator
+  // / organizer have no `displayName` (#307 Bug B). Populated from the same
+  // `/api/calendar/calendars` payload that produces `calendarIds`.
+  const [calendarMetadata, setCalendarMetadata] = useState<CalendarMetadataMap>(
+    () => new Map()
+  );
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
 
@@ -388,10 +399,16 @@ export function CalendarProvider({
       }
 
       const body = (await response.json()) as { event: GoogleCalendarEvent };
-      // Reconcile through the in-memory colorMappings state — refreshEvents
-      // keeps it current via saveColorMappings, and re-reading localStorage
-      // here would race with that path on subsequent creates.
-      const reconciled = transformGoogleEvent(body.event, colorMappings);
+      // Reconcile through the in-memory colorMappings + calendarMetadata
+      // state — refreshEvents keeps both current, and re-reading localStorage
+      // here would race with that path on subsequent creates. The metadata
+      // feeds the user-attribution fallback ladder for shared calendars
+      // (#307 Bug B).
+      const reconciled = transformGoogleEvent(
+        body.event,
+        colorMappings,
+        calendarMetadata
+      );
 
       // Replace the optimistic row with the server's canonical event in a
       // single setState so the list never flickers.
@@ -474,7 +491,8 @@ export function CalendarProvider({
       timeMin: Date,
       timeMax: Date,
       calIds: string[],
-      mappings: CalendarColorMapping[]
+      mappings: CalendarColorMapping[],
+      metadata: CalendarMetadataMap
     ): Promise<IEvent[]> => {
       const url = new URL("/api/calendar/events", window.location.origin);
       url.searchParams.set("calendarIds", calIds.join(","));
@@ -494,36 +512,56 @@ export function CalendarProvider({
       const data = await response.json();
       const googleEvents: GoogleCalendarEvent[] = data.events || [];
 
-      // Transform events using color mappings
-      return googleEvents.map((event) => transformGoogleEvent(event, mappings));
+      // Transform events using color mappings + per-calendar metadata so
+      // shared-calendar events get a recognisable user attribution (#307).
+      return googleEvents.map((event) =>
+        transformGoogleEvent(event, mappings, metadata)
+      );
     },
     []
   );
 
   /**
-   * Fetch calendar list and return calendar IDs
+   * Fetch the user's calendar list and return both the IDs (for downstream
+   * `/api/calendar/events` queries) and a metadata map keyed by id (for the
+   * `transformGoogleEvent` user-attribution fallback ladder, #307 Bug B).
    */
-  const fetchCalendarList = useCallback(async (): Promise<string[]> => {
+  const fetchCalendarList = useCallback(async (): Promise<{
+    ids: string[];
+    metadata: CalendarMetadataMap;
+  }> => {
     try {
       const response = await fetch("/api/calendar/calendars");
       if (!response.ok) {
         logger.log("Failed to fetch calendar list, using primary only");
-        return ["primary"];
+        return { ids: ["primary"], metadata: new Map() };
       }
 
       const data = await response.json();
       if (data.calendars && data.calendars.length > 0) {
-        // Return IDs of all calendars (user can filter later)
-        const ids = data.calendars.map(
-          (cal: { id: string; selected?: boolean }) => cal.id
+        const calendars = data.calendars as Array<{
+          id: string;
+          summary?: string;
+          summaryOverride?: string;
+          selected?: boolean;
+        }>;
+        const ids = calendars.map((cal) => cal.id);
+        const metadata = new Map<string, CalendarAttributionMetadata>(
+          calendars.map((cal) => [
+            cal.id,
+            {
+              summary: cal.summary ?? "",
+              summaryOverride: cal.summaryOverride,
+            },
+          ])
         );
         logger.log("Fetched calendar list", { count: ids.length });
-        return ids;
+        return { ids, metadata };
       }
     } catch {
       logger.log("Could not fetch calendar list, using primary only");
     }
-    return ["primary"];
+    return { ids: ["primary"], metadata: new Map() };
   }, []);
 
   // Refresh events from server-side API
@@ -547,11 +585,17 @@ export function CalendarProvider({
         return;
       }
 
-      // Fetch calendar list first (if not already fetched)
+      // Fetch calendar list first (if not already fetched). The metadata
+      // map produced alongside the IDs feeds the user-attribution ladder
+      // for shared-calendar events (#307 Bug B).
       let calIds = calendarIds;
+      let currentMetadata = calendarMetadata;
       if (calIds.length === 0) {
-        calIds = await fetchCalendarList();
+        const list = await fetchCalendarList();
+        calIds = list.ids;
+        currentMetadata = list.metadata;
         setCalendarIds(calIds);
+        setCalendarMetadata(currentMetadata);
       }
 
       // Fetch the canonical color mappings from the server on every refresh.
@@ -597,7 +641,8 @@ export function CalendarProvider({
         timeMin,
         timeMax,
         calIds,
-        currentMappings
+        currentMappings,
+        currentMetadata
       );
 
       setAllEvents(transformedEvents);
@@ -627,7 +672,7 @@ export function CalendarProvider({
       try {
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
-          transformGoogleEvent(event, colorMappings)
+          transformGoogleEvent(event, colorMappings, calendarMetadata)
         );
         setAllEvents(transformedEvents);
         logger.log("Loaded events from cache", {
@@ -643,6 +688,7 @@ export function CalendarProvider({
     status,
     session,
     calendarIds,
+    calendarMetadata,
     colorMappings,
     fetchCalendarList,
     fetchEventsForRange,
@@ -697,7 +743,8 @@ export function CalendarProvider({
             fetchStart,
             fetchEnd,
             calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings
+            colorMappings,
+            calendarMetadata
           );
 
           setAllEvents((prev) => {
@@ -725,7 +772,8 @@ export function CalendarProvider({
             fetchStart,
             fetchEnd,
             calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings
+            colorMappings,
+            calendarMetadata
           );
 
           setAllEvents((prev) => {
@@ -746,7 +794,14 @@ export function CalendarProvider({
         isLoadingRangeRef.current = false;
       }
     },
-    [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
+    [
+      status,
+      loadedRange,
+      calendarIds,
+      calendarMetadata,
+      colorMappings,
+      fetchEventsForRange,
+    ]
   );
 
   /**
@@ -797,7 +852,8 @@ export function CalendarProvider({
             yearStart,
             loadedRange.start,
             calIds,
-            colorMappings
+            colorMappings,
+            calendarMetadata
           );
 
           setAllEvents((prev) => {
@@ -818,7 +874,8 @@ export function CalendarProvider({
             loadedRange.end,
             yearEnd,
             calIds,
-            colorMappings
+            colorMappings,
+            calendarMetadata
           );
 
           setAllEvents((prev) => {
@@ -837,7 +894,14 @@ export function CalendarProvider({
         isLoadingRangeRef.current = false;
       }
     },
-    [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
+    [
+      status,
+      loadedRange,
+      calendarIds,
+      calendarMetadata,
+      colorMappings,
+      fetchEventsForRange,
+    ]
   );
 
   // Color mappings are initialized synchronously from localStorage in useState.
@@ -847,10 +911,12 @@ export function CalendarProvider({
   useEffect(() => {
     const initializeEvents = async () => {
       try {
-        // First, load cached events for immediate display
+        // First, load cached events for immediate display. Metadata may be
+        // empty on first paint (we haven't fetched the calendar list yet);
+        // the ladder simply skips that rung and falls through to the next.
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
-          transformGoogleEvent(event, colorMappings)
+          transformGoogleEvent(event, colorMappings, calendarMetadata)
         );
         setAllEvents(transformedEvents);
         logger.log("Loaded events from cache on mount", {

@@ -45,6 +45,7 @@ global.fetch = mockFetch;
 interface CalendarInfo {
   id: string;
   summary: string;
+  summaryOverride?: string;
   description?: string;
   backgroundColor: string;
   foregroundColor: string;
@@ -148,6 +149,37 @@ describe("/api/calendar/calendars", () => {
         primary: false,
         selected: true,
       });
+    });
+
+    it("forwards summaryOverride from the Google calendarList payload (#307)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [
+              {
+                id: "shared@example.com",
+                summary: "Original",
+                summaryOverride: "My Override",
+                backgroundColor: "#4285f4",
+                foregroundColor: "#ffffff",
+                primary: false,
+                selected: true,
+              },
+            ],
+          }),
+      });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<CalendarsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.calendars[0].summaryOverride).toBe("My Override");
     });
 
     it("returns empty array when no calendars exist", async () => {

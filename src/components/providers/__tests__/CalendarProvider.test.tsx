@@ -452,22 +452,41 @@ vi.mock("@/lib/calendar-transform", () => ({
   // Honour `colorOverride` on the test fixture so the filter test
   // can assert that filtering by color actually drops the right
   // events. Defaults to "blue" when no override is given.
-  transformGoogleEvent: (event: {
-    id: string;
-    summary?: string;
-    start?: { dateTime?: string };
-    colorOverride?: string;
-  }) => ({
-    id: event.id,
-    title: event.summary ?? "Mock",
-    description: "",
-    startDate: event.start?.dateTime ?? new Date().toISOString(),
-    endDate: event.start?.dateTime ?? new Date().toISOString(),
-    color: event.colorOverride ?? "blue",
-    isAllDay: false,
-    calendarId: "primary",
-    user: { id: "u1", name: "Mock", picturePath: null },
-  }),
+  //
+  // Honour the `calendarMetadata` 3rd arg so the #307 Bug B integration
+  // test can assert that calendar-summary attribution flows from the
+  // calendarList payload through `fetchCalendarList` → `fetchEventsForRange`
+  // → `transformGoogleEvent`. When metadata is present for the event's
+  // calendarId, surface its summary as `user.name`.
+  transformGoogleEvent: (
+    event: {
+      id: string;
+      summary?: string;
+      start?: { dateTime?: string };
+      colorOverride?: string;
+      calendarId?: string;
+    },
+    _mappings: unknown,
+    metadata?: ReadonlyMap<
+      string,
+      { summary: string; summaryOverride?: string }
+    >
+  ) => {
+    const calId = event.calendarId ?? "primary";
+    const meta = metadata?.get(calId);
+    const userName = meta?.summaryOverride ?? meta?.summary ?? "Mock";
+    return {
+      id: event.id,
+      title: event.summary ?? "Mock",
+      description: "",
+      startDate: event.start?.dateTime ?? new Date().toISOString(),
+      endDate: event.start?.dateTime ?? new Date().toISOString(),
+      color: event.colorOverride ?? "blue",
+      isAllDay: false,
+      calendarId: calId,
+      user: { id: calId, name: userName, picturePath: null },
+    };
+  },
 }));
 
 function fetchOk(body: unknown): Response {
@@ -621,6 +640,70 @@ describe("CalendarProvider", () => {
           .map((c) => String(c[0]))
           .filter((u) => u.includes("/api/calendar/colors")).length;
         expect(after).toBeGreaterThan(initialCount);
+      });
+    });
+  });
+
+  describe("calendar attribution metadata (#307 Bug B)", () => {
+    it("threads calendar summary from /api/calendar/calendars into event user.name", async () => {
+      // Stand up a calendarList payload whose entries carry a `summary`
+      // (the human-readable label for a shared calendar) and an event
+      // whose creator has no displayName — exactly the production case
+      // from the bug report.
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(
+            fetchOk({
+              calendars: [
+                {
+                  id: "liv4ever42@gmail.com",
+                  summary: "Liv Seymour",
+                },
+              ],
+            })
+          );
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        if (url.includes("/api/calendar/events")) {
+          return Promise.resolve(
+            fetchOk({
+              events: [
+                {
+                  id: "shared-1",
+                  summary: "Bubble Day",
+                  start: { dateTime: new Date().toISOString() },
+                  end: { dateTime: new Date().toISOString() },
+                  calendarId: "liv4ever42@gmail.com",
+                },
+              ],
+            })
+          );
+        }
+        return Promise.resolve(fetchOk({}));
+      });
+
+      function UserProbe() {
+        const { events } = useCalendar();
+        return (
+          <ul data-testid="user-probe">
+            {events.map((e) => (
+              <li key={e.id}>{`${e.title}|${e.user.name}`}</li>
+            ))}
+          </ul>
+        );
+      }
+
+      render(
+        <CalendarProvider>
+          <UserProbe />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("Bubble Day|Liv Seymour")).toBeInTheDocument();
       });
     });
   });
