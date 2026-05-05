@@ -56,10 +56,17 @@ export function SimpleCalendar() {
     maxEventsPerDay,
     use24HourFormat,
     weekStartDay,
+    canEditCalendar,
   } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const handleDelete = useEventDelete();
+  // Hide the delete button when the source calendar is read-only — falls
+  // back to permissive when no event is selected so the modal renders the
+  // expected layout once the user clicks an editable event (#266).
+  const canDeleteSelected = selectedEvent
+    ? canEditCalendar(selectedEvent.calendarId)
+    : true;
 
   const weekdayHeaders = getShortWeekdayLabels(weekStartDay);
 
@@ -413,6 +420,7 @@ export function SimpleCalendar() {
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
+        canDelete={canDeleteSelected}
       />
     </div>
   );

@@ -244,11 +244,15 @@ export function AgendaCalendar() {
     isLoading,
     agendaModeGroupBy,
     setAgendaModeGroupBy,
+    canEditCalendar,
   } = useCalendar();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const handleDelete = useEventDelete();
+  const canDeleteSelected = selectedEvent
+    ? canEditCalendar(selectedEvent.calendarId)
+    : true;
 
   const openModal = (event: IEvent, trigger: HTMLElement) => {
     triggerRef.current = trigger;
@@ -430,6 +434,7 @@ export function AgendaCalendar() {
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
+        canDelete={canDeleteSelected}
       />
     </div>
   );

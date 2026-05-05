@@ -51,6 +51,14 @@ interface EventDetailModalProps {
    * stays open (the caller is expected to surface a toast).
    */
   onDelete?: (event: IEvent) => Promise<void>;
+  /**
+   * Whether the underlying calendar permits deletion. Callers compute this
+   * from the calendar's `accessRole` (issue #266) and pass `false` for
+   * `reader` / `freeBusyReader` calendars so the delete UI is hidden up
+   * front instead of letting the user hit a 403 from Google. Defaults to
+   * `true` for back-compat with pre-#266 callers.
+   */
+  canDelete?: boolean;
 }
 
 function getInitials(name: string): string {
@@ -87,6 +95,7 @@ export function EventDetailModal({
   use24HourFormat,
   returnFocusTo,
   onDelete,
+  canDelete = true,
 }: EventDetailModalProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -96,6 +105,9 @@ export function EventDetailModal({
   const timeRange = formatTimeRange(event, use24HourFormat);
   const dateLabel = formatDateLabel(event);
   const hasDescription = Boolean(event.description?.trim());
+  // Read-only calendars (reader / freeBusyReader) opt out of the delete UI
+  // so the user never sees an action that would 403 against Google.
+  const showDelete = Boolean(onDelete) && canDelete;
 
   const handleConfirmDelete = async () => {
     if (!onDelete) return;
@@ -180,7 +192,7 @@ export function EventDetailModal({
           </div>
         </div>
 
-        {onDelete && (
+        {showDelete && (
           <DialogFooter>
             <Button
               type="button"
@@ -195,7 +207,7 @@ export function EventDetailModal({
         )}
       </DialogContent>
 
-      {onDelete && (
+      {showDelete && (
         <AlertDialog
           open={confirmingDelete}
           onOpenChange={(open) => {
