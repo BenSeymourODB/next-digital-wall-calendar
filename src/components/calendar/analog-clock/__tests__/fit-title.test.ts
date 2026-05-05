@@ -127,4 +127,34 @@ describe("fitTitleToArc", () => {
     );
     expect(result.lines.length).toBeLessThanOrEqual(2);
   });
+
+  describe("with maxLines = 1", () => {
+    it("renders a fitting title on a single line", () => {
+      const result = fitTitleToArc("Lunch", 60, RADIUS, FONT, 1);
+      expect(result.lines).toEqual(["Lunch"]);
+      expect(result.didOverflow).toBe(false);
+    });
+
+    it("ellipsizes to a single line when content would otherwise wrap", () => {
+      // Same input that produces a 2-line result at the default maxLines=2:
+      // "Family Game Night" at 30° budget ≈ 12 chars. With maxLines=1 we
+      // truncate to a single line and report overflow.
+      const result = fitTitleToArc("Family Game Night", 30, RADIUS, FONT, 1);
+      expect(result.lines.length).toBe(1);
+      expect(result.didOverflow).toBe(true);
+      expect(result.lines[0].endsWith("...")).toBe(true);
+    });
+
+    it("never returns more than one line when maxLines is 1", () => {
+      const result = fitTitleToArc(
+        "the quick brown fox jumps over the lazy dog",
+        30,
+        RADIUS,
+        FONT,
+        1
+      );
+      expect(result.lines.length).toBe(1);
+      expect(result.didOverflow).toBe(true);
+    });
+  });
 });

@@ -72,7 +72,8 @@ export function fitTitleToArc(
   cleanTitle: string,
   arcSpanDegrees: number,
   titleRadius: number,
-  fontSize: number
+  fontSize: number,
+  maxLines: 1 | 2 = 2
 ): FitTitleResult {
   const budget = charBudgetForArc(arcSpanDegrees, titleRadius, fontSize);
   const normalised = cleanTitle.trim().replace(/\s+/g, " ");
@@ -109,6 +110,14 @@ export function fitTitleToArc(
   if (line1.length === 0) {
     return {
       lines: [truncateWithEllipsis(words[0], budget)],
+      didOverflow: true,
+    };
+  }
+
+  // Single-line mode: ellipsize line 1 since more content remains.
+  if (maxLines === 1) {
+    return {
+      lines: [truncateWithEllipsis(normalised, budget)],
       didOverflow: true,
     };
   }

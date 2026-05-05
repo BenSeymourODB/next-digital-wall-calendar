@@ -6,7 +6,11 @@
  * with emoji positioned at the midpoint of the arc.
  */
 import { describeArc, polarToCartesian, roundCoord } from "./clock-utils";
+import { fitTitleToArc } from "./fit-title";
 import type { EventArcProps } from "./types";
+
+/** Minimum arc span (degrees) below which 2-line wrap is suppressed. */
+const TWO_LINE_MIN_SPAN_DEGREES = 30;
 
 /**
  * Generate an SVG arc path for textPath (single arc, not a donut).
@@ -82,19 +86,31 @@ export function EventArc({
   const emojiFontSize = roundCoord(Math.min(arcHeight * 0.4, 26));
   const titleFontSize = roundCoord(Math.min(arcHeight * 0.3, 18));
 
-  // Prepare display text: emoji + title combined for textPath
-  const displayText =
-    cleanTitle.length > 15 ? `${cleanTitle.slice(0, 14)}...` : cleanTitle;
-
-  // Text path for curved title
-  const textArcPath = describeTextArc(
-    cx,
-    cy,
+  // Decide between a single curved line and two concentric curved lines based
+  // on the arc's available circumference at titleRadius. Below
+  // TWO_LINE_MIN_SPAN_DEGREES we keep the single-line truncation behavior so
+  // narrow arcs don't end up with 2-char-per-line stubs.
+  const maxLines: 1 | 2 = arcSpan >= TWO_LINE_MIN_SPAN_DEGREES ? 2 : 1;
+  const fit = fitTitleToArc(
+    cleanTitle,
+    arcSpan,
     titleRadius,
-    startAngle,
-    endAngle
+    titleFontSize,
+    maxLines
   );
-  const textPathId = `text-path-${id}`;
+
+  // Per-line offset for the 2-line case. Slightly under one font-size so the
+  // two curved baselines stay within the arc band without overlapping.
+  const lineOffset = titleFontSize * 0.55;
+  const lineRadii =
+    fit.lines.length === 2
+      ? [titleRadius + lineOffset / 2, titleRadius - lineOffset / 2]
+      : [titleRadius];
+
+  const textArcPaths = lineRadii.map((r) =>
+    describeTextArc(cx, cy, r, startAngle, endAngle)
+  );
+  const textPathIds = lineRadii.map((_, i) => `text-path-${id}-${i}`);
 
   return (
     <g
@@ -112,9 +128,11 @@ export function EventArc({
         strokeWidth={1.5}
       />
 
-      {/* Define the text path for curved text */}
+      {/* Define the text path(s) for curved text — one per rendered line. */}
       <defs>
-        <path id={textPathId} d={textArcPath} fill="none" />
+        {textArcPaths.map((d, i) => (
+          <path key={textPathIds[i]} id={textPathIds[i]} d={d} fill="none" />
+        ))}
       </defs>
 
       {/* Event emoji - inner-radius midpoint, rotated to match arc angle */}
@@ -132,8 +150,8 @@ export function EventArc({
         </text>
       )}
 
-      {/* Event title - curved along the arc using textPath */}
-      {showTitle && (
+      {/* Event title - curved along up to two concentric textPaths. */}
+      {showTitle && fit.lines.length > 0 && (
         <text
           data-testid={`event-title-${id}`}
           fontSize={titleFontSize}
@@ -141,14 +159,17 @@ export function EventArc({
           fill="white"
           fontFamily="system-ui, -apple-system, sans-serif"
         >
-          <textPath
-            href={`#${textPathId}`}
-            startOffset="50%"
-            textAnchor="middle"
-            dominantBaseline="central"
-          >
-            {displayText}
-          </textPath>
+          {fit.lines.map((line, i) => (
+            <textPath
+              key={textPathIds[i]}
+              href={`#${textPathIds[i]}`}
+              startOffset="50%"
+              textAnchor="middle"
+              dominantBaseline="central"
+            >
+              {line}
+            </textPath>
+          ))}
         </text>
       )}
     </g>
