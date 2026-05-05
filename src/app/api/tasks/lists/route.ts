@@ -2,7 +2,12 @@
  * API endpoint for Google Task Lists
  * Uses server-side authentication with NextAuth.js
  */
-import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  assertGoogleTasksScope,
+  getAccessToken,
+  getSession,
+} from "@/lib/auth";
 import { listTaskLists } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
@@ -28,6 +33,10 @@ export async function GET() {
       );
     }
 
+    // Short-circuit users whose stored grant is missing the Tasks scope so we
+    // never burn an upstream call we already know will 403 (#237).
+    await assertGoogleTasksScope();
+
     const accessToken = await getAccessToken();
     const lists = await listTaskLists(accessToken);
 
@@ -39,8 +48,9 @@ export async function GET() {
     return NextResponse.json({ lists });
   } catch (error) {
     if (error instanceof AuthError) {
+      const requiresReauth = error.status === 401 || error.status === 403;
       return NextResponse.json(
-        { error: error.message, requiresReauth: error.status === 401 },
+        { error: error.message, requiresReauth },
         { status: error.status }
       );
     }

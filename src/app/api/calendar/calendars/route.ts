@@ -3,6 +3,7 @@
  * Returns all calendars with their color information
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
 
@@ -54,7 +55,7 @@ export async function GET() {
     const apiUrl = new URL(`${GOOGLE_CALENDAR_API}/users/me/calendarList`);
 
     // Fetch calendar list from Google Calendar API
-    const response = await fetch(apiUrl.toString(), {
+    const response = await fetchWithRetry(apiUrl.toString(), {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",

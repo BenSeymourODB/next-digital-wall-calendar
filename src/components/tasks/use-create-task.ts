@@ -17,6 +17,23 @@ export interface CreateTaskInput {
   notes?: string;
 }
 
+/**
+ * Error thrown when `/api/tasks` returns a non-OK response. Carries the HTTP
+ * status and the `requiresReauth` flag from the structured error body so
+ * callers can render a "Sign in again" CTA without parsing the message.
+ */
+export class TaskApiError extends Error {
+  readonly status: number;
+  readonly requiresReauth: boolean;
+
+  constructor(message: string, status: number, requiresReauth = false) {
+    super(message);
+    this.name = "TaskApiError";
+    this.status = status;
+    this.requiresReauth = requiresReauth;
+  }
+}
+
 export interface UseCreateTaskReturn {
   createTask: (input: CreateTaskInput) => Promise<GoogleTask>;
   loading: boolean;
@@ -46,14 +63,27 @@ export function useCreateTask(): UseCreateTaskReturn {
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as {
           error?: string;
+          requiresReauth?: boolean;
         };
-        throw new Error(payload.error || "Failed to create task");
+        throw new TaskApiError(
+          payload.error || "Failed to create task",
+          response.status,
+          payload.requiresReauth === true
+        );
       }
 
       const data = (await response.json()) as { task: GoogleTask };
       return data.task;
     } catch (err) {
-      const wrapped = err instanceof Error ? err : new Error(String(err));
+      // Preserve TaskApiError so callers can branch on `status` /
+      // `requiresReauth`; wrap anything else (network error, etc.) in a
+      // plain Error to keep the public type simple.
+      const wrapped =
+        err instanceof TaskApiError
+          ? err
+          : err instanceof Error
+            ? err
+            : new Error(String(err));
       setError(wrapped);
       throw wrapped;
     } finally {

@@ -2,6 +2,10 @@
  * API endpoint for refreshing Google OAuth access tokens
  * This server-side endpoint securely handles token refresh using the client secret
  */
+import {
+  GoogleTokenRefreshError,
+  refreshGoogleAccessToken,
+} from "@/lib/auth/refresh-google-token";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -29,58 +33,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Exchange refresh token for new access token
-    const response = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: refreshToken,
-        grant_type: "refresh_token",
-      }),
-    });
+    try {
+      const tokens = await refreshGoogleAccessToken(
+        refreshToken,
+        clientId,
+        clientSecret
+      );
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      logger.error(new Error("Token refresh failed"), {
-        context: "refreshToken",
-        status: response.status,
-        error: errorData,
+      logger.log("Token refreshed successfully");
+
+      return NextResponse.json({
+        access_token: tokens.access_token,
+        expires_in: tokens.expires_in,
+        scope: tokens.scope,
+        token_type: tokens.token_type,
       });
+    } catch (error) {
+      if (error instanceof GoogleTokenRefreshError) {
+        const body = error.body as { error?: string } | null;
+        logger.error(new Error("Token refresh failed"), {
+          context: "refreshToken",
+          status: error.status,
+          googleError: body?.error ?? "unknown",
+        });
 
-      // Check for specific error types
-      if (
-        errorData.error === "invalid_grant" ||
-        errorData.error === "invalid_request"
-      ) {
+        if (
+          body?.error === "invalid_grant" ||
+          body?.error === "invalid_request"
+        ) {
+          return NextResponse.json(
+            {
+              error: "Invalid or expired refresh token",
+              requiresReauth: true,
+            },
+            { status: 401 }
+          );
+        }
+
         return NextResponse.json(
-          {
-            error: "Invalid or expired refresh token",
-            requiresReauth: true,
-          },
-          { status: 401 }
+          { error: "Failed to refresh token" },
+          { status: error.status }
         );
       }
-
-      return NextResponse.json(
-        { error: "Failed to refresh token" },
-        { status: response.status }
-      );
+      throw error;
     }
-
-    const data = await response.json();
-
-    logger.log("Token refreshed successfully");
-
-    return NextResponse.json({
-      access_token: data.access_token,
-      expires_in: data.expires_in,
-      scope: data.scope,
-      token_type: data.token_type,
-    });
   } catch (error) {
     logger.error(error as Error, { context: "refreshToken" });
     return NextResponse.json(

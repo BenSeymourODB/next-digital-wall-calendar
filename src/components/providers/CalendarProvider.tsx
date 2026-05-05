@@ -38,6 +38,21 @@ interface LoadedRange {
   end: Date;
 }
 
+/**
+ * Server-bound payload for `createEvent`. Mirrors the body of
+ * `POST /api/calendar/events` (#116) — `calendarId` is mandatory at this
+ * layer because the provider doesn't second-guess the caller's choice.
+ */
+export interface CreateEventInput {
+  title: string;
+  description: string;
+  color: TEventColor;
+  isAllDay: boolean;
+  startDate: string;
+  endDate: string;
+  calendarId: string;
+}
+
 export interface ICalendarContext {
   selectedDate: Date;
   view: TCalendarView;
@@ -69,6 +84,13 @@ export interface ICalendarContext {
   updateEvent: (event: IEvent) => void;
   removeEvent: (eventId: string) => void;
   /**
+   * Persist a new event to Google Calendar with an optimistic insert.
+   * The local list is updated immediately with `optimistic` and reconciled
+   * to the server's canonical event on success; the optimistic row is
+   * removed on failure and the promise rejects so callers can toast.
+   */
+  createEvent: (optimistic: IEvent, input: CreateEventInput) => Promise<IEvent>;
+  /**
    * Delete an event from Google Calendar with an optimistic UI remove.
    * Snapshots the prior list before removing and restores it on failure.
    * The promise rejects on failure so the caller can surface a toast.
@@ -76,6 +98,12 @@ export interface ICalendarContext {
   deleteEvent: (eventId: string, calendarId: string) => Promise<void>;
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
+  /**
+   * Ensure events for the entire requested calendar year (Jan 1 – Dec 31)
+   * are loaded into the provider's `loadedRange`. Used by the year view to
+   * widen the default lazy-load window beyond -1 / +6 months.
+   */
+  loadEventsForYear: (year: number) => Promise<void>;
   isLoading: boolean;
   isAuthenticated: boolean;
   maxEventsPerDay: number;
@@ -321,6 +349,72 @@ export function CalendarProvider({
 
   const removeEvent = (eventId: string) => {
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
+  };
+
+  const createEvent = async (
+    optimistic: IEvent,
+    input: CreateEventInput
+  ): Promise<IEvent> => {
+    // Optimistic insert keyed on the optimistic id. If the request fails
+    // we remove only that row, so a concurrent refreshEvents() can update
+    // the rest of the list without us clobbering its result on rollback.
+    setAllEvents((prev) => [...prev, optimistic]);
+
+    try {
+      const response = await fetch("/api/calendar/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: input.title,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          color: input.color,
+          description: input.description,
+          isAllDay: input.isAllDay,
+          calendarId: input.calendarId,
+        }),
+      });
+
+      if (!response.ok) {
+        let message = "Failed to create event";
+        try {
+          const body = await response.json();
+          if (typeof body?.error === "string") message = body.error;
+        } catch {
+          // Some upstream proxies return non-JSON 502s; the generic message
+          // is sufficient for the toast.
+        }
+        throw new Error(message);
+      }
+
+      const body = (await response.json()) as { event: GoogleCalendarEvent };
+      // Reconcile through the in-memory colorMappings state — refreshEvents
+      // keeps it current via saveColorMappings, and re-reading localStorage
+      // here would race with that path on subsequent creates.
+      const reconciled = transformGoogleEvent(body.event, colorMappings);
+
+      // Replace the optimistic row with the server's canonical event in a
+      // single setState so the list never flickers.
+      setAllEvents((current) =>
+        current.map((e) => (e.id === optimistic.id ? reconciled : e))
+      );
+
+      logger.event("CalendarEventCreated", {
+        eventId: reconciled.id,
+        calendarId: reconciled.calendarId,
+      });
+
+      return reconciled;
+    } catch (error) {
+      // Rollback: remove the optimistic row from whatever list is current,
+      // preserving any concurrent refresh's writes.
+      setAllEvents((current) => current.filter((e) => e.id !== optimistic.id));
+      logger.error(error as Error, {
+        context: "createEvent",
+        calendarId: input.calendarId,
+      });
+      throw error;
+    }
   };
 
   const deleteEvent = async (eventId: string, calendarId: string) => {
@@ -651,6 +745,97 @@ export function CalendarProvider({
     [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
   );
 
+  /**
+   * Ensure events for an entire calendar year are loaded.
+   *
+   * The default `refreshEvents` window is `-calendarFetchMonthsBehind` to
+   * `+calendarFetchMonthsAhead` months from "now" — typically 7 months —
+   * which leaves the year view sparsely populated outside that window.
+   * This method widens `loadedRange` to cover Jan 1 – Dec 31 of the
+   * requested year by fetching only the missing edges and merging them
+   * into `allEvents`.
+   */
+  const loadEventsForYear = useCallback(
+    async (year: number) => {
+      if (
+        status !== "authenticated" ||
+        !loadedRange ||
+        isLoadingRangeRef.current
+      ) {
+        return;
+      }
+
+      const yearStart = new Date(year, 0, 1, 0, 0, 0, 0);
+      const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+
+      // Year already fully covered by loadedRange — nothing to do.
+      if (
+        !isBefore(yearStart, loadedRange.start) &&
+        !isAfter(yearEnd, loadedRange.end)
+      ) {
+        return;
+      }
+
+      isLoadingRangeRef.current = true;
+      logger.log("Loading events for full year", { year });
+
+      try {
+        const calIds = calendarIds.length > 0 ? calendarIds : ["primary"];
+
+        // Advance `loadedRange` after each successful edge fetch rather
+        // than batching both updates at the end. If the Dec edge throws
+        // after the Jan edge has already merged its events into state,
+        // the range pointer must reflect what's actually stored — else
+        // a retry would needlessly re-fetch Jan and rely on the dedupe
+        // guard to discard the duplicates.
+        if (isBefore(yearStart, loadedRange.start)) {
+          const newEvents = await fetchEventsForRange(
+            yearStart,
+            loadedRange.start,
+            calIds,
+            colorMappings
+          );
+
+          setAllEvents((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const uniqueNewEvents = newEvents.filter(
+              (e) => !existingIds.has(e.id)
+            );
+            return [...uniqueNewEvents, ...prev];
+          });
+
+          setLoadedRange((prev) =>
+            prev ? { ...prev, start: yearStart } : prev
+          );
+        }
+
+        if (isAfter(yearEnd, loadedRange.end)) {
+          const newEvents = await fetchEventsForRange(
+            loadedRange.end,
+            yearEnd,
+            calIds,
+            colorMappings
+          );
+
+          setAllEvents((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const uniqueNewEvents = newEvents.filter(
+              (e) => !existingIds.has(e.id)
+            );
+            return [...prev, ...uniqueNewEvents];
+          });
+
+          setLoadedRange((prev) => (prev ? { ...prev, end: yearEnd } : prev));
+        }
+      } catch (error) {
+        logger.error(error as Error, { context: "loadEventsForYear" });
+      } finally {
+        isLoadingRangeRef.current = false;
+      }
+    },
+    [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
+  );
+
   // Color mappings are initialized synchronously from localStorage in useState.
   // They are also refreshed from the API as part of refreshEvents.
 
@@ -767,9 +952,11 @@ export function CalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    createEvent,
     deleteEvent,
     clearFilter,
     refreshEvents,
+    loadEventsForYear,
     isLoading,
     isAuthenticated,
     // Clamp defensively so a rogue DB write of 0 or a negative number never
