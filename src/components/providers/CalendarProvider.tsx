@@ -554,25 +554,29 @@ export function CalendarProvider({
         setCalendarIds(calIds);
       }
 
-      // Fetch current color mappings
+      // Fetch the canonical color mappings from the server on every refresh.
+      // localStorage is treated as a paint-fast warm cache, not the source of
+      // truth — the server-derived mapping (per-user override on
+      // `calendarList.list.backgroundColor`) is. Pre-#307 this was a
+      // fetch-once-per-session cache that never noticed an override change in
+      // Google Calendar nor reconciled across browsers; on every refresh we
+      // now write through to localStorage so the next paint stays fast.
       let currentMappings = colorMappings;
-      if (currentMappings.length === 0) {
-        try {
-          const colorResponse = await fetch("/api/calendar/colors");
-          if (colorResponse.ok) {
-            const colorData = await colorResponse.json();
-            if (colorData.colorMappings && colorData.colorMappings.length > 0) {
-              currentMappings = colorData.colorMappings;
-              saveColorMappings(currentMappings);
-              setColorMappings(currentMappings);
-              logger.log("Fetched color mappings during refresh", {
-                count: currentMappings.length,
-              });
-            }
+      try {
+        const colorResponse = await fetch("/api/calendar/colors");
+        if (colorResponse.ok) {
+          const colorData = await colorResponse.json();
+          if (colorData.colorMappings && colorData.colorMappings.length > 0) {
+            currentMappings = colorData.colorMappings;
+            saveColorMappings(currentMappings);
+            setColorMappings(currentMappings);
+            logger.log("Fetched color mappings during refresh", {
+              count: currentMappings.length,
+            });
           }
-        } catch {
-          logger.log("Could not fetch colors during refresh");
         }
+      } catch {
+        logger.log("Could not fetch colors during refresh");
       }
 
       // Calculate time range from user settings (defaults: -1 month, +6 months)

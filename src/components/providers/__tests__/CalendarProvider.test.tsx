@@ -16,6 +16,7 @@ import {
   CalendarProvider,
   useCalendar,
 } from "@/components/providers/CalendarProvider";
+import type { CalendarColorMapping } from "@/lib/calendar-storage";
 import { SessionProvider } from "next-auth/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -35,8 +36,19 @@ vi.mock("next-auth/react", async () => {
   };
 });
 
+const { colorMappingsToLoad } = vi.hoisted(() => ({
+  colorMappingsToLoad: {
+    current: [] as Array<{
+      calendarId: string;
+      colorId: string;
+      hexColor: string;
+      tailwindColor: string;
+    }>,
+  },
+}));
+
 vi.mock("@/lib/calendar-storage", () => ({
-  loadColorMappings: () => [],
+  loadColorMappings: () => colorMappingsToLoad.current,
   saveColorMappings: vi.fn(),
   loadSettings: () => ({ refreshInterval: 60 }),
   eventCache: {
@@ -501,6 +513,7 @@ describe("CalendarProvider", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    colorMappingsToLoad.current = [];
     mockSessionState.current = {
       data: {
         user: { name: "Test", email: "test@test.test" },
@@ -531,6 +544,85 @@ describe("CalendarProvider", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+  });
+
+  describe("color mappings refresh (#307 Bug A)", () => {
+    it("re-fetches /api/calendar/colors on mount even when warm cache is populated", async () => {
+      // Simulate a browser whose localStorage already holds a (potentially
+      // stale) color mapping captured before the user updated their per-user
+      // calendar override in Google. Pre-fix, the provider would short-circuit
+      // and never re-hit the server, so the cached mapping would persist
+      // forever. After the fix, the warm cache is paint-fast only — the
+      // server is the source of truth and is consulted on every refresh.
+      colorMappingsToLoad.current = [
+        {
+          calendarId: "shared@example.com",
+          colorId: "",
+          hexColor: "#a4bdfc",
+          tailwindColor: "blue",
+        } satisfies CalendarColorMapping,
+      ];
+
+      render(
+        <CalendarProvider>
+          <EventList />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        const calls = fetchMock.mock.calls.map((c) => String(c[0]));
+        expect(calls.some((u) => u.includes("/api/calendar/colors"))).toBe(
+          true
+        );
+      });
+    });
+
+    it("re-fetches /api/calendar/colors on each refreshEvents call", async () => {
+      colorMappingsToLoad.current = [
+        {
+          calendarId: "primary",
+          colorId: "",
+          hexColor: "#3b82f6",
+          tailwindColor: "blue",
+        } satisfies CalendarColorMapping,
+      ];
+
+      function RefreshProbe() {
+        const { refreshEvents } = useCalendar();
+        return (
+          <button type="button" onClick={() => refreshEvents()}>
+            refresh
+          </button>
+        );
+      }
+
+      render(
+        <CalendarProvider>
+          <RefreshProbe />
+        </CalendarProvider>
+      );
+
+      // Wait for initial mount fetch.
+      await waitFor(() => {
+        const calls = fetchMock.mock.calls.map((c) => String(c[0]));
+        expect(calls.some((u) => u.includes("/api/calendar/colors"))).toBe(
+          true
+        );
+      });
+
+      const initialCount = fetchMock.mock.calls
+        .map((c) => String(c[0]))
+        .filter((u) => u.includes("/api/calendar/colors")).length;
+
+      await userEvent.setup().click(screen.getByText("refresh"));
+
+      await waitFor(() => {
+        const after = fetchMock.mock.calls
+          .map((c) => String(c[0]))
+          .filter((u) => u.includes("/api/calendar/colors")).length;
+        expect(after).toBeGreaterThan(initialCount);
+      });
+    });
   });
 
   it("loads events on mount when authenticated", async () => {
