@@ -77,6 +77,7 @@ function createMockContext(
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     loadEventsForYear: vi.fn(),
+    getAccessRole: () => undefined,
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,

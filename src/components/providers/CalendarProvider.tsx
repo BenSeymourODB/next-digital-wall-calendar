@@ -39,6 +39,18 @@ interface LoadedRange {
 }
 
 /**
+ * Per-calendar permission level reported by Google's `CalendarList.list`.
+ * Mirrors the union on `gapi.client.calendar.CalendarListEntry.accessRole`.
+ * Plumbed through {@link ICalendarContext.getAccessRole} so UI can hide
+ * mutating actions on read-only calendars (issue #266).
+ */
+export type TCalendarAccessRole =
+  | "freeBusyReader"
+  | "reader"
+  | "writer"
+  | "owner";
+
+/**
  * Server-bound payload for `createEvent`. Mirrors the body of
  * `POST /api/calendar/events` (#116) — `calendarId` is mandatory at this
  * layer because the provider doesn't second-guess the caller's choice.
@@ -104,6 +116,15 @@ export interface ICalendarContext {
    * widen the default lazy-load window beyond -1 / +6 months.
    */
   loadEventsForYear: (year: number) => Promise<void>;
+  /**
+   * Look up the user's permission level for a given Google calendar id.
+   * Returns `undefined` when the calendar list hasn't been fetched yet or
+   * the id wasn't part of the most recent payload. Consumers (e.g.
+   * `EventDetailModal` via #266) treat `undefined` as "unknown — render
+   * mutating actions", since Google's server-side 403 still applies as
+   * the backstop.
+   */
+  getAccessRole: (calendarId: string) => TCalendarAccessRole | undefined;
   isLoading: boolean;
   isAuthenticated: boolean;
   maxEventsPerDay: number;
@@ -284,8 +305,20 @@ export function CalendarProvider({
     }
   );
   const [calendarIds, setCalendarIds] = useState<string[]>([]);
+  const [accessRoles, setAccessRoles] = useState<
+    Record<string, TCalendarAccessRole>
+  >({});
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
+
+  // Stable lookup so consumers don't re-render every time the role map
+  // gets recomputed (the underlying record only changes when the calendar
+  // list is fetched, so a fresh closure is fine here under React Compiler).
+  const getAccessRole = useCallback(
+    (calendarId: string): TCalendarAccessRole | undefined =>
+      accessRoles[calendarId],
+    [accessRoles]
+  );
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
     setSettings((prev) => ({
@@ -501,7 +534,11 @@ export function CalendarProvider({
   );
 
   /**
-   * Fetch calendar list and return calendar IDs
+   * Fetch calendar list and return calendar IDs.
+   *
+   * Side-effect: also populates `accessRoles` from the same payload so
+   * `getAccessRole` can hand out per-calendar permission roles to the UI
+   * (#266) without an extra round-trip.
    */
   const fetchCalendarList = useCallback(async (): Promise<string[]> => {
     try {
@@ -513,10 +550,25 @@ export function CalendarProvider({
 
       const data = await response.json();
       if (data.calendars && data.calendars.length > 0) {
+        const cals: Array<{
+          id: string;
+          selected?: boolean;
+          accessRole?: TCalendarAccessRole;
+        }> = data.calendars;
+
         // Return IDs of all calendars (user can filter later)
-        const ids = data.calendars.map(
-          (cal: { id: string; selected?: boolean }) => cal.id
-        );
+        const ids = cals.map((cal) => cal.id);
+
+        // Build role map from the same payload. Skip entries without a
+        // role so the lookup keeps returning `undefined` for them, which
+        // consumers treat as "unknown — render mutating actions" (the
+        // server-side 403 stays the backstop).
+        const roles: Record<string, TCalendarAccessRole> = {};
+        for (const cal of cals) {
+          if (cal.accessRole) roles[cal.id] = cal.accessRole;
+        }
+        setAccessRoles(roles);
+
         logger.log("Fetched calendar list", { count: ids.length });
         return ids;
       }
@@ -957,6 +1009,7 @@ export function CalendarProvider({
     clearFilter,
     refreshEvents,
     loadEventsForYear,
+    getAccessRole,
     isLoading,
     isAuthenticated,
     // Clamp defensively so a rogue DB write of 0 or a negative number never

@@ -20,6 +20,13 @@ export interface CalendarInfo {
   foregroundColor: string;
   primary: boolean;
   selected: boolean;
+  /**
+   * The user's permission level on this calendar, as reported by Google's
+   * `CalendarList.list`. The client uses this to hide mutating actions
+   * (delete, edit) for `reader` / `freeBusyReader` calendars before they
+   * round-trip and 403 — see issue #266.
+   */
+  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
 }
 
 /**
@@ -101,6 +108,7 @@ export async function GET() {
       foregroundColor: item.foregroundColor || "#ffffff",
       primary: item.primary || false,
       selected: item.selected || false,
+      accessRole: item.accessRole,
     }));
 
     logger.log("Calendar list fetched", {

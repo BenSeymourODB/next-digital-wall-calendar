@@ -50,6 +50,7 @@ interface CalendarInfo {
   foregroundColor: string;
   primary: boolean;
   selected: boolean;
+  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
 }
 
 interface CalendarsResponse {
@@ -99,6 +100,7 @@ describe("/api/calendar/calendars", () => {
             foregroundColor: "#ffffff",
             primary: true,
             selected: true,
+            accessRole: "owner",
           },
           {
             id: "family@group.calendar.google.com",
@@ -108,6 +110,7 @@ describe("/api/calendar/calendars", () => {
             foregroundColor: "#ffffff",
             primary: false,
             selected: true,
+            accessRole: "writer",
           },
           {
             id: "work@group.calendar.google.com",
@@ -116,6 +119,7 @@ describe("/api/calendar/calendars", () => {
             foregroundColor: "#ffffff",
             primary: false,
             selected: false,
+            accessRole: "reader",
           },
         ],
       };
@@ -138,6 +142,7 @@ describe("/api/calendar/calendars", () => {
         foregroundColor: "#ffffff",
         primary: true,
         selected: true,
+        accessRole: "owner",
       });
       expect(data.calendars[1]).toEqual({
         id: "family@group.calendar.google.com",
@@ -147,7 +152,37 @@ describe("/api/calendar/calendars", () => {
         foregroundColor: "#ffffff",
         primary: false,
         selected: true,
+        accessRole: "writer",
       });
+      expect(data.calendars[2].accessRole).toBe("reader");
+    });
+
+    it("omits accessRole when Google does not return it", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [
+              {
+                id: "no-role@group.calendar.google.com",
+                summary: "Legacy",
+                backgroundColor: "#000000",
+                foregroundColor: "#ffffff",
+              },
+            ],
+          }),
+      });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<CalendarsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.calendars[0].accessRole).toBeUndefined();
     });
 
     it("returns empty array when no calendars exist", async () => {
