@@ -34,7 +34,10 @@ function filterEventsForNextNDays(events: IEvent[], days: number): IEvent[] {
  * query (case-insensitive). An empty/whitespace-only query returns the
  * list unchanged.
  */
-function filterEventsBySearch(events: IEvent[], query: string): IEvent[] {
+export function filterEventsBySearch(
+  events: IEvent[],
+  query: string
+): IEvent[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return events;
   return events.filter((event) => {
@@ -47,7 +50,7 @@ function filterEventsBySearch(events: IEvent[], query: string): IEvent[] {
 /**
  * Sort events by start time
  */
-function sortEventsByStartTime(events: IEvent[]): IEvent[] {
+export function sortEventsByStartTime(events: IEvent[]): IEvent[] {
   return [...events].sort((a, b) => {
     const aStart = new Date(a.startDate);
     const bStart = new Date(b.startDate);
@@ -103,7 +106,9 @@ const COLOR_ORDER: TEventColor[] = [
 /**
  * Group events by color
  */
-function groupEventsByColor(events: IEvent[]): Map<TEventColor, IEvent[]> {
+export function groupEventsByColor(
+  events: IEvent[]
+): Map<TEventColor, IEvent[]> {
   const groups = new Map<TEventColor, IEvent[]>();
 
   events.forEach((event) => {
