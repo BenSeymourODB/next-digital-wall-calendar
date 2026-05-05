@@ -15,6 +15,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState } from "react";
 import { Loader2, Plus, RefreshCw, Settings } from "lucide-react";
 import { NewTaskModal } from "./new-task-modal";
+import { ReauthCta } from "./reauth-cta";
+import { TaskApiError } from "./task-api-error";
 import { TaskItem } from "./task-item";
 import { type TaskListConfig, type TaskWithMeta } from "./types";
 import { useTasks } from "./use-tasks";
@@ -87,14 +89,18 @@ export function TaskList({
           <div className="py-8 text-center text-red-600">
             <p>Error loading tasks</p>
             <p className="mt-1 text-sm text-gray-500">{error.message}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-2"
-              onClick={() => refreshTasks()}
-            >
-              Try again
-            </Button>
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refreshTasks()}
+              >
+                Try again
+              </Button>
+              {error instanceof TaskApiError && error.requiresReauth && (
+                <ReauthCta />
+              )}
+            </div>
           </div>
         )}
 

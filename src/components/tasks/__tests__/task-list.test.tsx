@@ -1,10 +1,12 @@
 /**
  * Tests for TaskList component
  */
+import { signIn } from "next-auth/react";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NewTaskModal } from "../new-task-modal";
+import { TaskApiError } from "../task-api-error";
 import { TaskList } from "../task-list";
 import type { TaskListConfig } from "../types";
 // Import after mocking
@@ -21,8 +23,13 @@ vi.mock("../new-task-modal", () => ({
   NewTaskModal: vi.fn(() => null),
 }));
 
+vi.mock("next-auth/react", () => ({
+  signIn: vi.fn(),
+}));
+
 const mockUseTasks = vi.mocked(useTasks);
 const mockNewTaskModal = vi.mocked(NewTaskModal);
+const mockSignIn = vi.mocked(signIn);
 
 describe("TaskList", () => {
   const mockConfig: TaskListConfig = {
@@ -141,6 +148,65 @@ describe("TaskList", () => {
 
       render(<TaskList config={mockConfig} />);
       expect(screen.getByText(/error/i)).toBeInTheDocument();
+    });
+
+    it("renders a Sign in again CTA when error is a TaskApiError with requiresReauth (#261)", async () => {
+      const user = userEvent.setup();
+      mockUseTasks.mockReturnValue({
+        tasks: [],
+        loading: false,
+        error: new TaskApiError(
+          "Re-authentication required: Google Tasks scope missing.",
+          403,
+          true
+        ),
+        updateTask: mockUpdateTask,
+        refreshTasks: mockRefreshTasks,
+      });
+
+      render(<TaskList config={mockConfig} />);
+
+      const reauthButton = screen.getByRole("button", {
+        name: /sign in again/i,
+      });
+      await user.click(reauthButton);
+
+      expect(mockSignIn).toHaveBeenCalledWith(
+        "google",
+        expect.objectContaining({ callbackUrl: expect.any(String) })
+      );
+    });
+
+    it("does not render the Sign in again CTA on a generic error", () => {
+      mockUseTasks.mockReturnValue({
+        tasks: [],
+        loading: false,
+        error: new Error("Network failure"),
+        updateTask: mockUpdateTask,
+        refreshTasks: mockRefreshTasks,
+      });
+
+      render(<TaskList config={mockConfig} />);
+
+      expect(
+        screen.queryByRole("button", { name: /sign in again/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not render the Sign in again CTA on a TaskApiError without requiresReauth (#261)", () => {
+      mockUseTasks.mockReturnValue({
+        tasks: [],
+        loading: false,
+        error: new TaskApiError("Server error", 500, false),
+        updateTask: mockUpdateTask,
+        refreshTasks: mockRefreshTasks,
+      });
+
+      render(<TaskList config={mockConfig} />);
+
+      expect(
+        screen.queryByRole("button", { name: /sign in again/i })
+      ).not.toBeInTheDocument();
     });
   });
 

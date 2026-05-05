@@ -22,6 +22,11 @@ export type { TaskListSettingsProps } from "./task-list-settings";
 export { useTasks } from "./use-tasks";
 export type { UseTasksReturn } from "./use-tasks";
 
+export { TaskApiError, parseTaskApiError } from "./task-api-error";
+
+export { ReauthCta } from "./reauth-cta";
+export type { ReauthCtaProps } from "./reauth-cta";
+
 export {
   DEFAULT_LIST_COLORS,
   formatDueDate,
