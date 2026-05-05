@@ -643,5 +643,53 @@ describe("AgendaCalendar", () => {
 
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+
+    it("hides the delete button when the event's calendar is read-only (#266)", async () => {
+      const user = userEvent.setup();
+      const events = [
+        createMockEvent({
+          id: "ro-event",
+          title: "Holiday Closure",
+          calendarId: "shared-readonly",
+          startDate: getFutureDate(1, 9, 0),
+          endDate: getFutureDate(1, 10, 0),
+        }),
+      ];
+
+      renderWithContext(events, {
+        canEditCalendar: (calendarId: string) =>
+          calendarId !== "shared-readonly",
+      });
+
+      await user.click(
+        screen.getByRole("button", { name: /Holiday Closure/i })
+      );
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows the delete button when the event's calendar is editable (#266)", async () => {
+      const user = userEvent.setup();
+      const events = [
+        createMockEvent({
+          id: "rw-event",
+          title: "Team Sync",
+          calendarId: "primary",
+          startDate: getFutureDate(1, 10, 0),
+          endDate: getFutureDate(1, 11, 0),
+        }),
+      ];
+
+      renderWithContext(events, { canEditCalendar: () => true });
+
+      await user.click(screen.getByRole("button", { name: /Team Sync/i }));
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
+    });
   });
 });

@@ -305,10 +305,8 @@ export function CalendarProvider({
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
 
-  const canEditCalendar = useCallback(
-    (calendarId: string) => canWriteToCalendar(calendarAccessRoles[calendarId]),
-    [calendarAccessRoles]
-  );
+  const canEditCalendar = (calendarId: string) =>
+    canWriteToCalendar(calendarAccessRoles[calendarId]);
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
     setSettings((prev) => ({

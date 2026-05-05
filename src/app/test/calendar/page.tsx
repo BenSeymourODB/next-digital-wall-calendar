@@ -206,6 +206,20 @@ function buildMockEventSets(anchor: Date): Record<string, IEvent[]> {
       }),
     ],
 
+    // Single event from a `freeBusyReader` calendar — same delete-gating
+    // path as `read-only`, but covers the stricter accessRole branch in
+    // its own E2E lane (#266).
+    "free-busy": [
+      createMockEvent({
+        id: "fb-1",
+        title: "Free Busy Event",
+        calendarId: "freebusy-cal",
+        startDate: getRelativeDate(0, 10, 0),
+        endDate: getRelativeDate(0, 11, 0),
+        color: "purple",
+      }),
+    ],
+
     // Color test - one of each color
     colors: (
       ["blue", "green", "red", "yellow", "purple", "orange"] as TEventColor[]
@@ -494,13 +508,16 @@ function TestCalendarContent() {
   // Get events for the specified set
   const events = mockEventSets[eventSet] || mockEventSets.default;
 
-  // For the read-only event set, mark its source calendar as `reader` so
-  // EventDetailModal hides the delete button (issue #266). Other event sets
-  // get an empty map and fall back to the permissive default.
+  // For the gated event sets, mark each source calendar with the matching
+  // accessRole so EventDetailModal hides the delete button (issue #266).
+  // Other event sets get an empty map and fall back to the permissive
+  // default.
   const calendarAccessRoles =
     eventSet === "read-only"
       ? ({ "shared-readonly": "reader" } as const)
-      : undefined;
+      : eventSet === "free-busy"
+        ? ({ "freebusy-cal": "freeBusyReader" } as const)
+        : undefined;
 
   return (
     <MockCalendarProvider

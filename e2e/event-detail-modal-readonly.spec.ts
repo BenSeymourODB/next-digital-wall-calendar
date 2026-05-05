@@ -33,6 +33,22 @@ test.describe("EventDetailModal — read-only access (#266)", () => {
     ).toHaveCount(0);
   });
 
+  test("hides the delete button when the event lives on a freeBusyReader calendar", async ({
+    page,
+  }) => {
+    await page.goto("/test/calendar?events=free-busy&view=month");
+
+    const trigger = page.getByRole("button", { name: "Free Busy Event" });
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: /^delete event$/i })
+    ).toHaveCount(0);
+  });
+
   test("still shows the delete button on writable events as a control case", async ({
     page,
   }) => {
