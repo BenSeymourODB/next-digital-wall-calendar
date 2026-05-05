@@ -216,6 +216,46 @@ export async function assertGoogleTasksScope(): Promise<void> {
 }
 
 /**
+ * Combined access-token + scope check for Google Tasks routes. Takes the
+ * `userId` of an already-resolved session so the caller can call `auth()`
+ * exactly once per request — replaces the
+ * `assertGoogleTasksScope() + getAccessToken()` pair that hit the database
+ * twice (#260).
+ *
+ * Failure modes mirror those helpers: `AuthError(401)` for missing account
+ * or missing token, `AuthError(403)` for missing scope. Callers that catch
+ * `AuthError` will surface the same `requiresReauth` flag they did before.
+ */
+export async function requireGoogleTasksAccessToken(
+  userId: string
+): Promise<string> {
+  const [account] = await prisma.account.findMany({
+    where: { userId, provider: "google" },
+  });
+
+  if (!account) {
+    throw new AuthError("No Google account linked.", 401);
+  }
+
+  if (!accountHasScope(account, GOOGLE_TASKS_SCOPE)) {
+    throw new AuthError(
+      "Re-authentication required: Google Tasks scope missing.",
+      403
+    );
+  }
+
+  const accessToken = decryptToken(account.access_token);
+  if (!accessToken) {
+    throw new AuthError(
+      "No Google account linked. Please sign in with Google.",
+      401
+    );
+  }
+
+  return accessToken;
+}
+
+/**
  * Custom error class for auth-related errors
  */
 export class AuthError extends Error {
