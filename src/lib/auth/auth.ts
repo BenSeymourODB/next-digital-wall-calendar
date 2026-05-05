@@ -5,6 +5,7 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { encryptLinkedAccount } from "./link-account";
+import { refreshGoogleAccessToken } from "./refresh-google-token";
 import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -122,30 +123,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             throw new Error("No refresh token available");
           }
 
-          const response = await fetch("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams({
-              client_id: process.env.GOOGLE_CLIENT_ID!,
-              client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-              grant_type: "refresh_token",
-              refresh_token: refreshTokenPlaintext,
-            }),
-          });
-
-          const tokensOrError = await response.json();
-
-          if (!response.ok) {
-            throw tokensOrError;
-          }
-
-          const newTokens = tokensOrError as {
-            access_token: string;
-            expires_in: number;
-            refresh_token?: string;
-          };
+          const newTokens = await refreshGoogleAccessToken(
+            refreshTokenPlaintext,
+            process.env.GOOGLE_CLIENT_ID!,
+            process.env.GOOGLE_CLIENT_SECRET!
+          );
 
           // Update tokens in database, encrypting at rest. Google only returns
           // a new refresh_token on the first consent or after revocation, so
