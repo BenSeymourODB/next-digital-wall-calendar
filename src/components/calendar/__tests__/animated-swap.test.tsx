@@ -511,10 +511,9 @@ describe("AnimatedSwap", () => {
     });
 
     it("hydrates without React hydration warnings", () => {
-      // This test exercises the real React hydration path with prefers-reduced
-      // -motion enabled. Use real timers so the post-mount useEffect that
-      // syncs the live preference can run (it doesn't depend on timers, but
-      // hydrateRoot's own scheduling can interact with fake timers).
+      // Exercises the real React hydration path under prefers-reduced-motion.
+      // Use real timers so hydrateRoot's internal Scheduler can flush without
+      // fake-timer interference.
       vi.useRealTimers();
 
       window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -552,10 +551,10 @@ describe("AnimatedSwap", () => {
         root = hydrateRoot(container, tree);
       });
 
+      // React 19 sometimes passes Error objects (not just strings) to
+      // console.error, so coerce every arg before pattern-matching.
       const hydrationErrors = errorSpy.mock.calls.filter((call) =>
-        call.some((arg) =>
-          typeof arg === "string" ? /hydrat/i.test(arg) : false
-        )
+        call.some((arg) => /hydrat/i.test(String(arg)))
       );
 
       expect(hydrationErrors).toEqual([]);
