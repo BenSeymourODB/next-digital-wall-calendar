@@ -12,6 +12,7 @@
  * - Auto-refreshes on config change
  */
 import { useCallback, useEffect, useState } from "react";
+import { parseTaskApiError } from "./task-api-error";
 import {
   type GoogleTask,
   type TaskListConfig,
@@ -80,7 +81,10 @@ export function useTasks(config: TaskListConfig | null): UseTasksReturn {
         const response = await fetch(`/api/tasks?${params.toString()}`);
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch tasks from list ${list.listTitle}`);
+          throw await parseTaskApiError(
+            response,
+            `Failed to fetch tasks from list ${list.listTitle}`
+          );
         }
 
         const data = (await response.json()) as TasksApiResponse;
@@ -145,7 +149,7 @@ export function useTasks(config: TaskListConfig | null): UseTasksReturn {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update task");
+        throw await parseTaskApiError(response, "Failed to update task");
       }
 
       // Refresh tasks after update
