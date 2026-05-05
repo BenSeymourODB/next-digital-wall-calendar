@@ -277,8 +277,3 @@ export interface TaskListsApiResponse {
 export interface TaskApiResponse {
   task: GoogleTask;
 }
-
-export interface TaskApiError {
-  error: string;
-  requiresReauth?: boolean;
-}

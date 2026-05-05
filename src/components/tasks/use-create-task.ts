@@ -8,30 +8,18 @@
  * task on success.
  */
 import { useState } from "react";
+import { TaskApiError, parseTaskApiError } from "./task-api-error";
 import type { GoogleTask } from "./types";
+
+// Re-export so existing consumers can keep importing TaskApiError from
+// the create-task module they were already wired to.
+export { TaskApiError } from "./task-api-error";
 
 export interface CreateTaskInput {
   listId: string;
   title: string;
   due?: string;
   notes?: string;
-}
-
-/**
- * Error thrown when `/api/tasks` returns a non-OK response. Carries the HTTP
- * status and the `requiresReauth` flag from the structured error body so
- * callers can render a "Sign in again" CTA without parsing the message.
- */
-export class TaskApiError extends Error {
-  readonly status: number;
-  readonly requiresReauth: boolean;
-
-  constructor(message: string, status: number, requiresReauth = false) {
-    super(message);
-    this.name = "TaskApiError";
-    this.status = status;
-    this.requiresReauth = requiresReauth;
-  }
 }
 
 export interface UseCreateTaskReturn {
@@ -61,15 +49,7 @@ export function useCreateTask(): UseCreateTaskReturn {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as {
-          error?: string;
-          requiresReauth?: boolean;
-        };
-        throw new TaskApiError(
-          payload.error || "Failed to create task",
-          response.status,
-          payload.requiresReauth === true
-        );
+        throw await parseTaskApiError(response, "Failed to create task");
       }
 
       const data = (await response.json()) as { task: GoogleTask };
