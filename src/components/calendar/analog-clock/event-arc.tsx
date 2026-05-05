@@ -99,12 +99,15 @@ export function EventArc({
     maxLines
   );
 
-  // Per-line offset for the 2-line case. Slightly under one font-size so the
-  // two curved baselines stay within the arc band without overlapping.
+  // Per-line offset for the 2-line case (per #310 spec). Place the two
+  // curved baselines at titleRadius ± lineOffset so their centre-to-centre
+  // distance is 2 × lineOffset = ~1.1 × fontSize — just enough to avoid
+  // glyph overlap given dominantBaseline="central" puts each glyph band at
+  // ±fontSize/2 around its centre.
   const lineOffset = titleFontSize * 0.55;
   const lineRadii =
     fit.lines.length === 2
-      ? [titleRadius + lineOffset / 2, titleRadius - lineOffset / 2]
+      ? [titleRadius + lineOffset, titleRadius - lineOffset]
       : [titleRadius];
 
   const textArcPaths = lineRadii.map((r) =>
@@ -150,27 +153,30 @@ export function EventArc({
         </text>
       )}
 
-      {/* Event title - curved along up to two concentric textPaths. */}
+      {/* Event title — one <text>+<textPath> per rendered line so each line
+          has its own typographic context and there is no SVG 2 "continue
+          on the next path" sequencing concern when two lines render. */}
       {showTitle && fit.lines.length > 0 && (
-        <text
-          data-testid={`event-title-${id}`}
-          fontSize={titleFontSize}
-          fontWeight={500}
-          fill="white"
-          fontFamily="system-ui, -apple-system, sans-serif"
-        >
+        <g data-testid={`event-title-${id}`}>
           {fit.lines.map((line, i) => (
-            <textPath
+            <text
               key={textPathIds[i]}
-              href={`#${textPathIds[i]}`}
-              startOffset="50%"
-              textAnchor="middle"
-              dominantBaseline="central"
+              fontSize={titleFontSize}
+              fontWeight={500}
+              fill="white"
+              fontFamily="system-ui, -apple-system, sans-serif"
             >
-              {line}
-            </textPath>
+              <textPath
+                href={`#${textPathIds[i]}`}
+                startOffset="50%"
+                textAnchor="middle"
+                dominantBaseline="central"
+              >
+                {line}
+              </textPath>
+            </text>
           ))}
-        </text>
+        </g>
       )}
     </g>
   );

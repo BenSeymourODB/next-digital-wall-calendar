@@ -13,6 +13,19 @@
 
 const CHAR_WIDTH_RATIO = 0.6;
 
+/**
+ * Single-character horizontal ellipsis (U+2026). Used at tight budgets
+ * (≤ 3 chars/line) so the truncation marker is always present without
+ * consuming the entire visible content.
+ */
+const ELLIPSIS_CHAR = "…";
+
+/**
+ * Three-dot ASCII ellipsis used at comfortable budgets. Slightly wider
+ * but reads more clearly when room allows.
+ */
+const ELLIPSIS_ASCII = "...";
+
 export interface FitTitleResult {
   /** 0, 1, or 2 lines of text to render along the arc. */
   lines: string[];
@@ -36,11 +49,41 @@ function charBudgetForArc(
   return Math.floor(circumference / charWidth);
 }
 
+/**
+ * Truncate text to fit within `budget` characters, appending an ellipsis if
+ * truncation occurs. If the text already fits, returns it unchanged.
+ */
 function truncateWithEllipsis(text: string, budget: number): string {
-  // Keep at least one character of the original alongside the ellipsis;
-  // otherwise drop the ellipsis entirely.
-  if (budget <= 3) return text.slice(0, Math.max(0, budget));
-  return `${text.slice(0, budget - 3)}...`;
+  if (budget <= 0) return "";
+  if (text.length <= budget) return text;
+  // For very tight budgets (1–3 chars), use the single-character ellipsis
+  // so the truncation marker is still rendered without consuming the entire
+  // budget. Downstream consumers — including #311's floating-label feature
+  // — should rely on FitTitleResult.didOverflow rather than string sniffing,
+  // but we keep an explicit visual indicator regardless.
+  if (budget <= 3) {
+    if (budget === 1) return ELLIPSIS_CHAR;
+    return `${text.slice(0, budget - 1)}${ELLIPSIS_CHAR}`;
+  }
+  return `${text.slice(0, budget - ELLIPSIS_ASCII.length)}${ELLIPSIS_ASCII}`;
+}
+
+/**
+ * Append an ellipsis marker to a line that is the LAST rendered line of an
+ * overflowed title. Unlike `truncateWithEllipsis`, this always emits a
+ * visible marker even when `line` fits within `budget` — the marker
+ * communicates "more content was cut", not "this string was longer than the
+ * budget". Trims the leading text if necessary to keep the marker inside
+ * the per-line budget.
+ */
+function appendOverflowMarker(line: string, budget: number): string {
+  if (budget <= 0) return "";
+  if (budget === 1) return ELLIPSIS_CHAR;
+  if (budget <= 3) {
+    return `${line.slice(0, budget - 1)}${ELLIPSIS_CHAR}`;
+  }
+  const reserved = ELLIPSIS_ASCII.length;
+  return `${line.slice(0, budget - reserved)}${ELLIPSIS_ASCII}`;
 }
 
 /**
@@ -134,14 +177,19 @@ export function fitTitleToArc(
     return { lines: [line1, line2], didOverflow: false };
   }
 
-  // Overflow: more words remain. Ellipsize line 2 to signal truncation.
-  // If line 2 has nothing on it (the next word didn't fit), fall back to the
-  // raw next word truncated with an ellipsis so the user still sees a hint
-  // of what was cut.
-  const truncatedLine2 =
-    line2.length > 0
-      ? truncateWithEllipsis(line2, budget)
-      : truncateWithEllipsis(words[nextIndex], budget);
+  // Overflow: more words remain. Always render line 2 with a visible
+  // ellipsis marker so the user sees that more content was cut, even when
+  // the packed words of line 2 happen to fit within budget exactly. Guard
+  // the index access — control flow above means `nextIndex` should never
+  // exceed `words.length - 1` here, but keep the check for defence in depth.
+  let truncatedLine2: string;
+  if (line2.length > 0) {
+    truncatedLine2 = appendOverflowMarker(line2, budget);
+  } else if (nextIndex < words.length) {
+    truncatedLine2 = truncateWithEllipsis(words[nextIndex], budget);
+  } else {
+    truncatedLine2 = "";
+  }
 
   return { lines: [line1, truncatedLine2], didOverflow: true };
 }

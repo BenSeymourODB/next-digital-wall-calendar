@@ -46,11 +46,27 @@ describe("fitTitleToArc", () => {
 
   it("greedy-packs the first line when splitting", () => {
     // "Pick up groceries today" = 23 chars; at 30° (~12 chars/line):
-    // line 1 = "Pick up" (7), next word "groceries" (9) overflows → line 2 starts.
+    // line 1 = "Pick up" (7), line 2 = "groceries" (9, "today" doesn't fit).
+    // This is an overflow case — line 2 is truncated with an ellipsis.
     const result = fitTitleToArc("Pick up groceries today", 30, RADIUS, FONT);
     expect(result.lines.length).toBe(2);
     expect(result.lines[0]).toBe("Pick up");
     expect(result.lines[1]).toMatch(/^groceries/);
+    expect(result.didOverflow).toBe(true);
+    expect(result.lines[1].endsWith("...")).toBe(true);
+  });
+
+  it("ellipsizes line 2 when the next word alone exceeds the line budget", () => {
+    // Two-word title where word 2 alone is wider than the budget.
+    // budget=12 at 30°/200/14. "Hi" packs onto line 1 (2 chars). Word 2
+    // "supercalifragilistic" (20 chars) won't fit on line 2 — packLine
+    // returns an empty line2 and the fallback truncates that word.
+    const result = fitTitleToArc("Hi supercalifragilistic", 30, RADIUS, FONT);
+    expect(result.lines.length).toBe(2);
+    expect(result.lines[0]).toBe("Hi");
+    expect(result.lines[1].endsWith("...")).toBe(true);
+    expect(result.lines[1].startsWith("super")).toBe(true);
+    expect(result.didOverflow).toBe(true);
   });
 
   it("ellipsizes line 2 when content needs three or more lines", () => {
@@ -59,7 +75,7 @@ describe("fitTitleToArc", () => {
     const result = fitTitleToArc(longTitle, 30, RADIUS, FONT);
     expect(result.lines.length).toBe(2);
     expect(result.didOverflow).toBe(true);
-    // Line 2 should end with an ellipsis to signal truncation.
+    // Line 2 should end with the ASCII ellipsis at this comfortable budget.
     expect(result.lines[1].endsWith("...")).toBe(true);
   });
 
@@ -126,6 +142,44 @@ describe("fitTitleToArc", () => {
       FONT
     );
     expect(result.lines.length).toBeLessThanOrEqual(2);
+  });
+
+  describe("at tight budgets the truncation marker is always present", () => {
+    // Carve out a tiny budget by using a small radius so the per-line char
+    // budget lands at 1, 2, or 3 characters and exercises the Unicode-ellipsis
+    // branch. budget = floor((span/360) × 2π × R / (font × 0.6)).
+    //
+    // span=15°, R=20, font=14 → circumference = 5.236, charWidth = 8.4
+    //   → budget = floor(0.62) = 0 → empty/overflow path
+    // span=30°, R=20, font=14 → circumference = 10.47, charWidth = 8.4
+    //   → budget = floor(1.25) = 1
+    // span=60°, R=20, font=14 → budget = floor(2.49) = 2
+    // span=90°, R=20, font=14 → budget = floor(3.74) = 3
+
+    it("returns the single-character ellipsis on a budget-1 single-word arc", () => {
+      const result = fitTitleToArc("supercali", 30, 20, 14);
+      expect(result.lines).toEqual(["…"]);
+      expect(result.didOverflow).toBe(true);
+    });
+
+    it("keeps one original character + ellipsis at budget 2", () => {
+      const result = fitTitleToArc("supercali", 60, 20, 14);
+      expect(result.lines).toEqual(["s…"]);
+      expect(result.didOverflow).toBe(true);
+    });
+
+    it("keeps two original characters + ellipsis at budget 3", () => {
+      const result = fitTitleToArc("supercali", 90, 20, 14);
+      expect(result.lines).toEqual(["su…"]);
+      expect(result.didOverflow).toBe(true);
+    });
+
+    it("does not invent an ellipsis when content fits exactly within a tight budget", () => {
+      // budget=3 case where the text is exactly 3 chars long → no truncation needed.
+      const result = fitTitleToArc("abc", 90, 20, 14);
+      expect(result.lines).toEqual(["abc"]);
+      expect(result.didOverflow).toBe(false);
+    });
   });
 
   describe("with maxLines = 1", () => {

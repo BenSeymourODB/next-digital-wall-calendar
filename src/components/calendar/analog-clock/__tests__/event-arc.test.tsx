@@ -67,21 +67,23 @@ describe("EventArc", () => {
   });
 
   it("wraps a long title onto 2 lines instead of single-line ellipsis (#310)", () => {
-    // baseEvent: "Family Game Night" (17 chars) at 30° arc, titleRadius ≈ 227,
-    // fontSize ≈ 12 → per-line budget ≈ 16 chars. Doesn't fit on one line;
-    // two-line split produces "Family Game" / "Night".
+    // baseEvent: "Family Game Night" (17 chars) at 30° arc. The exact split
+    // depends on the layout heuristic constants in event-arc.tsx, so this
+    // test only asserts the contract: two lines, words preserved across
+    // the split, no mid-word breaks, no single-line ellipsis fallback.
     renderArc();
     const title = screen.getByTestId("event-title-evt-1");
     expect(title).toBeInTheDocument();
 
     const textPaths = title.querySelectorAll("textPath");
     expect(textPaths.length).toBe(2);
-    expect(Array.from(textPaths).map((tp) => tp.textContent)).toEqual([
-      "Family Game",
-      "Night",
-    ]);
-    // No single-line ellipsis on the rendered output anymore.
-    expect(title.textContent).not.toMatch(/\.\.\.$/);
+
+    const renderedLines = Array.from(textPaths).map(
+      (tp) => tp.textContent ?? ""
+    );
+    expect(renderedLines.join(" ")).toBe("Family Game Night");
+    expect(renderedLines.every((l) => !l.includes("..."))).toBe(true);
+    expect(renderedLines.every((l) => !l.includes("…"))).toBe(true);
   });
 
   it("renders full title on a single textPath when short enough", () => {
@@ -101,20 +103,18 @@ describe("EventArc", () => {
 
   it("renders 2-line titles at distinct radii (outer line further from center)", () => {
     // Render the wrapped baseEvent and verify the two textPath elements
-    // reference paths defined at radii separated by ~lineOffset.
+    // reference distinct paths defined in <defs>.
     renderArc();
     const title = screen.getByTestId("event-title-evt-1");
     const textPaths = title.querySelectorAll("textPath");
     expect(textPaths.length).toBe(2);
 
-    const hrefs = Array.from(textPaths).map((tp) =>
-      // textPath's href attribute is exposed via getAttribute("href") in JSDOM
-      tp.getAttribute("href")
-    );
+    const hrefs = Array.from(textPaths).map((tp) => tp.getAttribute("href"));
     expect(hrefs[0]).not.toEqual(hrefs[1]);
 
-    // Both referenced <path>s should exist in the same <defs>.
-    const defs = (title.parentElement as HTMLElement).querySelector("defs");
+    // Both referenced <path>s should exist in the same arc <g>.
+    const arcGroup = screen.getByTestId("event-arc-group-evt-1");
+    const defs = arcGroup.querySelector("defs");
     const pathEls = defs ? defs.querySelectorAll("path") : [];
     const pathIds = Array.from(pathEls).map((p) => `#${p.getAttribute("id")}`);
     expect(pathIds).toEqual(expect.arrayContaining(hrefs));
@@ -132,7 +132,7 @@ describe("EventArc", () => {
     const title = screen.getByTestId("event-title-evt-overflow");
     const textPaths = title.querySelectorAll("textPath");
     expect(textPaths.length).toBe(2);
-    // Line 2 ends with the truncation marker.
+    // Line 2 ends with the truncation marker (ASCII "..." at this budget).
     expect(textPaths[1].textContent?.endsWith("...")).toBe(true);
   });
 
