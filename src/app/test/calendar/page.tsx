@@ -1,6 +1,5 @@
 "use client";
 
-import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
 import { AnalogClockView } from "@/components/calendar/AnalogClockView";
 import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
 import { CalendarSettingsPanel } from "@/components/calendar/CalendarSettingsPanel";
@@ -315,28 +314,22 @@ function buildMockEventSets(anchor: Date): Record<string, IEvent[]> {
   };
 }
 
-function CalendarDisplay({
-  legacyAgenda = false,
-}: {
-  /**
-   * When true, render the search-driven AgendaCalendar (the pre-#150
-   * agenda view). The test page exposes this via `?view=agenda` so existing
-   * E2E specs that exercise the search UX keep working without change. New
-   * agenda-mode behavior (Day / Week chronological list) is reached via
-   * `?view=day&agendaMode=true` instead.
-   */
-  legacyAgenda?: boolean;
-}) {
+/**
+ * Mirrors the production CalendarView render tree. When `?view=agenda` is
+ * passed, TestCalendarContent maps it to view="day" + agendaMode=true, so
+ * DayCalendar renders its AgendaList surface — exactly what production does.
+ * AgendaCalendar (the pre-#150 legacy component) is no longer mounted here;
+ * its search-UX tests still live in AgendaCalendar.test.tsx and cover the
+ * component directly. Removal of AgendaCalendar belongs to issue #264.
+ */
+function CalendarDisplay() {
   const { view, agendaMode } = useCalendar();
 
   // Compose a swap key that switches the animation when the user toggles
   // agenda mode within day/week, so the grid <-> agenda transition gets
   // the same fade treatment as a primary view change (#150 + #87).
-  const swapKey = legacyAgenda
-    ? "legacy-agenda"
-    : (view === "day" || view === "week") && agendaMode
-      ? `${view}:agenda`
-      : view;
+  const swapKey =
+    (view === "day" || view === "week") && agendaMode ? `${view}:agenda` : view;
 
   return (
     <div data-testid="calendar-display">
@@ -346,17 +339,13 @@ function CalendarDisplay({
         direction="forward"
         durationMs={250}
       >
-        {legacyAgenda ? (
-          <AgendaCalendar />
-        ) : (
-          <>
-            {view === "day" && <DayCalendar />}
-            {view === "week" && <WeekCalendar />}
-            {view === "month" && <SimpleCalendar />}
-            {view === "year" && <YearCalendar />}
-            {view === "clock" && <AnalogClockView />}
-          </>
-        )}
+        <>
+          {view === "day" && <DayCalendar />}
+          {view === "week" && <WeekCalendar />}
+          {view === "month" && <SimpleCalendar />}
+          {view === "year" && <YearCalendar />}
+          {view === "clock" && <AnalogClockView />}
+        </>
       </AnimatedSwap>
     </div>
   );
@@ -459,12 +448,16 @@ function TestCalendarContent() {
   // Get test configuration from URL params
   const eventSet = searchParams.get("events") || "default";
   const rawView = searchParams.get("view") ?? "month";
-  // Legacy `view=agenda` (pre-#150) maps to day + agendaMode=true so existing
-  // bookmarks, screenshots, and E2E specs keep working without a hard cutover.
-  const legacyAgenda = rawView === "agenda";
-  const view: TCalendarView = legacyAgenda ? "day" : (rawView as TCalendarView);
+  // `?view=agenda` maps to day + agendaMode=true, mirroring how production
+  // surfaces agenda mode (DayCalendar renders AgendaList when agendaMode=true).
+  // This replaces the old behavior of mounting the legacy AgendaCalendar
+  // component (removed from this page by issue #287; component removal is #264).
+  const isAgendaAlias = rawView === "agenda";
+  const view: TCalendarView = isAgendaAlias
+    ? "day"
+    : (rawView as TCalendarView);
   const agendaModeParam =
-    legacyAgenda || searchParams.get("agendaMode") === "true";
+    isAgendaAlias || searchParams.get("agendaMode") === "true";
   const loading = searchParams.get("loading") === "true";
   const loadingDelay = parseInt(searchParams.get("loadingDelay") || "0", 10);
   const showControls = searchParams.get("controls") !== "false";
@@ -518,10 +511,10 @@ function TestCalendarContent() {
 
         {showSidebar ? (
           <SidebarAwareLayout>
-            <CalendarDisplay legacyAgenda={legacyAgenda} />
+            <CalendarDisplay />
           </SidebarAwareLayout>
         ) : (
-          <CalendarDisplay legacyAgenda={legacyAgenda} />
+          <CalendarDisplay />
         )}
       </div>
     </MockCalendarProvider>
@@ -533,7 +526,10 @@ function TestCalendarContent() {
  *
  * URL Parameters:
  * - events: Event set to use (default, empty, single, colors, overflow, family)
- * - view: Initial view (month, agenda, clock)
+ * - view: Initial view (month, day, week, year, clock). `agenda` is accepted
+ *   as an alias for `day` + agendaMode=true, mirroring production behavior
+ *   (issue #287). The legacy standalone AgendaCalendar is no longer mounted
+ *   here; its removal belongs to issue #264.
  * - loading: Show loading state (true/false)
  * - loadingDelay: Simulate loading delay in ms
  * - controls: Show test controls (true/false)
@@ -547,7 +543,7 @@ function TestCalendarContent() {
  * Examples:
  * - /test/calendar - Default events, month view
  * - /test/calendar?events=empty - Empty state
- * - /test/calendar?events=colors&view=agenda - Color test in agenda view
+ * - /test/calendar?events=colors&view=agenda - Color test in agenda view (DayCalendar + agendaMode)
  * - /test/calendar?events=family - Family calendar scenario
  * - /test/calendar?loading=true&loadingDelay=2000 - Loading state for 2 seconds
  */

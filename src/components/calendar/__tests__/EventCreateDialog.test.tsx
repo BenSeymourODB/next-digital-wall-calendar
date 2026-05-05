@@ -181,14 +181,13 @@ describe("EventCreateDialog", () => {
       const payload = onCreate.mock.calls[0][0] as EventCreateInput;
       expect(payload.isAllDay).toBe(true);
 
-      const startDate = new Date(payload.startDate);
-      const endDate = new Date(payload.endDate);
+      // With the YYYY-MM-DD wire format (#267), startDate/endDate are plain
+      // date strings — no UTC conversion needed.
+      expect(payload.startDate).toBe("2026-04-20");
       // End must be on the 22nd, not the 20th
-      expect(endDate.getFullYear()).toBe(2026);
-      expect(endDate.getMonth()).toBe(3);
-      expect(endDate.getDate()).toBe(22);
-      // And clearly later than the start (start is 20th midnight, end is 22nd 23:59:59.999)
-      expect(endDate.getTime()).toBeGreaterThan(startDate.getTime());
+      expect(payload.endDate).toBe("2026-04-22");
+      // And the end date string is lexicographically after the start
+      expect(payload.endDate > payload.startDate).toBe(true);
     });
   });
 
@@ -281,6 +280,43 @@ describe("EventCreateDialog", () => {
       const payload = onCreate.mock.calls[0][0];
       expect(payload.isAllDay).toBe(true);
       expect(payload.title).toBe("Holiday");
+    });
+
+    /**
+     * Wire-format test for #267: all-day events must send YYYY-MM-DD strings,
+     * not ISO datetime strings. Sending ISO strings causes UTC-offset skew on
+     * positive-offset clients (e.g. NZST UTC+12) where local Apr-20 midnight
+     * is Apr-19 in UTC.
+     */
+    it("emits YYYY-MM-DD strings for startDate/endDate on all-day events, not ISO datetime strings", async () => {
+      const user = userEvent.setup();
+      const onCreate = vi.fn();
+
+      renderOpen({
+        onCreate,
+        defaultDate: new Date(2026, 3, 20, 10, 0),
+      });
+
+      await user.type(screen.getByLabelText(/title/i), "Day off");
+      await user.click(screen.getByRole("checkbox", { name: /all day/i }));
+
+      const start = screen.getByLabelText(/^start/i);
+      const end = screen.getByLabelText(/^end/i);
+
+      await user.clear(start);
+      await user.type(start, "2026-04-20");
+      await user.clear(end);
+      await user.type(end, "2026-04-22");
+
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      expect(onCreate).toHaveBeenCalledTimes(1);
+      const payload = onCreate.mock.calls[0][0] as EventCreateInput;
+      expect(payload.isAllDay).toBe(true);
+
+      // Must be plain YYYY-MM-DD strings — not ISO datetime strings
+      expect(payload.startDate).toBe("2026-04-20");
+      expect(payload.endDate).toBe("2026-04-22");
     });
 
     it("trims whitespace from title and description on submit", async () => {
