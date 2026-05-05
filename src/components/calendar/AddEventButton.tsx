@@ -2,30 +2,38 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { useEventCreate } from "@/hooks/useEventCreate";
 import type { IEvent, IUser } from "@/types/calendar";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { EventCreateDialog, type EventCreateInput } from "./EventCreateDialog";
 
-// Placeholder "self" user for locally created events. Profile / attendee
-// assignment is deferred to the multi-profile work and to the API wiring
-// in #116 (Google Calendar write-through).
+// Placeholder "self" user for the optimistic event inserted into local
+// state before Google's response comes back. Profile / attendee assignment
+// is deferred to the multi-profile work; once #116 lands the canonical
+// event from Google replaces this row, so this user is only ever shown
+// for the brief optimistic window.
 const LOCAL_USER: IUser = {
   id: "local",
   name: "You",
   picturePath: null,
 };
 
+const DEFAULT_CALENDAR_ID = "primary";
+
 function generateId(): string {
   return crypto.randomUUID();
 }
 
 export function AddEventButton() {
-  const { addEvent, selectedDate } = useCalendar();
+  const { selectedDate } = useCalendar();
+  const createEvent = useEventCreate({
+    defaultCalendarId: DEFAULT_CALENDAR_ID,
+  });
   const [open, setOpen] = useState(false);
 
   const handleCreate = (input: EventCreateInput) => {
-    const event: IEvent = {
+    const optimistic: IEvent = {
       id: generateId(),
       title: input.title,
       description: input.description,
@@ -34,9 +42,21 @@ export function AddEventButton() {
       startDate: input.startDate,
       endDate: input.endDate,
       user: LOCAL_USER,
-      calendarId: "primary",
+      calendarId: DEFAULT_CALENDAR_ID,
     };
-    addEvent(event);
+
+    // Fire-and-forget against the Google write path. The hook owns the
+    // success/failure toasts, and `createEvent` rolls back the optimistic
+    // row on failure — the caller does not need to await for UI purposes.
+    void createEvent(optimistic, {
+      title: input.title,
+      description: input.description,
+      color: input.color,
+      isAllDay: input.isAllDay,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      calendarId: DEFAULT_CALENDAR_ID,
+    });
   };
 
   return (

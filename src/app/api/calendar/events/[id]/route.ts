@@ -13,6 +13,7 @@
  * - `[id]`: the Google Calendar event id.
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -72,7 +73,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       calendarId
     )}/events/${encodeURIComponent(eventId)}`;
 
-    const response = await fetch(apiUrl, {
+    const response = await fetchWithRetry(apiUrl, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${accessToken}`,
