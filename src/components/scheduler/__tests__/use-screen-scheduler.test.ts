@@ -446,4 +446,113 @@ describe("useScreenScheduler", () => {
       expect(result.current.state.isPaused).toBe(false);
     });
   });
+
+  // Regression: issue #221 bug 4 — previously the time-specific check was
+  // gated behind the first 60-second tick of `setInterval`, so a scheduler
+  // started inside an active window stayed in sequence-rotation mode for up
+  // to a minute. The hook now schedules an immediate `setTimeout(..., 0)`
+  // alongside the 60s interval; this test pins that contract.
+  describe("regression: time-specific check runs immediately (issue #221, bug 4)", () => {
+    it("activates the matching time-specific entry on the next microtask, not after 60s", () => {
+      const configWithTimeSpecific: ScheduleConfig = {
+        sequences: [
+          {
+            id: "seq-1",
+            name: "Main",
+            enabled: true,
+            screens: ["/calendar", "/tasks"],
+            intervalSeconds: 60,
+            pauseOnInteractionSeconds: 120,
+          },
+        ],
+        timeSpecific: [
+          {
+            id: "ts-1",
+            enabled: true,
+            screen: "/recipe",
+            time: "08:00",
+            durationMinutes: 30,
+          },
+        ],
+      };
+
+      // Boot the scheduler INSIDE the active window for ts-1.
+      vi.setSystemTime(new Date(2024, 2, 15, 8, 0, 0));
+
+      const { result } = renderHook(() =>
+        useScreenScheduler(configWithTimeSpecific)
+      );
+
+      act(() => {
+        result.current.controls.start();
+      });
+
+      // Just one tick of fake time — well below the 60s interval — must be
+      // enough for the immediate check to fire.
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+
+      expect(result.current.state.activeTimeSpecific?.id).toBe("ts-1");
+    });
+  });
+
+  // Regression: issue #221 bug 6 — earlier the countdown ran on its own
+  // 1-second interval while auto-rotation ran on its own N-second interval,
+  // so the two clocks drifted (and the displayed "time until next" was
+  // incorrect after long uptimes). Both are now driven by a single 1-second
+  // tick; this test pins the lock-step behaviour across multiple intervals.
+  describe("regression: countdown stays in lock-step with rotation (issue #221, bug 6)", () => {
+    it("decrements every second and resets cleanly on each rotation", () => {
+      mockPathname.mockReturnValue("/calendar");
+      const shortConfig: ScheduleConfig = {
+        sequences: [
+          {
+            id: "seq-1",
+            name: "Main",
+            enabled: true,
+            screens: ["/calendar", "/recipe", "/tasks"],
+            intervalSeconds: 5,
+            pauseOnInteractionSeconds: 120,
+          },
+        ],
+        timeSpecific: [],
+      };
+
+      const { result } = renderHook(() => useScreenScheduler(shortConfig));
+
+      act(() => {
+        result.current.controls.start();
+      });
+      expect(result.current.state.timeUntilNextNav).toBe(5);
+
+      // After one tick the countdown is strictly less than 5 — i.e. it is
+      // actually decrementing rather than being reset by a separate timer.
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(result.current.state.timeUntilNextNav).toBeLessThan(5);
+      expect(result.current.state.timeUntilNextNav).toBeGreaterThanOrEqual(3);
+
+      // Cross the first interval boundary. Rotation must fire AND the
+      // countdown must reset to the configured `intervalSeconds` (5),
+      // proving both clocks share the same source of truth.
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(mockPush).toHaveBeenLastCalledWith("/recipe");
+      expect(result.current.state.timeUntilNextNav).toBe(5);
+
+      // Two more full intervals must rotate exactly two more times, with
+      // the countdown landing back on 5 at the end. A drifting countdown
+      // would diverge from the rotation by tens of seconds across many
+      // cycles; this assertion catches even single-tick drift early.
+      const pushesAfterFirst = mockPush.mock.calls.length;
+      act(() => {
+        vi.advanceTimersByTime(10000);
+      });
+      expect(mockPush.mock.calls.length).toBe(pushesAfterFirst + 2);
+      expect(result.current.state.timeUntilNextNav).toBe(5);
+    });
+  });
 });

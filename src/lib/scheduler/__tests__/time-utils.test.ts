@@ -61,6 +61,28 @@ describe("isTimeMatch", () => {
     const current = new Date(2024, 2, 15, 0, 0, 0);
     expect(isTimeMatch(current, "23:58")).toBe(false);
   });
+
+  // Regression: issue #221 bug 3 — naive `Math.abs(curr - sched)` produced a
+  // diff of 1439 minutes between 23:59 and 00:00 instead of 1, so a scheduled
+  // 23:59 entry would silently miss its 60s firing window once the clock
+  // ticked past midnight. The wraparound is now handled by
+  // `Math.min(diff, 1440 - diff)` and these cases lock that in.
+  describe("regression: midnight wraparound (issue #221, bug 3)", () => {
+    it("scheduled 23:59 still matches at 00:00 the next day", () => {
+      expect(isTimeMatch(new Date(2024, 2, 16, 0, 0, 0), "23:59")).toBe(true);
+    });
+
+    it("scheduled 00:00 still matches at 23:59 the previous day", () => {
+      expect(isTimeMatch(new Date(2024, 2, 15, 23, 59, 0), "00:00")).toBe(true);
+    });
+
+    it("rejects a 2-minute gap across the midnight boundary", () => {
+      expect(isTimeMatch(new Date(2024, 2, 16, 0, 0, 0), "23:58")).toBe(false);
+      expect(isTimeMatch(new Date(2024, 2, 15, 23, 58, 0), "00:00")).toBe(
+        false
+      );
+    });
+  });
 });
 
 describe("isActiveDay", () => {
