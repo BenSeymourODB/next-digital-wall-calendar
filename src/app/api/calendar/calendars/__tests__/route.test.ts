@@ -13,7 +13,7 @@ import {
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GET } from "../route";
+import { type CalendarsResponse, GET } from "../route";
 
 // Mock modules BEFORE imports
 vi.mock("@/lib/auth", () => ({
@@ -40,21 +40,9 @@ vi.mock("@/lib/logger", () => ({
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-
-// Type definitions for calendar list response
-interface CalendarInfo {
-  id: string;
-  summary: string;
-  description?: string;
-  backgroundColor: string;
-  foregroundColor: string;
-  primary: boolean;
-  selected: boolean;
-}
-
-interface CalendarsResponse {
-  calendars: CalendarInfo[];
-}
+// `CalendarsResponse` is imported from `../route` rather than re-declared
+// locally — keeps the test contract single-sourced so a future field added
+// to the route can't silently bypass the test schema.
 
 describe("/api/calendar/calendars", () => {
   beforeEach(() => {
@@ -99,6 +87,7 @@ describe("/api/calendar/calendars", () => {
             foregroundColor: "#ffffff",
             primary: true,
             selected: true,
+            accessRole: "owner",
           },
           {
             id: "family@group.calendar.google.com",
@@ -108,6 +97,7 @@ describe("/api/calendar/calendars", () => {
             foregroundColor: "#ffffff",
             primary: false,
             selected: true,
+            accessRole: "writer",
           },
           {
             id: "work@group.calendar.google.com",
@@ -116,6 +106,7 @@ describe("/api/calendar/calendars", () => {
             foregroundColor: "#ffffff",
             primary: false,
             selected: false,
+            accessRole: "reader",
           },
         ],
       };
@@ -138,6 +129,7 @@ describe("/api/calendar/calendars", () => {
         foregroundColor: "#ffffff",
         primary: true,
         selected: true,
+        accessRole: "owner",
       });
       expect(data.calendars[1]).toEqual({
         id: "family@group.calendar.google.com",
@@ -147,7 +139,36 @@ describe("/api/calendar/calendars", () => {
         foregroundColor: "#ffffff",
         primary: false,
         selected: true,
+        accessRole: "writer",
       });
+      expect(data.calendars[2].accessRole).toBe("reader");
+    });
+
+    it("defaults missing accessRole to 'reader' (read-only fallback)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [
+              {
+                id: "no-role@group.calendar.google.com",
+                summary: "No role",
+                // accessRole omitted — Google's schema marks it optional
+              },
+            ],
+          }),
+      });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<CalendarsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.calendars[0].accessRole).toBe("reader");
     });
 
     it("returns empty array when no calendars exist", async () => {
