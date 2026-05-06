@@ -53,10 +53,6 @@ interface CalendarInfo {
   selected: boolean;
 }
 
-interface CalendarsResponse {
-  calendars: CalendarInfo[];
-}
-
 describe("/api/calendar/calendars", () => {
   beforeEach(() => {
     vi.clearAllMocks();
