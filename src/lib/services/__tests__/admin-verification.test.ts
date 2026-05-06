@@ -28,11 +28,8 @@ vi.mock("bcrypt", () => ({
   },
 }));
 
-const mockPrisma = prisma as unknown as {
-  profile: {
-    findFirst: ReturnType<typeof vi.fn>;
-  };
-};
+// Typed deep mock: see reward-points.test.ts for rationale.
+const mockPrisma = vi.mocked(prisma, true);
 
 const adminWithHash = {
   ...mockAdminProfile,

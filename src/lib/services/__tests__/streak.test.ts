@@ -20,9 +20,8 @@ vi.mock("@/lib/streak-helpers", () => ({
   calculateNewStreak: vi.fn(),
 }));
 
-const mockPrisma = prisma as unknown as {
-  $transaction: ReturnType<typeof vi.fn>;
-};
+// Typed deep mock: see reward-points.test.ts for rationale.
+const mockPrisma = vi.mocked(prisma, true);
 
 const mockCalculateNewStreak = vi.mocked(calculateNewStreak);
 
