@@ -42,6 +42,14 @@ export interface IEvent {
   user: IUser;
   isAllDay: boolean;
   calendarId: string;
+  /**
+   * User-supplied category label sourced from Google Calendar's
+   * `extendedProperties.shared.category` (preferred) or
+   * `.private.category` (fallback). Optional because Google does not
+   * expose a first-class category field — events created from clients
+   * that don't stamp this property carry no category. See issue #211.
+   */
+  category?: string;
 }
 
 export interface ICalendarCell {

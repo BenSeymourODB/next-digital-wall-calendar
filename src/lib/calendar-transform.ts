@@ -14,7 +14,26 @@ import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import type { IEvent, TEventColor } from "@/types/calendar";
 
 /**
- * Per-calendar metadata used by the user-attribution fallback ladder.
+ * Pulls a user-supplied category label off a Google Calendar event.
+ *
+ * Google does not expose a first-class category field, so this app
+ * conventionalises `extendedProperties.shared.category` (preferred —
+ * visible to all attendees) and falls back to `.private.category`
+ * (per-user). Returns `undefined` for missing or whitespace-only values
+ * so the consumer can branch cleanly without a sentinel.
+ *
+ * Issue #211.
+ */
+function extractCategory(googleEvent: GoogleCalendarEvent): string | undefined {
+  const raw =
+    googleEvent.extendedProperties?.shared?.category ??
+    googleEvent.extendedProperties?.private?.category;
+  const trimmed = raw?.trim();
+  return trimmed ? trimmed : undefined;
+}
+ 
+/**
+* Per-calendar metadata used by the user-attribution fallback ladder.
  * Keyed by `calendarId`. Values mirror the slice of `UserCalendar` we need
  * to produce a human-readable label when neither `creator.displayName` nor
  * `organizer.displayName` is populated (the common case for shared
@@ -146,6 +165,8 @@ export function transformGoogleEvent(
 
   const user = resolveUser(googleEvent, calendarMetadata);
 
+  const category = extractCategory(googleEvent);
+
   const baseEvent = {
     id: googleEvent.id,
     startDate,
@@ -155,6 +176,7 @@ export function transformGoogleEvent(
     user,
     isAllDay,
     calendarId,
+    ...(category === undefined ? {} : { category }),
   };
 
   // Priority 1: Look up by calendarId in color mappings (from Google Calendar API)
