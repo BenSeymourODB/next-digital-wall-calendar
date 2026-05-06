@@ -18,7 +18,10 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-// Typed deep mock: see reward-points.test.ts for rationale.
+// Typed deep mock: every method on `prisma` is widened to a
+// MockedFunctionDeep so `mockResolvedValue` is type-checked against the
+// real Prisma return types instead of being silently widened by an
+// `as unknown as { ... }` cast.
 const mockPrisma = vi.mocked(prisma, true);
 
 // Mirrors the include/select shape used by `getTaskAssignmentsByTaskIds`.

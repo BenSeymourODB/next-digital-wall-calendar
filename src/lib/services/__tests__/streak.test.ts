@@ -4,6 +4,7 @@
  * Tests the streak-update logic in isolation with only two mocks
  * (prisma + streak-helpers). No auth, no NextRequest, no fetch.
  */
+import type { ProfileRewardPoints } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { calculateNewStreak } from "@/lib/streak-helpers";
 import { mockTransaction } from "@/lib/test-utils/prisma-test-helpers";
@@ -20,10 +21,31 @@ vi.mock("@/lib/streak-helpers", () => ({
   calculateNewStreak: vi.fn(),
 }));
 
-// Typed deep mock: see reward-points.test.ts for rationale.
+// Typed deep mock: every property/method on `prisma` is widened to a
+// MockedFunctionDeep so `mockResolvedValue` is type-checked against the
+// real Prisma return types instead of being silently widened by an
+// `as unknown as { ... }` cast. NOTE: `mockTransaction` below still
+// types tx-model fns as plain `vi.fn()`, so mocks passed *inside* a
+// $transaction call are not strict-typed — `makeProfileRewardPoints`
+// keeps those fixtures schema-complete by construction.
 const mockPrisma = vi.mocked(prisma, true);
 
 const mockCalculateNewStreak = vi.mocked(calculateNewStreak);
+
+function makeProfileRewardPoints(
+  overrides: Partial<ProfileRewardPoints> = {}
+): ProfileRewardPoints {
+  return {
+    id: "rp-1",
+    profileId: "profile-1",
+    totalPoints: 0,
+    currentStreak: 0,
+    longestStreak: 0,
+    lastActivityDate: new Date("2024-01-01"),
+    updatedAt: new Date("2024-01-01"),
+    ...overrides,
+  };
+}
 
 describe("updateProfileStreak", () => {
   beforeEach(() => {
@@ -31,14 +53,14 @@ describe("updateProfileStreak", () => {
   });
 
   it("increments streak for a profile that already has reward points", async () => {
-    const findUnique = vi.fn().mockResolvedValue({
-      id: "rp-1",
-      profileId: "profile-1",
-      totalPoints: 100,
-      currentStreak: 3,
-      longestStreak: 5,
-      lastActivityDate: new Date("2024-06-14"),
-    });
+    const findUnique = vi.fn().mockResolvedValue(
+      makeProfileRewardPoints({
+        totalPoints: 100,
+        currentStreak: 3,
+        longestStreak: 5,
+        lastActivityDate: new Date("2024-06-14"),
+      })
+    );
     const update = vi.fn().mockResolvedValue({});
     const create = vi.fn().mockResolvedValue({});
     mockTransaction(mockPrisma, {
@@ -61,14 +83,14 @@ describe("updateProfileStreak", () => {
   });
 
   it("promotes longestStreak when the new streak exceeds the previous record", async () => {
-    const findUnique = vi.fn().mockResolvedValue({
-      id: "rp-1",
-      profileId: "profile-1",
-      totalPoints: 100,
-      currentStreak: 5,
-      longestStreak: 5,
-      lastActivityDate: new Date("2024-06-14"),
-    });
+    const findUnique = vi.fn().mockResolvedValue(
+      makeProfileRewardPoints({
+        totalPoints: 100,
+        currentStreak: 5,
+        longestStreak: 5,
+        lastActivityDate: new Date("2024-06-14"),
+      })
+    );
     const update = vi.fn().mockResolvedValue({});
     const create = vi.fn().mockResolvedValue({});
     mockTransaction(mockPrisma, {
@@ -87,14 +109,14 @@ describe("updateProfileStreak", () => {
   });
 
   it("preserves the previous longestStreak when the new streak is lower", async () => {
-    const findUnique = vi.fn().mockResolvedValue({
-      id: "rp-1",
-      profileId: "profile-1",
-      totalPoints: 100,
-      currentStreak: 1,
-      longestStreak: 10,
-      lastActivityDate: new Date("2024-06-01"),
-    });
+    const findUnique = vi.fn().mockResolvedValue(
+      makeProfileRewardPoints({
+        totalPoints: 100,
+        currentStreak: 1,
+        longestStreak: 10,
+        lastActivityDate: new Date("2024-06-01"),
+      })
+    );
     const update = vi.fn().mockResolvedValue({});
     const create = vi.fn().mockResolvedValue({});
     mockTransaction(mockPrisma, {
@@ -114,14 +136,14 @@ describe("updateProfileStreak", () => {
 
   it("passes the stored currentStreak and lastActivityDate into calculateNewStreak", async () => {
     const lastActivity = new Date("2024-06-14");
-    const findUnique = vi.fn().mockResolvedValue({
-      id: "rp-1",
-      profileId: "profile-1",
-      totalPoints: 100,
-      currentStreak: 7,
-      longestStreak: 10,
-      lastActivityDate: lastActivity,
-    });
+    const findUnique = vi.fn().mockResolvedValue(
+      makeProfileRewardPoints({
+        totalPoints: 100,
+        currentStreak: 7,
+        longestStreak: 10,
+        lastActivityDate: lastActivity,
+      })
+    );
     const update = vi.fn().mockResolvedValue({});
     const create = vi.fn().mockResolvedValue({});
     mockTransaction(mockPrisma, {
@@ -136,14 +158,14 @@ describe("updateProfileStreak", () => {
 
   it("stamps lastActivityDate with the current time on update", async () => {
     const before = Date.now();
-    const findUnique = vi.fn().mockResolvedValue({
-      id: "rp-1",
-      profileId: "profile-1",
-      totalPoints: 100,
-      currentStreak: 3,
-      longestStreak: 5,
-      lastActivityDate: new Date("2024-06-14"),
-    });
+    const findUnique = vi.fn().mockResolvedValue(
+      makeProfileRewardPoints({
+        totalPoints: 100,
+        currentStreak: 3,
+        longestStreak: 5,
+        lastActivityDate: new Date("2024-06-14"),
+      })
+    );
     const update = vi.fn().mockResolvedValue({});
     const create = vi.fn().mockResolvedValue({});
     mockTransaction(mockPrisma, {
@@ -193,14 +215,14 @@ describe("updateProfileStreak", () => {
   });
 
   it("runs the read-compute-write cycle inside a single $transaction", async () => {
-    const findUnique = vi.fn().mockResolvedValue({
-      id: "rp-1",
-      profileId: "profile-1",
-      totalPoints: 100,
-      currentStreak: 3,
-      longestStreak: 5,
-      lastActivityDate: new Date("2024-06-14"),
-    });
+    const findUnique = vi.fn().mockResolvedValue(
+      makeProfileRewardPoints({
+        totalPoints: 100,
+        currentStreak: 3,
+        longestStreak: 5,
+        lastActivityDate: new Date("2024-06-14"),
+      })
+    );
     const update = vi.fn().mockResolvedValue({});
     const create = vi.fn().mockResolvedValue({});
     mockTransaction(mockPrisma, {

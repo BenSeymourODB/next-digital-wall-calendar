@@ -22,13 +22,21 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+// `bcrypt.compare` has both a callback overload (returning void) and a
+// promise overload. `vi.mocked` resolves to the callback overload, so
+// every `mockResolvedValue(...)` call below uses `as never` to bypass
+// the void return type and stand in for the promise the production
+// code awaits.
 vi.mock("bcrypt", () => ({
   default: {
     compare: vi.fn(),
   },
 }));
 
-// Typed deep mock: see reward-points.test.ts for rationale.
+// Typed deep mock: every method on `prisma` is widened to a
+// MockedFunctionDeep so `mockResolvedValue` is type-checked against the
+// real Prisma return types instead of being silently widened by an
+// `as unknown as { ... }` cast.
 const mockPrisma = vi.mocked(prisma, true);
 
 const adminWithHash = {
