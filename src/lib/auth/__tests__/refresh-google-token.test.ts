@@ -8,6 +8,7 @@
  * the callback already depends on, and the regression that transient 5xx
  * failures are retried instead of bubbling to the caller.
  */
+import { jsonResponse } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GoogleTokenRefreshError,
@@ -16,20 +17,6 @@ import {
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-
-function jsonResponse(
-  body: unknown,
-  init: { ok?: boolean; status?: number } = {}
-): Response {
-  const status = init.status ?? 200;
-  const ok = init.ok ?? (status >= 200 && status < 300);
-  return {
-    ok,
-    status,
-    headers: new Headers(),
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
-}
 
 describe("refreshGoogleAccessToken", () => {
   beforeEach(() => {
@@ -127,6 +114,34 @@ describe("refreshGoogleAccessToken", () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(tokens.access_token).toBe("recovered");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("propagates the underlying TypeError when transient network errors exhaust the retry budget", async () => {
+    // Closes the coverage gap flagged in #276: the outer `catch` branch of
+    // `fetchWithRetry` (DNS / TCP failure after every retry) was not
+    // exercised here. `fetch` throws `TypeError("fetch failed")` for these,
+    // which `isTransientHttpError` classifies as transient — so we expect
+    // the wrapper to retry up to its default budget (3 attempts) and then
+    // re-throw the last TypeError. If a future refactor short-circuits the
+    // retry loop, this test fails because `mockFetch` is no longer called
+    // 3 times.
+    vi.useFakeTimers();
+    try {
+      const networkError = new TypeError("fetch failed");
+      mockFetch.mockRejectedValue(networkError);
+
+      const promise = refreshGoogleAccessToken("rt", "cid", "sec");
+      // Surface the rejection without unhandled-rejection noise while we
+      // pump the retry sleeps.
+      const settled = promise.catch((e: unknown) => e);
+      await vi.runAllTimersAsync();
+      const result = await settled;
+
+      expect(result).toBe(networkError);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();
     }
