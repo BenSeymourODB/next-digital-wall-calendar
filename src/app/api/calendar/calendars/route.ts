@@ -3,6 +3,11 @@
  * Returns all calendars with their color information
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import {
+  GoogleApiValidationError,
+  GoogleCalendarListResponseSchema,
+  parseGoogleResponse,
+} from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
@@ -98,13 +103,34 @@ export async function GET() {
       );
     }
 
-    const data = await response.json();
-    const items: gapi.client.calendar.CalendarListEntry[] = data.items || [];
+    const rawData: unknown = await response.json();
+    let parsed;
+    try {
+      parsed = parseGoogleResponse(rawData, GoogleCalendarListResponseSchema, {
+        endpoint: "calendarList.list",
+      });
+    } catch (validationError) {
+      if (validationError instanceof GoogleApiValidationError) {
+        logger.error(validationError, {
+          endpoint: validationError.endpoint,
+          userId: session.user.id,
+          validationIssues: validationError.issues
+            .slice(0, 5)
+            .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+            .join("; "),
+        });
+        return NextResponse.json(
+          { error: "Failed to fetch calendar list" },
+          { status: 502 }
+        );
+      }
+      throw validationError;
+    }
 
     // Transform to our CalendarInfo format. `summary` is optional per the
     // Google schema — fall back to empty string so downstream UI code can
     // treat it as a plain string.
-    const calendars: CalendarInfo[] = items.map((item) => ({
+    const calendars: CalendarInfo[] = (parsed.items ?? []).map((item) => ({
       id: item.id,
       summary: item.summary ?? "",
       description: item.description,
