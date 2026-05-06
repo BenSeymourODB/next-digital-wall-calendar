@@ -216,3 +216,13 @@ export function usePoints(): PointsContextValue {
   }
   return context;
 }
+
+/**
+ * Like {@link usePoints} but returns `null` when no provider is
+ * mounted instead of throwing. Useful for components that live in
+ * shells (e.g. AppShell) that may render outside the rewards
+ * provider in some test contexts or future deployment splits.
+ */
+export function usePointsOptional(): PointsContextValue | null {
+  return useContext(PointsContext);
+}
