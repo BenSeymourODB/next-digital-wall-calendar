@@ -130,13 +130,18 @@ export function EventArc({
           : undefined
       }
     >
-      {/* Colored arc background */}
+      {/*
+       * Colored arc background. Stroke uses the card token so the 1.5px
+       * separator between adjacent arcs (and between the arcs and the clock
+       * face) matches whichever face background is rendered — including when
+       * the face is wrapped in a light ThemeScope on a dark page (#319).
+       */}
       <path
         data-testid={`event-arc-${id}`}
         d={arcPath}
         fill={color}
         fillOpacity={0.85}
-        stroke="white"
+        stroke="var(--card)"
         strokeWidth={1.5}
       />
 
@@ -160,7 +165,10 @@ export function EventArc({
         </text>
       )}
 
-      {/* Event title - curved along the arc using textPath */}
+      {/* Event title - curved along the arc using textPath. White is
+          intentional here: titles render on the vibrant `event.color` arcs,
+          where pure white preserves WCAG-AA contrast in both light and dark
+          themes regardless of the surrounding face color (issue #319). */}
       {showTitle && (
         <text
           data-testid={`event-title-${id}`}
