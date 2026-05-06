@@ -12,9 +12,19 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import type { WritableCalendar } from "@/hooks/useWritableCalendars";
 import type { TEventColor } from "@/types/calendar";
 import { useId, useState } from "react";
+
+const FALLBACK_CALENDAR_ID = "primary";
 
 export interface EventCreateInput {
   title: string;
@@ -23,6 +33,12 @@ export interface EventCreateInput {
   color: TEventColor;
   description: string;
   isAllDay: boolean;
+  /**
+   * Google calendar id the event should be written to. Always set on submit
+   * — defaults to {@link FALLBACK_CALENDAR_ID} when no calendar list is
+   * provided, or to the user's chosen / persisted calendar otherwise.
+   */
+  calendarId: string;
 }
 
 interface EventCreateDialogProps {
@@ -35,6 +51,18 @@ interface EventCreateDialogProps {
    * open will not overwrite the user's in-progress edits.
    */
   defaultDate?: Date;
+  /**
+   * Writable calendars the user can target. The picker renders only when
+   * this list has more than one entry; otherwise the dialog silently
+   * submits with the single calendar (or `"primary"`) as the target.
+   */
+  calendars?: WritableCalendar[];
+  /**
+   * Initial selection for the calendar picker (e.g. last-used from
+   * localStorage). Ignored when not present in `calendars`; the dialog
+   * falls back to the primary calendar in that case.
+   */
+  defaultCalendarId?: string;
 }
 
 interface DialogState {
@@ -46,6 +74,34 @@ interface DialogState {
   endTimed: string;
   startAllDay: string;
   endAllDay: string;
+  calendarId: string;
+}
+
+/**
+ * Decide what calendar id the dialog should commit to when it opens.
+ *
+ * Preference order:
+ *   1. `defaultCalendarId` if it's still present in the writable list
+ *   2. The primary writable calendar
+ *   3. The first writable calendar
+ *   4. {@link FALLBACK_CALENDAR_ID} (covers the empty / loading case)
+ *
+ * Keeping this pure makes it easy to assert on, and lets the picker hide
+ * cleanly without divergent fallback logic between the visible and hidden
+ * states.
+ */
+export function resolveInitialCalendarId(
+  calendars: WritableCalendar[],
+  defaultCalendarId: string | undefined
+): string {
+  if (calendars.length === 0) {
+    return defaultCalendarId ?? FALLBACK_CALENDAR_ID;
+  }
+  if (defaultCalendarId && calendars.some((c) => c.id === defaultCalendarId)) {
+    return defaultCalendarId;
+  }
+  const primary = calendars.find((c) => c.primary);
+  return (primary ?? calendars[0]).id;
 }
 
 const COLOR_OPTIONS: readonly {
@@ -88,7 +144,10 @@ function toDateOnly(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function buildInitialState(defaultDate: Date | undefined): DialogState {
+function buildInitialState(
+  defaultDate: Date | undefined,
+  initialCalendarId: string
+): DialogState {
   const base = roundToNextHalfHour(defaultDate ?? new Date());
   const end = new Date(base);
   end.setHours(end.getHours() + 1);
@@ -101,6 +160,7 @@ function buildInitialState(defaultDate: Date | undefined): DialogState {
     endTimed: toDateTimeLocal(end),
     startAllDay: toDateOnly(base),
     endAllDay: toDateOnly(base),
+    calendarId: initialCalendarId,
   };
 }
 
@@ -154,14 +214,24 @@ export function EventCreateDialog({
   onOpenChange,
   onCreate,
   defaultDate,
+  calendars = [],
+  defaultCalendarId,
 }: EventCreateDialogProps) {
   const titleId = useId();
   const startId = useId();
   const endId = useId();
   const descriptionId = useId();
   const errorId = useId();
+  const calendarId = useId();
 
-  const [state, setState] = useState(() => buildInitialState(defaultDate));
+  const initialCalendarId = resolveInitialCalendarId(
+    calendars,
+    defaultCalendarId
+  );
+
+  const [state, setState] = useState(() =>
+    buildInitialState(defaultDate, initialCalendarId)
+  );
   const [prevOpen, setPrevOpen] = useState(open);
 
   // Reset the form during render whenever the dialog transitions from closed
@@ -170,9 +240,11 @@ export function EventCreateDialog({
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
-      setState(buildInitialState(defaultDate));
+      setState(buildInitialState(defaultDate, initialCalendarId));
     }
   }
+
+  const showPicker = calendars.length > 1;
 
   const trimmedTitle = state.title.trim();
   const hasTitle = trimmedTitle.length > 0;
@@ -200,6 +272,7 @@ export function EventCreateDialog({
       // (e.g. NZST UTC+12) where local midnight encodes as the prior UTC day.
       startDate: state.isAllDay ? state.startAllDay : start.toISOString(),
       endDate: state.isAllDay ? state.endAllDay : end.toISOString(),
+      calendarId: state.calendarId,
     });
     onOpenChange(false);
   };
@@ -359,6 +432,36 @@ export function EventCreateDialog({
               })}
             </div>
           </fieldset>
+
+          {showPicker && (
+            <div className="space-y-2">
+              <Label htmlFor={calendarId}>Calendar</Label>
+              <Select
+                value={state.calendarId}
+                onValueChange={(value) =>
+                  setState((prev) => ({ ...prev, calendarId: value }))
+                }
+              >
+                <SelectTrigger id={calendarId} className="w-full">
+                  <SelectValue placeholder="Select calendar" />
+                </SelectTrigger>
+                <SelectContent>
+                  {calendars.map((cal) => (
+                    <SelectItem key={cal.id} value={cal.id}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="h-3 w-3 rounded-full"
+                          style={{ backgroundColor: cal.backgroundColor }}
+                        />
+                        {cal.summary}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor={descriptionId}>Description</Label>

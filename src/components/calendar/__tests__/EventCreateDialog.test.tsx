@@ -1,7 +1,21 @@
-import { render, screen } from "@testing-library/react";
+import type { WritableCalendar } from "@/hooks/useWritableCalendars";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { EventCreateDialog, type EventCreateInput } from "../EventCreateDialog";
+
+function makeCalendar(overrides: Partial<WritableCalendar>): WritableCalendar {
+  return {
+    id: "primary",
+    summary: "Primary",
+    backgroundColor: "#4285f4",
+    foregroundColor: "#ffffff",
+    primary: true,
+    selected: true,
+    accessRole: "owner",
+    ...overrides,
+  };
+}
 
 /**
  * Tests for EventCreateDialog — issue #82.
@@ -16,6 +30,8 @@ function renderOpen(
     onCreate?: (event: EventCreateInput) => void;
     onOpenChange?: (open: boolean) => void;
     defaultDate?: Date;
+    calendars?: WritableCalendar[];
+    defaultCalendarId?: string;
   } = {}
 ) {
   const onCreate = overrides.onCreate ?? vi.fn();
@@ -27,6 +43,8 @@ function renderOpen(
       onOpenChange={onOpenChange}
       onCreate={onCreate}
       defaultDate={overrides.defaultDate}
+      calendars={overrides.calendars}
+      defaultCalendarId={overrides.defaultCalendarId}
     />
   );
 
@@ -365,6 +383,169 @@ describe("EventCreateDialog", () => {
       expect((screen.getByLabelText(/title/i) as HTMLInputElement).value).toBe(
         ""
       );
+    });
+  });
+
+  describe("calendar picker (#268)", () => {
+    it("does not render the picker when no calendars are provided", () => {
+      renderOpen();
+      expect(screen.queryByLabelText(/^calendar/i)).not.toBeInTheDocument();
+    });
+
+    it("does not render the picker when only one writable calendar exists", () => {
+      renderOpen({
+        calendars: [makeCalendar({ id: "primary", summary: "you@x.com" })],
+      });
+      expect(screen.queryByLabelText(/^calendar/i)).not.toBeInTheDocument();
+    });
+
+    it("submits primary calendarId by default when no calendars are passed", async () => {
+      const user = userEvent.setup();
+      const onCreate = vi.fn();
+      renderOpen({ onCreate });
+
+      await user.type(screen.getByLabelText(/title/i), "Solo");
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      const payload = onCreate.mock.calls[0][0] as EventCreateInput;
+      expect(payload.calendarId).toBe("primary");
+    });
+
+    it("submits the only-calendar id when one writable calendar exists", async () => {
+      const user = userEvent.setup();
+      const onCreate = vi.fn();
+      renderOpen({
+        onCreate,
+        calendars: [
+          makeCalendar({ id: "only@cal", summary: "Only", primary: true }),
+        ],
+      });
+
+      await user.type(screen.getByLabelText(/title/i), "Single");
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      const payload = onCreate.mock.calls[0][0] as EventCreateInput;
+      expect(payload.calendarId).toBe("only@cal");
+    });
+
+    it("renders the picker with all writable calendars when more than one", async () => {
+      const user = userEvent.setup();
+      renderOpen({
+        calendars: [
+          makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+          makeCalendar({
+            id: "family@cal",
+            summary: "Family",
+            primary: false,
+            accessRole: "writer",
+          }),
+        ],
+      });
+
+      const trigger = screen.getByLabelText(/^calendar/i);
+      expect(trigger).toBeInTheDocument();
+
+      // Open the listbox to inspect options
+      await user.click(trigger);
+      const listbox = await screen.findByRole("listbox");
+      expect(within(listbox).getByText("you@x.com")).toBeInTheDocument();
+      expect(within(listbox).getByText("Family")).toBeInTheDocument();
+    });
+
+    it("defaults selection to the primary calendar when defaultCalendarId is not provided", async () => {
+      const user = userEvent.setup();
+      const onCreate = vi.fn();
+      renderOpen({
+        onCreate,
+        calendars: [
+          makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+          makeCalendar({
+            id: "family@cal",
+            summary: "Family",
+            primary: false,
+            accessRole: "writer",
+          }),
+        ],
+      });
+
+      await user.type(screen.getByLabelText(/title/i), "Default");
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      const payload = onCreate.mock.calls[0][0] as EventCreateInput;
+      expect(payload.calendarId).toBe("primary");
+    });
+
+    it("defaults selection to defaultCalendarId when present in the writable list", async () => {
+      const user = userEvent.setup();
+      const onCreate = vi.fn();
+      renderOpen({
+        onCreate,
+        defaultCalendarId: "family@cal",
+        calendars: [
+          makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+          makeCalendar({
+            id: "family@cal",
+            summary: "Family",
+            primary: false,
+            accessRole: "writer",
+          }),
+        ],
+      });
+
+      await user.type(screen.getByLabelText(/title/i), "Family event");
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      const payload = onCreate.mock.calls[0][0] as EventCreateInput;
+      expect(payload.calendarId).toBe("family@cal");
+    });
+
+    it("falls back to the primary calendar when defaultCalendarId is no longer writable", async () => {
+      const user = userEvent.setup();
+      const onCreate = vi.fn();
+      renderOpen({
+        onCreate,
+        defaultCalendarId: "stale@cal",
+        calendars: [
+          makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+          makeCalendar({
+            id: "family@cal",
+            summary: "Family",
+            primary: false,
+            accessRole: "writer",
+          }),
+        ],
+      });
+
+      await user.type(screen.getByLabelText(/title/i), "Stale fallback");
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      const payload = onCreate.mock.calls[0][0] as EventCreateInput;
+      expect(payload.calendarId).toBe("primary");
+    });
+
+    it("submits the user's chosen calendarId after they switch the picker", async () => {
+      const user = userEvent.setup();
+      const onCreate = vi.fn();
+      renderOpen({
+        onCreate,
+        calendars: [
+          makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+          makeCalendar({
+            id: "family@cal",
+            summary: "Family",
+            primary: false,
+            accessRole: "writer",
+          }),
+        ],
+      });
+
+      await user.type(screen.getByLabelText(/title/i), "Switch then submit");
+      await user.click(screen.getByLabelText(/^calendar/i));
+      await user.click(await screen.findByRole("option", { name: "Family" }));
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      const payload = onCreate.mock.calls[0][0] as EventCreateInput;
+      expect(payload.calendarId).toBe("family@cal");
     });
   });
 
