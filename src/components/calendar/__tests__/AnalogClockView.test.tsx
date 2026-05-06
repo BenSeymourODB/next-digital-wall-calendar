@@ -13,6 +13,18 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalogClockView } from "../AnalogClockView";
 
+// next-themes mock — `mockTheme` is mutated per-test to drive the
+// emphasis-toggle visibility branch in AnalogClockView. Mock has to be
+// declared before the SUT import so it is hoisted by vitest's mock loader.
+let mockTheme: string = "light";
+vi.mock("next-themes", () => ({
+  useTheme: () => ({
+    theme: mockTheme,
+    setTheme: vi.fn(),
+    resolvedTheme: mockTheme === "system" ? "light" : mockTheme,
+  }),
+}));
+
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
@@ -70,6 +82,8 @@ describe("AnalogClockView", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-21T12:00:00Z"));
+    mockTheme = "light";
+    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -256,6 +270,90 @@ describe("AnalogClockView", () => {
 
       fireEvent.click(screen.getByRole("button", { name: /close/i }));
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Wall-Projector emphasis toggle (#319)", () => {
+    const TOGGLE_TESTID = "analog-clock-emphasis-toggle";
+    const STORAGE_KEY = "calendar_clock_face_emphasis";
+
+    it("hides the emphasis toggle when theme is light", () => {
+      mockTheme = "light";
+      renderView();
+      expect(screen.queryByTestId(TOGGLE_TESTID)).not.toBeInTheDocument();
+    });
+
+    it("hides the emphasis toggle when theme is dark", () => {
+      mockTheme = "dark";
+      renderView();
+      expect(screen.queryByTestId(TOGGLE_TESTID)).not.toBeInTheDocument();
+    });
+
+    it("shows the emphasis toggle when theme is wall-projector", () => {
+      mockTheme = "wall-projector";
+      renderView();
+      expect(screen.getByTestId(TOGGLE_TESTID)).toBeInTheDocument();
+    });
+
+    it("does not wrap the clock in a light scope by default", () => {
+      mockTheme = "wall-projector";
+      renderView();
+      const wrapper = screen.getByTestId("analog-clock-wrapper");
+      expect(wrapper.querySelector('[data-theme-scope="light"]')).toBeNull();
+    });
+
+    it("wraps the clock in [data-theme-scope=light] when toggled on", () => {
+      mockTheme = "wall-projector";
+      renderView();
+
+      fireEvent.click(screen.getByTestId(TOGGLE_TESTID));
+
+      const wrapper = screen.getByTestId("analog-clock-wrapper");
+      expect(
+        wrapper.querySelector('[data-theme-scope="light"]')
+      ).not.toBeNull();
+    });
+
+    it("removes the light scope wrap when toggled off again", () => {
+      mockTheme = "wall-projector";
+      renderView();
+
+      fireEvent.click(screen.getByTestId(TOGGLE_TESTID));
+      fireEvent.click(screen.getByTestId(TOGGLE_TESTID));
+
+      const wrapper = screen.getByTestId("analog-clock-wrapper");
+      expect(wrapper.querySelector('[data-theme-scope="light"]')).toBeNull();
+    });
+
+    it("persists the toggle state to localStorage", () => {
+      mockTheme = "wall-projector";
+      renderView();
+
+      fireEvent.click(screen.getByTestId(TOGGLE_TESTID));
+
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe("true");
+    });
+
+    it("restores the toggle state from localStorage on remount", () => {
+      window.localStorage.setItem("calendar_clock_face_emphasis", "true");
+      mockTheme = "wall-projector";
+      renderView();
+
+      const wrapper = screen.getByTestId("analog-clock-wrapper");
+      expect(
+        wrapper.querySelector('[data-theme-scope="light"]')
+      ).not.toBeNull();
+    });
+
+    it("uses the toggle to flip the SVG into a light scope only — the surrounding view stays dark", () => {
+      mockTheme = "wall-projector";
+      renderView();
+      fireEvent.click(screen.getByTestId(TOGGLE_TESTID));
+
+      // The aside containing all-day events is a sibling of the clock wrapper,
+      // outside the ThemeScope, so the dark page chrome is preserved.
+      const aside = screen.getByTestId("analog-clock-all-day-aside");
+      expect(aside.closest('[data-theme-scope="light"]')).toBeNull();
     });
   });
 });

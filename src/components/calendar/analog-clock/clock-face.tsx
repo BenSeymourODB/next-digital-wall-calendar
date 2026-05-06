@@ -54,14 +54,15 @@ export function ClockFace({
 
   return (
     <g data-testid="clock-face">
-      {/* Clock face background */}
+      {/* Clock face background — semantic tokens so ThemeScope can flip the
+          face independently of the surrounding chrome. See issue #319. */}
       <circle
         data-testid="clock-face-bg"
         cx={cx}
         cy={cy}
         r={faceRadius}
-        fill="white"
-        stroke="#e5e7eb"
+        fill="var(--card)"
+        stroke="var(--border)"
         strokeWidth={1.5}
       />
 
@@ -81,8 +82,9 @@ export function ClockFace({
             y1={outerY}
             x2={innerX}
             y2={innerY}
-            stroke="#d1d5db"
+            stroke="var(--muted-foreground)"
             strokeWidth={0.75}
+            opacity={0.4}
           />
         );
       })}
@@ -112,7 +114,7 @@ export function ClockFace({
               y1={outerY}
               x2={innerX}
               y2={innerY}
-              stroke="#374151"
+              stroke="var(--card-foreground)"
               strokeWidth={isQuarter ? 3 : 1.5}
               strokeLinecap="round"
             />
@@ -124,7 +126,7 @@ export function ClockFace({
               dominantBaseline="central"
               fontSize={roundCoord(faceRadius * 0.14)}
               fontWeight={isQuarter ? 700 : 500}
-              fill="#1f2937"
+              fill="var(--card-foreground)"
               fontFamily="system-ui, -apple-system, sans-serif"
             >
               {hour}
@@ -142,7 +144,7 @@ export function ClockFace({
         dominantBaseline="central"
         fontSize={roundCoord(faceRadius * 0.09)}
         fontWeight={600}
-        fill="#9ca3af"
+        fill="var(--muted-foreground)"
         fontFamily="system-ui, -apple-system, sans-serif"
       >
         {isPM ? "PM" : "AM"}
@@ -155,7 +157,7 @@ export function ClockFace({
         y1={cy}
         x2={cx}
         y2={roundCoord(cy - hourHandLength)}
-        stroke="#1f2937"
+        stroke="var(--card-foreground)"
         strokeWidth={roundCoord(faceRadius * 0.045)}
         strokeLinecap="round"
         transform={`rotate(${hourAngle}, ${cx}, ${cy})`}
@@ -168,13 +170,14 @@ export function ClockFace({
         y1={cy}
         x2={cx}
         y2={roundCoord(cy - minuteHandLength)}
-        stroke="#374151"
+        stroke="var(--card-foreground)"
         strokeWidth={roundCoord(faceRadius * 0.028)}
         strokeLinecap="round"
         transform={`rotate(${minuteAngle}, ${cx}, ${cy})`}
       />
 
-      {/* Second hand (optional) */}
+      {/* Second hand — kept as a destructive accent so it stays visually
+          distinct against any face/foreground combination. */}
       {showSeconds && (
         <line
           data-testid="second-hand"
@@ -182,7 +185,7 @@ export function ClockFace({
           y1={roundCoord(cy + faceRadius * 0.12)}
           x2={cx}
           y2={roundCoord(cy - secondHandLength)}
-          stroke="#ef4444"
+          stroke="var(--destructive)"
           strokeWidth={1.5}
           strokeLinecap="round"
           transform={`rotate(${secondAngle}, ${cx}, ${cy})`}
@@ -195,7 +198,7 @@ export function ClockFace({
         cx={cx}
         cy={cy}
         r={roundCoord(faceRadius * 0.035)}
-        fill="#1f2937"
+        fill="var(--card-foreground)"
       />
     </g>
   );

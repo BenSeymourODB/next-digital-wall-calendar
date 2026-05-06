@@ -2,16 +2,20 @@
 
 import { AnalogClock } from "@/components/calendar/analog-clock";
 import { useCalendar } from "@/components/providers/CalendarProvider";
+import { ThemeScope } from "@/components/theme/theme-scope";
 import { useEventDelete } from "@/hooks/useEventDelete";
 import { getColorClass } from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useTheme } from "next-themes";
 import { format, parseISO } from "date-fns";
+import { Sparkles } from "lucide-react";
 import { EventDetailModal } from "./EventDetailModal";
 
 const CLOCK_MAX_PX = 720;
 const ARC_THICKNESS_RATIO = 0.08;
+const EMPHASIS_STORAGE_KEY = "calendar_clock_face_emphasis";
 
 function isAllDayToday(event: IEvent, today: Date): boolean {
   if (!event.isAllDay) return false;
@@ -34,6 +38,25 @@ export function AnalogClockView() {
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
+  const { theme } = useTheme();
+
+  // Emphasize the clock face with a light scope (issue #319). Only meaningful
+  // in `wall-projector` theme; persisted in localStorage so the toggle survives
+  // reloads on always-on wall displays. Initialize synchronously from
+  // localStorage when running in the browser to avoid a one-frame flicker
+  // between the default state and the restored value.
+  const [emphasizeFace, setEmphasizeFace] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(EMPHASIS_STORAGE_KEY) === "true";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      EMPHASIS_STORAGE_KEY,
+      emphasizeFace ? "true" : "false"
+    );
+  }, [emphasizeFace]);
 
   const allDayToday = events
     .filter((event) => isAllDayToday(event, today))
@@ -49,6 +72,17 @@ export function AnalogClockView() {
     setSelectedEvent(match);
   };
 
+  const isWallProjector = theme === "wall-projector";
+
+  const clockSvg = (
+    <AnalogClock
+      size={CLOCK_MAX_PX}
+      rawEvents={events}
+      arcThickness={CLOCK_MAX_PX * ARC_THICKNESS_RATIO}
+      onEventClick={(eventId, trigger) => openEventById(eventId, trigger)}
+    />
+  );
+
   return (
     <div
       data-testid="analog-clock-view"
@@ -58,18 +92,31 @@ export function AnalogClockView() {
           width/height attributes (720px); the descendant selector forces the
           SVG to fill its container so narrow viewports scale via the viewBox
           rather than overflowing the card. */}
-      <div className="flex justify-center">
+      <div className="flex flex-col items-center gap-3">
+        {isWallProjector && (
+          <button
+            type="button"
+            data-testid="analog-clock-emphasis-toggle"
+            aria-pressed={emphasizeFace}
+            onClick={() => setEmphasizeFace((prev) => !prev)}
+            className="border-border bg-card text-card-foreground hover:bg-accent focus:ring-ring inline-flex items-center gap-2 self-end rounded-md border px-3 py-1.5 text-xs transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+          >
+            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+            {emphasizeFace ? "Dim clock face" : "Emphasize clock face"}
+          </button>
+        )}
         <div
           data-testid="analog-clock-wrapper"
           className="aspect-square w-full [&>svg]:h-full [&>svg]:w-full"
           style={{ maxWidth: `${CLOCK_MAX_PX}px` }}
         >
-          <AnalogClock
-            size={CLOCK_MAX_PX}
-            rawEvents={events}
-            arcThickness={CLOCK_MAX_PX * ARC_THICKNESS_RATIO}
-            onEventClick={(eventId, trigger) => openEventById(eventId, trigger)}
-          />
+          {emphasizeFace && isWallProjector ? (
+            <ThemeScope mode="light" className="h-full w-full">
+              {clockSvg}
+            </ThemeScope>
+          ) : (
+            clockSvg
+          )}
         </div>
       </div>
 
