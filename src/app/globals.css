@@ -7,7 +7,8 @@
  * `[data-theme-scope="light"]` subtree should use semantic tokens
  * (bg-background, text-foreground, etc.) rather than `dark:` overrides; the
  * scope re-declares the tokens but cannot reverse the `dark:` variant on
- * descendants. See issue #319 and src/components/theme/theme-scope.tsx.
+ * descendants. The repo-wide audit of components that use `dark:` overrides
+ * and may end up inside a ThemeScope island is tracked in #324.
  *
  * NB: Tailwind requires `@custom-variant` on a single line — do not break it.
  */
@@ -90,7 +91,8 @@
  * ThemeScope primitive — re-declare every semantic token within a
  * `[data-theme-scope]` subtree, regardless of the outer theme. See issue #319
  * and src/components/theme/theme-scope.tsx. Values mirror the :root (light)
- * and .dark blocks above; keep them in sync.
+ * and .dark blocks above; keep them in sync. `--radius` is intentionally
+ * omitted because it is identical across light and dark themes.
  */
 [data-theme-scope="light"] {
   --background: oklch(1 0 0);
@@ -111,6 +113,11 @@
   --border: oklch(0.921 0.007 285.823);
   --input: oklch(0.921 0.007 285.823);
   --ring: oklch(0.87 0.012 285.823);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.714);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
   --sidebar-background: oklch(0.985 0.002 285.823);
   --sidebar-foreground: oklch(0.145 0.016 285.823);
   --sidebar-primary: oklch(0.205 0.019 285.823);
@@ -140,6 +147,11 @@
   --border: oklch(0.264 0.015 285.823);
   --input: oklch(0.264 0.015 285.823);
   --ring: oklch(0.439 0.01 285.823);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
   --sidebar-background: oklch(0.205 0.019 285.823);
   --sidebar-foreground: oklch(0.985 0.002 285.823);
   --sidebar-primary: oklch(0.488 0.243 264.376);

@@ -7,7 +7,7 @@ import { useEventDelete } from "@/hooks/useEventDelete";
 import { getColorClass } from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import { format, parseISO } from "date-fns";
 import { Sparkles } from "lucide-react";
@@ -16,6 +16,32 @@ import { EventDetailModal } from "./EventDetailModal";
 const CLOCK_MAX_PX = 720;
 const ARC_THICKNESS_RATIO = 0.08;
 const EMPHASIS_STORAGE_KEY = "calendar_clock_face_emphasis";
+
+// Hydration-safe localStorage reader for the clock-face emphasis toggle.
+// `useSyncExternalStore` returns the server snapshot during SSR + the first
+// client paint, then commits the live snapshot post-hydration, avoiding a
+// hydration mismatch when the user has previously toggled the emphasis on.
+function subscribeEmphasis(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+function getEmphasisSnapshot(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(EMPHASIS_STORAGE_KEY) === "true";
+}
+function getEmphasisServerSnapshot(): boolean {
+  return false;
+}
+function writeEmphasis(next: boolean): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(EMPHASIS_STORAGE_KEY, next ? "true" : "false");
+  // `storage` events do not fire in the same window that wrote the value, so
+  // poke the listener directly so the read snapshot updates.
+  window.dispatchEvent(
+    new StorageEvent("storage", { key: EMPHASIS_STORAGE_KEY })
+  );
+}
 
 function isAllDayToday(event: IEvent, today: Date): boolean {
   if (!event.isAllDay) return false;
@@ -38,25 +64,19 @@ export function AnalogClockView() {
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
 
   // Emphasize the clock face with a light scope (issue #319). Only meaningful
-  // in `wall-projector` theme; persisted in localStorage so the toggle survives
-  // reloads on always-on wall displays. Initialize synchronously from
-  // localStorage when running in the browser to avoid a one-frame flicker
-  // between the default state and the restored value.
-  const [emphasizeFace, setEmphasizeFace] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(EMPHASIS_STORAGE_KEY) === "true";
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(
-      EMPHASIS_STORAGE_KEY,
-      emphasizeFace ? "true" : "false"
-    );
-  }, [emphasizeFace]);
+  // in `wall-projector` theme; persisted in localStorage so the toggle
+  // survives reloads on always-on wall displays. `useSyncExternalStore`
+  // returns the server snapshot (always `false`) during SSR + the first
+  // client paint, then swaps to the live localStorage value after hydration.
+  const emphasizeFace = useSyncExternalStore(
+    subscribeEmphasis,
+    getEmphasisSnapshot,
+    getEmphasisServerSnapshot
+  );
+  const toggleEmphasis = () => writeEmphasis(!emphasizeFace);
 
   const allDayToday = events
     .filter((event) => isAllDayToday(event, today))
@@ -72,16 +92,7 @@ export function AnalogClockView() {
     setSelectedEvent(match);
   };
 
-  const isWallProjector = theme === "wall-projector";
-
-  const clockSvg = (
-    <AnalogClock
-      size={CLOCK_MAX_PX}
-      rawEvents={events}
-      arcThickness={CLOCK_MAX_PX * ARC_THICKNESS_RATIO}
-      onEventClick={(eventId, trigger) => openEventById(eventId, trigger)}
-    />
-  );
+  const isWallProjector = resolvedTheme === "wall-projector";
 
   return (
     <div
@@ -91,14 +102,16 @@ export function AnalogClockView() {
       {/* Responsive square wrapper. AnalogClock renders an SVG with explicit
           width/height attributes (720px); the descendant selector forces the
           SVG to fill its container so narrow viewports scale via the viewBox
-          rather than overflowing the card. */}
+          rather than overflowing the card. The `[&_svg]` (descendant) form
+          is required so the rule still matches when the SVG is wrapped in a
+          ThemeScope <div>. */}
       <div className="flex flex-col items-center gap-3">
         {isWallProjector && (
           <button
             type="button"
             data-testid="analog-clock-emphasis-toggle"
             aria-pressed={emphasizeFace}
-            onClick={() => setEmphasizeFace((prev) => !prev)}
+            onClick={toggleEmphasis}
             className="border-border bg-card text-card-foreground hover:bg-accent focus:ring-ring inline-flex items-center gap-2 self-end rounded-md border px-3 py-1.5 text-xs transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
           >
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
@@ -107,15 +120,29 @@ export function AnalogClockView() {
         )}
         <div
           data-testid="analog-clock-wrapper"
-          className="aspect-square w-full [&>svg]:h-full [&>svg]:w-full"
+          className="aspect-square w-full [&_svg]:h-full [&_svg]:w-full"
           style={{ maxWidth: `${CLOCK_MAX_PX}px` }}
         >
           {emphasizeFace && isWallProjector ? (
             <ThemeScope mode="light" className="h-full w-full">
-              {clockSvg}
+              <AnalogClock
+                size={CLOCK_MAX_PX}
+                rawEvents={events}
+                arcThickness={CLOCK_MAX_PX * ARC_THICKNESS_RATIO}
+                onEventClick={(eventId, trigger) =>
+                  openEventById(eventId, trigger)
+                }
+              />
             </ThemeScope>
           ) : (
-            clockSvg
+            <AnalogClock
+              size={CLOCK_MAX_PX}
+              rawEvents={events}
+              arcThickness={CLOCK_MAX_PX * ARC_THICKNESS_RATIO}
+              onEventClick={(eventId, trigger) =>
+                openEventById(eventId, trigger)
+              }
+            />
           )}
         </div>
       </div>

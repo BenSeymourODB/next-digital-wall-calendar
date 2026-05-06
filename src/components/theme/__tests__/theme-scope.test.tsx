@@ -71,6 +71,13 @@ describe("ThemeScope", () => {
     // jsdom does not resolve `var(...)` references in computed `background-color`,
     // so we read the custom property directly via getPropertyValue, which jsdom
     // does report from matched rules.
+    //
+    // NB: this test is an approximation of the real behaviour — it locks in
+    // that the data-theme-scope selectors land at all. The full visual
+    // contract (Tailwind `bg-background`, `text-foreground`, SVG fills via
+    // `var(--card)`, etc. all flipping under the scope) is verified in the
+    // Playwright/visual layer, since jsdom's `getComputedStyle` support for
+    // custom-property cascades has historically varied between versions.
     const style = document.createElement("style");
     style.textContent = `
       [data-theme-scope="light"] { --background: rgb(255, 255, 255); }

@@ -82,9 +82,8 @@ export function ClockFace({
             y1={outerY}
             x2={innerX}
             y2={innerY}
-            stroke="var(--muted-foreground)"
+            stroke="var(--border)"
             strokeWidth={0.75}
-            opacity={0.4}
           />
         );
       })}
