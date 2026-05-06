@@ -66,15 +66,27 @@ describe("EventArc", () => {
     expect(screen.queryByTestId("event-emoji-evt-2")).not.toBeInTheDocument();
   });
 
-  it("renders the clean title on the arc (truncated if > 15 chars)", () => {
+  it("wraps a long title onto 2 lines instead of single-line ellipsis (#310)", () => {
+    // baseEvent: "Family Game Night" (17 chars) at 30° arc. The exact split
+    // depends on the layout heuristic constants in event-arc.tsx, so this
+    // test only asserts the contract: two lines, words preserved across
+    // the split, no mid-word breaks, no single-line ellipsis fallback.
     renderArc();
     const title = screen.getByTestId("event-title-evt-1");
     expect(title).toBeInTheDocument();
-    // "Family Game Night" is 17 chars, truncated to 14 + "..."
-    expect(title.textContent).toBe("Family Game Ni...");
+
+    const textPaths = title.querySelectorAll("textPath");
+    expect(textPaths.length).toBe(2);
+
+    const renderedLines = Array.from(textPaths).map(
+      (tp) => tp.textContent ?? ""
+    );
+    expect(renderedLines.join(" ")).toBe("Family Game Night");
+    expect(renderedLines.every((l) => !l.includes("..."))).toBe(true);
+    expect(renderedLines.every((l) => !l.includes("…"))).toBe(true);
   });
 
-  it("renders full title when short enough", () => {
+  it("renders full title on a single textPath when short enough", () => {
     const shortEvent: ClockEvent = {
       ...baseEvent,
       id: "evt-short",
@@ -84,7 +96,60 @@ describe("EventArc", () => {
     };
     renderArc({ event: shortEvent });
     const title = screen.getByTestId("event-title-evt-short");
-    expect(title.textContent).toBe("Team Lunch");
+    const textPaths = title.querySelectorAll("textPath");
+    expect(textPaths.length).toBe(1);
+    expect(textPaths[0].textContent).toBe("Team Lunch");
+  });
+
+  it("renders 2-line titles at distinct radii (outer line further from center)", () => {
+    // Render the wrapped baseEvent and verify the two textPath elements
+    // reference distinct paths defined in <defs>.
+    renderArc();
+    const title = screen.getByTestId("event-title-evt-1");
+    const textPaths = title.querySelectorAll("textPath");
+    expect(textPaths.length).toBe(2);
+
+    const hrefs = Array.from(textPaths).map((tp) => tp.getAttribute("href"));
+    expect(hrefs[0]).not.toEqual(hrefs[1]);
+
+    // Both referenced <path>s should exist in the same arc <g>.
+    const arcGroup = screen.getByTestId("event-arc-group-evt-1");
+    const defs = arcGroup.querySelector("defs");
+    const pathEls = defs ? defs.querySelectorAll("path") : [];
+    const pathIds = Array.from(pathEls).map((p) => `#${p.getAttribute("id")}`);
+    expect(pathIds).toEqual(expect.arrayContaining(hrefs));
+  });
+
+  it("ellipsizes the second line when even 2 lines aren't enough (didOverflow)", () => {
+    const overflowEvent: ClockEvent = {
+      ...baseEvent,
+      id: "evt-overflow",
+      cleanTitle: "the quick brown fox jumps over the lazy dog",
+      startAngle: 90,
+      endAngle: 120, // 30° span → ~16 char budget
+    };
+    renderArc({ event: overflowEvent });
+    const title = screen.getByTestId("event-title-evt-overflow");
+    const textPaths = title.querySelectorAll("textPath");
+    expect(textPaths.length).toBe(2);
+    // Line 2 ends with the truncation marker (ASCII "..." at this budget).
+    expect(textPaths[1].textContent?.endsWith("...")).toBe(true);
+  });
+
+  it("falls back to a single ellipsized line on narrow arcs (< 30°)", () => {
+    // 25° arc is below the 2-line gate. Long title → single-line truncation.
+    const narrowEvent: ClockEvent = {
+      ...baseEvent,
+      id: "evt-narrow",
+      cleanTitle: "Family Game Night",
+      startAngle: 90,
+      endAngle: 115, // 25° span
+    };
+    renderArc({ event: narrowEvent });
+    const title = screen.getByTestId("event-title-evt-narrow");
+    const textPaths = title.querySelectorAll("textPath");
+    expect(textPaths.length).toBe(1);
+    expect(textPaths[0].textContent?.endsWith("...")).toBe(true);
   });
 
   it("has accessible role with event title", () => {
