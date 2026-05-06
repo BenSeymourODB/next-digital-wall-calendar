@@ -42,6 +42,10 @@ export interface AwardPointsResult {
 interface PointsContextValue {
   totalPoints: number;
   isEnabled: boolean;
+  /** Default points awarded for a task completion (mirrors UserSettings). */
+  defaultTaskPoints: number;
+  /** Whether the +N animation should be shown after a successful award. */
+  showPointsOnCompletion: boolean;
   profileId: string | null;
   awardPoints: (
     points: number,
@@ -49,6 +53,16 @@ interface PointsContextValue {
     metadata?: AwardPointsMetadata
   ) => Promise<AwardPointsResult>;
   refreshPoints: () => Promise<void>;
+}
+
+const DEFAULT_TASK_POINTS = 10;
+const DEFAULT_SHOW_POINTS_ON_COMPLETION = true;
+
+interface PointsApiResponse {
+  totalPoints: number;
+  enabled: boolean;
+  defaultTaskPoints?: number;
+  showPointsOnCompletion?: boolean;
 }
 
 const PointsContext = createContext<PointsContextValue | null>(null);
@@ -66,6 +80,10 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
   // cascading renders).
   const [fetchedTotal, setFetchedTotal] = useState(0);
   const [fetchedEnabled, setFetchedEnabled] = useState(false);
+  const [fetchedDefaultTaskPoints, setFetchedDefaultTaskPoints] =
+    useState(DEFAULT_TASK_POINTS);
+  const [fetchedShowPointsOnCompletion, setFetchedShowPointsOnCompletion] =
+    useState(DEFAULT_SHOW_POINTS_ON_COMPLETION);
 
   // Track the currently-mounted profile id so in-flight requests
   // started under a different profile don't write their result into
@@ -92,13 +110,16 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
           setFetchedEnabled(false);
           return;
         }
-        const data = (await response.json()) as {
-          totalPoints: number;
-          enabled: boolean;
-        };
+        const data = (await response.json()) as PointsApiResponse;
         if (controller.signal.aborted) return;
         setFetchedTotal(data.totalPoints);
         setFetchedEnabled(data.enabled);
+        if (typeof data.defaultTaskPoints === "number") {
+          setFetchedDefaultTaskPoints(data.defaultTaskPoints);
+        }
+        if (typeof data.showPointsOnCompletion === "boolean") {
+          setFetchedShowPointsOnCompletion(data.showPointsOnCompletion);
+        }
       } catch (error) {
         if ((error as Error).name === "AbortError") return;
         logger.error(error as Error, { context: "FetchPointsFailed" });
@@ -127,13 +148,16 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
         setFetchedEnabled(false);
         return;
       }
-      const data = (await response.json()) as {
-        totalPoints: number;
-        enabled: boolean;
-      };
+      const data = (await response.json()) as PointsApiResponse;
       if (activeProfileIdRef.current !== profileId) return;
       setFetchedTotal(data.totalPoints);
       setFetchedEnabled(data.enabled);
+      if (typeof data.defaultTaskPoints === "number") {
+        setFetchedDefaultTaskPoints(data.defaultTaskPoints);
+      }
+      if (typeof data.showPointsOnCompletion === "boolean") {
+        setFetchedShowPointsOnCompletion(data.showPointsOnCompletion);
+      }
     } catch (error) {
       logger.error(error as Error, { context: "FetchPointsFailed" });
       if (activeProfileIdRef.current !== profileId) return;
@@ -199,6 +223,8 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
   const value: PointsContextValue = {
     totalPoints,
     isEnabled,
+    defaultTaskPoints: fetchedDefaultTaskPoints,
+    showPointsOnCompletion: fetchedShowPointsOnCompletion,
     profileId,
     awardPoints,
     refreshPoints,

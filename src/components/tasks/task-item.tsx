@@ -11,17 +11,26 @@
  * - Optional notes display
  * - Profile assignment avatars when the task is owned by one or more
  *   family profiles
+ * - Reward-point integration: when wrapped in `PointsProvider` and the
+ *   user has rewards enabled, completing the task POSTs to
+ *   `/api/points/award` (idempotent server-side via the unique
+ *   `(profileId, taskId, reason)` index) and surfaces a transient
+ *   `PointsAnimation` if `showPointsOnCompletion` is true.
  */
 import { ProfileAvatar } from "@/components/profiles/profile-avatar";
+import { PointsAnimation } from "@/components/rewards/points-animation";
+import { usePointsOptional } from "@/components/rewards/points-context";
 import { Checkbox } from "@/components/ui/checkbox";
+import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 import { type TaskWithMeta, formatDueDate } from "./types";
 
 export interface TaskItemProps {
   /** The task to display */
   task: TaskWithMeta;
-  /** Called when the task checkbox is toggled */
-  onToggle: () => void;
+  /** Called when the task checkbox is toggled. May return a Promise. */
+  onToggle: () => void | Promise<void>;
   /** Whether the checkbox is disabled */
   disabled?: boolean;
 }
@@ -29,6 +38,41 @@ export interface TaskItemProps {
 export function TaskItem({ task, onToggle, disabled = false }: TaskItemProps) {
   const isCompleted = task.status === "completed";
   const assignees = task.assignments;
+  const points = usePointsOptional();
+
+  const [animationPoints, setAnimationPoints] = useState<number | null>(null);
+
+  const handleToggle = async () => {
+    const wasCompleted = isCompleted;
+
+    // Always run the parent's toggle first — that's the source of truth
+    // for the task's status. Whatever happens with rewards is layered on
+    // top and must never replace the underlying toggle behaviour.
+    await Promise.resolve(onToggle());
+
+    // Award points only on the incomplete → complete transition.
+    if (wasCompleted) return;
+    if (!points || !points.isEnabled) return;
+
+    try {
+      const result = await points.awardPoints(
+        points.defaultTaskPoints,
+        "task_completed",
+        { taskId: task.id, taskTitle: task.title }
+      );
+
+      // alreadyAwarded means the server's unique index fired — re-completing
+      // the same task does not re-credit, so we suppress the animation too.
+      if (!result.alreadyAwarded && points.showPointsOnCompletion) {
+        setAnimationPoints(points.defaultTaskPoints);
+      }
+    } catch (error) {
+      logger.error(error as Error, {
+        context: "TaskAwardPointsFailed",
+        taskId: task.id,
+      });
+    }
+  };
 
   return (
     <div className="p-4 transition hover:bg-gray-50">
@@ -45,7 +89,7 @@ export function TaskItem({ task, onToggle, disabled = false }: TaskItemProps) {
         <Checkbox
           id={`task-${task.id}`}
           checked={isCompleted}
-          onCheckedChange={onToggle}
+          onCheckedChange={handleToggle}
           disabled={disabled}
           aria-label={task.title}
           className="mt-0.5 flex-shrink-0"
@@ -99,6 +143,12 @@ export function TaskItem({ task, onToggle, disabled = false }: TaskItemProps) {
               {task.notes}
             </div>
           )}
+
+          <PointsAnimation
+            points={animationPoints ?? 0}
+            show={animationPoints !== null}
+            onComplete={() => setAnimationPoints(null)}
+          />
         </div>
       </div>
     </div>
