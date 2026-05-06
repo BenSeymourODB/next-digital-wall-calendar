@@ -16,6 +16,13 @@ import { format, isSameMonth } from "date-fns";
 import { describe, expect, it, vi } from "vitest";
 import { SimpleCalendar } from "../SimpleCalendar";
 
+// SimpleCalendar mounts AddEventButton, which now reads useWritableCalendars
+// (and therefore useSession). These tests don't wrap in SessionProvider; mock
+// the hook so the calendar surface stays decoupled from the data layer.
+vi.mock("@/hooks/useWritableCalendars", () => ({
+  useWritableCalendars: () => ({ calendars: [], isLoading: false }),
+}));
+
 /**
  * Tests for SimpleCalendar component.
  *
