@@ -8,6 +8,12 @@ import {
   type GoogleCalendarEvent,
   normalizeFetchedEvent,
 } from "@/lib/google-calendar-mappers";
+import {
+  GoogleApiValidationError,
+  GoogleEventSchema,
+  GoogleEventsListResponseSchema,
+  parseGoogleResponse,
+} from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import type { TEventColor } from "@/types/calendar";
@@ -84,16 +90,47 @@ async function fetchEventsFromCalendar(
     };
   }
 
-  const data = await response.json();
-  const events: GoogleCalendarEvent[] = (data.items || []).map(
-    (event: gapi.client.calendar.Event) =>
-      normalizeFetchedEvent(event, calendarId)
+  const rawData: unknown = await response.json();
+  let parsed;
+  try {
+    parsed = parseGoogleResponse(rawData, GoogleEventsListResponseSchema, {
+      endpoint: "events.list",
+      calendarId,
+    });
+  } catch (error) {
+    if (error instanceof GoogleApiValidationError) {
+      logger.error(error, {
+        endpoint: error.endpoint,
+        calendarId: error.calendarId ?? "",
+        validationIssues: error.issues
+          .slice(0, 5)
+          .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+          .join("; "),
+      });
+      return {
+        events: [],
+        error: {
+          calendarId,
+          error: "Google Calendar response failed validation",
+          status: 502,
+        },
+      };
+    }
+    throw error;
+  }
+
+  // The mappers spread `{ ...event }` so unknown Google fields pass through
+  // unchanged (the Zod schema is `.loose()` for the same reason). The cast
+  // is safe because the schema requires `id` — the contract our mapper relies
+  // on — and treats every other field as optional, matching the Google API.
+  const events: GoogleCalendarEvent[] = (parsed.items ?? []).map((event) =>
+    normalizeFetchedEvent(event as gapi.client.calendar.Event, calendarId)
   );
 
   return {
     events,
-    summary: data.summary,
-    timeZone: data.timeZone,
+    summary: parsed.summary,
+    timeZone: parsed.timeZone,
   };
 }
 
@@ -514,8 +551,36 @@ export async function POST(request: NextRequest) {
     });
 
     if (response.ok) {
-      const created = (await response.json()) as gapi.client.calendar.Event;
-      const normalized = normalizeFetchedEvent(created, event.calendarId);
+      const rawCreated: unknown = await response.json();
+      let created;
+      try {
+        created = parseGoogleResponse(rawCreated, GoogleEventSchema, {
+          endpoint: "events.insert",
+          calendarId: event.calendarId,
+        });
+      } catch (validationError) {
+        if (validationError instanceof GoogleApiValidationError) {
+          logger.error(validationError, {
+            endpoint: validationError.endpoint,
+            calendarId: validationError.calendarId ?? "",
+            userId: session.user.id,
+            validationIssues: validationError.issues
+              .slice(0, 5)
+              .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+              .join("; "),
+          });
+          return NextResponse.json(
+            { error: "Failed to create calendar event" },
+            { status: 502 }
+          );
+        }
+        throw validationError;
+      }
+
+      const normalized = normalizeFetchedEvent(
+        created as gapi.client.calendar.Event,
+        event.calendarId
+      );
 
       logger.event("CalendarEventCreated", {
         userId: session.user.id,
