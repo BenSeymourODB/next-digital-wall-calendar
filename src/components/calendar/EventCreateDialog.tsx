@@ -25,6 +25,11 @@ import type { TEventColor } from "@/types/calendar";
 import { useId, useState } from "react";
 
 const FALLBACK_CALENDAR_ID = "primary";
+// Stable empty-list reference for the `calendars` default. A literal `[]`
+// in the destructure would mint a new array every render, defeating the
+// reference-equality check that drives the mid-dialog reconciliation guard
+// below.
+const EMPTY_CALENDARS: readonly WritableCalendar[] = [];
 
 export interface EventCreateInput {
   title: string;
@@ -214,7 +219,7 @@ export function EventCreateDialog({
   onOpenChange,
   onCreate,
   defaultDate,
-  calendars = [],
+  calendars = EMPTY_CALENDARS as WritableCalendar[],
   defaultCalendarId,
 }: EventCreateDialogProps) {
   const titleId = useId();
@@ -233,6 +238,7 @@ export function EventCreateDialog({
     buildInitialState(defaultDate, initialCalendarId)
   );
   const [prevOpen, setPrevOpen] = useState(open);
+  const [prevCalendars, setPrevCalendars] = useState(calendars);
 
   // Reset the form during render whenever the dialog transitions from closed
   // → open. This is the React "storing information from previous renders"
@@ -241,6 +247,23 @@ export function EventCreateDialog({
     setPrevOpen(open);
     if (open) {
       setState(buildInitialState(defaultDate, initialCalendarId));
+    }
+  }
+
+  // Reconcile state.calendarId when the writable list arrives mid-dialog.
+  // Without this guard, a dialog opened during the loading window keeps the
+  // initial id (a possibly-stale persisted localStorage value) even after
+  // the canonical writable list shows that id is no longer valid — the
+  // user could otherwise submit to a calendar they can't write to and hit
+  // a 403 from Google. Same prev-render-info pattern as the open-transition
+  // above; only re-resolves when the `calendars` reference actually changes.
+  if (calendars !== prevCalendars) {
+    setPrevCalendars(calendars);
+    if (
+      calendars.length > 0 &&
+      !calendars.some((c) => c.id === state.calendarId)
+    ) {
+      setState((prev) => ({ ...prev, calendarId: initialCalendarId }));
     }
   }
 

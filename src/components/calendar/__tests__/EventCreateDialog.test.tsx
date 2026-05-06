@@ -523,6 +523,96 @@ describe("EventCreateDialog", () => {
       expect(payload.calendarId).toBe("primary");
     });
 
+    it("reconciles a stale persisted id when the writable list arrives mid-dialog", async () => {
+      // Simulate the loading window: the dialog mounts before
+      // useWritableCalendars resolves. The persisted id ("revoked@cal") is no
+      // longer in the writable list — without the mid-dialog reconciliation
+      // guard, the dialog would submit "revoked@cal" and Google would 403.
+      const onCreate = vi.fn();
+      const writableList = [
+        makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+        makeCalendar({
+          id: "family@cal",
+          summary: "Family",
+          primary: false,
+          accessRole: "writer",
+        }),
+      ];
+
+      const { rerender } = render(
+        <EventCreateDialog
+          open
+          onOpenChange={vi.fn()}
+          onCreate={onCreate}
+          defaultCalendarId="revoked@cal"
+          calendars={[]}
+        />
+      );
+
+      // Now the writable list resolves while the dialog is still open.
+      rerender(
+        <EventCreateDialog
+          open
+          onOpenChange={vi.fn()}
+          onCreate={onCreate}
+          defaultCalendarId="revoked@cal"
+          calendars={writableList}
+        />
+      );
+
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText(/title/i), "Reconciled");
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      const payload = onCreate.mock.calls[0][0] as EventCreateInput;
+      // Stale "revoked@cal" must be replaced with the primary fallback once
+      // the writable list shows it's no longer valid.
+      expect(payload.calendarId).toBe("primary");
+    });
+
+    it("preserves a still-valid persisted id when the writable list arrives mid-dialog", async () => {
+      // Companion to the stale-id test: if the persisted id is in the
+      // late-arriving list, no reconciliation should happen — we don't want
+      // to clobber the user's preference with the primary fallback.
+      const onCreate = vi.fn();
+      const writableList = [
+        makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+        makeCalendar({
+          id: "family@cal",
+          summary: "Family",
+          primary: false,
+          accessRole: "writer",
+        }),
+      ];
+
+      const { rerender } = render(
+        <EventCreateDialog
+          open
+          onOpenChange={vi.fn()}
+          onCreate={onCreate}
+          defaultCalendarId="family@cal"
+          calendars={[]}
+        />
+      );
+
+      rerender(
+        <EventCreateDialog
+          open
+          onOpenChange={vi.fn()}
+          onCreate={onCreate}
+          defaultCalendarId="family@cal"
+          calendars={writableList}
+        />
+      );
+
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText(/title/i), "Preserved");
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      const payload = onCreate.mock.calls[0][0] as EventCreateInput;
+      expect(payload.calendarId).toBe("family@cal");
+    });
+
     it("submits the user's chosen calendarId after they switch the picker", async () => {
       const user = userEvent.setup();
       const onCreate = vi.fn();

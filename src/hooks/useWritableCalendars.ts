@@ -60,6 +60,11 @@ export function useWritableCalendars(): UseWritableCalendarsResult {
     setIsLoading(true);
 
     (async () => {
+      // The non-OK and catch branches both `return` early; relying on the
+      // `finally` below is what guarantees `isLoading` resets in those
+      // paths. Keep them as bare returns rather than calling
+      // `setIsLoading(false)` inline so there's exactly one place that
+      // owns the loading flag.
       try {
         const response = await fetch("/api/calendar/calendars");
         if (cancelled) return;

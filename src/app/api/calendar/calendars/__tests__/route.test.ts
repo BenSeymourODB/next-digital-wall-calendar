@@ -13,7 +13,7 @@ import {
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GET } from "../route";
+import { type CalendarsResponse, GET } from "../route";
 
 // Mock modules BEFORE imports
 vi.mock("@/lib/auth", () => ({
@@ -40,22 +40,9 @@ vi.mock("@/lib/logger", () => ({
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-
-// Type definitions for calendar list response
-interface CalendarInfo {
-  id: string;
-  summary: string;
-  description?: string;
-  backgroundColor: string;
-  foregroundColor: string;
-  primary: boolean;
-  selected: boolean;
-  accessRole: "freeBusyReader" | "reader" | "writer" | "owner";
-}
-
-interface CalendarsResponse {
-  calendars: CalendarInfo[];
-}
+// `CalendarsResponse` is imported from `../route` rather than re-declared
+// locally — keeps the test contract single-sourced so a future field added
+// to the route can't silently bypass the test schema.
 
 describe("/api/calendar/calendars", () => {
   beforeEach(() => {
