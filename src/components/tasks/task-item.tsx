@@ -43,6 +43,9 @@ export function TaskItem({ task, onToggle, disabled = false }: TaskItemProps) {
   const [animationPoints, setAnimationPoints] = useState<number | null>(null);
 
   const handleToggle = async () => {
+    // Captured before the async toggle: React may re-render TaskItem
+    // with the updated task.status before this closure resumes, so we
+    // can't rely on `isCompleted` after the await to know the direction.
     const wasCompleted = isCompleted;
 
     // Always run the parent's toggle first — that's the source of truth

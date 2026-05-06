@@ -14,7 +14,7 @@
  */
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { cn } from "@/lib/utils";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 const DISMISS_AFTER_MS = 2000;
 
@@ -34,15 +34,23 @@ export function PointsAnimation({
 }: PointsAnimationProps) {
   const reducedMotion = useReducedMotion();
 
+  // Stash onComplete in a ref so a new inline callback (TaskItem passes
+  // `() => setAnimationPoints(null)`) doesn't restart the dismiss timer
+  // when the parent re-renders mid-animation.
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
   useEffect(() => {
     if (!show) {
       return;
     }
     const timer = setTimeout(() => {
-      onComplete?.();
+      onCompleteRef.current?.();
     }, DISMISS_AFTER_MS);
     return () => clearTimeout(timer);
-  }, [show, onComplete]);
+  }, [show]);
 
   if (!show) {
     return null;

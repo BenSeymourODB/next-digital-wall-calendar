@@ -20,7 +20,6 @@ import type { PointAwardReason } from "@/lib/services/reward-points";
 import {
   type ReactNode,
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -134,7 +133,7 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
   const totalPoints = profileId ? fetchedTotal : 0;
   const isEnabled = profileId ? fetchedEnabled : false;
 
-  const refreshPoints = useCallback(async () => {
+  const refreshPoints = async () => {
     if (!profileId) {
       return;
     }
@@ -164,61 +163,58 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
       setFetchedTotal(0);
       setFetchedEnabled(false);
     }
-  }, [profileId]);
+  };
 
-  const awardPoints = useCallback(
-    async (
-      points: number,
-      reason: PointAwardReason,
-      metadata?: AwardPointsMetadata
-    ): Promise<AwardPointsResult> => {
-      if (!profileId) {
-        throw new Error("No active profile");
-      }
+  const awardPoints = async (
+    points: number,
+    reason: PointAwardReason,
+    metadata?: AwardPointsMetadata
+  ): Promise<AwardPointsResult> => {
+    if (!profileId) {
+      throw new Error("No active profile");
+    }
 
-      const response = await fetch("/api/points/award", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          profileId,
-          points,
-          reason,
-          ...(metadata?.taskId ? { taskId: metadata.taskId } : {}),
-          ...(metadata?.taskTitle ? { taskTitle: metadata.taskTitle } : {}),
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to award points");
-      }
-
-      const data = (await response.json()) as {
-        success: boolean;
-        newTotal: number;
-        alreadyAwarded: boolean;
-      };
-
-      // Only sync local state if this closure's profile is still the
-      // active one — guards against a profile switch during the POST.
-      if (activeProfileIdRef.current === profileId) {
-        setFetchedTotal(data.newTotal);
-      }
-
-      logger.event("PointsAwarded", {
+    const response = await fetch("/api/points/award", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         profileId,
         points,
         reason,
-        newTotal: data.newTotal,
-        alreadyAwarded: data.alreadyAwarded,
-      });
+        ...(metadata?.taskId ? { taskId: metadata.taskId } : {}),
+        ...(metadata?.taskTitle ? { taskTitle: metadata.taskTitle } : {}),
+      }),
+    });
 
-      return {
-        newTotal: data.newTotal,
-        alreadyAwarded: data.alreadyAwarded,
-      };
-    },
-    [profileId]
-  );
+    if (!response.ok) {
+      throw new Error("Failed to award points");
+    }
+
+    const data = (await response.json()) as {
+      success: boolean;
+      newTotal: number;
+      alreadyAwarded: boolean;
+    };
+
+    // Only sync local state if this closure's profile is still the
+    // active one — guards against a profile switch during the POST.
+    if (activeProfileIdRef.current === profileId) {
+      setFetchedTotal(data.newTotal);
+    }
+
+    logger.event("PointsAwarded", {
+      profileId,
+      points,
+      reason,
+      newTotal: data.newTotal,
+      alreadyAwarded: data.alreadyAwarded,
+    });
+
+    return {
+      newTotal: data.newTotal,
+      alreadyAwarded: data.alreadyAwarded,
+    };
+  };
 
   const value: PointsContextValue = {
     totalPoints,
