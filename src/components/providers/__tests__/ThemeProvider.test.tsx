@@ -18,6 +18,7 @@ vi.mock("next-themes", () => ({
     defaultTheme?: string;
     enableSystem?: boolean;
     disableTransitionOnChange?: boolean;
+    themes?: string[];
   }) => (
     <div
       data-testid="next-themes-provider"
@@ -25,6 +26,7 @@ vi.mock("next-themes", () => ({
       data-default-theme={props.defaultTheme}
       data-enable-system={String(props.enableSystem)}
       data-disable-transition={String(props.disableTransitionOnChange)}
+      data-themes={props.themes ? props.themes.join(",") : ""}
     >
       {children}
     </div>
@@ -85,5 +87,19 @@ describe("ThemeProvider", () => {
 
     const provider = screen.getByTestId("next-themes-provider");
     expect(provider).toHaveAttribute("data-disable-transition", "true");
+  });
+
+  it("registers wall-projector as a custom theme alongside light and dark", () => {
+    render(
+      <ThemeProvider>
+        <div>Content</div>
+      </ThemeProvider>
+    );
+
+    const provider = screen.getByTestId("next-themes-provider");
+    const themes = (provider.getAttribute("data-themes") ?? "").split(",");
+    expect(themes).toContain("light");
+    expect(themes).toContain("dark");
+    expect(themes).toContain("wall-projector");
   });
 });

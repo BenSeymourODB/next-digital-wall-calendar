@@ -1,7 +1,16 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:where(.dark, .dark *));
+/*
+ * `dark` Tailwind variant — also activates under the Wall-Projector theme,
+ * which inherits the dark token set by default. Components nested inside a
+ * `[data-theme-scope="light"]` subtree should use semantic tokens
+ * (bg-background, text-foreground, etc.) rather than `dark:` overrides; the
+ * scope re-declares the tokens but cannot reverse the `dark:` variant on
+ * descendants. See issue #319 and src/components/theme/theme-scope.tsx.
+ */
+@custom-variant dark
+  (&:where(.dark, .dark *, .wall-projector, .wall-projector *));
 
 /* shadcn/ui semantic color tokens — light theme (slate base) */
 :root {
@@ -40,7 +49,8 @@
 }
 
 /* shadcn/ui semantic color tokens — dark theme */
-.dark {
+.dark,
+.wall-projector {
   --background: oklch(0.145 0.016 285.823);
   --foreground: oklch(0.985 0.002 285.823);
   --card: oklch(0.205 0.019 285.823);
