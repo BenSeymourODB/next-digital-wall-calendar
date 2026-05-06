@@ -2,6 +2,7 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
 import type {
   IEvent,
   IUser,
@@ -12,25 +13,6 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { YearCalendar } from "../YearCalendar";
-
-function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
-  return {
-    id: "test-event-1",
-    title: "Test Event",
-    startDate: new Date().toISOString(),
-    endDate: new Date().toISOString(),
-    color: "blue",
-    description: "",
-    isAllDay: false,
-    calendarId: "primary",
-    user: {
-      id: "user-1",
-      name: "Test User",
-      picturePath: null,
-    },
-    ...overrides,
-  };
-}
 
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
@@ -58,9 +40,11 @@ function createMockContext(
     addEvent: vi.fn(),
     updateEvent: vi.fn(),
     removeEvent: vi.fn(),
+    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
     deleteEvent: vi.fn().mockResolvedValue(undefined),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
+    loadEventsForYear: vi.fn(),
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
@@ -395,6 +379,83 @@ describe("YearCalendar", () => {
     it("shows a loading message when isLoading is true", () => {
       renderWithContext({ isLoading: true });
       expect(screen.getByText(/loading events/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("Full-year event loading (#117)", () => {
+    it("requests the selected year's events on mount", () => {
+      const loadEventsForYear = vi.fn();
+      renderWithContext({
+        selectedDate: new Date(2030, 5, 10),
+        loadEventsForYear,
+      });
+
+      expect(loadEventsForYear).toHaveBeenCalledWith(2030);
+    });
+
+    it("requests events for the new year when selectedDate's year changes", () => {
+      const loadEventsForYear = vi.fn();
+      const initialContext = createMockContext({
+        selectedDate: new Date(2030, 5, 10),
+        loadEventsForYear,
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider value={initialContext}>
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(loadEventsForYear).toHaveBeenLastCalledWith(2030);
+
+      // Year changes — provider should be asked to widen the loaded
+      // range to cover the new year.
+      const updatedContext = createMockContext({
+        ...initialContext,
+        selectedDate: new Date(2031, 0, 1),
+        loadEventsForYear,
+      });
+
+      rerender(
+        <CalendarContext.Provider value={updatedContext}>
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(loadEventsForYear).toHaveBeenLastCalledWith(2031);
+      expect(loadEventsForYear).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not re-request the same year when selectedDate changes within it", () => {
+      const loadEventsForYear = vi.fn();
+      const initialContext = createMockContext({
+        selectedDate: new Date(2030, 0, 5),
+        loadEventsForYear,
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider value={initialContext}>
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(loadEventsForYear).toHaveBeenCalledTimes(1);
+
+      // Same year, different month — the provider already covers
+      // Jan 1–Dec 31, so re-fetching is wasteful.
+      const updatedContext = createMockContext({
+        ...initialContext,
+        selectedDate: new Date(2030, 8, 20),
+        loadEventsForYear,
+      });
+
+      rerender(
+        <CalendarContext.Provider value={updatedContext}>
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(loadEventsForYear).toHaveBeenCalledTimes(1);
     });
   });
 });

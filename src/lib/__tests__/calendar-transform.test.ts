@@ -344,4 +344,159 @@ describe("transformGoogleEvent", () => {
       expect(result.user.name).toBe("User");
     });
   });
+
+  describe("Bug B: User-attribution fallback ladder (#307)", () => {
+    // The ladder the issue specifies:
+    //   1. creator.displayName
+    //   2. organizer.displayName
+    //   3. calendar metadata summaryOverride ?? summary
+    //   4. humanized local-part of email
+    //   5. literal "Unknown"
+    //
+    // user.id falls back through email/calendarId so each shared
+    // calendar is a *distinct* bucket in the Filter-By-User panel
+    // even when the per-calendar attribution name is identical.
+
+    it("uses creator.displayName when present", () => {
+      const googleEvent = createGoogleEvent({
+        creator: { email: "alice@example.com", displayName: "Alice Adams" },
+        organizer: { email: "alice@example.com", displayName: "Alice O" },
+      });
+
+      const result = transformGoogleEvent(googleEvent, [], new Map());
+
+      expect(result.user.name).toBe("Alice Adams");
+      expect(result.user.id).toBe("alice@example.com");
+    });
+
+    it("falls back to organizer.displayName when creator has no displayName", () => {
+      const googleEvent = createGoogleEvent({
+        creator: { email: "bob@example.com" },
+        organizer: { email: "bob@example.com", displayName: "Bob Builder" },
+      });
+
+      const result = transformGoogleEvent(googleEvent, [], new Map());
+
+      expect(result.user.name).toBe("Bob Builder");
+    });
+
+    it("falls back to calendar summary when neither creator nor organizer has a displayName", () => {
+      const googleEvent = createGoogleEvent({
+        calendarId: "liv4ever42@gmail.com",
+        creator: { email: "liv4ever42@gmail.com" },
+        organizer: { email: "liv4ever42@gmail.com" },
+      });
+
+      const result = transformGoogleEvent(
+        googleEvent,
+        [],
+        new Map([
+          [
+            "liv4ever42@gmail.com",
+            { summary: "Liv Seymour", summaryOverride: undefined },
+          ],
+        ])
+      );
+
+      expect(result.user.name).toBe("Liv Seymour");
+    });
+
+    it("prefers calendar summaryOverride over the raw summary", () => {
+      const googleEvent = createGoogleEvent({
+        calendarId: "shared@example.com",
+        creator: { email: "shared@example.com" },
+      });
+
+      const result = transformGoogleEvent(
+        googleEvent,
+        [],
+        new Map([
+          [
+            "shared@example.com",
+            { summary: "Original Name", summaryOverride: "My Override" },
+          ],
+        ])
+      );
+
+      expect(result.user.name).toBe("My Override");
+    });
+
+    it("falls back to humanized email local-part when no displayName and no calendar metadata", () => {
+      const googleEvent = createGoogleEvent({
+        calendarId: "liv4ever42@gmail.com",
+        creator: { email: "liv4ever42@gmail.com" },
+      });
+
+      const result = transformGoogleEvent(googleEvent, [], new Map());
+
+      // "liv4ever42" → "Liv4ever42" (only first char uppercased; numerics
+      // and the rest of the local-part stay as-is).
+      expect(result.user.name).toBe("Liv4ever42");
+    });
+
+    it("humanizes dotted email local-parts as multi-word names", () => {
+      const googleEvent = createGoogleEvent({
+        creator: { email: "john.doe@example.com" },
+      });
+
+      const result = transformGoogleEvent(googleEvent, [], new Map());
+
+      expect(result.user.name).toBe("John Doe");
+    });
+
+    it("returns 'Unknown' as the absolute last resort", () => {
+      const googleEvent = createGoogleEvent({
+        // No creator, no organizer, no calendarId metadata.
+        creator: undefined,
+        organizer: undefined,
+        calendarId: "lonely-cal",
+      });
+
+      const result = transformGoogleEvent(googleEvent, [], new Map());
+
+      expect(result.user.name).toBe("Unknown");
+      // `id` always terminates at `calendarId` — the literal "unknown"
+      // string is never used because `calendarId` is required on the
+      // normalized event shape.
+      expect(result.user.id).toBe("lonely-cal");
+    });
+
+    it("uses creator.email then organizer.email then calendarId for user.id (distinct shared-calendar buckets)", () => {
+      // Two events from different shared calendars whose creators have no
+      // displayName must end up in distinct Filter-By-User buckets — id
+      // must differ even when both names fall back to the same string.
+      const event1 = createGoogleEvent({
+        id: "e1",
+        calendarId: "cal-a@example.com",
+        creator: undefined,
+        organizer: undefined,
+      });
+      const event2 = createGoogleEvent({
+        id: "e2",
+        calendarId: "cal-b@example.com",
+        creator: undefined,
+        organizer: undefined,
+      });
+
+      const r1 = transformGoogleEvent(event1, [], new Map());
+      const r2 = transformGoogleEvent(event2, [], new Map());
+
+      expect(r1.user.id).toBe("cal-a@example.com");
+      expect(r2.user.id).toBe("cal-b@example.com");
+      expect(r1.user.id).not.toBe(r2.user.id);
+    });
+
+    it("treats the calendar-metadata argument as optional (back-compat with 2-arg call sites)", () => {
+      // Existing callers that pass only (event, mappings) should still get
+      // a sensible result — the ladder still runs, just without rung 3.
+      const googleEvent = createGoogleEvent({
+        creator: { email: "alice@example.com", displayName: "Alice" },
+      });
+
+      const result = transformGoogleEvent(googleEvent, []);
+
+      expect(result.user.name).toBe("Alice");
+      expect(result.user.id).toBe("alice@example.com");
+    });
+  });
 });

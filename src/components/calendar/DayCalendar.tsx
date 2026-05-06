@@ -3,13 +3,16 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import {
+  WORKING_HOURS_START_HOUR,
   computeEventColumns,
   formatTime,
   getCurrentTimePosition,
   getEventTimePosition,
+  getInitialScrollTop,
 } from "@/lib/calendar-helpers";
+import { useTodayStartOfDay } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   addDays,
   endOfDay,
@@ -25,8 +28,10 @@ import { AgendaList } from "./AgendaList";
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 48;
 const TIME_GRID_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
-
-const today = startOfDay(new Date());
+const INITIAL_SCROLL_TOP_PX = getInitialScrollTop(
+  WORKING_HOURS_START_HOUR,
+  HOUR_HEIGHT_PX
+);
 
 function getEventBlockClasses(color: TEventColor): string {
   const classes: Record<TEventColor, string> = {
@@ -111,6 +116,7 @@ export function DayCalendar() {
     use24HourFormat,
     agendaMode,
   } = useCalendar();
+  const today = useTodayStartOfDay();
 
   const isToday = isSameDay(selectedDate, today);
 
@@ -253,6 +259,17 @@ function DayGridView({
   use24HourFormat,
   isLoading,
 }: DayGridViewProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll the time grid to the start of working hours on mount so
+  // morning events are immediately visible. useLayoutEffect runs
+  // synchronously before paint, avoiding a visible flash from 00:00.
+  useLayoutEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = INITIAL_SCROLL_TOP_PX;
+    }
+  }, []);
+
   return (
     <>
       {allDayEvents.length > 0 && (
@@ -300,6 +317,7 @@ function DayGridView({
       )}
 
       <div
+        ref={scrollContainerRef}
         className="border-border bg-card relative max-h-[calc(100vh-280px)] overflow-y-auto rounded-lg border"
         data-testid="day-calendar-grid"
         role="grid"

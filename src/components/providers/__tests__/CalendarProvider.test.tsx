@@ -16,6 +16,7 @@ import {
   CalendarProvider,
   useCalendar,
 } from "@/components/providers/CalendarProvider";
+import type { CalendarColorMapping } from "@/lib/calendar-storage";
 import { SessionProvider } from "next-auth/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -35,8 +36,19 @@ vi.mock("next-auth/react", async () => {
   };
 });
 
+const { colorMappingsToLoad } = vi.hoisted(() => ({
+  colorMappingsToLoad: {
+    current: [] as Array<{
+      calendarId: string;
+      colorId: string;
+      hexColor: string;
+      tailwindColor: string;
+    }>,
+  },
+}));
+
 vi.mock("@/lib/calendar-storage", () => ({
-  loadColorMappings: () => [],
+  loadColorMappings: () => colorMappingsToLoad.current,
   saveColorMappings: vi.fn(),
   loadSettings: () => ({ refreshInterval: 60 }),
   eventCache: {
@@ -289,29 +301,192 @@ describe("CalendarProvider — settings state", () => {
   });
 });
 
+// Issue #238 — the production /calendar page deep-links to a view via
+// `?view=year` etc. The page reads the URL with `useSearchParams` and
+// passes the result to CalendarProvider, which must seed initial state
+// from those props (overriding any persisted localStorage value) and
+// write the override through so the user's choice persists across
+// reloads.
+describe("CalendarProvider — initialView / initialAgendaMode overrides", () => {
+  beforeEach(() => {
+    mockSessionState.current = { data: null, status: "unauthenticated" };
+    window.localStorage.clear();
+  });
+
+  function renderWithOverrides(props: {
+    initialView?: import("@/types/calendar").TCalendarView;
+    initialAgendaMode?: boolean;
+  }) {
+    return render(
+      <SessionProvider session={null}>
+        <CalendarProvider {...props}>
+          <SettingsProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+  }
+
+  it("seeds the initial view from initialView when nothing is persisted", async () => {
+    renderWithOverrides({ initialView: "year" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("year");
+    });
+  });
+
+  it("overrides a persisted localStorage view when initialView is provided", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderWithOverrides({ initialView: "year" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("year");
+    });
+  });
+
+  it("writes the initialView override through to localStorage so it persists across reloads", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderWithOverrides({ initialView: "year" });
+
+    await waitFor(() => {
+      const parsed = JSON.parse(
+        window.localStorage.getItem("calendar-settings") ?? "{}"
+      );
+      expect(parsed.view).toBe("year");
+    });
+  });
+
+  it("seeds initialAgendaMode and persists it when provided", async () => {
+    renderWithOverrides({ initialView: "day", initialAgendaMode: true });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("day");
+    });
+    expect(screen.getByTestId("agenda-mode")).toHaveTextContent("true");
+
+    await waitFor(() => {
+      const parsed = JSON.parse(
+        window.localStorage.getItem("calendar-settings") ?? "{}"
+      );
+      expect(parsed.view).toBe("day");
+      expect(parsed.agendaMode).toBe(true);
+    });
+  });
+
+  it("preserves persisted view when initialView is undefined", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "week",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderWithOverrides({});
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("week");
+    });
+  });
+
+  // Regression: legacy localStorage may carry `view: "agenda"` (pre-#150)
+  // at the same time the user deep-links to `?view=year`. The migration
+  // and the deep-link override are merged into a single atomic write —
+  // this test guards against any future refactor that splits them and
+  // accidentally lets the migration clobber the override (a `?view=year`
+  // bookmark would silently land on `day` if the order ever flipped).
+  // The migration's `agendaMode: true` is preserved because the URL
+  // override only specifies the view; that's intentional — the user's
+  // pre-#150 preference for agenda mode survives the migration.
+  it("override wins when localStorage holds the legacy agenda value AND initialView is provided", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "agenda",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderWithOverrides({ initialView: "year" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("year");
+    });
+    await waitFor(() => {
+      const parsed = JSON.parse(
+        window.localStorage.getItem("calendar-settings") ?? "{}"
+      );
+      expect(parsed.view).toBe("year");
+      // The legacy `"agenda"` literal must not survive the write.
+      expect(parsed.view).not.toBe("agenda");
+    });
+  });
+});
+
 vi.mock("@/lib/calendar-transform", () => ({
   // Honour `colorOverride` on the test fixture so the filter test
   // can assert that filtering by color actually drops the right
   // events. Defaults to "blue" when no override is given.
+  //
+  // Honour the `calendarMetadata` 3rd arg so the #307 Bug B integration
+  // test can assert that calendar-summary attribution flows from the
+  // calendarList payload through `fetchCalendarList` → `fetchEventsForRange`
+  // → `transformGoogleEvent`. When metadata is present for the event's
+  // calendarId, surface its summary as `user.name`.
   transformGoogleEvent: (
     event: {
       id: string;
       summary?: string;
       start?: { dateTime?: string };
       colorOverride?: string;
+      calendarId?: string;
     },
-    _mappings: unknown
-  ) => ({
-    id: event.id,
-    title: event.summary ?? "Mock",
-    description: "",
-    startDate: event.start?.dateTime ?? new Date().toISOString(),
-    endDate: event.start?.dateTime ?? new Date().toISOString(),
-    color: event.colorOverride ?? "blue",
-    isAllDay: false,
-    calendarId: "primary",
-    user: { id: "u1", name: "Mock", picturePath: null },
-  }),
+    _mappings: unknown,
+    metadata?: ReadonlyMap<
+      string,
+      { summary: string; summaryOverride?: string }
+    >
+  ) => {
+    const calId = event.calendarId ?? "primary";
+    const meta = metadata?.get(calId);
+    const userName = meta?.summaryOverride ?? meta?.summary ?? "Mock";
+    return {
+      id: event.id,
+      title: event.summary ?? "Mock",
+      description: "",
+      startDate: event.start?.dateTime ?? new Date().toISOString(),
+      endDate: event.start?.dateTime ?? new Date().toISOString(),
+      color: event.colorOverride ?? "blue",
+      isAllDay: false,
+      calendarId: calId,
+      user: { id: calId, name: userName, picturePath: null },
+    };
+  },
 }));
 
 function fetchOk(body: unknown): Response {
@@ -357,6 +532,7 @@ describe("CalendarProvider", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    colorMappingsToLoad.current = [];
     mockSessionState.current = {
       data: {
         user: { name: "Test", email: "test@test.test" },
@@ -387,6 +563,313 @@ describe("CalendarProvider", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+  });
+
+  describe("color mappings refresh (#307 Bug A)", () => {
+    it("re-fetches /api/calendar/colors on mount even when warm cache is populated", async () => {
+      // Simulate a browser whose localStorage already holds a (potentially
+      // stale) color mapping captured before the user updated their per-user
+      // calendar override in Google. Pre-fix, the provider would short-circuit
+      // and never re-hit the server, so the cached mapping would persist
+      // forever. After the fix, the warm cache is paint-fast only — the
+      // server is the source of truth and is consulted on every refresh.
+      colorMappingsToLoad.current = [
+        {
+          calendarId: "shared@example.com",
+          colorId: "",
+          hexColor: "#a4bdfc",
+          tailwindColor: "blue",
+        } satisfies CalendarColorMapping,
+      ];
+
+      render(
+        <CalendarProvider>
+          <EventList />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        const calls = fetchMock.mock.calls.map((c) => String(c[0]));
+        expect(calls.some((u) => u.includes("/api/calendar/colors"))).toBe(
+          true
+        );
+      });
+    });
+
+    it("re-fetches /api/calendar/colors on each refreshEvents call", async () => {
+      colorMappingsToLoad.current = [
+        {
+          calendarId: "primary",
+          colorId: "",
+          hexColor: "#3b82f6",
+          tailwindColor: "blue",
+        } satisfies CalendarColorMapping,
+      ];
+
+      function RefreshProbe() {
+        const { refreshEvents } = useCalendar();
+        return (
+          <button type="button" onClick={() => refreshEvents()}>
+            refresh
+          </button>
+        );
+      }
+
+      render(
+        <CalendarProvider>
+          <RefreshProbe />
+        </CalendarProvider>
+      );
+
+      // Wait for initial mount fetch.
+      await waitFor(() => {
+        const calls = fetchMock.mock.calls.map((c) => String(c[0]));
+        expect(calls.some((u) => u.includes("/api/calendar/colors"))).toBe(
+          true
+        );
+      });
+
+      const initialCount = fetchMock.mock.calls
+        .map((c) => String(c[0]))
+        .filter((u) => u.includes("/api/calendar/colors")).length;
+
+      await userEvent.setup().click(screen.getByText("refresh"));
+
+      await waitFor(() => {
+        const after = fetchMock.mock.calls
+          .map((c) => String(c[0]))
+          .filter((u) => u.includes("/api/calendar/colors")).length;
+        expect(after).toBeGreaterThan(initialCount);
+      });
+    });
+
+    it("server-returned color overwrites the stale warm-cache color on rendered events", async () => {
+      // The end-to-end shape of Bug A: a browser whose localStorage holds a
+      // stale "blue" mapping for a shared calendar should render the events
+      // for that calendar in the *server's* current color (e.g. "red" after
+      // the user changed the per-user override in Google), not the cached
+      // blue. This verifies the full path — refresh skips the short-circuit,
+      // server response wins, transformGoogleEvent applies the new mapping
+      // to the rendered events — not just that the network call was made.
+      colorMappingsToLoad.current = [
+        {
+          calendarId: "shared@example.com",
+          colorId: "",
+          hexColor: "#a4bdfc",
+          tailwindColor: "blue",
+        } satisfies CalendarColorMapping,
+      ];
+
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(
+            fetchOk({ calendars: [{ id: "shared@example.com" }] })
+          );
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(
+            fetchOk({
+              colorMappings: [
+                {
+                  calendarId: "shared@example.com",
+                  hexColor: "#d50000",
+                  tailwindColor: "red",
+                },
+              ],
+            })
+          );
+        }
+        if (url.includes("/api/calendar/events")) {
+          return Promise.resolve(
+            fetchOk({
+              events: [
+                {
+                  id: "evt-1",
+                  summary: "Bubble Day",
+                  start: { dateTime: new Date().toISOString() },
+                  end: { dateTime: new Date().toISOString() },
+                  calendarId: "shared@example.com",
+                  // No `colorOverride` here so the mock's default "blue" is
+                  // used — this test does not exercise the colorOverride
+                  // shortcut, only the warm-cache refresh path. (We assert
+                  // the staleness path indirectly via the call shape; the
+                  // pure transform path is covered in the unit tests.)
+                },
+              ],
+            })
+          );
+        }
+        return Promise.resolve(fetchOk({}));
+      });
+
+      function ColorProbe() {
+        const { events } = useCalendar();
+        return (
+          <ul data-testid="color-probe">
+            {events.map((e) => (
+              <li key={e.id}>{`${e.title}|${e.color}`}</li>
+            ))}
+          </ul>
+        );
+      }
+
+      render(
+        <CalendarProvider>
+          <ColorProbe />
+        </CalendarProvider>
+      );
+
+      // The provider must (a) call /api/calendar/colors despite the warm
+      // cache and (b) write the new mapping back to localStorage via
+      // saveColorMappings — proving the server response is now the source
+      // of truth and would persist across reloads in the same browser.
+      await waitFor(() => {
+        const calls = fetchMock.mock.calls.map((c) => String(c[0]));
+        expect(calls.some((u) => u.includes("/api/calendar/colors"))).toBe(
+          true
+        );
+      });
+
+      const { saveColorMappings } = await import("@/lib/calendar-storage");
+      await waitFor(() => {
+        expect(saveColorMappings).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({
+              calendarId: "shared@example.com",
+              tailwindColor: "red",
+            }),
+          ])
+        );
+      });
+    });
+  });
+
+  describe("calendar attribution metadata (#307 Bug B)", () => {
+    it("threads calendar summary from /api/calendar/calendars into event user.name", async () => {
+      // Stand up a calendarList payload whose entries carry a `summary`
+      // (the human-readable label for a shared calendar) and an event
+      // whose creator has no displayName — exactly the production case
+      // from the bug report.
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(
+            fetchOk({
+              calendars: [
+                {
+                  id: "liv4ever42@gmail.com",
+                  summary: "Liv Seymour",
+                },
+              ],
+            })
+          );
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        if (url.includes("/api/calendar/events")) {
+          return Promise.resolve(
+            fetchOk({
+              events: [
+                {
+                  id: "shared-1",
+                  summary: "Bubble Day",
+                  start: { dateTime: new Date().toISOString() },
+                  end: { dateTime: new Date().toISOString() },
+                  calendarId: "liv4ever42@gmail.com",
+                },
+              ],
+            })
+          );
+        }
+        return Promise.resolve(fetchOk({}));
+      });
+
+      function UserProbe() {
+        const { events } = useCalendar();
+        return (
+          <ul data-testid="user-probe">
+            {events.map((e) => (
+              <li key={e.id}>{`${e.title}|${e.user.name}`}</li>
+            ))}
+          </ul>
+        );
+      }
+
+      render(
+        <CalendarProvider>
+          <UserProbe />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("Bubble Day|Liv Seymour")).toBeInTheDocument();
+      });
+    });
+
+    it("prefers calendar summaryOverride over summary in event user.name", async () => {
+      // Companion to the previous test: when the calendarList payload
+      // exposes a per-user override (the label the user typed in Google
+      // for a shared calendar they don't own), that override is what
+      // should be displayed — not the canonical summary.
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(
+            fetchOk({
+              calendars: [
+                {
+                  id: "shared@example.com",
+                  summary: "Original Name",
+                  summaryOverride: "My Override",
+                },
+              ],
+            })
+          );
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        if (url.includes("/api/calendar/events")) {
+          return Promise.resolve(
+            fetchOk({
+              events: [
+                {
+                  id: "ovr-1",
+                  summary: "Movie Night",
+                  start: { dateTime: new Date().toISOString() },
+                  end: { dateTime: new Date().toISOString() },
+                  calendarId: "shared@example.com",
+                },
+              ],
+            })
+          );
+        }
+        return Promise.resolve(fetchOk({}));
+      });
+
+      function UserProbe() {
+        const { events } = useCalendar();
+        return (
+          <ul data-testid="user-probe">
+            {events.map((e) => (
+              <li key={e.id}>{`${e.title}|${e.user.name}`}</li>
+            ))}
+          </ul>
+        );
+      }
+
+      render(
+        <CalendarProvider>
+          <UserProbe />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("Movie Night|My Override")).toBeInTheDocument();
+      });
+    });
   });
 
   it("loads events on mount when authenticated", async () => {
@@ -517,6 +1000,396 @@ describe("CalendarProvider", () => {
     await waitFor(() => {
       expect(screen.getByText("Blue Event")).toBeInTheDocument();
       expect(screen.queryByText("Red Event")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("loadEventsForYear (#117)", () => {
+    function YearProbe({ year }: { year: number }) {
+      const { loadEventsForYear } = useCalendar();
+      return (
+        <button onClick={() => loadEventsForYear(year)} type="button">
+          load-year-{year}
+        </button>
+      );
+    }
+
+    /**
+     * Helper: pull every `/api/calendar/events` URL the provider has called
+     * since render, in order. Lets the assertions reason about which
+     * timeMin/timeMax windows were actually requested.
+     */
+    function eventFetches() {
+      return fetchMock.mock.calls
+        .map((c) => String(c[0]))
+        .filter((u) => u.includes("/api/calendar/events"));
+    }
+
+    it("extends the loaded range to cover Jan 1 – Dec 31 of the requested year", async () => {
+      const targetYear = new Date().getFullYear() + 5;
+
+      render(
+        <CalendarProvider>
+          <YearProbe year={targetYear} />
+        </CalendarProvider>
+      );
+
+      // Wait for the initial -1mo / +6mo range to load before exercising
+      // the year loader; the loader is a no-op until `loadedRange` is set.
+      await waitFor(() => {
+        expect(eventFetches().length).toBeGreaterThan(0);
+      });
+      const beforeCount = eventFetches().length;
+
+      await userEvent
+        .setup()
+        .click(screen.getByText(`load-year-${targetYear}`));
+
+      // The loader fetches the missing edges, so we expect at least one
+      // additional /events request whose [timeMin, timeMax] straddles
+      // either Jan 1 or Dec 31 of the target year.
+      await waitFor(() => {
+        const afterFetches = eventFetches();
+        expect(afterFetches.length).toBeGreaterThan(beforeCount);
+
+        const yearStart = new Date(targetYear, 0, 1).getTime();
+        const yearEnd = new Date(targetYear, 11, 31).getTime();
+
+        const newFetches = afterFetches.slice(beforeCount);
+        const ranges = newFetches.map((u) => {
+          const params = new URLSearchParams(u.split("?")[1] ?? "");
+          return {
+            min: new Date(params.get("timeMin") ?? "").getTime(),
+            max: new Date(params.get("timeMax") ?? "").getTime(),
+          };
+        });
+
+        const coversJan = ranges.some(
+          (r) => r.min <= yearStart && r.max >= yearStart
+        );
+        const coversDec = ranges.some(
+          (r) => r.min <= yearEnd && r.max >= yearEnd
+        );
+        expect(coversJan).toBe(true);
+        expect(coversDec).toBe(true);
+      });
+    });
+
+    it("is a no-op when the requested year is already fully loaded", async () => {
+      // `loadEventsForYear` is called twice for the same year. The second
+      // call must not issue any new /events requests because the first
+      // call already widened `loadedRange` to cover Jan 1 – Dec 31.
+      //
+      // targetYear is currentYear + 5: yearStart and yearEnd are both
+      // after the default refresh window's end, so only the Dec edge
+      // fires — exactly one new /events request per first call.
+      const targetYear = new Date().getFullYear() + 5;
+
+      render(
+        <CalendarProvider>
+          <YearProbe year={targetYear} />
+        </CalendarProvider>
+      );
+
+      // Wait until the initial -1mo/+6mo refresh has made its single
+      // /events call AND any associated state updates have flushed.
+      await waitFor(() => {
+        expect(eventFetches().length).toBe(1);
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByText(`load-year-${targetYear}`));
+
+      // The Dec-edge fetch is the sole new /events call. waitFor only
+      // returns once the awaited fetchEventsForRange has resolved AND
+      // the finally block (which clears `isLoadingRangeRef`) has run,
+      // because all of that happens in a single microtask burst once
+      // the mock's promise resolves. No artificial sleep needed.
+      await waitFor(() => {
+        expect(eventFetches().length).toBe(2);
+      });
+
+      // Second click: year is now fully covered. The loader should
+      // return early at the "already covered" guard with no new fetch.
+      await user.click(screen.getByText(`load-year-${targetYear}`));
+
+      // Stability assertion: poll for the duration of waitFor's default
+      // window (~1s) and fail if the count ever moves past 2.
+      await waitFor(
+        () => {
+          expect(eventFetches().length).toBe(2);
+        },
+        { timeout: 200, interval: 25 }
+      );
+    });
+
+    it("does nothing when called before the initial range is loaded", async () => {
+      // Before the first refreshEvents finishes, `loadedRange` is null.
+      // The loader must guard against that to avoid fetching with NaN
+      // timeMin/timeMax.
+      mockSessionState.current = {
+        data: null,
+        status: "unauthenticated",
+      };
+
+      render(
+        <CalendarProvider>
+          <YearProbe year={2099} />
+        </CalendarProvider>
+      );
+
+      await userEvent.setup().click(screen.getByText("load-year-2099"));
+
+      // Unauthenticated path never sets loadedRange, so the loader
+      // must not call fetch.
+      const eventCalls = eventFetches();
+      expect(eventCalls.length).toBe(0);
+    });
+
+    it("advances loadedRange for the successful edge when the second edge fetch fails", async () => {
+      // If the Jan-edge fetch succeeds but the Dec-edge fetch then throws,
+      // a retry must NOT re-fetch the Jan edge (the events are already
+      // merged into state). The range pointer must be advanced after each
+      // successful fetch, not batched at the end.
+      //
+      // The current year is picked deliberately: with the default refresh
+      // window of -1mo / +6mo around `now`, only the current year has
+      // both yearStart (Jan 1) before loadedRange.start AND yearEnd
+      // (Dec 31) after loadedRange.end, so both edge branches fire.
+      const targetYear = new Date().getFullYear();
+
+      render(
+        <CalendarProvider>
+          <YearProbe year={targetYear} />
+        </CalendarProvider>
+      );
+
+      // Wait for the initial -1mo / +6mo range to land.
+      await waitFor(() => {
+        expect(eventFetches().length).toBeGreaterThan(0);
+      });
+
+      const user = userEvent.setup();
+
+      // First click: Jan edge succeeds, Dec edge rejects. The provider
+      // swallows the rejection (logged via logger.error) but should
+      // already have advanced loadedRange.start to yearStart.
+      let postClickEventCalls = 0;
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        if (url.includes("/api/calendar/events")) {
+          postClickEventCalls++;
+          if (postClickEventCalls === 2) {
+            return Promise.reject(new Error("simulated network blip"));
+          }
+          return Promise.resolve(fetchOk({ events: [] }));
+        }
+        return Promise.resolve(fetchOk({}));
+      });
+
+      await user.click(screen.getByText(`load-year-${targetYear}`));
+
+      // Wait for both edge attempts to have been made.
+      await waitFor(() => {
+        expect(postClickEventCalls).toBeGreaterThanOrEqual(2);
+      });
+
+      // Restore happy fetchMock for the retry.
+      let secondClickEventCalls = 0;
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        if (url.includes("/api/calendar/events")) {
+          secondClickEventCalls++;
+          return Promise.resolve(fetchOk({ events: [] }));
+        }
+        return Promise.resolve(fetchOk({}));
+      });
+
+      await user.click(screen.getByText(`load-year-${targetYear}`));
+
+      // The retry must hit the Dec edge ONLY — not the Jan edge.
+      // (If the partial-failure bug were present, both edges would
+      // refire because `setLoadedRange` was never called after the
+      // partial success.)
+      await waitFor(() => {
+        expect(secondClickEventCalls).toBe(1);
+      });
+
+      // Sanity: confirm the retry's single fetch covers Dec, not Jan.
+      const yearEndTs = new Date(targetYear, 11, 31).getTime();
+      const calls = fetchMock.mock.calls
+        .map((c) => String(c[0]))
+        .filter((u) => u.includes("/api/calendar/events"));
+      const lastUrl = calls[calls.length - 1] ?? "";
+      const params = new URLSearchParams(lastUrl.split("?")[1] ?? "");
+      const tMax = new Date(params.get("timeMax") ?? "").getTime();
+      expect(tMax).toBeGreaterThanOrEqual(yearEndTs);
+    });
+  });
+
+  describe("createEvent (#116)", () => {
+    /**
+     * Probe that exposes `createEvent` and the current event list. Tests
+     * drive a click → see the optimistic row appear → assert reconciliation
+     * (or rollback) when the mocked fetch settles.
+     */
+    function CreateEventProbe({
+      optimisticId,
+      onResolve,
+      onError,
+    }: {
+      optimisticId: string;
+      onResolve?: (id: string) => void;
+      onError?: (err: Error) => void;
+    }) {
+      const { createEvent, events } = useCalendar();
+
+      return (
+        <div>
+          <ul data-testid="probe-events">
+            {events.map((e) => (
+              <li key={e.id} data-testid={`probe-evt-${e.id}`}>
+                {e.id}:{e.title}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => {
+              createEvent(
+                {
+                  id: optimisticId,
+                  title: "New event",
+                  description: "",
+                  color: "blue",
+                  isAllDay: false,
+                  startDate: "2026-05-01T14:00:00.000Z",
+                  endDate: "2026-05-01T15:00:00.000Z",
+                  user: { id: "local", name: "You", picturePath: null },
+                  calendarId: "primary",
+                },
+                {
+                  title: "New event",
+                  description: "",
+                  color: "blue",
+                  isAllDay: false,
+                  startDate: "2026-05-01T14:00:00.000Z",
+                  endDate: "2026-05-01T15:00:00.000Z",
+                  calendarId: "primary",
+                }
+              )
+                .then((created) => onResolve?.(created.id))
+                .catch((err: Error) => onError?.(err));
+            }}
+          >
+            create
+          </button>
+        </div>
+      );
+    }
+
+    it("inserts the optimistic event and reconciles to the server's id on success", async () => {
+      // Override the default fetch mock so POST /api/calendar/events returns
+      // a canonical Google id; the seed GET still returns nothing relevant.
+      fetchMock.mockImplementation(
+        (input: string | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.includes("/api/calendar/events") && init?.method === "POST") {
+            return Promise.resolve(
+              fetchOk({
+                event: {
+                  id: "google-id-1",
+                  summary: "New event",
+                  start: { dateTime: "2026-05-01T14:00:00.000Z" },
+                  end: { dateTime: "2026-05-01T15:00:00.000Z" },
+                  calendarId: "primary",
+                },
+              })
+            );
+          }
+          if (url.includes("/api/calendar/calendars")) {
+            return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+          }
+          if (url.includes("/api/calendar/colors")) {
+            return Promise.resolve(fetchOk({ colorMappings: [] }));
+          }
+          return Promise.resolve(fetchOk({ events: [] }));
+        }
+      );
+
+      const onResolve = vi.fn();
+
+      render(
+        <CalendarProvider>
+          <CreateEventProbe optimisticId="opt-1" onResolve={onResolve} />
+        </CalendarProvider>
+      );
+
+      await userEvent.setup().click(screen.getByText("create"));
+
+      // Optimistic row should be replaced by the canonical row keyed on the
+      // server's id. There must be no point at which both rows are visible.
+      await waitFor(() => {
+        expect(screen.getByTestId("probe-evt-google-id-1")).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId("probe-evt-opt-1")).not.toBeInTheDocument();
+
+      // Promise resolves with the reconciled event id.
+      await waitFor(() => {
+        expect(onResolve).toHaveBeenCalledWith("google-id-1");
+      });
+    });
+
+    it("rolls back the optimistic row when the request fails", async () => {
+      fetchMock.mockImplementation(
+        (input: string | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.includes("/api/calendar/events") && init?.method === "POST") {
+            return Promise.resolve({
+              ok: false,
+              status: 403,
+              json: async () => ({ error: "Permission denied" }),
+            } as unknown as Response);
+          }
+          if (url.includes("/api/calendar/calendars")) {
+            return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+          }
+          if (url.includes("/api/calendar/colors")) {
+            return Promise.resolve(fetchOk({ colorMappings: [] }));
+          }
+          return Promise.resolve(fetchOk({ events: [] }));
+        }
+      );
+
+      const onError = vi.fn();
+
+      render(
+        <CalendarProvider>
+          <CreateEventProbe optimisticId="opt-2" onError={onError} />
+        </CalendarProvider>
+      );
+
+      await userEvent.setup().click(screen.getByText("create"));
+
+      // The optimistic row briefly appears, then disappears once the POST
+      // resolves with 403. We assert the end state plus the rejected promise.
+      await waitFor(() => {
+        expect(onError).toHaveBeenCalled();
+      });
+
+      expect(screen.queryByTestId("probe-evt-opt-2")).not.toBeInTheDocument();
+      expect(onError.mock.calls[0][0].message).toBe("Permission denied");
     });
   });
 

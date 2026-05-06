@@ -8,7 +8,12 @@
  * task on success.
  */
 import { useState } from "react";
+import { TaskApiError, parseTaskApiError } from "./task-api-error";
 import type { GoogleTask } from "./types";
+
+// Re-export so existing consumers can keep importing TaskApiError from
+// the create-task module they were already wired to.
+export { TaskApiError } from "./task-api-error";
 
 export interface CreateTaskInput {
   listId: string;
@@ -44,16 +49,21 @@ export function useCreateTask(): UseCreateTaskReturn {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(payload.error || "Failed to create task");
+        throw await parseTaskApiError(response, "Failed to create task");
       }
 
       const data = (await response.json()) as { task: GoogleTask };
       return data.task;
     } catch (err) {
-      const wrapped = err instanceof Error ? err : new Error(String(err));
+      // Preserve TaskApiError so callers can branch on `status` /
+      // `requiresReauth`; wrap anything else (network error, etc.) in a
+      // plain Error to keep the public type simple.
+      const wrapped =
+        err instanceof TaskApiError
+          ? err
+          : err instanceof Error
+            ? err
+            : new Error(String(err));
       setError(wrapped);
       throw wrapped;
     } finally {

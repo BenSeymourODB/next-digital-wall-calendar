@@ -9,6 +9,7 @@ import {
   applyCalendarKeyboardAction,
   keyboardEventToAction,
 } from "@/lib/calendar-keyboard";
+import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -57,7 +58,7 @@ export function SimpleCalendar() {
     weekStartDay,
   } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
 
   const weekdayHeaders = getShortWeekdayLabels(weekStartDay);
@@ -136,7 +137,7 @@ export function SimpleCalendar() {
     });
   };
 
-  const today = new Date();
+  const today = useDateNow();
   const isCurrentMonth = isSameMonth(selectedDate, today);
 
   // Count events in the displayed month

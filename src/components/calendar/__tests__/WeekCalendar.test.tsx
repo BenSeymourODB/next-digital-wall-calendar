@@ -3,12 +3,8 @@ import {
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
-import type {
-  IEvent,
-  IUser,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
+import type { IUser, TCalendarView, TEventColor } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -33,25 +29,6 @@ import { WeekCalendar } from "../WeekCalendar";
  * - Event rendering per day, including all-day and "+X more" overflow
  * - Loading state
  */
-
-function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
-  return {
-    id: "test-event-1",
-    title: "Test Event",
-    startDate: new Date().toISOString(),
-    endDate: new Date().toISOString(),
-    color: "blue",
-    description: "",
-    isAllDay: false,
-    calendarId: "primary",
-    user: {
-      id: "user-1",
-      name: "Test User",
-      picturePath: null,
-    },
-    ...overrides,
-  };
-}
 
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
@@ -79,9 +56,11 @@ function createMockContext(
     addEvent: vi.fn(),
     updateEvent: vi.fn(),
     removeEvent: vi.fn(),
+    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
     deleteEvent: vi.fn().mockResolvedValue(undefined),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
+    loadEventsForYear: vi.fn(),
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
@@ -385,6 +364,102 @@ describe("WeekCalendar", () => {
       expect(
         screen.queryByTestId("week-calendar-now-line")
       ).not.toBeInTheDocument();
+    });
+
+    // Regression: #234 — event count and timed events must include events that
+    // start on the last day of the visible week (Saturday with WEEK_STARTS_ON = 0).
+    it("renders timed events that start on the last day of the week", () => {
+      const selectedDate = midday(new Date(2026, 4, 2)); // Sat May 2, 2026
+      const weekStart = startOfWeek(selectedDate, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const saturday = addDays(weekStart, 6);
+
+      const start = new Date(saturday);
+      start.setHours(14, 0, 0, 0);
+      const end = new Date(saturday);
+      end.setHours(15, 0, 0, 0);
+
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "sat-afternoon",
+            title: "Project Review",
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+          }),
+        ],
+      });
+
+      expect(screen.getByTestId("week-calendar-event-count")).toHaveTextContent(
+        "1 event"
+      );
+      expect(screen.getByText("Project Review")).toBeInTheDocument();
+    });
+  });
+
+  describe("Initial scroll position (#214)", () => {
+    // HOUR_HEIGHT_PX = 40; working hours start at 07:00
+    // Expected scrollTop: 7 * 40 = 280
+    it("auto-scrolls the time grid to ~7am on mount", () => {
+      renderWithContext({ selectedDate: new Date() });
+      const grid = screen.getByTestId("week-calendar-grid-scroll");
+      expect(grid.scrollTop).toBe(280);
+    });
+
+    it("does not render the grid (and thus does not scroll) in agenda mode", () => {
+      renderWithContext({ selectedDate: new Date(), agendaMode: true });
+      expect(
+        screen.queryByTestId("week-calendar-grid-scroll")
+      ).not.toBeInTheDocument();
+    });
+
+    // The grid lives in a sub-component (WeekGridView) so it unmounts/
+    // remounts when agendaMode toggles. The scroll-on-mount effect uses
+    // an empty dep array, which preserves user scroll between regular
+    // re-renders while still resetting to 7am on each fresh re-entry
+    // from agenda mode.
+    it("re-scrolls to 7am after toggling agenda off and back to grid", () => {
+      const selectedDate = new Date();
+      const contextValue = {
+        selectedDate,
+        agendaMode: false,
+      } satisfies Partial<ICalendarContext>;
+      const { rerender } = render(
+        <CalendarContext.Provider value={createMockContext(contextValue)}>
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+
+      const initialGrid = screen.getByTestId("week-calendar-grid-scroll");
+      expect(initialGrid.scrollTop).toBe(280);
+      // Simulate the user scrolling somewhere else.
+      initialGrid.scrollTop = 0;
+      expect(initialGrid.scrollTop).toBe(0);
+
+      // Toggle agenda on — grid unmounts.
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({ ...contextValue, agendaMode: true })}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+      expect(
+        screen.queryByTestId("week-calendar-grid-scroll")
+      ).not.toBeInTheDocument();
+
+      // Toggle agenda off — grid remounts; effect re-fires; back to 280.
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({ ...contextValue, agendaMode: false })}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+      const remountedGrid = screen.getByTestId("week-calendar-grid-scroll");
+      expect(remountedGrid.scrollTop).toBe(280);
     });
   });
 

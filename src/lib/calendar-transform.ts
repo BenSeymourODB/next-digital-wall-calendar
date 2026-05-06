@@ -7,6 +7,7 @@
  * - Timezone-safe date parsing (appends T00:00:00 to date-only strings)
  * - Calendar color mapping (from Google Calendar API color mappings)
  * - CalendarId preservation for cache round-tripping
+ * - User-attribution fallback ladder for shared-calendar events (#307)
  */
 import type { CalendarColorMapping } from "@/lib/calendar-storage";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
@@ -30,6 +31,95 @@ function extractCategory(googleEvent: GoogleCalendarEvent): string | undefined {
   const trimmed = raw?.trim();
   return trimmed ? trimmed : undefined;
 }
+ 
+/**
+* Per-calendar metadata used by the user-attribution fallback ladder.
+ * Keyed by `calendarId`. Values mirror the slice of `UserCalendar` we need
+ * to produce a human-readable label when neither `creator.displayName` nor
+ * `organizer.displayName` is populated (the common case for shared
+ * personal/family calendars — Google only fills `displayName` when the user
+ * has a discoverable People profile shared with the calling app).
+ */
+export interface CalendarAttributionMetadata {
+  summary: string;
+  summaryOverride?: string;
+}
+
+export type CalendarMetadataMap = ReadonlyMap<
+  string,
+  CalendarAttributionMetadata
+>;
+
+/**
+ * Turn the local-part of an email into a best-effort human-readable name.
+ *
+ *   liv4ever42@gmail.com   → "Liv4ever42"
+ *   john.doe@example.com   → "John Doe"
+ *   alice_marie@x.com      → "Alice Marie"
+ *
+ * Splits on `.`, `_`, `-`, capitalises the first character of each chunk, and
+ * joins with a space. Returns `undefined` when the input has no usable local
+ * part so the caller can fall through to the next rung of the ladder.
+ */
+function humanizeLocalPart(email: string | undefined): string | undefined {
+  if (!email) return undefined;
+  const at = email.indexOf("@");
+  const local = at >= 0 ? email.slice(0, at) : email;
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (parts.length === 0) return undefined;
+  return parts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+/**
+ * Resolve the user attribution displayed on the event.
+ *
+ * Ladder (first non-empty wins):
+ *   1. `creator.displayName`
+ *   2. `organizer.displayName`
+ *   3. Calendar metadata: `summaryOverride ?? summary` for `calendarId`
+ *      (e.g. "Liv Seymour" for `liv4ever42@gmail.com`). This is the most
+ *      reliable source for events on a calendar you don't own — Google
+ *      always fills it on `calendarList.list`.
+ *   4. Humanised local-part of the chosen email.
+ *   5. Literal `"Unknown"`.
+ *
+ * `id` cascades through `creator.email → organizer.email → calendarId`.
+ * The calendarId fallback ensures each shared calendar lands in a *distinct*
+ * Filter-By-User bucket (#307 Bug B) — pre-fix every shared calendar without
+ * a creator email shared the literal `"unknown"` id and collapsed into one
+ * bucket. `calendarId` is required on `GoogleCalendarEvent` (stamped by
+ * `normalizeFetchedEvent`), so the cascade always terminates with a
+ * meaningful string; no `"unknown"` literal is needed.
+ */
+function resolveUser(
+  googleEvent: GoogleCalendarEvent,
+  calendarMetadata: CalendarMetadataMap | undefined
+): { id: string; name: string; picturePath: null } {
+  const creatorEmail = googleEvent.creator?.email;
+  const organizerEmail = googleEvent.organizer?.email;
+  const id: string = creatorEmail ?? organizerEmail ?? googleEvent.calendarId;
+
+  const meta = calendarMetadata?.get(googleEvent.calendarId);
+  // `??` (not `||`) is intentional: a non-empty `summaryOverride` always
+  // wins over `summary`. An empty-string override would survive `??` but
+  // is filtered out by the trim guard below, falling through to
+  // humanizeLocalPart. In practice Google omits the field entirely when
+  // the user hasn't set an override, so this edge case is theoretical.
+  const calendarLabel = meta?.summaryOverride ?? meta?.summary;
+
+  const name =
+    googleEvent.creator?.displayName ??
+    googleEvent.organizer?.displayName ??
+    (calendarLabel && calendarLabel.trim().length > 0
+      ? calendarLabel
+      : undefined) ??
+    humanizeLocalPart(creatorEmail ?? organizerEmail) ??
+    "Unknown";
+
+  return { id, name, picturePath: null };
+}
 
 /**
  * Transform a Google Calendar event to our IEvent format.
@@ -40,10 +130,15 @@ function extractCategory(googleEvent: GoogleCalendarEvent): string | undefined {
  * - Appends T00:00:00 to date-only strings to force local time interpretation
  * - Preserves calendarId from the Google event for cache round-tripping
  * - Maps colors via calendarId lookup, then colorId fallback, then default blue
+ * - Resolves `user.name` via the {@link resolveUser} fallback ladder; pass
+ *   `calendarMetadata` (a `Map<calendarId, { summary, summaryOverride? }>`)
+ *   to enable the calendar-name rung. Optional for back-compat with 2-arg
+ *   callers — the ladder simply skips that rung when it's missing.
  */
 export function transformGoogleEvent(
   googleEvent: GoogleCalendarEvent,
-  colorMappings: CalendarColorMapping[]
+  colorMappings: CalendarColorMapping[],
+  calendarMetadata?: CalendarMetadataMap
 ): IEvent {
   // Determine if this is an all-day event based on Google API convention:
   // All-day events use start.date (e.g., "2026-01-05")
@@ -68,11 +163,7 @@ export function transformGoogleEvent(
 
   const calendarId = googleEvent.calendarId;
 
-  const user = {
-    id: googleEvent.creator?.email || "unknown",
-    name: googleEvent.creator?.displayName || "Unknown",
-    picturePath: null,
-  };
+  const user = resolveUser(googleEvent, calendarMetadata);
 
   const category = extractCategory(googleEvent);
 

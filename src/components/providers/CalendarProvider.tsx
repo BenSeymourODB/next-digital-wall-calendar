@@ -1,5 +1,6 @@
 "use client";
 
+import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import {
@@ -8,7 +9,11 @@ import {
   loadColorMappings,
   saveColorMappings,
 } from "@/lib/calendar-storage";
-import { transformGoogleEvent } from "@/lib/calendar-transform";
+import {
+  type CalendarAttributionMetadata,
+  type CalendarMetadataMap,
+  transformGoogleEvent,
+} from "@/lib/calendar-transform";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import type {
@@ -36,6 +41,21 @@ import { endOfMonth, isAfter, isBefore, startOfMonth } from "date-fns";
 interface LoadedRange {
   start: Date;
   end: Date;
+}
+
+/**
+ * Server-bound payload for `createEvent`. Mirrors the body of
+ * `POST /api/calendar/events` (#116) — `calendarId` is mandatory at this
+ * layer because the provider doesn't second-guess the caller's choice.
+ */
+export interface CreateEventInput {
+  title: string;
+  description: string;
+  color: TEventColor;
+  isAllDay: boolean;
+  startDate: string;
+  endDate: string;
+  calendarId: string;
 }
 
 export interface ICalendarContext {
@@ -69,6 +89,13 @@ export interface ICalendarContext {
   updateEvent: (event: IEvent) => void;
   removeEvent: (eventId: string) => void;
   /**
+   * Persist a new event to Google Calendar with an optimistic insert.
+   * The local list is updated immediately with `optimistic` and reconciled
+   * to the server's canonical event on success; the optimistic row is
+   * removed on failure and the promise rejects so callers can toast.
+   */
+  createEvent: (optimistic: IEvent, input: CreateEventInput) => Promise<IEvent>;
+  /**
    * Delete an event from Google Calendar with an optimistic UI remove.
    * Snapshots the prior list before removing and restores it on failure.
    * The promise rejects on failure so the caller can surface a toast.
@@ -76,6 +103,12 @@ export interface ICalendarContext {
   deleteEvent: (eventId: string, calendarId: string) => Promise<void>;
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
+  /**
+   * Ensure events for the entire requested calendar year (Jan 1 – Dec 31)
+   * are loaded into the provider's `loadedRange`. Used by the year view to
+   * widen the default lazy-load window beyond -1 / +6 months.
+   */
+  loadEventsForYear: (year: number) => Promise<void>;
   isLoading: boolean;
   isAuthenticated: boolean;
   maxEventsPerDay: number;
@@ -136,10 +169,27 @@ export function CalendarProvider({
   children,
   badge = "colored",
   view = "month",
+  initialView,
+  initialAgendaMode,
 }: {
   children: React.ReactNode;
   view?: TCalendarView;
   badge?: "dot" | "colored";
+  /**
+   * One-shot view override that wins over the persisted localStorage value
+   * for the initial mount, and is written back to storage so the user's
+   * deep-linked choice survives a reload. Used by the production
+   * `/calendar` page to honour `?view=` URL params (issue #238). Pass
+   * `undefined` to keep the default (use stored value or fall back to
+   * the `view` prop / `"month"`).
+   */
+  initialView?: TCalendarView;
+  /**
+   * Companion to `initialView` for the agenda sub-toggle, e.g. legacy
+   * `?view=agenda` deep links resolve to `initialView="day"` +
+   * `initialAgendaMode=true` (#150 + #238). Same override semantics.
+   */
+  initialAgendaMode?: boolean;
 }) {
   // Use NextAuth session for authentication
   const { data: session, status } = useSession();
@@ -162,30 +212,19 @@ export function CalendarProvider({
   );
   const settings = migrateLegacySettings(rawSettings) as CalendarSettings;
 
-  // Flush the migrated payload back to localStorage so the legacy value is
-  // overwritten on the first render after a #150 upgrade. Subsequent loads
-  // see the new shape directly and skip the migration branch.
   const rawView = rawSettings.view;
-  useEffect(() => {
-    if (rawView === "agenda") {
-      setSettings(
-        (prev) =>
-          migrateLegacySettings(prev) as unknown as LegacyCalendarSettings
-      );
-    }
-  }, [rawView, setSettings]);
 
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     settings.badgeVariant ?? DEFAULT_SETTINGS.badgeVariant
   );
   const [currentView, setCurrentViewState] = useState<TCalendarView>(
-    settings.view ?? DEFAULT_SETTINGS.view
+    initialView ?? settings.view ?? DEFAULT_SETTINGS.view
   );
   const [use24HourFormat, setUse24HourFormatState] = useState<boolean>(
     settings.use24HourFormat ?? DEFAULT_SETTINGS.use24HourFormat
   );
   const [agendaMode, setAgendaModeState] = useState<boolean>(
-    settings.agendaMode ?? DEFAULT_SETTINGS.agendaMode
+    initialAgendaMode ?? settings.agendaMode ?? DEFAULT_SETTINGS.agendaMode
   );
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
@@ -193,6 +232,46 @@ export function CalendarProvider({
   const [weekStartDay, setWeekStartDayState] = useState<TWeekStartDay>(
     settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay
   );
+
+  // Single mount-only write that handles two concerns atomically:
+  //
+  //   1. **Legacy `view: "agenda"` migration (#150)** — pre-#150 the
+  //      "agenda" view was a peer of day/week; it's now a sub-toggle.
+  //      The first render after the upgrade rewrites the persisted
+  //      payload so subsequent loads see the new shape directly.
+  //   2. **URL deep-link override (#238)** — the production /calendar
+  //      page reads `?view=...` and forwards it via `initialView` /
+  //      `initialAgendaMode`. The override wins over the persisted
+  //      value and is written through so the deep-linked choice
+  //      survives a reload.
+  //
+  // Folding both into one `setSettings` call removes any ordering
+  // dependency between separate effects: migration's `view: "day"` /
+  // `agendaMode: true` is applied first, then the override fields (when
+  // defined) replace it. A reordering refactor cannot break the
+  // override.
+  useEffect(() => {
+    const needsMigration = rawView === "agenda";
+    const needsOverride =
+      initialView !== undefined || initialAgendaMode !== undefined;
+    if (!needsMigration && !needsOverride) {
+      return;
+    }
+    setSettings((prev) => {
+      const migrated = migrateLegacySettings(prev) as Partial<CalendarSettings>;
+      return {
+        ...migrated,
+        ...(initialView !== undefined ? { view: initialView } : {}),
+        ...(initialAgendaMode !== undefined
+          ? { agendaMode: initialAgendaMode }
+          : {}),
+      } as unknown as LegacyCalendarSettings;
+    });
+    // Mount-only: capturing the props/raw value once is intentional.
+    // Subsequent URL changes (back/forward) reach the page component,
+    // which remounts the provider with fresh props.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
@@ -210,6 +289,13 @@ export function CalendarProvider({
     }
   );
   const [calendarIds, setCalendarIds] = useState<string[]>([]);
+  // Per-calendar metadata used by `transformGoogleEvent` to pick a
+  // human-readable user attribution for shared-calendar events whose creator
+  // / organizer have no `displayName` (#307 Bug B). Populated from the same
+  // `/api/calendar/calendars` payload that produces `calendarIds`.
+  const [calendarMetadata, setCalendarMetadata] = useState<CalendarMetadataMap>(
+    () => new Map()
+  );
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
 
@@ -277,6 +363,78 @@ export function CalendarProvider({
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
+  const createEvent = async (
+    optimistic: IEvent,
+    input: CreateEventInput
+  ): Promise<IEvent> => {
+    // Optimistic insert keyed on the optimistic id. If the request fails
+    // we remove only that row, so a concurrent refreshEvents() can update
+    // the rest of the list without us clobbering its result on rollback.
+    setAllEvents((prev) => [...prev, optimistic]);
+
+    try {
+      const response = await fetch("/api/calendar/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: input.title,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          color: input.color,
+          description: input.description,
+          isAllDay: input.isAllDay,
+          calendarId: input.calendarId,
+        }),
+      });
+
+      if (!response.ok) {
+        let message = "Failed to create event";
+        try {
+          const body = await response.json();
+          if (typeof body?.error === "string") message = body.error;
+        } catch {
+          // Some upstream proxies return non-JSON 502s; the generic message
+          // is sufficient for the toast.
+        }
+        throw new Error(message);
+      }
+
+      const body = (await response.json()) as { event: GoogleCalendarEvent };
+      // Reconcile through the in-memory colorMappings + calendarMetadata
+      // state — refreshEvents keeps both current, and re-reading localStorage
+      // here would race with that path on subsequent creates. The metadata
+      // feeds the user-attribution fallback ladder for shared calendars
+      // (#307 Bug B).
+      const reconciled = transformGoogleEvent(
+        body.event,
+        colorMappings,
+        calendarMetadata
+      );
+
+      // Replace the optimistic row with the server's canonical event in a
+      // single setState so the list never flickers.
+      setAllEvents((current) =>
+        current.map((e) => (e.id === optimistic.id ? reconciled : e))
+      );
+
+      logger.event("CalendarEventCreated", {
+        eventId: reconciled.id,
+        calendarId: reconciled.calendarId,
+      });
+
+      return reconciled;
+    } catch (error) {
+      // Rollback: remove the optimistic row from whatever list is current,
+      // preserving any concurrent refresh's writes.
+      setAllEvents((current) => current.filter((e) => e.id !== optimistic.id));
+      logger.error(error as Error, {
+        context: "createEvent",
+        calendarId: input.calendarId,
+      });
+      throw error;
+    }
+  };
+
   const deleteEvent = async (eventId: string, calendarId: string) => {
     // Snapshot the single event being removed so a concurrent
     // refreshEvents() can update the rest of the list without us clobbering
@@ -334,7 +492,8 @@ export function CalendarProvider({
       timeMin: Date,
       timeMax: Date,
       calIds: string[],
-      mappings: CalendarColorMapping[]
+      mappings: CalendarColorMapping[],
+      metadata: CalendarMetadataMap
     ): Promise<IEvent[]> => {
       const url = new URL("/api/calendar/events", window.location.origin);
       url.searchParams.set("calendarIds", calIds.join(","));
@@ -354,36 +513,50 @@ export function CalendarProvider({
       const data = await response.json();
       const googleEvents: GoogleCalendarEvent[] = data.events || [];
 
-      // Transform events using color mappings
-      return googleEvents.map((event) => transformGoogleEvent(event, mappings));
+      // Transform events using color mappings + per-calendar metadata so
+      // shared-calendar events get a recognisable user attribution (#307).
+      return googleEvents.map((event) =>
+        transformGoogleEvent(event, mappings, metadata)
+      );
     },
     []
   );
 
   /**
-   * Fetch calendar list and return calendar IDs
+   * Fetch the user's calendar list and return both the IDs (for downstream
+   * `/api/calendar/events` queries) and a metadata map keyed by id (for the
+   * `transformGoogleEvent` user-attribution fallback ladder, #307 Bug B).
    */
-  const fetchCalendarList = useCallback(async (): Promise<string[]> => {
+  const fetchCalendarList = useCallback(async (): Promise<{
+    ids: string[];
+    metadata: CalendarMetadataMap;
+  }> => {
     try {
       const response = await fetch("/api/calendar/calendars");
       if (!response.ok) {
         logger.log("Failed to fetch calendar list, using primary only");
-        return ["primary"];
+        return { ids: ["primary"], metadata: new Map() };
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as CalendarsResponse;
       if (data.calendars && data.calendars.length > 0) {
-        // Return IDs of all calendars (user can filter later)
-        const ids = data.calendars.map(
-          (cal: { id: string; selected?: boolean }) => cal.id
+        const ids = data.calendars.map((cal) => cal.id);
+        const metadata = new Map<string, CalendarAttributionMetadata>(
+          data.calendars.map((cal) => [
+            cal.id,
+            {
+              summary: cal.summary,
+              summaryOverride: cal.summaryOverride,
+            },
+          ])
         );
         logger.log("Fetched calendar list", { count: ids.length });
-        return ids;
+        return { ids, metadata };
       }
     } catch {
       logger.log("Could not fetch calendar list, using primary only");
     }
-    return ["primary"];
+    return { ids: ["primary"], metadata: new Map() };
   }, []);
 
   // Refresh events from server-side API
@@ -407,32 +580,49 @@ export function CalendarProvider({
         return;
       }
 
-      // Fetch calendar list first (if not already fetched)
-      let calIds = calendarIds;
-      if (calIds.length === 0) {
-        calIds = await fetchCalendarList();
-        setCalendarIds(calIds);
-      }
+      // Always re-fetch the calendar list on every refresh — the same
+      // staleness reasoning that drives the unconditional color refresh
+      // below applies here. If a user adds (or renames, or has the owner
+      // change the override on) a shared calendar in Google, the next
+      // manual refresh has to pick up the new id and metadata; otherwise
+      // the colors update (Bug A fix) but the user-attribution map is
+      // stale and every event from the new calendar falls through to the
+      // humanized-email rung instead of the friendly summary (#307 Bug B).
+      const list = await fetchCalendarList();
+      const calIds = list.ids;
+      const currentMetadata = list.metadata;
+      setCalendarIds(calIds);
+      setCalendarMetadata(currentMetadata);
 
-      // Fetch current color mappings
+      // Fetch the canonical color mappings from the server on every refresh.
+      // localStorage is treated as a paint-fast warm cache, not the source of
+      // truth — the server-derived mapping (per-user override on
+      // `calendarList.list.backgroundColor`) is. Pre-#307 this was a
+      // fetch-once-per-session cache that never noticed an override change in
+      // Google Calendar nor reconciled across browsers; on every refresh we
+      // now write through to localStorage so the next paint stays fast.
       let currentMappings = colorMappings;
-      if (currentMappings.length === 0) {
-        try {
-          const colorResponse = await fetch("/api/calendar/colors");
-          if (colorResponse.ok) {
-            const colorData = await colorResponse.json();
-            if (colorData.colorMappings && colorData.colorMappings.length > 0) {
-              currentMappings = colorData.colorMappings;
-              saveColorMappings(currentMappings);
-              setColorMappings(currentMappings);
-              logger.log("Fetched color mappings during refresh", {
-                count: currentMappings.length,
-              });
-            }
+      try {
+        const colorResponse = await fetch("/api/calendar/colors");
+        if (colorResponse.ok) {
+          const colorData = await colorResponse.json();
+          // Intentionally skip the write when the server returns no mappings:
+          // an empty response could indicate a transient API hiccup or a
+          // momentarily empty calendarList, and overwriting a warm cache with
+          // [] would flash all events to the default blue. True
+          // source-of-truth behaviour is deferred to the server-side
+          // CalendarSettings persistence tracked as a follow-up to #307.
+          if (colorData.colorMappings && colorData.colorMappings.length > 0) {
+            currentMappings = colorData.colorMappings;
+            saveColorMappings(currentMappings);
+            setColorMappings(currentMappings);
+            logger.log("Fetched color mappings during refresh", {
+              count: currentMappings.length,
+            });
           }
-        } catch {
-          logger.log("Could not fetch colors during refresh");
         }
+      } catch {
+        logger.log("Could not fetch colors during refresh");
       }
 
       // Calculate time range from user settings (defaults: -1 month, +6 months)
@@ -453,7 +643,8 @@ export function CalendarProvider({
         timeMin,
         timeMax,
         calIds,
-        currentMappings
+        currentMappings,
+        currentMetadata
       );
 
       setAllEvents(transformedEvents);
@@ -483,7 +674,7 @@ export function CalendarProvider({
       try {
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
-          transformGoogleEvent(event, colorMappings)
+          transformGoogleEvent(event, colorMappings, calendarMetadata)
         );
         setAllEvents(transformedEvents);
         logger.log("Loaded events from cache", {
@@ -498,7 +689,7 @@ export function CalendarProvider({
   }, [
     status,
     session,
-    calendarIds,
+    calendarMetadata,
     colorMappings,
     fetchCalendarList,
     fetchEventsForRange,
@@ -553,7 +744,8 @@ export function CalendarProvider({
             fetchStart,
             fetchEnd,
             calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings
+            colorMappings,
+            calendarMetadata
           );
 
           setAllEvents((prev) => {
@@ -581,7 +773,8 @@ export function CalendarProvider({
             fetchStart,
             fetchEnd,
             calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings
+            colorMappings,
+            calendarMetadata
           );
 
           setAllEvents((prev) => {
@@ -602,7 +795,114 @@ export function CalendarProvider({
         isLoadingRangeRef.current = false;
       }
     },
-    [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
+    [
+      status,
+      loadedRange,
+      calendarIds,
+      calendarMetadata,
+      colorMappings,
+      fetchEventsForRange,
+    ]
+  );
+
+  /**
+   * Ensure events for an entire calendar year are loaded.
+   *
+   * The default `refreshEvents` window is `-calendarFetchMonthsBehind` to
+   * `+calendarFetchMonthsAhead` months from "now" — typically 7 months —
+   * which leaves the year view sparsely populated outside that window.
+   * This method widens `loadedRange` to cover Jan 1 – Dec 31 of the
+   * requested year by fetching only the missing edges and merging them
+   * into `allEvents`.
+   */
+  const loadEventsForYear = useCallback(
+    async (year: number) => {
+      if (
+        status !== "authenticated" ||
+        !loadedRange ||
+        isLoadingRangeRef.current
+      ) {
+        return;
+      }
+
+      const yearStart = new Date(year, 0, 1, 0, 0, 0, 0);
+      const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+
+      // Year already fully covered by loadedRange — nothing to do.
+      if (
+        !isBefore(yearStart, loadedRange.start) &&
+        !isAfter(yearEnd, loadedRange.end)
+      ) {
+        return;
+      }
+
+      isLoadingRangeRef.current = true;
+      logger.log("Loading events for full year", { year });
+
+      try {
+        const calIds = calendarIds.length > 0 ? calendarIds : ["primary"];
+
+        // Advance `loadedRange` after each successful edge fetch rather
+        // than batching both updates at the end. If the Dec edge throws
+        // after the Jan edge has already merged its events into state,
+        // the range pointer must reflect what's actually stored — else
+        // a retry would needlessly re-fetch Jan and rely on the dedupe
+        // guard to discard the duplicates.
+        if (isBefore(yearStart, loadedRange.start)) {
+          const newEvents = await fetchEventsForRange(
+            yearStart,
+            loadedRange.start,
+            calIds,
+            colorMappings,
+            calendarMetadata
+          );
+
+          setAllEvents((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const uniqueNewEvents = newEvents.filter(
+              (e) => !existingIds.has(e.id)
+            );
+            return [...uniqueNewEvents, ...prev];
+          });
+
+          setLoadedRange((prev) =>
+            prev ? { ...prev, start: yearStart } : prev
+          );
+        }
+
+        if (isAfter(yearEnd, loadedRange.end)) {
+          const newEvents = await fetchEventsForRange(
+            loadedRange.end,
+            yearEnd,
+            calIds,
+            colorMappings,
+            calendarMetadata
+          );
+
+          setAllEvents((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const uniqueNewEvents = newEvents.filter(
+              (e) => !existingIds.has(e.id)
+            );
+            return [...prev, ...uniqueNewEvents];
+          });
+
+          setLoadedRange((prev) => (prev ? { ...prev, end: yearEnd } : prev));
+        }
+      } catch (error) {
+        logger.error(error as Error, { context: "loadEventsForYear" });
+      } finally {
+        isLoadingRangeRef.current = false;
+      }
+    },
+    [
+      status,
+      loadedRange,
+      calendarIds,
+      calendarMetadata,
+      colorMappings,
+      fetchEventsForRange,
+    ]
   );
 
   // Color mappings are initialized synchronously from localStorage in useState.
@@ -612,10 +912,12 @@ export function CalendarProvider({
   useEffect(() => {
     const initializeEvents = async () => {
       try {
-        // First, load cached events for immediate display
+        // First, load cached events for immediate display. Metadata may be
+        // empty on first paint (we haven't fetched the calendar list yet);
+        // the ladder simply skips that rung and falls through to the next.
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
-          transformGoogleEvent(event, colorMappings)
+          transformGoogleEvent(event, colorMappings, calendarMetadata)
         );
         setAllEvents(transformedEvents);
         logger.log("Loaded events from cache on mount", {
@@ -721,9 +1023,11 @@ export function CalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    createEvent,
     deleteEvent,
     clearFilter,
     refreshEvents,
+    loadEventsForYear,
     isLoading,
     isAuthenticated,
     // Clamp defensively so a rogue DB write of 0 or a negative number never

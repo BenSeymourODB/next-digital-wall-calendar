@@ -2,9 +2,13 @@
 
 import { AnalogClock } from "@/components/calendar/analog-clock";
 import { useCalendar } from "@/components/providers/CalendarProvider";
+import { useEventDelete } from "@/hooks/useEventDelete";
 import { getColorClass } from "@/lib/calendar-helpers";
+import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
+import { useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
+import { EventDetailModal } from "./EventDetailModal";
 
 const CLOCK_MAX_PX = 720;
 const ARC_THICKNESS_RATIO = 0.08;
@@ -25,12 +29,25 @@ function isAllDayToday(event: IEvent, today: Date): boolean {
  * events in a sibling list so they remain visible in this view.
  */
 export function AnalogClockView() {
-  const { events } = useCalendar();
-  const today = new Date();
+  const { events, use24HourFormat } = useCalendar();
+  const today = useDateNow();
+  const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
+  const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
+  const handleDelete = useEventDelete();
 
   const allDayToday = events
     .filter((event) => isAllDayToday(event, today))
     .sort((a, b) => a.title.localeCompare(b.title));
+
+  const openEventById = (
+    eventId: string,
+    trigger: HTMLElement | SVGElement | null
+  ) => {
+    const match = events.find((e) => e.id === eventId);
+    if (!match) return;
+    triggerRef.current = trigger;
+    setSelectedEvent(match);
+  };
 
   return (
     <div
@@ -51,6 +68,7 @@ export function AnalogClockView() {
             size={CLOCK_MAX_PX}
             rawEvents={events}
             arcThickness={CLOCK_MAX_PX * ARC_THICKNESS_RATIO}
+            onEventClick={(eventId, trigger) => openEventById(eventId, trigger)}
           />
         </div>
       </div>
@@ -80,14 +98,28 @@ export function AnalogClockView() {
               <li
                 key={event.id}
                 data-testid={`analog-clock-all-day-${event.id}`}
-                className={`rounded-md border px-3 py-2 text-xs ${getColorClass(event.color)}`}
               >
-                <div className="font-medium">{event.title}</div>
+                <button
+                  type="button"
+                  data-testid={`analog-clock-all-day-${event.id}-button`}
+                  onClick={(e) => openEventById(event.id, e.currentTarget)}
+                  className={`focus:ring-ring block w-full cursor-pointer rounded-md border px-3 py-2 text-left text-xs transition-opacity hover:opacity-80 focus:ring-2 focus:ring-offset-1 focus:outline-none ${getColorClass(event.color)}`}
+                >
+                  <div className="font-medium">{event.title}</div>
+                </button>
               </li>
             ))}
           </ul>
         )}
       </aside>
+
+      <EventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        use24HourFormat={use24HourFormat}
+        returnFocusTo={triggerRef}
+        onDelete={handleDelete}
+      />
     </div>
   );
 }
