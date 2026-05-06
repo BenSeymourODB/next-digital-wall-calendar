@@ -40,9 +40,18 @@ vi.mock("@/lib/logger", () => ({
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-// `CalendarsResponse` is imported from `../route` rather than re-declared
-// locally — keeps the test contract single-sourced so a future field added
-// to the route can't silently bypass the test schema.
+
+// Type definitions for calendar list response
+interface CalendarInfo {
+  id: string;
+  summary: string;
+  summaryOverride?: string;
+  description?: string;
+  backgroundColor: string;
+  foregroundColor: string;
+  primary: boolean;
+  selected: boolean;
+}
 
 describe("/api/calendar/calendars", () => {
   beforeEach(() => {
@@ -169,6 +178,37 @@ describe("/api/calendar/calendars", () => {
 
       expect(status).toBe(200);
       expect(data.calendars[0].accessRole).toBe("reader");
+    });
+
+    it("forwards summaryOverride from the Google calendarList payload (#307)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [
+              {
+                id: "shared@example.com",
+                summary: "Original",
+                summaryOverride: "My Override",
+                backgroundColor: "#4285f4",
+                foregroundColor: "#ffffff",
+                primary: false,
+                selected: true,
+              },
+            ],
+          }),
+      });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<CalendarsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.calendars[0].summaryOverride).toBe("My Override");
     });
 
     it("returns empty array when no calendars exist", async () => {
