@@ -10,6 +10,16 @@ import { NextResponse } from "next/server";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
 /**
+ * Access role exposed by `calendarList.list`. Determines whether the calendar
+ * accepts writes (used by the EventCreateDialog calendar picker — issue #268).
+ */
+export type CalendarAccessRole =
+  | "freeBusyReader"
+  | "reader"
+  | "writer"
+  | "owner";
+
+/**
  * Calendar information returned by this endpoint
  */
 export interface CalendarInfo {
@@ -20,6 +30,7 @@ export interface CalendarInfo {
   foregroundColor: string;
   primary: boolean;
   selected: boolean;
+  accessRole: CalendarAccessRole;
 }
 
 /**
@@ -101,6 +112,9 @@ export async function GET() {
       foregroundColor: item.foregroundColor || "#ffffff",
       primary: item.primary || false,
       selected: item.selected || false,
+      // Default to "reader" when Google omits accessRole — fail-closed so the
+      // event-create picker never offers a calendar we can't actually write to.
+      accessRole: item.accessRole ?? "reader",
     }));
 
     logger.log("Calendar list fetched", {
