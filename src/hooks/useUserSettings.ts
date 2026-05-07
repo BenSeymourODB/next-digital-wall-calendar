@@ -4,11 +4,16 @@ import { logger } from "@/lib/logger";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
+// TODO(#328): rename to UserClientSettings (or split per-feature) once the
+// app-wide settings consolidation lands. The "Calendar" prefix is no longer
+// accurate now that non-calendar fields (e.g. defaultZoomLevel) flow through
+// this hook.
 export interface UserCalendarSettings {
   calendarRefreshIntervalMinutes: number;
   calendarFetchMonthsAhead: number;
   calendarFetchMonthsBehind: number;
   calendarMaxEventsPerDay: number;
+  defaultZoomLevel: number;
 }
 
 export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
@@ -16,6 +21,7 @@ export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
   calendarFetchMonthsAhead: 6,
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
+  defaultZoomLevel: 1.0,
 };
 
 interface UseUserSettingsResult {
@@ -87,6 +93,12 @@ function pickCalendarFields(
   }
   if (typeof data.calendarMaxEventsPerDay === "number") {
     picked.calendarMaxEventsPerDay = data.calendarMaxEventsPerDay;
+  }
+  if (
+    typeof data.defaultZoomLevel === "number" &&
+    Number.isFinite(data.defaultZoomLevel)
+  ) {
+    picked.defaultZoomLevel = data.defaultZoomLevel;
   }
   return picked;
 }
