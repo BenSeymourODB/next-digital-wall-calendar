@@ -11,8 +11,20 @@ export function useLocalStorage<T>(
   initialValue: T
 ): [T, (value: SetStateAction<T>) => void] {
   // Subscribe to storage events so the hook re-renders when another tab writes.
-  // React Compiler memoizes `subscribe` and `getSnapshot` based on captured
-  // dependencies, so `useSyncExternalStore` doesn't re-subscribe on every render.
+  //
+  // `useSyncExternalStore` requires `subscribe` and `getSnapshot` to be
+  // referentially stable across renders — if `subscribe` changes, React
+  // re-subscribes, and if `getSnapshot` changes it forces a re-read. Under
+  // CLAUDE.md's no-manual-memoization rule (#271) we drop `useCallback`,
+  // so stability is provided by the React Compiler instead: it memoizes
+  // these inline functions based on their captured deps, and
+  // `babel-plugin-react-compiler` is wired into both `next.config.ts` and
+  // `vitest.config.ts` so production and tests see the same behaviour.
+  // Today the only captured dep is `key`, which is always a stable
+  // string in callers; if a future caller passes a per-render-changing
+  // string here, RC will correctly create a fresh subscribe function and
+  // `useSyncExternalStore` will re-subscribe — which is the desired
+  // behaviour, not a bug.
   const subscribe = (onStoreChange: () => void) => {
     const handler = (e: StorageEvent) => {
       if (e.key === key) onStoreChange();

@@ -17,14 +17,15 @@ const eslintConfig = defineConfig([
       "local/no-direct-appinsights-client-import": "error",
       "local/no-direct-appinsights-server-import": "error",
       "local/prefer-logger-over-console": "warn",
-    },
-  },
-  // #271: ban manual memoization (`useMemo`, `useCallback`, `React.memo`).
-  // The React Compiler memoizes automatically — see docs/react-compiler.md.
-  // Vendored shadcn code under `src/components/ui/**` is excluded by the
-  // global ignore below.
-  {
-    rules: {
+      // #271: ban manual memoization (`useMemo`, `useCallback`,
+      // `React.memo`). The React Compiler memoizes automatically — see
+      // docs/react-compiler.md. The custom rule tracks `react` import
+      // bindings so it catches every aliasing form (named, named-with-as,
+      // default, namespace) — no-restricted-imports below is a belt-and-
+      // braces backup that catches the unaliased named-import form even
+      // if the local rule is somehow disabled. Vendored shadcn under
+      // `src/components/ui/**` is excluded by the global ignore.
+      "local/no-react-manual-memoization": "error",
       "no-restricted-imports": [
         "error",
         {
@@ -36,19 +37,6 @@ const eslintConfig = defineConfig([
                 "Manual memoization is forbidden — the React Compiler memoizes automatically. See docs/react-compiler.md.",
             },
           ],
-        },
-      ],
-      "no-restricted-syntax": [
-        "error",
-        {
-          // Catches `React.memo(...)`, `React.useMemo(...)`,
-          // `React.useCallback(...)` accessed via default or namespace
-          // imports (`import React from "react"` /
-          // `import * as React from "react"`).
-          selector:
-            "MemberExpression[object.name='React'][property.name=/^(memo|useMemo|useCallback)$/]",
-          message:
-            "Manual memoization (`React.memo` / `React.useMemo` / `React.useCallback`) is forbidden — the React Compiler memoizes automatically. See docs/react-compiler.md.",
         },
       ],
     },

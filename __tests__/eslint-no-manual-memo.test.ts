@@ -81,7 +81,7 @@ describe("eslint config: manual memoization ban (#271)", () => {
     expect(
       messages.some(
         (m) =>
-          m.ruleId === "no-restricted-syntax" &&
+          m.ruleId === "local/no-react-manual-memoization" &&
           typeof m.message === "string" &&
           /React\.memo|memoization/i.test(m.message)
       )
@@ -95,7 +95,7 @@ describe("eslint config: manual memoization ban (#271)", () => {
     expect(
       messages.some(
         (m) =>
-          m.ruleId === "no-restricted-syntax" &&
+          m.ruleId === "local/no-react-manual-memoization" &&
           typeof m.message === "string" &&
           /React\.useMemo|memoization/i.test(m.message)
       )
@@ -109,7 +109,7 @@ describe("eslint config: manual memoization ban (#271)", () => {
     expect(
       messages.some(
         (m) =>
-          m.ruleId === "no-restricted-syntax" &&
+          m.ruleId === "local/no-react-manual-memoization" &&
           typeof m.message === "string" &&
           /React\.useCallback|memoization/i.test(m.message)
       )
@@ -135,8 +135,68 @@ describe("eslint config: manual memoization ban (#271)", () => {
       `import { memo } from "lodash-es";\nexport const m = memo;\n`
     );
     const violations = messages.filter(
-      (m) => m.ruleId === "no-restricted-imports"
+      (m) =>
+        m.ruleId === "no-restricted-imports" ||
+        m.ruleId === "local/no-react-manual-memoization"
     );
     expect(violations).toEqual([]);
+  });
+
+  // Aliasing-coverage tests (Finding 1 in PR #353 review): the previous
+  // `no-restricted-syntax` selector only matched `React.*` by literal name
+  // and missed `import * as Foo from "react"; Foo.memo(...)`. The custom
+  // `local/no-react-manual-memoization` rule tracks bindings so every
+  // alias form is caught. These tests pin that contract.
+
+  it("flags `memo` imported with an alias from react", async () => {
+    const messages = await lint(
+      `import { memo as M } from "react";\nexport const W = M(function X() { return null; });\n`
+    );
+    expect(
+      messages.some(
+        (m) =>
+          m.ruleId === "local/no-react-manual-memoization" ||
+          (m.ruleId === "no-restricted-imports" && /memo/i.test(m.message))
+      )
+    ).toBe(true);
+  });
+
+  it("flags `Foo.memo` when react is namespace-imported as a non-`React` name", async () => {
+    const messages = await lint(
+      `import * as Foo from "react";\nexport const W = Foo.memo(function X() { return null; });\n`
+    );
+    expect(
+      messages.some(
+        (m) =>
+          m.ruleId === "local/no-react-manual-memoization" &&
+          /memo/i.test(m.message)
+      )
+    ).toBe(true);
+  });
+
+  it("flags `R.useMemo` when react is default-imported as a non-`React` name", async () => {
+    const messages = await lint(
+      `import R from "react";\nexport const v = R.useMemo(() => 1, []);\n`
+    );
+    expect(
+      messages.some(
+        (m) =>
+          m.ruleId === "local/no-react-manual-memoization" &&
+          /useMemo/i.test(m.message)
+      )
+    ).toBe(true);
+  });
+
+  it("flags `useMemo` aliased on import via the local rule even though the alias differs", async () => {
+    const messages = await lint(
+      `import { useMemo as um } from "react";\nexport const v = um(() => 1, []);\n`
+    );
+    expect(
+      messages.some(
+        (m) =>
+          m.ruleId === "local/no-react-manual-memoization" &&
+          /useMemo/i.test(m.message)
+      )
+    ).toBe(true);
   });
 });
