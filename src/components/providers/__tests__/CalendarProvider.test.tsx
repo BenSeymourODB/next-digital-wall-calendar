@@ -1014,6 +1014,186 @@ describe("CalendarProvider — filter persistence (#208 Phase 1)", () => {
     expect(parsed.selectedUserId).toBe("all");
   });
 
+  // Issue #208 Phase 2 — per-calendar filter
+  it("hydrates selectedCalendarIds from per-profile storage", async () => {
+    function CalendarProbe() {
+      const { selectedCalendarIds } = useCalendar();
+      return (
+        <span data-testid="probe-cal-ids">{selectedCalendarIds.join(",")}</span>
+      );
+    }
+
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: [],
+        selectedUserId: "all",
+        selectedCalendarIds: ["cal-1", "cal-2"],
+      })
+    );
+
+    render(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <CalendarProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent(
+        "cal-1,cal-2"
+      );
+    });
+  });
+
+  it("toggles selectedCalendarIds and persists each change", async () => {
+    function CalendarProbe() {
+      const { selectedCalendarIds, filterEventsBySelectedCalendars } =
+        useCalendar();
+      return (
+        <div>
+          <span data-testid="probe-cal-ids">
+            {selectedCalendarIds.join(",")}
+          </span>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedCalendars("cal-1")}
+          >
+            toggle-cal-1
+          </button>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedCalendars("cal-2")}
+          >
+            toggle-cal-2
+          </button>
+        </div>
+      );
+    }
+
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    const user = userEvent.setup();
+
+    render(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <CalendarProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent("");
+    });
+
+    await user.click(screen.getByText("toggle-cal-1"));
+    await user.click(screen.getByText("toggle-cal-2"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent(
+        "cal-1,cal-2"
+      );
+    });
+
+    const stored = JSON.parse(
+      window.localStorage.getItem("calendar-filters:profile-a") ?? "{}"
+    );
+    expect(stored.selectedCalendarIds).toEqual(["cal-1", "cal-2"]);
+
+    // Toggle off cal-1
+    await user.click(screen.getByText("toggle-cal-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent("cal-2");
+    });
+
+    const stored2 = JSON.parse(
+      window.localStorage.getItem("calendar-filters:profile-a") ?? "{}"
+    );
+    expect(stored2.selectedCalendarIds).toEqual(["cal-2"]);
+  });
+
+  it("clearFilter resets all three dimensions including selectedCalendarIds", async () => {
+    function ClearProbe() {
+      const {
+        selectedColors,
+        selectedUserId,
+        selectedCalendarIds,
+        filterEventsBySelectedColors,
+        setSelectedUserId,
+        filterEventsBySelectedCalendars,
+        clearFilter,
+      } = useCalendar();
+      return (
+        <div>
+          <span data-testid="probe-colors">{selectedColors.join(",")}</span>
+          <span data-testid="probe-user">{selectedUserId}</span>
+          <span data-testid="probe-cal-ids">
+            {selectedCalendarIds.join(",")}
+          </span>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedColors("red")}
+          >
+            toggle-red
+          </button>
+          <button type="button" onClick={() => setSelectedUserId("user-1")}>
+            select-user-1
+          </button>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedCalendars("cal-1")}
+          >
+            toggle-cal-1
+          </button>
+          <button type="button" onClick={() => clearFilter()}>
+            clear
+          </button>
+        </div>
+      );
+    }
+
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    const user = userEvent.setup();
+
+    render(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <ClearProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("");
+    });
+
+    await user.click(screen.getByText("toggle-red"));
+    await user.click(screen.getByText("select-user-1"));
+    await user.click(screen.getByText("toggle-cal-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent("cal-1");
+    });
+
+    await user.click(screen.getByText("clear"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("");
+    });
+    expect(screen.getByTestId("probe-user")).toHaveTextContent("all");
+    expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent("");
+
+    const stored = JSON.parse(
+      window.localStorage.getItem("calendar-filters:profile-a") ?? "{}"
+    );
+    expect(stored.selectedColors).toEqual([]);
+    expect(stored.selectedUserId).toBe("all");
+    expect(stored.selectedCalendarIds).toEqual([]);
+  });
+
   it("only persists changes made in the active session, not the initial hydration", async () => {
     // Pre-seed storage so the provider hydrates from it.
     window.localStorage.setItem("activeProfileId", "profile-a");
@@ -1043,5 +1223,150 @@ describe("CalendarProvider — filter persistence (#208 Phase 1)", () => {
     expect(filterWrites).toHaveLength(0);
 
     setItemSpy.mockRestore();
+  });
+});
+
+// Issue #208 Phase 2 — calendar list + filter-by-calendar end-to-end with
+// network-backed event load. Mirrors the existing color-filter smoke test.
+describe("CalendarProvider — calendar filter (#208 Phase 2)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    mockSessionState.current = {
+      data: {
+        user: { name: "Test", email: "test@test.test" },
+        expires: new Date(Date.now() + 86_400_000).toISOString(),
+      },
+      status: "authenticated",
+    };
+    fetchMock = vi.fn().mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(
+          fetchOk({
+            calendars: [
+              {
+                id: "primary",
+                summary: "Primary",
+                backgroundColor: "#4285f4",
+              },
+              { id: "work", summary: "Work", backgroundColor: "#16a765" },
+            ],
+          })
+        );
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(fetchOk({ events: [] }));
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("exposes the fetched calendar metadata via context", async () => {
+    function CalendarsProbe() {
+      const { calendars } = useCalendar();
+      return (
+        <ul data-testid="probe-calendars">
+          {calendars.map((c) => (
+            <li key={c.id}>
+              {c.id}:{c.summary}:{c.backgroundColor}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
+    render(
+      <CalendarProvider>
+        <CalendarsProbe />
+      </CalendarProvider>
+    );
+
+    await waitFor(() => {
+      const items = screen.getByTestId("probe-calendars").textContent ?? "";
+      expect(items).toContain("primary:Primary:#4285f4");
+      expect(items).toContain("work:Work:#16a765");
+    });
+  });
+
+  it("filters events by selectedCalendarIds and intersects with color filter", async () => {
+    function CalendarFilterProbe() {
+      const { events, filterEventsBySelectedCalendars } = useCalendar();
+      return (
+        <div>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedCalendars("work")}
+          >
+            only-work
+          </button>
+          <ul data-testid="probe-events">
+            {events.map((e) => (
+              <li key={e.id}>{e.title}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    fetchMock.mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(
+          fetchOk({
+            calendars: [
+              { id: "primary", summary: "Primary" },
+              { id: "work", summary: "Work" },
+            ],
+          })
+        );
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(
+          fetchOk({
+            events: [
+              {
+                id: "primary-evt",
+                summary: "Primary Event",
+                start: { dateTime: new Date().toISOString() },
+                end: { dateTime: new Date().toISOString() },
+              },
+            ],
+          })
+        );
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+
+    render(
+      <CalendarProvider>
+        <CalendarFilterProbe />
+      </CalendarProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Primary Event")).toBeInTheDocument();
+    });
+
+    // Selecting only "work" should drop the primary event since the mock
+    // transformer assigns calendarId: "primary".
+    await userEvent.setup().click(screen.getByText("only-work"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Primary Event")).not.toBeInTheDocument();
+    });
   });
 });

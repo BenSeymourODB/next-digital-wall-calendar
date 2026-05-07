@@ -17,6 +17,7 @@ import { transformGoogleEvent } from "@/lib/calendar-transform";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import type {
+  ICalendarInfo,
   IEvent,
   IUser,
   TCalendarView,
@@ -68,6 +69,23 @@ export interface ICalendarContext {
   selectedColors: TEventColor[];
   filterEventsBySelectedColors: (colors: TEventColor) => void;
   filterEventsBySelectedUser: (userId: IUser["id"] | "all") => void;
+  /**
+   * Issue #208 — list of the user's Google Calendars, sourced from
+   * `/api/calendar/calendars`. Empty until the first refresh fires (or
+   * when running unauthenticated).
+   */
+  calendars: ICalendarInfo[];
+  /**
+   * Calendars whose events should pass the filter. Empty array means "no
+   * calendar filter active" (all calendars pass), matching the same
+   * convention `selectedColors` uses.
+   */
+  selectedCalendarIds: string[];
+  /**
+   * Toggle a calendar in/out of the active set. Mirrors the
+   * color/user toggle ergonomics.
+   */
+  filterEventsBySelectedCalendars: (calendarId: string) => void;
   users: IUser[];
   events: IEvent[];
   addEvent: (event: IEvent) => void;
@@ -227,6 +245,9 @@ export function CalendarProvider({
   const [selectedColors, setSelectedColors] = useState<TEventColor[]>(
     () => loadFilterState(getActiveProfileId()).selectedColors
   );
+  const [selectedCalendarIds, setSelectedCalendarIdsState] = useState<string[]>(
+    () => loadFilterState(getActiveProfileId()).selectedCalendarIds
+  );
 
   // Track the profile id whose filter state currently lives in `selectedColors`
   // / `selectedUserId`, so we can detect mid-session profile changes and
@@ -240,6 +261,7 @@ export function CalendarProvider({
     const next = loadFilterState(activeProfileId);
     setSelectedColors(next.selectedColors);
     setSelectedUserIdState(next.selectedUserId);
+    setSelectedCalendarIdsState(next.selectedCalendarIds);
   }, [activeProfileId]);
 
   const [allEvents, setAllEvents] = useState<IEvent[]>([]);
@@ -251,7 +273,11 @@ export function CalendarProvider({
       return loadColorMappings();
     }
   );
-  const [calendarIds, setCalendarIds] = useState<string[]>([]);
+  const [calendars, setCalendars] = useState<ICalendarInfo[]>([]);
+  // Derived: the id list used by the events fetch URL. Kept as a separate
+  // memoized array to avoid re-running effects keyed on `calendars` whose
+  // metadata (summary, backgroundColor) didn't actually change.
+  const calendarIds = calendars.map((c) => c.id);
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
 
@@ -295,11 +321,12 @@ export function CalendarProvider({
   const persistFilters = (updates: {
     selectedColors?: TEventColor[];
     selectedUserId?: IUser["id"] | "all";
+    selectedCalendarIds?: string[];
   }) => {
     saveFilterState(activeProfileId, {
       selectedColors: updates.selectedColors ?? selectedColors,
       selectedUserId: updates.selectedUserId ?? selectedUserId,
-      selectedCalendarIds: [],
+      selectedCalendarIds: updates.selectedCalendarIds ?? selectedCalendarIds,
     });
   };
 
@@ -320,10 +347,23 @@ export function CalendarProvider({
     setSelectedUserId(userId);
   };
 
+  const filterEventsBySelectedCalendars = (calendarId: string) => {
+    const next = selectedCalendarIds.includes(calendarId)
+      ? selectedCalendarIds.filter((id) => id !== calendarId)
+      : [...selectedCalendarIds, calendarId];
+    setSelectedCalendarIdsState(next);
+    persistFilters({ selectedCalendarIds: next });
+  };
+
   const clearFilter = () => {
     setSelectedColors([]);
     setSelectedUserIdState("all");
-    persistFilters({ selectedColors: [], selectedUserId: "all" });
+    setSelectedCalendarIdsState([]);
+    persistFilters({
+      selectedColors: [],
+      selectedUserId: "all",
+      selectedCalendarIds: [],
+    });
   };
 
   const addEvent = (event: IEvent) => {
@@ -422,29 +462,40 @@ export function CalendarProvider({
   );
 
   /**
-   * Fetch calendar list and return calendar IDs
+   * Fetch the user's calendar list, preserving the metadata (summary,
+   * backgroundColor) the filter panel needs to render each entry. The
+   * fallback `primary` entry mirrors the prior behavior so consumers
+   * downstream of the events fetch URL keep working when the API call
+   * fails or the user has no other calendars.
    */
-  const fetchCalendarList = useCallback(async (): Promise<string[]> => {
+  const fetchCalendarList = useCallback(async (): Promise<ICalendarInfo[]> => {
     try {
       const response = await fetch("/api/calendar/calendars");
       if (!response.ok) {
         logger.log("Failed to fetch calendar list, using primary only");
-        return ["primary"];
+        return [{ id: "primary", summary: "Primary", backgroundColor: "" }];
       }
 
       const data = await response.json();
       if (data.calendars && data.calendars.length > 0) {
-        // Return IDs of all calendars (user can filter later)
-        const ids = data.calendars.map(
-          (cal: { id: string; selected?: boolean }) => cal.id
+        const list: ICalendarInfo[] = data.calendars.map(
+          (cal: {
+            id: string;
+            summary?: string;
+            backgroundColor?: string;
+          }) => ({
+            id: cal.id,
+            summary: cal.summary ?? cal.id,
+            backgroundColor: cal.backgroundColor ?? "",
+          })
         );
-        logger.log("Fetched calendar list", { count: ids.length });
-        return ids;
+        logger.log("Fetched calendar list", { count: list.length });
+        return list;
       }
     } catch {
       logger.log("Could not fetch calendar list, using primary only");
     }
-    return ["primary"];
+    return [{ id: "primary", summary: "Primary", backgroundColor: "" }];
   }, []);
 
   // Refresh events from server-side API
@@ -468,11 +519,14 @@ export function CalendarProvider({
         return;
       }
 
-      // Fetch calendar list first (if not already fetched)
+      // Fetch calendar list first (if not already fetched). We keep the
+      // full metadata in `calendars` so the filter panel can render each
+      // entry; the events fetch URL still consumes a flat id list.
       let calIds = calendarIds;
       if (calIds.length === 0) {
-        calIds = await fetchCalendarList();
-        setCalendarIds(calIds);
+        const list = await fetchCalendarList();
+        setCalendars(list);
+        calIds = list.map((c) => c.id);
       }
 
       // Fetch current color mappings
@@ -724,7 +778,10 @@ export function CalendarProvider({
     return () => clearInterval(interval);
   }, [status, userSettings.calendarRefreshIntervalMinutes]);
 
-  // Filter events
+  // Filter events. The three dimensions (user, color, calendar) intersect:
+  // an event must pass every active filter to remain in `filteredEvents`.
+  // An empty `selectedColors` / `selectedCalendarIds` means "no constraint
+  // on that dimension" — same convention as `selectedUserId === "all"`.
   useEffect(() => {
     let filtered = allEvents;
 
@@ -738,8 +795,14 @@ export function CalendarProvider({
       );
     }
 
+    if (selectedCalendarIds.length > 0) {
+      filtered = filtered.filter((event) =>
+        selectedCalendarIds.includes(event.calendarId)
+      );
+    }
+
     setFilteredEvents(filtered);
-  }, [allEvents, selectedUserId, selectedColors]);
+  }, [allEvents, selectedUserId, selectedColors, selectedCalendarIds]);
 
   // Get unique users from events
   const users = allEvents.reduce((acc, event) => {
@@ -777,6 +840,9 @@ export function CalendarProvider({
     selectedColors,
     filterEventsBySelectedColors,
     filterEventsBySelectedUser,
+    calendars,
+    selectedCalendarIds,
+    filterEventsBySelectedCalendars,
     users,
     events: filteredEvents,
     addEvent,

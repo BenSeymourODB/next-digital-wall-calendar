@@ -34,6 +34,9 @@ function createMockContext(
     selectedColors: [] as TEventColor[],
     filterEventsBySelectedColors: vi.fn(),
     filterEventsBySelectedUser: vi.fn(),
+    calendars: [],
+    selectedCalendarIds: [],
+    filterEventsBySelectedCalendars: vi.fn(),
     users: [] as IUser[],
     events: [] as IEvent[],
     addEvent: vi.fn(),
@@ -290,6 +293,126 @@ describe("CalendarFilterPanel", () => {
       await user.click(screen.getByTestId("filter-panel-clear"));
 
       expect(contextValue.clearFilter).toHaveBeenCalledTimes(1);
+    });
+
+    // Issue #208 Phase 2 — clear should also reset the calendar selection.
+    it("renders the Clear filters button when a calendar filter is active", () => {
+      renderPanel({
+        calendars: [{ id: "primary", summary: "Primary", backgroundColor: "" }],
+        selectedCalendarIds: ["primary"],
+      });
+      expect(screen.getByTestId("filter-panel-clear")).toBeInTheDocument();
+    });
+  });
+
+  // Issue #208 Phase 2 — per-calendar filter popover.
+  describe("calendar filter", () => {
+    const primary = {
+      id: "primary",
+      summary: "Primary",
+      backgroundColor: "#4285f4",
+    };
+    const work = {
+      id: "work",
+      summary: "Work",
+      backgroundColor: "#16a765",
+    };
+
+    it("renders the Calendars trigger by default", () => {
+      renderPanel();
+      expect(
+        screen.getByTestId("filter-panel-calendar-trigger")
+      ).toBeInTheDocument();
+    });
+
+    it("lists each calendar in the popover", async () => {
+      const user = userEvent.setup();
+      renderPanel({ calendars: [primary, work] });
+
+      await user.click(screen.getByTestId("filter-panel-calendar-trigger"));
+      const popover = await screen.findByTestId(
+        "filter-panel-calendar-popover"
+      );
+
+      expect(
+        within(popover).getByTestId(
+          `filter-panel-calendar-option-${primary.id}`
+        )
+      ).toHaveTextContent(primary.summary);
+      expect(
+        within(popover).getByTestId(`filter-panel-calendar-option-${work.id}`)
+      ).toHaveTextContent(work.summary);
+    });
+
+    it("shows the empty-state message when no calendars are loaded", async () => {
+      const user = userEvent.setup();
+      renderPanel({ calendars: [] });
+
+      await user.click(screen.getByTestId("filter-panel-calendar-trigger"));
+      const popover = await screen.findByTestId(
+        "filter-panel-calendar-popover"
+      );
+
+      expect(
+        within(popover).getByTestId("filter-panel-calendar-empty")
+      ).toBeInTheDocument();
+    });
+
+    it("calls filterEventsBySelectedCalendars when an option is clicked", async () => {
+      const user = userEvent.setup();
+      const { contextValue } = renderPanel({ calendars: [primary, work] });
+
+      await user.click(screen.getByTestId("filter-panel-calendar-trigger"));
+      const popover = await screen.findByTestId(
+        "filter-panel-calendar-popover"
+      );
+
+      await user.click(
+        within(popover).getByTestId(`filter-panel-calendar-option-${work.id}`)
+      );
+
+      expect(contextValue.filterEventsBySelectedCalendars).toHaveBeenCalledWith(
+        work.id
+      );
+    });
+
+    it("marks selected calendars as checked in the popover", async () => {
+      const user = userEvent.setup();
+      renderPanel({
+        calendars: [primary, work],
+        selectedCalendarIds: [primary.id],
+      });
+
+      await user.click(screen.getByTestId("filter-panel-calendar-trigger"));
+      const popover = await screen.findByTestId(
+        "filter-panel-calendar-popover"
+      );
+
+      expect(
+        within(popover).getByTestId(
+          `filter-panel-calendar-checkbox-${primary.id}`
+        )
+      ).toHaveAttribute("data-state", "checked");
+      expect(
+        within(popover).getByTestId(`filter-panel-calendar-checkbox-${work.id}`)
+      ).toHaveAttribute("data-state", "unchecked");
+    });
+
+    it("shows an active-count badge when calendars are selected", () => {
+      renderPanel({
+        calendars: [primary, work],
+        selectedCalendarIds: [primary.id, work.id],
+      });
+      expect(
+        screen.getByTestId("filter-panel-calendar-count")
+      ).toHaveTextContent("2");
+    });
+
+    it("does not show the active-count badge when no calendars are selected", () => {
+      renderPanel({ calendars: [primary, work] });
+      expect(
+        screen.queryByTestId("filter-panel-calendar-count")
+      ).not.toBeInTheDocument();
     });
   });
 });

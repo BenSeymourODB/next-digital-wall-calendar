@@ -5,6 +5,7 @@ import {
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import type {
+  ICalendarInfo,
   IEvent,
   IUser,
   TCalendarView,
@@ -43,6 +44,14 @@ interface MockCalendarProviderProps {
   isAuthenticated?: boolean;
   /** Max events rendered per day cell before the "+N more" overflow */
   maxEventsPerDay?: number;
+  /**
+   * Mock calendar list, used by the per-calendar filter (issue #208).
+   * Defaults to a single `primary` entry so existing tests don't need
+   * to wire it up.
+   */
+  calendars?: ICalendarInfo[];
+  /** Initial per-calendar filter selection. Empty = no calendar filter. */
+  initialSelectedCalendarIds?: string[];
 }
 
 /**
@@ -72,6 +81,10 @@ export function MockCalendarProvider({
   loadingDelay = 0,
   isAuthenticated = true,
   maxEventsPerDay = 3,
+  calendars: initialCalendars = [
+    { id: "primary", summary: "Primary", backgroundColor: "" },
+  ],
+  initialSelectedCalendarIds = [],
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -91,6 +104,10 @@ export function MockCalendarProvider({
     "all"
   );
   const [selectedColors, setSelectedColors] = useState<TEventColor[]>([]);
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>(
+    initialSelectedCalendarIds
+  );
+  const [calendars] = useState<ICalendarInfo[]>(initialCalendars);
 
   const [allEvents, setAllEvents] = useState<IEvent[]>(initialEvents);
   const [isLoading, setIsLoading] = useState(
@@ -141,9 +158,18 @@ export function MockCalendarProvider({
     setSelectedUserId(userId);
   };
 
+  const filterEventsBySelectedCalendars = (calendarId: string) => {
+    setSelectedCalendarIds((prev) =>
+      prev.includes(calendarId)
+        ? prev.filter((id) => id !== calendarId)
+        : [...prev, calendarId]
+    );
+  };
+
   const clearFilter = () => {
     setSelectedColors([]);
     setSelectedUserId("all");
+    setSelectedCalendarIds([]);
   };
 
   const addEvent = (event: IEvent) => {
@@ -189,8 +215,14 @@ export function MockCalendarProvider({
       );
     }
 
+    if (selectedCalendarIds.length > 0) {
+      filtered = filtered.filter((event) =>
+        selectedCalendarIds.includes(event.calendarId)
+      );
+    }
+
     return filtered;
-  }, [allEvents, selectedUserId, selectedColors]);
+  }, [allEvents, selectedUserId, selectedColors, selectedCalendarIds]);
 
   // Get unique users from events
   const users = allEvents.reduce((acc, event) => {
@@ -226,6 +258,9 @@ export function MockCalendarProvider({
     selectedColors,
     filterEventsBySelectedColors,
     filterEventsBySelectedUser,
+    calendars,
+    selectedCalendarIds,
+    filterEventsBySelectedCalendars,
     users,
     events: filteredEvents,
     addEvent,

@@ -44,6 +44,18 @@ export interface IEvent {
   calendarId: string;
 }
 
+/**
+ * Lightweight calendar metadata used by the filter panel and any other
+ * surface that needs to render a list of the user's calendars. Sourced
+ * from `/api/calendar/calendars` (see `CalendarInfo` in that route for the
+ * full schema). We keep only the fields the client UI actually uses.
+ */
+export interface ICalendarInfo {
+  id: string;
+  summary: string;
+  backgroundColor: string;
+}
+
 export interface ICalendarCell {
   day: number;
   currentMonth: boolean;
