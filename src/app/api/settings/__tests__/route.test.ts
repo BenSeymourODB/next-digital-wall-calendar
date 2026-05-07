@@ -497,46 +497,28 @@ describe("/api/settings", () => {
       expect(data.calendarMaxEventsPerDay).toBe(5);
     });
 
-    it("validates calendarWorkingHoursStart range (0-23)", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
+    it.each([
+      ["negative", -1],
+      ["above range", 24],
+      ["fractional", 7.5],
+      ["string", "7"],
+    ])(
+      "rejects calendarWorkingHoursStart %s value (%s) with a 400 + field-named error",
+      async (_label, value) => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
 
-      const requestNegative = createMockRequest("/api/settings", {
-        method: "PUT",
-        body: { calendarWorkingHoursStart: -1 },
-      });
-      const responseNegative = await PUT(requestNegative);
-      const { status: statusNegative, data: dataNegative } =
-        await parseResponse<ApiErrorResponse>(responseNegative);
-      expect(statusNegative).toBe(400);
-      expect(dataNegative.error).toContain("calendarWorkingHoursStart");
+        const request = createMockRequest("/api/settings", {
+          method: "PUT",
+          body: { calendarWorkingHoursStart: value },
+        });
+        const response = await PUT(request);
+        const { status, data } =
+          await parseResponse<ApiErrorResponse>(response);
 
-      const requestHigh = createMockRequest("/api/settings", {
-        method: "PUT",
-        body: { calendarWorkingHoursStart: 24 },
-      });
-      const responseHigh = await PUT(requestHigh);
-      const { status: statusHigh } =
-        await parseResponse<ApiErrorResponse>(responseHigh);
-      expect(statusHigh).toBe(400);
-
-      const requestFloat = createMockRequest("/api/settings", {
-        method: "PUT",
-        body: { calendarWorkingHoursStart: 7.5 },
-      });
-      const responseFloat = await PUT(requestFloat);
-      const { status: statusFloat } =
-        await parseResponse<ApiErrorResponse>(responseFloat);
-      expect(statusFloat).toBe(400);
-
-      const requestType = createMockRequest("/api/settings", {
-        method: "PUT",
-        body: { calendarWorkingHoursStart: "7" },
-      });
-      const responseType = await PUT(requestType);
-      const { status: statusType } =
-        await parseResponse<ApiErrorResponse>(responseType);
-      expect(statusType).toBe(400);
-    });
+        expect(status).toBe(400);
+        expect(data.error).toContain("calendarWorkingHoursStart");
+      }
+    );
 
     it("accepts calendarWorkingHoursStart at boundaries 0 and 23", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);

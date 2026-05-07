@@ -409,7 +409,7 @@ describe("DayCalendar", () => {
       expect(grid.scrollTop).toBe(14 * 48);
     });
 
-    it("clamps workingHoursStart at the 0/23 boundaries", () => {
+    it("accepts workingHoursStart at the 0 and 23 boundaries", () => {
       const { unmount } = renderWithContext({
         selectedDate: new Date(),
         workingHoursStart: 0,
@@ -422,6 +422,34 @@ describe("DayCalendar", () => {
         workingHoursStart: 23,
       });
       expect(screen.getByTestId("day-calendar-grid").scrollTop).toBe(23 * 48);
+    });
+
+    // Mount-only effect by design: a user mid-scroll shouldn't have
+    // their position yanked when they change the setting. The new
+    // value picks up on the next remount (agenda toggle, navigation,
+    // etc.). If a future refactor adds `workingHoursStart` to the
+    // effect dep array, this test will fail.
+    it("does not re-scroll when workingHoursStart changes between renders", () => {
+      const selectedDate = new Date();
+      const { rerender } = render(
+        <CalendarContext.Provider
+          value={createMockContext({ selectedDate, workingHoursStart: 7 })}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(7 * 48);
+
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({ selectedDate, workingHoursStart: 14 })}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+      // Same grid instance, no remount — scrollTop must be unchanged.
+      expect(screen.getByTestId("day-calendar-grid").scrollTop).toBe(7 * 48);
     });
   });
 

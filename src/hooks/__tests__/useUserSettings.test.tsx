@@ -184,26 +184,33 @@ describe("useUserSettings", () => {
     expect(result.current.settings.calendarWorkingHoursStart).toBe(5);
   });
 
-  it("ignores out-of-range calendarWorkingHoursStart from a malformed response", async () => {
-    mockUseSession.mockReturnValue({
-      data: { user: { id: "u1" } },
-      status: "authenticated",
-    });
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: true,
-      // String value that would fail typeof === "number" — simulates a
-      // malformed payload without throwing.
-      json: async () => ({ calendarWorkingHoursStart: "9" }),
-    } as Response);
+  it.each([
+    ["string", "9"],
+    ["float", 7.5],
+    ["negative", -1],
+    ["above range", 24],
+    ["null", null],
+  ])(
+    "ignores invalid calendarWorkingHoursStart (%s) from a malformed response",
+    async (_label, value) => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ calendarWorkingHoursStart: value }),
+      } as Response);
 
-    const { result } = renderHook(() => useUserSettings());
+      const { result } = renderHook(() => useUserSettings());
 
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
 
-    expect(result.current.settings.calendarWorkingHoursStart).toBe(
-      DEFAULT_USER_CALENDAR_SETTINGS.calendarWorkingHoursStart
-    );
-  });
+      expect(result.current.settings.calendarWorkingHoursStart).toBe(
+        DEFAULT_USER_CALENDAR_SETTINGS.calendarWorkingHoursStart
+      );
+    }
+  );
 });

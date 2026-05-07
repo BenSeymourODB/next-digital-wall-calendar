@@ -259,21 +259,22 @@ function DayGridView({
   workingHoursStart,
 }: DayGridViewProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Capture the start hour into a ref so the mount effect doesn't need
+  // to depend on `workingHoursStart` (which would re-run the effect
+  // every time the user moves the slider, yanking their scroll
+  // position). Subsequent setting changes apply on the next remount
+  // (e.g. switching back from agenda mode).
+  const workingHoursStartRef = useRef(workingHoursStart);
 
-  // Scroll the time grid to the start of working hours on mount so
-  // morning events are immediately visible. useLayoutEffect runs
-  // synchronously before paint, avoiding a visible flash from 00:00.
-  // Mount-only on purpose: subsequent setting changes apply on the
-  // next remount (e.g. switching back from agenda) rather than
-  // yanking the user's current scroll position out from under them.
+  // useLayoutEffect runs synchronously before paint, avoiding a visible
+  // flash from scrollTop=0 to the working-hours row.
   useLayoutEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = getInitialScrollTop(
-        workingHoursStart,
+        workingHoursStartRef.current,
         HOUR_HEIGHT_PX
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

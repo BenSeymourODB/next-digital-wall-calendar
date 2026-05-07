@@ -255,17 +255,19 @@ function WeekGridView({
   // i.e. when the user toggles agenda mode off — without disturbing
   // manual scroll between renders.
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  // Mount-only on purpose: subsequent setting changes are picked up
-  // when the grid next remounts (e.g. agenda toggle off, navigation
-  // remount), avoiding a yank of the user's current scroll position.
+  // Capture the start hour into a ref so the mount effect doesn't need
+  // to depend on `workingHoursStart` (which would re-run the effect
+  // every time the user moves the slider, yanking their scroll
+  // position). Subsequent setting changes apply on the next remount
+  // (e.g. agenda toggle off, navigation remount).
+  const workingHoursStartRef = useRef(workingHoursStart);
   useLayoutEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = getInitialScrollTop(
-        workingHoursStart,
+        workingHoursStartRef.current,
         HOUR_HEIGHT_PX
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

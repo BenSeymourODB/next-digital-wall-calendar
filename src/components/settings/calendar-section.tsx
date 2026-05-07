@@ -150,8 +150,9 @@ export function CalendarSection({ values, onChange }: CalendarSectionProps) {
             }
           />
           <p className="text-xs text-gray-400">
-            Hour the Day &amp; Week views scroll to on first render so your
-            working-hours events land in view (0:00 – 23:00)
+            Hour the Day &amp; Week views scroll to on first render. Takes
+            effect the next time the grid loads (e.g. after navigating away and
+            back).
           </p>
         </div>
       </div>

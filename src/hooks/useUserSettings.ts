@@ -91,7 +91,12 @@ function pickCalendarFields(
   if (typeof data.calendarMaxEventsPerDay === "number") {
     picked.calendarMaxEventsPerDay = data.calendarMaxEventsPerDay;
   }
-  if (typeof data.calendarWorkingHoursStart === "number") {
+  if (
+    typeof data.calendarWorkingHoursStart === "number" &&
+    Number.isInteger(data.calendarWorkingHoursStart) &&
+    data.calendarWorkingHoursStart >= 0 &&
+    data.calendarWorkingHoursStart <= 23
+  ) {
     picked.calendarWorkingHoursStart = data.calendarWorkingHoursStart;
   }
   return picked;
