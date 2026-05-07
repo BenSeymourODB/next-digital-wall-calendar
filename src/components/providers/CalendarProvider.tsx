@@ -2,7 +2,7 @@
 
 import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { useUserSettings } from "@/hooks/useUserSettings";
+import { type TTimeFormat, useUserSettings } from "@/hooks/useUserSettings";
 import {
   type CalendarColorMapping,
   eventCache,
@@ -117,7 +117,6 @@ export interface ICalendarContext {
 interface CalendarSettings {
   badgeVariant: "dot" | "colored";
   view: TCalendarView;
-  use24HourFormat: boolean;
   agendaMode: boolean;
   agendaModeGroupBy: "date" | "color";
   weekStartDay: TWeekStartDay;
@@ -126,7 +125,6 @@ interface CalendarSettings {
 const DEFAULT_SETTINGS: CalendarSettings = {
   badgeVariant: "colored",
   view: "month",
-  use24HourFormat: true,
   agendaMode: false,
   agendaModeGroupBy: "date",
   weekStartDay: 0,
@@ -134,10 +132,18 @@ const DEFAULT_SETTINGS: CalendarSettings = {
 
 /**
  * Loose shape used during boot: localStorage may hold a pre-#150 payload
- * where `view` was the now-removed `"agenda"` literal.
+ * where `view` was the now-removed `"agenda"` literal, and/or a pre-#337
+ * payload that carried `use24HourFormat` alongside the calendar-only
+ * fields. Both are migrated on mount.
  */
 type LegacyCalendarSettings = Omit<Partial<CalendarSettings>, "view"> & {
   view?: TCalendarView | "agenda";
+  /**
+   * Pre-#337 dual-source field. Retired in favour of
+   * `UserSettings.timeFormat` flowing through `useUserSettings`. Stripped
+   * from the persisted payload on first mount.
+   */
+  use24HourFormat?: boolean;
 };
 
 /**
@@ -196,9 +202,15 @@ export function CalendarProvider({
   const isAuthenticated = status === "authenticated";
 
   // User-configurable data-loading settings (fetched from server when authed,
-  // falls back to defaults otherwise). Powers auto-refresh interval and
-  // fetch-window sizing for refreshEvents.
-  const { settings: userSettings } = useUserSettings();
+  // falls back to defaults otherwise). Powers auto-refresh interval, fetch-
+  // window sizing for refreshEvents, and the app-wide `timeFormat` (#337).
+  const {
+    settings: userSettings,
+    mutate: mutateUserSettings,
+    isLoading: isUserSettingsLoading,
+  } = useUserSettings();
+  const userTimeFormat: TTimeFormat = userSettings.timeFormat;
+  const use24HourFormat = userTimeFormat === "24h";
 
   // Cast through unknown so the legacy `"agenda"` literal can flow through
   // the hook even though it's no longer part of TCalendarView (#150).
@@ -219,9 +231,6 @@ export function CalendarProvider({
   );
   const [currentView, setCurrentViewState] = useState<TCalendarView>(
     initialView ?? settings.view ?? DEFAULT_SETTINGS.view
-  );
-  const [use24HourFormat, setUse24HourFormatState] = useState<boolean>(
-    settings.use24HourFormat ?? DEFAULT_SETTINGS.use24HourFormat
   );
   const [agendaMode, setAgendaModeState] = useState<boolean>(
     initialAgendaMode ?? settings.agendaMode ?? DEFAULT_SETTINGS.agendaMode
@@ -273,6 +282,67 @@ export function CalendarProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // #337 — One-time migration of the legacy `use24HourFormat` field from
+  // the persisted `calendar-settings` payload to the DB-backed
+  // `UserSettings.timeFormat`. Two concerns merged into one effect so
+  // the strip happens at the same instant we know whether to push:
+  //
+  //   1. Unconditionally remove `use24HourFormat` from the persisted
+  //      payload so the dual-source bug can never resurface.
+  //   2. When the server's `timeFormat` is at the Prisma default ("12h")
+  //      and the localStorage value disagrees (`true`/24h), push the
+  //      localStorage value to the server. That's the only case where
+  //      we can confidently disambiguate "user has been viewing 24h on
+  //      the calendar but never opened the main Settings page" from
+  //      "user explicitly chose 12h elsewhere" — and it's the case that
+  //      preserves continuity for the largest cohort.
+  //
+  // Gated on `!isUserSettingsLoading` so the strip-and-maybe-push
+  // happens only after `useUserSettings`' initial GET resolves; running
+  // the push optimistically before then would let the in-flight GET
+  // clobber our PUT a moment later. The `migrationRanRef` guard makes
+  // the effect resilient to React Strict Mode's double-invoke and any
+  // future dependency change that would re-trigger the body.
+  const migrationRanRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isAuthenticated && isUserSettingsLoading) return;
+    if (migrationRanRef.current) return;
+
+    const raw = window.localStorage.getItem("calendar-settings");
+    if (!raw) {
+      migrationRanRef.current = true;
+      return;
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      migrationRanRef.current = true;
+      return;
+    }
+    if (typeof parsed.use24HourFormat !== "boolean") {
+      migrationRanRef.current = true;
+      return;
+    }
+    const lsTimeFormat: TTimeFormat = parsed.use24HourFormat ? "24h" : "12h";
+    delete parsed.use24HourFormat;
+    window.localStorage.setItem("calendar-settings", JSON.stringify(parsed));
+    migrationRanRef.current = true;
+
+    if (isAuthenticated && userTimeFormat === "12h" && lsTimeFormat === "24h") {
+      void mutateUserSettings({ timeFormat: lsTimeFormat }).catch((error) => {
+        logger.error(error as Error, {
+          context: "calendarProvider.timeFormatMigration",
+        });
+      });
+    }
+    // Re-runs are guarded by `migrationRanRef`; the effect intentionally
+    // observes auth + GET resolution to know when it's safe to read the
+    // server-side `userTimeFormat`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, isUserSettingsLoading, userTimeFormat]);
+
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
     "all"
@@ -322,8 +392,17 @@ export function CalendarProvider({
   };
 
   const toggleTimeFormat = () => {
-    setUse24HourFormatState(!use24HourFormat);
-    updateSettings({ use24HourFormat: !use24HourFormat });
+    // #337 — `timeFormat` is owned by `UserSettings`; route the toggle
+    // through `mutateUserSettings` so the change persists DB-side and
+    // every other in-tab consumer (the main Settings page) re-renders
+    // immediately via the user-settings bus. Errors are swallowed: the
+    // optimistic local update has already happened, and a toast lives
+    // closer to the user's edit surface (the Settings form).
+    void mutateUserSettings({
+      timeFormat: use24HourFormat ? "12h" : "24h",
+    }).catch((error) => {
+      logger.error(error as Error, { context: "toggleTimeFormat" });
+    });
   };
 
   const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
