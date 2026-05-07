@@ -237,9 +237,10 @@ export function CalendarProvider({
   // ProfileProvider writes, so the two providers stay decoupled (neither
   // imports the other). We listen for `storage` events to react to
   // cross-tab profile switches.
-  const [activeProfileId, setActiveProfileId] = useState<string | null>(() =>
-    getActiveProfileId()
-  );
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(() => {
+    const initialProfileId = getActiveProfileId();
+    return initialProfileId;
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -252,29 +253,35 @@ export function CalendarProvider({
     return () => window.removeEventListener("storage", handler);
   }, []);
 
+  // Read once at construction so the three filter-state initialisers below
+  // share a single localStorage round-trip with the activeProfileId hook.
+  const initialFilterState = loadFilterState(activeProfileId);
   const [selectedUserId, setSelectedUserIdState] = useState<
     IUser["id"] | "all"
-  >(() => loadFilterState(getActiveProfileId()).selectedUserId);
+  >(initialFilterState.selectedUserId);
   const [selectedColors, setSelectedColors] = useState<TEventColor[]>(
-    () => loadFilterState(getActiveProfileId()).selectedColors
+    initialFilterState.selectedColors
   );
   const [selectedCalendarIds, setSelectedCalendarIdsState] = useState<string[]>(
-    () => loadFilterState(getActiveProfileId()).selectedCalendarIds
+    initialFilterState.selectedCalendarIds
   );
 
-  // Track the profile id whose filter state currently lives in `selectedColors`
-  // / `selectedUserId`, so we can detect mid-session profile changes and
-  // re-hydrate without clobbering the new profile's stored state with the
-  // previous one's values.
+  // Track the profile id whose filter state currently lives in
+  // `selectedColors` / `selectedUserId` / `selectedCalendarIds`. Used both
+  // to detect mid-session profile changes (so we can re-hydrate) AND to
+  // gate `persistFilters`: if a user-driven filter change races with a
+  // cross-tab profile switch, the in-memory state still reflects the
+  // OLD profile, so we must skip the write rather than corrupt the new
+  // profile's stored state.
   const hydratedProfileRef = useRef(activeProfileId);
 
   useEffect(() => {
     if (hydratedProfileRef.current === activeProfileId) return;
-    hydratedProfileRef.current = activeProfileId;
     const next = loadFilterState(activeProfileId);
     setSelectedColors(next.selectedColors);
     setSelectedUserIdState(next.selectedUserId);
     setSelectedCalendarIdsState(next.selectedCalendarIds);
+    hydratedProfileRef.current = activeProfileId;
   }, [activeProfileId]);
 
   const [allEvents, setAllEvents] = useState<IEvent[]>([]);
@@ -287,10 +294,6 @@ export function CalendarProvider({
     }
   );
   const [calendars, setCalendars] = useState<ICalendarInfo[]>([]);
-  // Derived: the id list used by the events fetch URL. Kept as a separate
-  // memoized array to avoid re-running effects keyed on `calendars` whose
-  // metadata (summary, backgroundColor) didn't actually change.
-  const calendarIds = calendars.map((c) => c.id);
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
 
@@ -336,6 +339,14 @@ export function CalendarProvider({
     selectedUserId?: IUser["id"] | "all";
     selectedCalendarIds?: string[];
   }) => {
+    // Skip writes during the brief window between an active-profile change
+    // and the re-hydration effect catching up: in-memory `selected*` still
+    // holds the OLD profile's values, so persisting them under the NEW
+    // profile's key would corrupt that profile's stored state. The
+    // user-driven action that triggered this call is intentionally
+    // dropped — the new profile's hydrated state will overwrite anyway
+    // on the next render.
+    if (hydratedProfileRef.current !== activeProfileId) return;
     saveFilterState(activeProfileId, {
       selectedColors: updates.selectedColors ?? selectedColors,
       selectedUserId: updates.selectedUserId ?? selectedUserId,
@@ -476,17 +487,19 @@ export function CalendarProvider({
 
   /**
    * Fetch the user's calendar list, preserving the metadata (summary,
-   * backgroundColor) the filter panel needs to render each entry. The
-   * fallback `primary` entry mirrors the prior behavior so consumers
-   * downstream of the events fetch URL keep working when the API call
-   * fails or the user has no other calendars.
+   * backgroundColor) the filter panel needs to render each entry. Returns
+   * an empty list when the API call fails or yields no results — the
+   * filter panel handles the empty state explicitly, and the events
+   * fetch URL falls back to `["primary"]` inline at its call sites
+   * rather than leaning on a synthetic entry here that would otherwise
+   * appear as a real selectable row in the filter UI.
    */
   const fetchCalendarList = useCallback(async (): Promise<ICalendarInfo[]> => {
     try {
       const response = await fetch("/api/calendar/calendars");
       if (!response.ok) {
         logger.log("Failed to fetch calendar list, using primary only");
-        return [{ id: "primary", summary: "Primary", backgroundColor: "" }];
+        return [];
       }
 
       const data = await response.json();
@@ -508,7 +521,7 @@ export function CalendarProvider({
     } catch {
       logger.log("Could not fetch calendar list, using primary only");
     }
-    return [{ id: "primary", summary: "Primary", backgroundColor: "" }];
+    return [];
   }, []);
 
   // Refresh events from server-side API
@@ -535,7 +548,7 @@ export function CalendarProvider({
       // Fetch calendar list first (if not already fetched). We keep the
       // full metadata in `calendars` so the filter panel can render each
       // entry; the events fetch URL still consumes a flat id list.
-      let calIds = calendarIds;
+      let calIds = calendars.map((c) => c.id);
       if (calIds.length === 0) {
         const list = await fetchCalendarList();
         setCalendars(list);
@@ -576,11 +589,13 @@ export function CalendarProvider({
         0
       );
 
-      // Fetch events from all calendars
+      // Fetch events from all calendars. If `fetchCalendarList` came back
+      // empty (unauthenticated, API failure, or zero-calendar account),
+      // fall back to `["primary"]` so the events fetch URL stays valid.
       const transformedEvents = await fetchEventsForRange(
         timeMin,
         timeMax,
-        calIds,
+        calIds.length > 0 ? calIds : ["primary"],
         currentMappings
       );
 
@@ -626,7 +641,7 @@ export function CalendarProvider({
   }, [
     status,
     session,
-    calendarIds,
+    calendars,
     colorMappings,
     fetchCalendarList,
     fetchEventsForRange,
@@ -680,7 +695,7 @@ export function CalendarProvider({
           const newEvents = await fetchEventsForRange(
             fetchStart,
             fetchEnd,
-            calendarIds.length > 0 ? calendarIds : ["primary"],
+            calendars.length > 0 ? calendars.map((c) => c.id) : ["primary"],
             colorMappings
           );
 
@@ -708,7 +723,7 @@ export function CalendarProvider({
           const newEvents = await fetchEventsForRange(
             fetchStart,
             fetchEnd,
-            calendarIds.length > 0 ? calendarIds : ["primary"],
+            calendars.length > 0 ? calendars.map((c) => c.id) : ["primary"],
             colorMappings
           );
 
@@ -730,7 +745,7 @@ export function CalendarProvider({
         isLoadingRangeRef.current = false;
       }
     },
-    [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
+    [status, loadedRange, calendars, colorMappings, fetchEventsForRange]
   );
 
   // Color mappings are initialized synchronously from localStorage in useState.

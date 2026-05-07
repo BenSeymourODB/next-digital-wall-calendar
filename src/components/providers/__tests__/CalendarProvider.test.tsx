@@ -1194,6 +1194,76 @@ describe("CalendarProvider — filter persistence (#208 Phase 1)", () => {
     expect(stored.selectedCalendarIds).toEqual([]);
   });
 
+  // Review feedback — persistFilters must not corrupt the new profile's
+  // stored state when a user-driven filter change races with a cross-tab
+  // profile switch. Before the guard, a click between `setActiveProfileId`
+  // landing and the re-hydration effect catching up would write the old
+  // profile's in-memory values under the new profile's key.
+  it("does not persist old-profile filter values to the new profile during an in-flight switch", async () => {
+    function FilterProbe() {
+      const { filterEventsBySelectedColors } = useCalendar();
+      return (
+        <button
+          type="button"
+          onClick={() => filterEventsBySelectedColors("yellow")}
+        >
+          toggle-yellow
+        </button>
+      );
+    }
+
+    // Profile A starts with red selected; profile B has nothing stored.
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+
+    const user = userEvent.setup();
+    render(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <FilterProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+
+    // Simulate a cross-tab profile switch by mutating storage and firing
+    // the storage event WITHOUT yielding back to React. Then immediately
+    // (in the same tick) click the toggle. The click handler is from the
+    // pre-switch render, so its closure still sees `["red"]` as
+    // `selectedColors`. With the guard in place, persistFilters should
+    // bail (hydratedProfileRef still holds "profile-a", activeProfileId
+    // is now "profile-b"), so profile B's storage stays clean.
+    window.localStorage.setItem("activeProfileId", "profile-b");
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "activeProfileId",
+        newValue: "profile-b",
+      })
+    );
+    await user.click(screen.getByText("toggle-yellow"));
+
+    // Wait for the post-switch render to commit so any spurious writes
+    // would have happened by now.
+    await waitFor(() => {
+      const stored = window.localStorage.getItem("calendar-filters:profile-b");
+      // Either no entry (preferred — guard dropped the write) or, if
+      // some edge of React batching writes anyway, the stored entry must
+      // not contain "red" (profile A's value).
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        expect(parsed.selectedColors).not.toContain("red");
+      } else {
+        expect(stored).toBeNull();
+      }
+    });
+  });
+
   it("only persists changes made in the active session, not the initial hydration", async () => {
     // Pre-seed storage so the provider hydrates from it.
     window.localStorage.setItem("activeProfileId", "profile-a");
@@ -1297,6 +1367,55 @@ describe("CalendarProvider — calendar filter (#208 Phase 2)", () => {
       expect(items).toContain("primary:Primary:#4285f4");
       expect(items).toContain("work:Work:#16a765");
     });
+  });
+
+  // Issue #208 Phase 2 review feedback — fetchCalendarList no longer
+  // injects a synthetic "primary" entry, so the panel UI's empty state
+  // can render correctly for unauthenticated/zero-calendar accounts.
+  it("does not surface a synthetic 'primary' calendar when the API returns no calendars", async () => {
+    function CalendarsProbe() {
+      const { calendars } = useCalendar();
+      return <span data-testid="probe-calendars-len">{calendars.length}</span>;
+    }
+
+    fetchMock.mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(fetchOk({ calendars: [] }));
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(fetchOk({ events: [] }));
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+
+    render(
+      <CalendarProvider>
+        <CalendarsProbe />
+      </CalendarProvider>
+    );
+
+    // Wait for the events fetch (proves the refresh ran end-to-end), then
+    // assert the calendar list stays empty rather than getting a synthetic
+    // entry that would render as a real selectable row in the filter UI.
+    await waitFor(() => {
+      const eventCalls = fetchMock.mock.calls
+        .map((c) => String(c[0]))
+        .filter((u) => u.includes("/api/calendar/events"));
+      expect(eventCalls.length).toBeGreaterThan(0);
+    });
+    expect(screen.getByTestId("probe-calendars-len")).toHaveTextContent("0");
+
+    // Even though calendars is empty, the events fetch URL still falls
+    // back to the primary calendar so we don't end up with no events at
+    // all when the calendar list comes back empty.
+    const eventUrl = fetchMock.mock.calls
+      .map((c) => String(c[0]))
+      .find((u) => u.includes("/api/calendar/events"));
+    expect(eventUrl).toContain("calendarIds=primary");
   });
 
   it("filters events by selectedCalendarIds and intersects with color filter", async () => {

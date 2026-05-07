@@ -14,7 +14,7 @@ import type {
   TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 // Re-export useCalendar from CalendarProvider for backward compatibility
 export { useCalendar } from "@/components/providers/CalendarProvider";
@@ -202,38 +202,28 @@ export function MockCalendarProvider({
     }
   };
 
-  // Filter events using useMemo to avoid effect-based setState
-  const filteredEvents = useMemo(() => {
-    let filtered = allEvents;
-
-    if (selectedUserId !== "all") {
-      filtered = filtered.filter((event) => event.user.id === selectedUserId);
-    }
-
-    if (selectedColors.length > 0) {
-      filtered = filtered.filter((event) =>
-        selectedColors.includes(event.color)
-      );
-    }
-
-    if (selectedCalendarIds.length > 0) {
-      filtered = filtered.filter((event) =>
-        selectedCalendarIds.includes(event.calendarId)
-      );
-    }
-
-    return filtered;
-  }, [allEvents, selectedUserId, selectedColors, selectedCalendarIds]);
-
-  const hiddenEventCounts = useMemo(
-    () =>
-      computeHiddenEventCounts(allEvents, {
-        selectedColors,
-        selectedUserId,
-        selectedCalendarIds,
-      }),
-    [allEvents, selectedColors, selectedUserId, selectedCalendarIds]
-  );
+  // Plain render-time derivation of filtered events + hidden counts. Manual
+  // memoization is banned (CLAUDE.md / React Compiler), but a state+effect
+  // bounce here is also overkill — the React Compiler will memoize the
+  // derivation automatically when the inputs are stable.
+  let filtered = allEvents;
+  if (selectedUserId !== "all") {
+    filtered = filtered.filter((event) => event.user.id === selectedUserId);
+  }
+  if (selectedColors.length > 0) {
+    filtered = filtered.filter((event) => selectedColors.includes(event.color));
+  }
+  if (selectedCalendarIds.length > 0) {
+    filtered = filtered.filter((event) =>
+      selectedCalendarIds.includes(event.calendarId)
+    );
+  }
+  const filteredEvents = filtered;
+  const hiddenEventCounts = computeHiddenEventCounts(allEvents, {
+    selectedColors,
+    selectedUserId,
+    selectedCalendarIds,
+  });
 
   // Get unique users from events
   const users = allEvents.reduce((acc, event) => {
