@@ -464,6 +464,12 @@ function TestCalendarContent() {
   const use24Hour = searchParams.get("24hour") !== "false";
   const showSidebar = searchParams.get("sidebar") === "true";
   const showFilters = searchParams.get("filters") === "true";
+  // `?weekStartDay=1` flips the mock provider to Monday-first so E2E
+  // specs can exercise weekStartDay-aware behaviour (Home/End, grid
+  // layout, range headers) without needing a logged-in user with the
+  // setting persisted. Defaults to Sunday-first (0) to preserve existing
+  // specs.
+  const weekStartDayParam = searchParams.get("weekStartDay") === "1" ? 1 : 0;
 
   // Optional `?anchor=YYYY-MM-DD` pins the relative event timestamps to a
   // deterministic "today" and also seeds `MockCalendarProvider`'s
@@ -488,6 +494,7 @@ function TestCalendarContent() {
       isLoading={loading}
       loadingDelay={loadingDelay}
       use24HourFormat={use24Hour}
+      weekStartDay={weekStartDayParam}
     >
       <div className="container mx-auto max-w-6xl p-4" data-testid="test-page">
         <h1 className="mb-4 text-2xl font-bold text-gray-900">

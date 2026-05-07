@@ -281,6 +281,49 @@ test.describe("SimpleCalendar — keyboard navigation", () => {
     expect(after).toBe(before);
   });
 
+  test("Home with weekStartDay=1 snaps selection to Monday (a11y wire-through, #231)", async ({
+    page,
+  }) => {
+    // Anchor on a Wednesday in a Monday-first week so Home moves backward
+    // by exactly two days. Picking a fixed local date avoids week-of-year
+    // ambiguity around month boundaries.
+    await page.goto(
+      "/test/calendar?events=default&view=month&controls=false&sidebar=false&weekStartDay=1&anchor=2026-04-15"
+    );
+    await expect(page.getByRole("grid", { name: /calendar$/i })).toBeVisible();
+
+    const selected = page.locator('[role="gridcell"][aria-selected="true"]');
+    await selected.focus();
+    await page.keyboard.press("Home");
+
+    const afterKey = await page
+      .locator('[role="gridcell"][aria-selected="true"]')
+      .getAttribute("data-date");
+    const [y, m, d] = afterKey!.split("-").map(Number);
+    // getDay(): Monday = 1 (the week boundary for Monday-first users).
+    expect(new Date(y, m - 1, d).getDay()).toBe(1);
+  });
+
+  test("End with weekStartDay=1 snaps selection to Sunday (a11y wire-through, #231)", async ({
+    page,
+  }) => {
+    await page.goto(
+      "/test/calendar?events=default&view=month&controls=false&sidebar=false&weekStartDay=1&anchor=2026-04-15"
+    );
+    await expect(page.getByRole("grid", { name: /calendar$/i })).toBeVisible();
+
+    const selected = page.locator('[role="gridcell"][aria-selected="true"]');
+    await selected.focus();
+    await page.keyboard.press("End");
+
+    const afterKey = await page
+      .locator('[role="gridcell"][aria-selected="true"]')
+      .getAttribute("data-date");
+    const [y, m, d] = afterKey!.split("-").map(Number);
+    // getDay(): Sunday = 0 (end of a Monday-first week).
+    expect(new Date(y, m - 1, d).getDay()).toBe(0);
+  });
+
   test("clicking a gridcell selects it", async ({ page }) => {
     // Pick a non-selected in-month cell by scanning gridcells and finding
     // one that isn't today's selected cell and isn't a decorative padding
