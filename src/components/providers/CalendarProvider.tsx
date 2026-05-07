@@ -197,8 +197,12 @@ export function CalendarProvider({
 
   // User-configurable data-loading settings (fetched from server when authed,
   // falls back to defaults otherwise). Powers auto-refresh interval and
-  // fetch-window sizing for refreshEvents.
-  const { settings: userSettings } = useUserSettings();
+  // fetch-window sizing for refreshEvents. `hasLoadedFromServer` flips to
+  // true only after the first successful `/api/settings` fetch — the
+  // `weekStartDay` migration shim below uses it to avoid acting on the
+  // in-memory default value during the first render after sign-in.
+  const { settings: userSettings, hasLoadedFromServer: userSettingsLoaded } =
+    useUserSettings();
 
   // Cast through unknown so the legacy `"agenda"` literal can flow through
   // the hook even though it's no longer part of TCalendarView (#150).
@@ -346,8 +350,13 @@ export function CalendarProvider({
    * PUTs to `/api/settings` and the next `useUserSettings` refresh reads it
    * back. We still mirror the value into localStorage so unauthenticated
    * surfaces (and the next paint while we wait for the server) stay in sync.
+   *
+   * On PUT failure we revert the optimistic state + localStorage update so
+   * the UI doesn't drift from the persisted value, mirroring the rollback
+   * pattern used by `createEvent` / `deleteEvent` in this provider.
    */
   const setWeekStartDay = (day: TWeekStartDay) => {
+    const previousDay = weekStartDay;
     setWeekStartDayState(day);
     updateSettings({ weekStartDay: day });
     if (status === "authenticated") {
@@ -355,12 +364,21 @@ export function CalendarProvider({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ weekStartDay: day }),
-      }).catch((error) => {
-        logger.error(error as Error, {
-          context: "setWeekStartDay",
-          weekStartDay: day,
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`PUT /api/settings ${response.status}`);
+          }
+        })
+        .catch((error) => {
+          // Revert optimistic update so the UI matches the persisted value.
+          setWeekStartDayState(previousDay);
+          updateSettings({ weekStartDay: previousDay });
+          logger.error(error as Error, {
+            context: "setWeekStartDay",
+            weekStartDay: day,
+          });
         });
-      });
     }
   };
 
@@ -372,9 +390,16 @@ export function CalendarProvider({
   // the server exactly once so subsequent browsers see their preference.
   // The migration flag lives in its own localStorage key so it survives a
   // tab close before a future server-driven refactor.
+  //
+  // Gated on `userSettingsLoaded` so we only compare against the real
+  // server value, not the in-memory default `userSettings.weekStartDay`
+  // that ships before the first `/api/settings` GET resolves. Without this
+  // guard the very first authenticated render fires a redundant PUT in
+  // the case where the user already migrated on another browser.
   useEffect(() => {
     if (weekStartMigrationRef.current) return;
     if (status !== "authenticated") return;
+    if (!userSettingsLoaded) return;
     if (typeof window === "undefined") return;
 
     const FLAG_KEY = "calendar-week-start-day-migrated";
@@ -403,19 +428,30 @@ export function CalendarProvider({
 
     window.localStorage.setItem(FLAG_KEY, "1");
     weekStartMigrationRef.current = true;
-  }, [status, settings.weekStartDay, userSettings.weekStartDay]);
+    // `settings.weekStartDay` is intentionally omitted: the effect is
+    // mount-only after the flag is set, and reads the localStorage value
+    // imperatively above. Including it would re-run the effect every time
+    // the user toggles the radio (the early-return guard short-circuits,
+    // but the dep is misleading).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, userSettingsLoaded, userSettings.weekStartDay]);
 
   // Once the server value is known and the migration has run, treat the
-  // server as the source of truth: if it diverges from local state, sync
-  // local state down. This is what makes a change made on a different
-  // browser show up here without a manual reload.
+  // server as the source of truth: copy the server value into local state
+  // whenever it changes. The `=== 1 ? 1 : 0` clamp mirrors the same
+  // defensive guard in `src/app/settings/page.tsx`, in case
+  // `useUserSettings`'s pick filter is ever bypassed.
+  //
+  // `weekStartDay` is intentionally NOT in the dep array: an optimistic
+  // local update (from `setWeekStartDay`) must not retrigger this effect,
+  // or it would immediately revert the optimistic flip back to the stale
+  // server value held by `userSettings.weekStartDay`.
   useEffect(() => {
     if (status !== "authenticated") return;
     if (!weekStartMigrationRef.current) return;
-    if (userSettings.weekStartDay !== weekStartDay) {
-      setWeekStartDayState(userSettings.weekStartDay);
-    }
-  }, [status, userSettings.weekStartDay, weekStartDay]);
+    const safe: TWeekStartDay = userSettings.weekStartDay === 1 ? 1 : 0;
+    setWeekStartDayState(safe);
+  }, [status, userSettings.weekStartDay]);
 
   const filterEventsBySelectedColors = (color: TEventColor) => {
     setSelectedColors((prev) =>
