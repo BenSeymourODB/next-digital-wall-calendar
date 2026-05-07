@@ -1639,4 +1639,94 @@ describe("CalendarProvider", () => {
       expect(screen.getByText("evt-2")).toBeInTheDocument();
     });
   });
+
+  describe("getAccessRole (#266)", () => {
+    it("exposes the per-calendar accessRole returned by /api/calendar/calendars", async () => {
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(
+            fetchOk({
+              calendars: [
+                { id: "primary", accessRole: "owner" },
+                {
+                  id: "shared@group.calendar.google.com",
+                  accessRole: "reader",
+                },
+                {
+                  id: "team@group.calendar.google.com",
+                  accessRole: "writer",
+                },
+              ],
+            })
+          );
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        if (url.includes("/api/calendar/events")) {
+          return Promise.resolve(fetchOk({ events: [] }));
+        }
+        return Promise.resolve(fetchOk({}));
+      });
+
+      function RoleProbe() {
+        const { getAccessRole } = useCalendar();
+        return (
+          <div>
+            <span data-testid="role-primary">
+              {getAccessRole("primary") ?? "none"}
+            </span>
+            <span data-testid="role-shared">
+              {getAccessRole("shared@group.calendar.google.com") ?? "none"}
+            </span>
+            <span data-testid="role-team">
+              {getAccessRole("team@group.calendar.google.com") ?? "none"}
+            </span>
+            <span data-testid="role-unknown">
+              {getAccessRole("never-seen-this-id") ?? "none"}
+            </span>
+          </div>
+        );
+      }
+
+      render(
+        <CalendarProvider>
+          <RoleProbe />
+        </CalendarProvider>
+      );
+
+      // The provider populates the role map as a side-effect of the
+      // initial fetchCalendarList; wait for any role to appear before
+      // asserting on the rest.
+      await waitFor(() => {
+        expect(screen.getByTestId("role-primary")).toHaveTextContent("owner");
+      });
+
+      expect(screen.getByTestId("role-shared")).toHaveTextContent("reader");
+      expect(screen.getByTestId("role-team")).toHaveTextContent("writer");
+      expect(screen.getByTestId("role-unknown")).toHaveTextContent("none");
+    });
+
+    it("returns undefined for every id before the calendar list has loaded", () => {
+      mockSessionState.current = { data: null, status: "unauthenticated" };
+
+      function RoleProbe() {
+        const { getAccessRole } = useCalendar();
+        return (
+          <span data-testid="role-primary">
+            {getAccessRole("primary") ?? "none"}
+          </span>
+        );
+      }
+
+      render(
+        <CalendarProvider>
+          <RoleProbe />
+        </CalendarProvider>
+      );
+
+      expect(screen.getByTestId("role-primary")).toHaveTextContent("none");
+    });
+  });
 });

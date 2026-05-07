@@ -66,6 +66,7 @@ function createMockContext(
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     loadEventsForYear: vi.fn(),
+    getAccessRole: () => undefined,
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
@@ -897,6 +898,80 @@ describe("SimpleCalendar", () => {
         screen.getByRole("heading", { name: "Piano Recital" })
       ).toBeInTheDocument();
       expect(screen.getByText("Emma's spring concert")).toBeInTheDocument();
+    });
+
+    it("hides the delete button on read-only calendars (#266)", async () => {
+      const user = userEvent.setup();
+      const now = new Date();
+      const readOnlyEvent = createMockEvent({
+        id: "shared-evt",
+        title: "Family Dinner",
+        calendarId: "shared@group.calendar.google.com",
+        startDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          18,
+          0
+        ).toISOString(),
+        endDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          19,
+          0
+        ).toISOString(),
+      });
+
+      renderWithContext({
+        events: [readOnlyEvent],
+        getAccessRole: (id) =>
+          id === "shared@group.calendar.google.com" ? "reader" : undefined,
+      });
+
+      await user.click(screen.getByText("Family Dinner"));
+
+      expect(
+        screen.getByRole("heading", { name: "Family Dinner" })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders the delete button on writable calendars (#266)", async () => {
+      const user = userEvent.setup();
+      const now = new Date();
+      const writableEvent = createMockEvent({
+        id: "owned-evt",
+        title: "Standup",
+        calendarId: "primary",
+        startDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          9,
+          0
+        ).toISOString(),
+        endDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          9,
+          15
+        ).toISOString(),
+      });
+
+      renderWithContext({
+        events: [writableEvent],
+        getAccessRole: (id) => (id === "primary" ? "owner" : undefined),
+      });
+
+      await user.click(screen.getByText("Standup"));
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
     });
 
     it("closes the modal after opening when the close button is clicked", async () => {

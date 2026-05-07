@@ -5,6 +5,7 @@ import {
   type CreateEventInput,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import type { TCalendarAccessRole } from "@/types/calendar";
 import type {
   IEvent,
   IUser,
@@ -44,6 +45,13 @@ interface MockCalendarProviderProps {
   isAuthenticated?: boolean;
   /** Max events rendered per day cell before the "+N more" overflow */
   maxEventsPerDay?: number;
+  /**
+   * Optional per-calendar access roles, used by the read-only delete-button
+   * gating (#266). Keys are calendar IDs (matching `IEvent.calendarId`),
+   * values are Google `accessRole` literals. Calendars not in this map
+   * resolve to `undefined`, which the modal treats as "writable" by default.
+   */
+  accessRolesByCalendarId?: Record<string, TCalendarAccessRole>;
 }
 
 /**
@@ -73,6 +81,7 @@ export function MockCalendarProvider({
   loadingDelay = 0,
   isAuthenticated = true,
   maxEventsPerDay = 3,
+  accessRolesByCalendarId = {},
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -192,6 +201,9 @@ export function MockCalendarProvider({
   // year window doesn't need to fetch anything.
   const loadEventsForYear = async () => {};
 
+  const getAccessRole = (calendarId: string) =>
+    accessRolesByCalendarId[calendarId];
+
   // Derive filtered events at render time. React Compiler memoizes the
   // result automatically; manual `useMemo` is forbidden by CLAUDE.md.
   let filteredEvents = allEvents;
@@ -250,6 +262,7 @@ export function MockCalendarProvider({
     clearFilter,
     refreshEvents,
     loadEventsForYear,
+    getAccessRole,
     isLoading,
     isAuthenticated,
     maxEventsPerDay,

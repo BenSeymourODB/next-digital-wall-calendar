@@ -51,6 +51,7 @@ interface CalendarInfo {
   foregroundColor: string;
   primary: boolean;
   selected: boolean;
+  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
 }
 
 describe("/api/calendar/calendars", () => {

@@ -383,4 +383,109 @@ describe("EventDetailModal", () => {
       expect(onDelete).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("accessRole gating (#266)", () => {
+    it("renders the delete button when accessRole is 'owner'", () => {
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          accessRole="owner"
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
+    });
+
+    it("renders the delete button when accessRole is 'writer'", () => {
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          accessRole="writer"
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
+    });
+
+    it("hides the delete button when accessRole is 'reader'", () => {
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          accessRole="reader"
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("hides the delete button when accessRole is 'freeBusyReader'", () => {
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          accessRole="freeBusyReader"
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders the delete button when accessRole is undefined (treated as writable)", () => {
+      // The provider hands out `undefined` whenever the calendar list
+      // hasn't loaded yet or the id wasn't in the payload. Hiding the
+      // button on `undefined` would be a UX regression — Google's 403
+      // remains the backstop. This case locks in that contract.
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
+    });
+
+    it("hides the delete confirmation dialog markup entirely on read-only calendars", () => {
+      // Even if the modal shipped with an alertdialog rendered
+      // pre-mounted via Radix, a read-only event should never be able
+      // to surface it. This guards against a future refactor that
+      // moves the AlertDialog mount outside the `onDelete` guard.
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          accessRole="reader"
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.queryByRole("alertdialog", { name: /delete this event\?/i })
+      ).not.toBeInTheDocument();
+    });
+  });
 });

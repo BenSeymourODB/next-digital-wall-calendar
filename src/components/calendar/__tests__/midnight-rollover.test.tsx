@@ -67,6 +67,7 @@ function makeContext(
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     loadEventsForYear: vi.fn().mockResolvedValue(undefined),
+    getAccessRole: () => undefined,
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
