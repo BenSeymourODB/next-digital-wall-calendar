@@ -1,3 +1,4 @@
+import { DEFAULT_USER_CALENDAR_SETTINGS } from "@/hooks/useUserSettings";
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import RecipePage from "../page";
@@ -84,6 +85,22 @@ describe("RecipePage", () => {
 
     render(<RecipePage />);
 
+    expect(recipeDisplaySpy.mock.calls[0][0].initialZoom).toBe(1.0);
+  });
+
+  it("renders RecipeDisplay at default zoom for unauthenticated users", () => {
+    // Unauthenticated path: useUserSettings returns the default constant
+    // (defaultZoomLevel = 1.0) with isLoading=false. This is the most common
+    // production case for a guest visitor.
+    mockUseUserSettings.mockReturnValue({
+      settings: { ...DEFAULT_USER_CALENDAR_SETTINGS },
+      isLoading: false,
+    });
+
+    const { getByTestId } = render(<RecipePage />);
+
+    expect(getByTestId("recipe-display-mock")).toBeInTheDocument();
+    expect(recipeDisplaySpy).toHaveBeenCalledTimes(1);
     expect(recipeDisplaySpy.mock.calls[0][0].initialZoom).toBe(1.0);
   });
 });

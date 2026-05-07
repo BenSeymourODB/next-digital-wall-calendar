@@ -8,6 +8,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
+// Bounded to the DisplaySection slider range, NOT the full ZOOM_LEVELS scale
+// (which extends to 3.0). The clamp here is for the *initial* zoom only —
+// pinch-to-zoom and Ctrl+scroll in RecipeDisplay still go up to 3.0 at
+// runtime. If ZOOM_LEVELS ever gains a level below 0.5 or the slider range
+// changes, sync these constants with src/components/recipe/use-zoom.ts and
+// src/components/settings/display-section.tsx.
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2.0;
 const ZOOM_FALLBACK = 1.0;

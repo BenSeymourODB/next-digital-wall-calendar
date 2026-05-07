@@ -113,6 +113,30 @@ describe("useUserSettings", () => {
     );
   });
 
+  it("ignores non-finite defaultZoomLevel (NaN, Infinity) and keeps the default", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ defaultZoomLevel: Number.NaN }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.defaultZoomLevel).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.defaultZoomLevel
+    );
+    expect(Number.isFinite(result.current.settings.defaultZoomLevel)).toBe(
+      true
+    );
+  });
+
   it("falls back to defaults when the API returns an error", async () => {
     mockUseSession.mockReturnValue({
       data: { user: { id: "u1" } },
