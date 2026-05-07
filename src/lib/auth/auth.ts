@@ -1,4 +1,8 @@
-import { decryptToken, encryptToken } from "@/lib/crypto/token-cipher";
+import {
+  decryptToken,
+  encryptToken,
+  validateEncryptionKey,
+} from "@/lib/crypto/token-cipher";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import NextAuth from "next-auth";
@@ -7,6 +11,13 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { encryptLinkedAccount } from "./link-account";
 import { refreshGoogleAccessToken } from "./refresh-google-token";
 import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
+
+// Fail fast on a missing / misconfigured encryption key. Without this, the
+// per-request `encryptToken` call in the session callback throws, gets caught,
+// and silently degrades to `session.error = "RefreshTokenError"` — which the
+// user sees as "Session expired. Please sign in again." every hour even
+// though the underlying problem is a server-side env-var gap (#315).
+validateEncryptionKey();
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
