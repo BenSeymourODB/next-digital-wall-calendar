@@ -6,6 +6,7 @@ import {
   loadScheduleConfig,
   saveScheduleConfig,
 } from "@/lib/scheduler/schedule-storage";
+import { emitUserSettingsChange } from "@/lib/user-settings-bus";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AccountSection } from "./account-section";
@@ -79,6 +80,11 @@ export function SettingsForm({
       if (!response.ok) {
         throw new Error("Failed to update settings");
       }
+
+      // #337 — broadcast to in-tab consumers so the calendar surface
+      // (`useUserSettings` in `CalendarProvider`) re-renders without
+      // waiting for the next reload.
+      emitUserSettingsChange(partial);
     } catch {
       toast.error("Failed to save settings");
       setSettings(settings);
