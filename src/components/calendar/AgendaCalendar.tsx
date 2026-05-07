@@ -253,7 +253,7 @@ export function AgendaCalendar() {
   } = useCalendar();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
   const canDeleteSelected = selectedEvent
     ? canEditCalendar(selectedEvent.calendarId)

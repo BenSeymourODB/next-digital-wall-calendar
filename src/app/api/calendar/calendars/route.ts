@@ -19,12 +19,26 @@ export { canWriteToCalendar } from "@/lib/google-calendar-mappers";
 export interface CalendarInfo {
   id: string;
   summary: string;
+  /**
+   * The user's per-calendar override of `summary` (set in the Google
+   * Calendar UI for shared calendars they don't own). When present it's the
+   * label the user expects to see for that calendar, so downstream code
+   * (e.g. the user-attribution fallback ladder in `transformGoogleEvent`)
+   * should prefer it over `summary`.
+   */
+  summaryOverride?: string;
   description?: string;
   backgroundColor: string;
   foregroundColor: string;
   primary: boolean;
   selected: boolean;
-  accessRole?: CalendarAccessRole;
+  /**
+   * Per-calendar access role from `calendarList.list`. The route fills in
+   * `"reader"` when Google omits it so the EventCreateDialog picker (#268)
+   * and EventDetailModal delete-gating (#266) can fail-closed without
+   * special-casing `undefined`.
+   */
+  accessRole: CalendarAccessRole;
 }
 
 /**
@@ -101,12 +115,15 @@ export async function GET() {
     const calendars: CalendarInfo[] = items.map((item) => ({
       id: item.id,
       summary: item.summary ?? "",
+      summaryOverride: item.summaryOverride,
       description: item.description,
       backgroundColor: item.backgroundColor || "#4285f4", // Default Google blue
       foregroundColor: item.foregroundColor || "#ffffff",
       primary: item.primary || false,
       selected: item.selected || false,
-      accessRole: item.accessRole,
+      // Default to "reader" when Google omits accessRole — fail-closed so the
+      // event-create picker never offers a calendar we can't actually write to.
+      accessRole: item.accessRole ?? "reader",
     }));
 
     logger.log("Calendar list fetched", {

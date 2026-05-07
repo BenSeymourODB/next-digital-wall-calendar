@@ -9,9 +9,8 @@
  */
 import {
   AuthError,
-  assertGoogleTasksScope,
-  getAccessToken,
   getSession,
+  requireGoogleTasksAccessToken,
 } from "@/lib/auth";
 import {
   mockSession,
@@ -24,8 +23,7 @@ import { POST } from "../route";
 
 vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
-  getAccessToken: vi.fn(),
-  assertGoogleTasksScope: vi.fn(),
+  requireGoogleTasksAccessToken: vi.fn(),
   AuthError: class AuthError extends Error {
     status: number;
     constructor(message: string, status: number = 401) {
@@ -88,8 +86,11 @@ describe("Task Complete API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getSession).mockResolvedValue(mockSession);
-    vi.mocked(getAccessToken).mockResolvedValue("mock-access-token");
-    vi.mocked(assertGoogleTasksScope).mockResolvedValue(undefined);
+    // Default: combined helper resolves with the mock token. Specific tests
+    // override to throw for the no-account / missing-scope / no-token paths.
+    vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
+      "mock-access-token"
+    );
     mockFetch.mockResolvedValue({
       ok: true,
       json: () =>
@@ -135,7 +136,7 @@ describe("Task Complete API", () => {
     });
 
     it("returns 403 with requiresReauth when stored grant is missing the Tasks scope (#237)", async () => {
-      vi.mocked(assertGoogleTasksScope).mockRejectedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockRejectedValue(
         new AuthError(
           "Re-authentication required: Google Tasks scope missing.",
           403
@@ -320,6 +321,18 @@ describe("Task Complete API", () => {
         status: "completed",
       });
       expect(data.streak).toEqual({ current: 4, longest: 5 });
+    });
+
+    it("calls getSession and the combined helper exactly once each per request (#260)", async () => {
+      const request = createRequest({
+        listId: "list-1",
+        profileId: "profile-1",
+      });
+      await POST(request, { params: Promise.resolve({ taskId: "task-123" }) });
+
+      expect(getSession).toHaveBeenCalledTimes(1);
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledTimes(1);
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(mockSession);
     });
   });
 });

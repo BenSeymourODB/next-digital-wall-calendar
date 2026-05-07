@@ -13,7 +13,7 @@ import {
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GET, canWriteToCalendar } from "../route";
+import { type CalendarsResponse, GET, canWriteToCalendar } from "../route";
 
 // Mock modules BEFORE imports
 vi.mock("@/lib/auth", () => ({
@@ -40,22 +40,6 @@ vi.mock("@/lib/logger", () => ({
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-
-// Type definitions for calendar list response
-interface CalendarInfo {
-  id: string;
-  summary: string;
-  description?: string;
-  backgroundColor: string;
-  foregroundColor: string;
-  primary: boolean;
-  selected: boolean;
-  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
-}
-
-interface CalendarsResponse {
-  calendars: CalendarInfo[];
-}
 
 describe("/api/calendar/calendars", () => {
   beforeEach(() => {
@@ -154,6 +138,65 @@ describe("/api/calendar/calendars", () => {
         selected: true,
         accessRole: "writer",
       });
+      expect(data.calendars[2].accessRole).toBe("reader");
+    });
+
+    it("defaults missing accessRole to 'reader' (read-only fallback)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [
+              {
+                id: "no-role@group.calendar.google.com",
+                summary: "No role",
+                // accessRole omitted — Google's schema marks it optional
+              },
+            ],
+          }),
+      });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<CalendarsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.calendars[0].accessRole).toBe("reader");
+    });
+
+    it("forwards summaryOverride from the Google calendarList payload (#307)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [
+              {
+                id: "shared@example.com",
+                summary: "Original",
+                summaryOverride: "My Override",
+                backgroundColor: "#4285f4",
+                foregroundColor: "#ffffff",
+                primary: false,
+                selected: true,
+              },
+            ],
+          }),
+      });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<CalendarsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.calendars[0].summaryOverride).toBe("My Override");
     });
 
     it("passes accessRole through for read-only and freeBusyReader calendars", async () => {
@@ -195,36 +238,6 @@ describe("/api/calendar/calendars", () => {
       expect(status).toBe(200);
       expect(data.calendars[0].accessRole).toBe("reader");
       expect(data.calendars[1].accessRole).toBe("freeBusyReader");
-    });
-
-    it("leaves accessRole undefined when missing from Google response", async () => {
-      vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
-        mockGoogleAccount.access_token!
-      );
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            items: [
-              {
-                id: "missing-role@group.calendar.google.com",
-                summary: "No role",
-                backgroundColor: "#7986cb",
-                foregroundColor: "#ffffff",
-                primary: false,
-                selected: true,
-              },
-            ],
-          }),
-      });
-
-      const response = await GET();
-      const { status, data } = await parseResponse<CalendarsResponse>(response);
-
-      expect(status).toBe(200);
-      expect(data.calendars[0].accessRole).toBeUndefined();
     });
 
     it("returns empty array when no calendars exist", async () => {
