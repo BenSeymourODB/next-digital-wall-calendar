@@ -23,10 +23,12 @@ import {
 import type { TaskListConfig } from "@/components/tasks/types";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Use `vi.stubGlobal` so the patched `fetch` is automatically restored by
+// `vi.unstubAllGlobals()` in `afterEach` — assigning to `global.fetch`
+// directly would persist across test files in the same Vitest worker.
 const mockFetch = vi.fn();
-global.fetch = mockFetch as unknown as typeof fetch;
 
 const configA: TaskListConfig = {
   id: "config-a",
@@ -77,6 +79,11 @@ describe("TasksProvider — integration with real useTasks", () => {
   beforeEach(() => {
     window.localStorage.clear();
     mockFetch.mockReset();
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("renders tasks fetched for the active config", async () => {

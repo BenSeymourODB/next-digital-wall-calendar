@@ -128,7 +128,7 @@ describe("TasksProvider — activeConfig resolution", () => {
     expect(result.current.activeConfig?.id).toBe("config-b");
   });
 
-  it("falls back to the first config when the persisted id no longer exists", () => {
+  it("falls back to the first config when the persisted id no longer exists and reconciles localStorage", async () => {
     window.localStorage.setItem(
       TASKS_ACTIVE_CONFIG_LS_KEY,
       JSON.stringify("config-stale")
@@ -143,6 +143,46 @@ describe("TasksProvider — activeConfig resolution", () => {
     });
 
     expect(result.current.activeConfig?.id).toBe("config-a");
+
+    // Reconciliation effect heals the stale key so the next reload starts
+    // on the correct config without re-firing the fallback every render.
+    await waitFor(() => {
+      expect(
+        JSON.parse(
+          window.localStorage.getItem(TASKS_ACTIVE_CONFIG_LS_KEY) ?? "null"
+        )
+      ).toBe("config-a");
+    });
+  });
+
+  it("initialActiveConfigId wins over a previously-persisted id", async () => {
+    window.localStorage.setItem(
+      TASKS_ACTIVE_CONFIG_LS_KEY,
+      JSON.stringify("config-a")
+    );
+
+    const configs = [
+      makeConfig({ id: "config-a" }),
+      makeConfig({ id: "config-b" }),
+    ];
+    const { result } = renderHook(() => useTasksContext(), {
+      wrapper: ({ children }) => (
+        <TasksProvider configs={configs} initialActiveConfigId="config-b">
+          {children}
+        </TasksProvider>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeConfig?.id).toBe("config-b");
+    });
+
+    // Override is also written through to storage so reload preserves it.
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(TASKS_ACTIVE_CONFIG_LS_KEY) ?? "null"
+      )
+    ).toBe("config-b");
   });
 
   it("computes lists as the enabled subset of the active config", () => {
@@ -267,6 +307,43 @@ describe("TasksProvider — viewMode", () => {
     expect(screen.getByTestId("view-mode")).toHaveTextContent(
       "grouped-by-list"
     );
+  });
+
+  it("falls back to default viewMode when the stored value is not in the union", () => {
+    // Corrupted/manually-edited or future-build payload — runtime value
+    // doesn't match the current `TasksViewMode` union.
+    window.localStorage.setItem(
+      TASKS_VIEW_MODE_LS_KEY,
+      JSON.stringify("nonsense")
+    );
+
+    render(
+      <TasksProvider configs={[]}>
+        <ViewModeProbe />
+      </TasksProvider>
+    );
+
+    expect(screen.getByTestId("view-mode")).toHaveTextContent("list");
+  });
+
+  it("initialViewMode wins over a previously-persisted value", async () => {
+    window.localStorage.setItem(
+      TASKS_VIEW_MODE_LS_KEY,
+      JSON.stringify("grouped-by-list")
+    );
+
+    render(
+      <TasksProvider configs={[]} initialViewMode="list">
+        <ViewModeProbe />
+      </TasksProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view-mode")).toHaveTextContent("list");
+    });
+    expect(
+      JSON.parse(window.localStorage.getItem(TASKS_VIEW_MODE_LS_KEY) ?? "null")
+    ).toBe("list");
   });
 });
 

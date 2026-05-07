@@ -31,7 +31,7 @@ import type {
 import { type UseTasksReturn, useTasks } from "@/components/tasks/use-tasks";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import type React from "react";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
 
 /** Tasks UI view mode. Mirrors the Calendar `view` axis. */
 export type TasksViewMode = "list" | "grouped-by-list";
@@ -43,6 +43,14 @@ export const TASKS_ACTIVE_CONFIG_LS_KEY = "tasks.activeConfigId";
 export const TASKS_VIEW_MODE_LS_KEY = "tasks.viewMode";
 
 const DEFAULT_VIEW_MODE: TasksViewMode = "list";
+const VALID_VIEW_MODES: ReadonlySet<string> = new Set([
+  "list",
+  "grouped-by-list",
+]);
+
+function isValidViewMode(value: unknown): value is TasksViewMode {
+  return typeof value === "string" && VALID_VIEW_MODES.has(value);
+}
 
 export interface ITasksContext extends UseTasksReturn {
   /**
@@ -111,38 +119,86 @@ export function TasksProvider({
     TASKS_ACTIVE_CONFIG_LS_KEY,
     initialActiveConfigId ?? null
   );
-  const [viewMode, setStoredViewMode] = useLocalStorage<TasksViewMode>(
+  const [storedViewMode, setStoredViewMode] = useLocalStorage<TasksViewMode>(
     TASKS_VIEW_MODE_LS_KEY,
     initialViewMode ?? DEFAULT_VIEW_MODE
   );
+
+  // Apply override props on mount when they're provided. `useLocalStorage`
+  // is backed by `useSyncExternalStore`, so the `initialValue` argument is
+  // only used when the storage key is absent; for a returning user with a
+  // persisted value the override would be silently ignored without this
+  // mount-only write through. Mirrors `CalendarProvider.initialView` /
+  // `initialAgendaMode` (#150 / #238). Capturing the props once is
+  // intentional: subsequent prop changes are owned by the parent
+  // component (e.g. it remounts the provider on a URL change).
+  useEffect(() => {
+    if (initialActiveConfigId !== undefined) {
+      setStoredConfigId(initialActiveConfigId);
+    }
+    if (initialViewMode !== undefined) {
+      setStoredViewMode(initialViewMode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Resolve `activeConfig` with a stale-id fallback: if the persisted id
   // points at a config the user has since deleted (or to nothing on the
   // very first mount), fall through to the first available config rather
   // than rendering an empty surface that "should" have content.
-  const activeConfig =
-    configs.find((c) => c.id === storedConfigId) ?? configs[0] ?? null;
+  const resolvedConfig = configs.find((c) => c.id === storedConfigId);
+  const activeConfig = resolvedConfig ?? configs[0] ?? null;
 
-  const setActiveConfigId = (id: string) => {
-    setStoredConfigId(id);
-  };
+  // Reconcile a stale `storedConfigId` so the next reload starts on the
+  // correct config without re-firing the fallback every render. Skipped
+  // when `configs` is empty (no canonical id to write through yet).
+  useEffect(() => {
+    if (
+      storedConfigId !== null &&
+      !resolvedConfig &&
+      activeConfig !== null &&
+      activeConfig.id !== storedConfigId
+    ) {
+      setStoredConfigId(activeConfig.id);
+    }
+  }, [storedConfigId, resolvedConfig, activeConfig, setStoredConfigId]);
 
-  const setViewMode = (mode: TasksViewMode) => {
-    setStoredViewMode(mode);
-  };
+  // Validate the stored view mode against the current union. A
+  // corrupted/manually-edited value (or one written by a future build
+  // and read by an older one) is typed as `TasksViewMode` at compile
+  // time but might not match the union at runtime; fall back to the
+  // default rather than render with a value the rest of the codebase
+  // doesn't recognise.
+  const viewMode: TasksViewMode = isValidViewMode(storedViewMode)
+    ? storedViewMode
+    : DEFAULT_VIEW_MODE;
 
   const lists = activeConfig ? activeConfig.lists.filter((l) => l.enabled) : [];
 
-  const tasksApi = useTasks(activeConfig);
+  // Destructure the exact `useTasks` keys we forward instead of spreading,
+  // so a future addition to `UseTasksReturn` whose name collides with a
+  // provider-owned key (e.g. both expose `loading`) is caught by the type
+  // checker at the assignment below rather than silently shadowing the
+  // provider's value at runtime.
+  const { tasks, loading, error, refreshTasks, updateTask } =
+    useTasks(activeConfig);
 
+  // Setters are exposed directly — they don't add type narrowing,
+  // logging, or side effects, so wrapping them only adds a closure that
+  // the React Compiler can't reason about. The public types in
+  // `ITasksContext` constrain callers to the intended argument shape.
   const value: ITasksContext = {
-    ...tasksApi,
+    tasks,
+    loading,
+    error,
+    refreshTasks,
+    updateTask,
     configs,
     activeConfig,
-    setActiveConfigId,
+    setActiveConfigId: setStoredConfigId,
     lists,
     viewMode,
-    setViewMode,
+    setViewMode: setStoredViewMode,
   };
 
   return (
