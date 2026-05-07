@@ -4,6 +4,7 @@
  * Tests the transaction logic in isolation with a single mock (prisma).
  * No auth, no NextRequest, no fetch.
  */
+import type { ProfileRewardPoints } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { mockTransaction } from "@/lib/test-utils/prisma-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,12 +19,26 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-const mockPrisma = prisma as unknown as {
-  $transaction: ReturnType<typeof vi.fn>;
-  profileRewardPoints: {
-    findUnique: ReturnType<typeof vi.fn>;
+// Typed deep mock: every property/method on `prisma` is widened to a
+// MockedFunctionDeep so `mockResolvedValue`, `mockRejectedValue`, etc.
+// are type-checked against the real Prisma return types instead of
+// being silently widened by an `as unknown as { ... }` cast.
+const mockPrisma = vi.mocked(prisma, true);
+
+function makeProfileRewardPoints(
+  overrides: Partial<ProfileRewardPoints> = {}
+): ProfileRewardPoints {
+  return {
+    id: "rp-fixture",
+    profileId: "profile-1",
+    totalPoints: 0,
+    currentStreak: 0,
+    longestStreak: 0,
+    lastActivityDate: new Date("2024-01-01"),
+    updatedAt: new Date("2024-01-01"),
+    ...overrides,
   };
-};
+}
 
 function makeUniqueConstraintError() {
   const error = new Error(
@@ -214,9 +229,9 @@ describe("recordPointAward", () => {
 
   it("returns alreadyAwarded with current total when the unique index rejects a duplicate task award", async () => {
     mockPrisma.$transaction.mockRejectedValue(makeUniqueConstraintError());
-    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue({
-      totalPoints: 75,
-    });
+    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue(
+      makeProfileRewardPoints({ totalPoints: 75 })
+    );
 
     const result = await recordPointAward({
       profileId: "profile-1",

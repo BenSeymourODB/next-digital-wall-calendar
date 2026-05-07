@@ -5,6 +5,7 @@
  * many Google task IDs in, a Map keyed by task ID with the profiles
  * assigned to each task out.
  */
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getTaskAssignmentsByTaskIds } from "../task-assignments";
@@ -17,20 +18,37 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-const mockPrisma = prisma as unknown as {
-  taskAssignment: {
-    findMany: ReturnType<typeof vi.fn>;
-  };
-};
+// Typed deep mock: every method on `prisma` is widened to a
+// MockedFunctionDeep so `mockResolvedValue` is type-checked against the
+// real Prisma return types instead of being silently widened by an
+// `as unknown as { ... }` cast.
+const mockPrisma = vi.mocked(prisma, true);
 
-const dadProfile = {
+// Mirrors the include/select shape used by `getTaskAssignmentsByTaskIds`.
+// A change to the production query (or the underlying schema) breaks
+// the type-check on the mock data below — exactly the regression-trap
+// the double-cast pattern silently hid.
+type TaskAssignmentRow = Prisma.TaskAssignmentGetPayload<{
+  include: {
+    profile: {
+      select: {
+        id: true;
+        name: true;
+        color: true;
+        avatar: true;
+      };
+    };
+  };
+}>;
+
+const dadProfile: TaskAssignmentRow["profile"] = {
   id: "profile-dad",
   name: "Dad",
   color: "#3b82f6",
   avatar: { type: "initials", value: "D" },
 };
 
-const momProfile = {
+const momProfile: TaskAssignmentRow["profile"] = {
   id: "profile-mom",
   name: "Mom",
   color: "#ef4444",
@@ -85,26 +103,30 @@ describe("getTaskAssignmentsByTaskIds", () => {
   });
 
   it("groups assignments by task ID with profile summaries", async () => {
-    mockPrisma.taskAssignment.findMany.mockResolvedValue([
+    const rows: TaskAssignmentRow[] = [
       {
         id: "a-1",
         taskId: "task-1",
         profileId: dadProfile.id,
+        createdAt: new Date("2024-01-01"),
         profile: dadProfile,
       },
       {
         id: "a-2",
         taskId: "task-1",
         profileId: momProfile.id,
+        createdAt: new Date("2024-01-01"),
         profile: momProfile,
       },
       {
         id: "a-3",
         taskId: "task-2",
         profileId: dadProfile.id,
+        createdAt: new Date("2024-01-01"),
         profile: dadProfile,
       },
-    ]);
+    ];
+    mockPrisma.taskAssignment.findMany.mockResolvedValue(rows);
 
     const result = await getTaskAssignmentsByTaskIds(
       ["task-1", "task-2", "task-3"],
