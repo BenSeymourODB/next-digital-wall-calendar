@@ -223,6 +223,148 @@ describe("AnalogClock", () => {
     expect(svg.getAttribute("role")).toBe("img");
   });
 
+  describe("floating off-arc title labels (#311)", () => {
+    /**
+     * Build a 30°-arc event whose cleanTitle is long enough to overflow even
+     * the 2-line wrap from #310. With size=600 and arcThickness=48, the
+     * resulting char budget per line on a 30° arc is small enough that
+     * "the quick brown fox jumps over the lazy dog" (43 chars) overflows.
+     */
+    const overflowEvent: ClockEvent = {
+      id: "evt-overflow",
+      title: "the quick brown fox jumps over the lazy dog",
+      cleanTitle: "the quick brown fox jumps over the lazy dog",
+      startAngle: 90,
+      endAngle: 120,
+      color: "#22C55E",
+      eventEmoji: "🎮",
+      isAllDay: false,
+    };
+
+    const shortEvent: ClockEvent = {
+      id: "evt-short",
+      title: "Lunch",
+      cleanTitle: "Lunch",
+      startAngle: 200,
+      endAngle: 220,
+      color: "#3B82F6",
+      isAllDay: false,
+    };
+
+    it("renders a FloatingLabel for events whose title overflows the arc budget", () => {
+      render(
+        <AnalogClock
+          events={[overflowEvent]}
+          currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        />
+      );
+      expect(
+        screen.getByTestId("floating-label-evt-overflow")
+      ).toBeInTheDocument();
+      const text = screen.getByTestId("floating-label-text-evt-overflow");
+      expect(text.textContent).toBe(overflowEvent.cleanTitle);
+    });
+
+    it("does not render an in-arc title <g> for an overflowing event", () => {
+      render(
+        <AnalogClock
+          events={[overflowEvent]}
+          currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        />
+      );
+      expect(
+        screen.queryByTestId("event-title-evt-overflow")
+      ).not.toBeInTheDocument();
+    });
+
+    it("still renders the leading event emoji on the overflowing arc", () => {
+      render(
+        <AnalogClock
+          events={[overflowEvent]}
+          currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        />
+      );
+      expect(
+        screen.getByTestId("event-emoji-evt-overflow")
+      ).toBeInTheDocument();
+    });
+
+    it("does NOT render a FloatingLabel for events whose title fits in-arc", () => {
+      render(
+        <AnalogClock
+          events={[shortEvent]}
+          currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        />
+      );
+      expect(
+        screen.queryByTestId("floating-label-evt-short")
+      ).not.toBeInTheDocument();
+      // ...and the in-arc title is still rendered.
+      expect(screen.getByTestId("event-title-evt-short")).toBeInTheDocument();
+    });
+
+    it("renders FloatingLabel for an overflowing event even when it has no leading emoji", () => {
+      const noEmojiOverflow: ClockEvent = {
+        ...overflowEvent,
+        id: "evt-noemoji",
+        eventEmoji: undefined,
+      };
+      render(
+        <AnalogClock
+          events={[noEmojiOverflow]}
+          currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        />
+      );
+      expect(
+        screen.getByTestId("floating-label-evt-noemoji")
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("event-emoji-evt-noemoji")
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders the FloatingLabel layer in a sibling <g data-testid='floating-labels-layer'>", () => {
+      render(
+        <AnalogClock
+          events={[overflowEvent]}
+          currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        />
+      );
+      const layer = screen.getByTestId("floating-labels-layer");
+      expect(layer).toBeInTheDocument();
+      // The label group must be a descendant of the dedicated layer.
+      expect(
+        layer.querySelector('[data-testid="floating-label-evt-overflow"]')
+      ).not.toBeNull();
+    });
+
+    it("forwards onEventClick to FloatingLabel — clicking the label fires the same callback", () => {
+      const onEventClick = vi.fn();
+      render(
+        <AnalogClock
+          events={[overflowEvent]}
+          currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+          onEventClick={onEventClick}
+        />
+      );
+      const label = screen.getByTestId("floating-label-evt-overflow");
+      fireEvent.click(label);
+      expect(onEventClick).toHaveBeenCalledTimes(1);
+      expect(onEventClick).toHaveBeenCalledWith("evt-overflow", label);
+    });
+
+    it("renders the SVG with overflow='visible' so labels can paint outside the clock-face viewBox", () => {
+      render(
+        <AnalogClock
+          events={[overflowEvent]}
+          currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        />
+      );
+      const svg = screen.getByTestId("analog-clock");
+      expect(svg.getAttribute("overflow")).toBe("visible");
+    });
+  });
+
   it("handles overlapping events by stacking at different radii", () => {
     const overlapping: ClockEvent[] = [
       {

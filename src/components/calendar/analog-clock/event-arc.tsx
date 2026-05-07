@@ -6,12 +6,9 @@
  * with emoji positioned at the midpoint of the arc.
  */
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { computeArcTitleLayout } from "./arc-title-layout";
 import { describeArc, polarToCartesian, roundCoord } from "./clock-utils";
-import { fitTitleToArc } from "./fit-title";
 import type { EventArcProps } from "./types";
-
-/** Minimum arc span (degrees) below which 2-line wrap is suppressed. */
-const TWO_LINE_MIN_SPAN_DEGREES = 30;
 
 /**
  * Generate an SVG arc path for textPath (single arc, not a donut).
@@ -50,6 +47,7 @@ export function EventArc({
   cx,
   cy,
   onEventClick,
+  forceHideTitle = false,
 }: EventArcProps) {
   const { id, cleanTitle, color, eventEmoji, startAngle, endAngle } = event;
   const isInteractive = Boolean(onEventClick);
@@ -84,16 +82,15 @@ export function EventArc({
   const midAngle = (startAngle + endAngle) / 2;
   const arcHeight = outerRadius - innerRadius;
 
-  // Place emoji near the inner edge (closer to the clock face) and the
-  // title near the outer edge so they stack radially instead of overlaying.
+  // Place emoji near the inner edge (closer to the clock face); the title
+  // sits at the outer edge so they stack radially instead of overlaying.
   // For arcs on the bottom half of the clock, textPath direction is reversed
   // (so text reads right-side-up); this doesn't affect the radial split.
   const emojiRadius = innerRadius + arcHeight * 0.28;
-  const titleRadius = innerRadius + arcHeight * 0.68;
 
   // Whether we have enough room for different elements
   const showEmoji = arcSpan >= 10;
-  const showTitle = arcSpan >= 20;
+  const showTitle = !forceHideTitle && arcSpan >= 20;
 
   // Text positioning for emoji (centered on arc midpoint, on inner radius)
   const emojiPos = polarToCartesian(cx, cy, emojiRadius, midAngle);
@@ -102,20 +99,16 @@ export function EventArc({
 
   // Font sizing — arcs are now thicker so we can use more of the height
   const emojiFontSize = roundCoord(Math.min(arcHeight * 0.4, 26));
-  const titleFontSize = roundCoord(Math.min(arcHeight * 0.3, 18));
 
-  // Decide between a single curved line and two concentric curved lines based
-  // on the arc's available circumference at titleRadius. Below
-  // TWO_LINE_MIN_SPAN_DEGREES we keep the single-line truncation behavior so
-  // narrow arcs don't end up with 2-char-per-line stubs.
-  const maxLines: 1 | 2 = arcSpan >= TWO_LINE_MIN_SPAN_DEGREES ? 2 : 1;
-  const fit = fitTitleToArc(
+  // Title layout (radius, font size, 1- vs 2-line, fit) is shared with
+  // AnalogClock so the floating-label overflow path (#311) agrees on
+  // didOverflow without recomputing.
+  const { titleRadius, titleFontSize, fit } = computeArcTitleLayout({
     cleanTitle,
     arcSpan,
-    titleRadius,
-    titleFontSize,
-    maxLines
-  );
+    innerRadius,
+    outerRadius,
+  });
 
   // Per-line offset for the 2-line case (per #310 spec). Place the two
   // curved baselines at titleRadius ± lineOffset so their centre-to-centre
