@@ -46,8 +46,9 @@ interface EventDetailModalProps {
    * Ref to the element that opened the modal. On close, focus is explicitly
    * restored to this element so keyboard users land back where they were
    * (WCAG 2.4.3), since the triggers are not wrapped in a Radix DialogTrigger.
+   * Accepts SVG elements too (clock arc <g> with tabIndex=0 is a valid trigger).
    */
-  returnFocusTo?: RefObject<HTMLElement | null>;
+  returnFocusTo?: RefObject<HTMLElement | SVGElement | null>;
   /**
    * Optional delete handler. When provided, a "Delete event" button renders
    * in the footer behind a confirmation dialog. When the handler resolves,

@@ -20,7 +20,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    // Server-only credentials. Use the unprefixed `GOOGLE_CLIENT_ID` to
+    // avoid Next.js inlining the value into the browser bundle (which the
+    // `NEXT_PUBLIC_` prefix would force, even from server-only routes).
+    // Mirrors `auth.ts`, the only other server-side consumer.
+    const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
     if (!clientId || !clientSecret) {

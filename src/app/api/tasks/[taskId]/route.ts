@@ -4,9 +4,8 @@
  */
 import {
   AuthError,
-  assertGoogleTasksScope,
-  getAccessToken,
   getSession,
+  requireGoogleTasksAccessToken,
 } from "@/lib/auth";
 import { patchTask } from "@/lib/google/tasks-api";
 import {
@@ -47,9 +46,8 @@ export async function PATCH(
       );
     }
 
-    // Short-circuit users whose stored grant is missing the Tasks scope so we
-    // never burn an upstream call we already know will 403 (#237).
-    await assertGoogleTasksScope();
+    // Combined scope check + token decryption in a single DB call (#260).
+    const accessToken = await requireGoogleTasksAccessToken(session);
 
     const { taskId } = await params;
     const { searchParams } = new URL(request.url);
@@ -71,7 +69,6 @@ export async function PATCH(
       );
     }
 
-    const accessToken = await getAccessToken();
     const updatedTask = await patchTask(accessToken, listId, taskId, body);
 
     logger.event("TaskUpdated", {

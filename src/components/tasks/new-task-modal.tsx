@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useId, useState } from "react";
-import { signIn } from "next-auth/react";
+import { ReauthCta } from "./reauth-cta";
 import type { GoogleTask, TaskListSelection } from "./types";
 import { TaskApiError, useCreateTask } from "./use-create-task";
 
@@ -262,28 +262,7 @@ export function NewTaskModal({
             >
               <p>{submitError.message}</p>
               {submitError instanceof TaskApiError &&
-                submitError.requiresReauth && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      signIn("google", {
-                        // pathname + search keeps the user on their current
-                        // view (e.g. /calendar?date=…&view=week) after the
-                        // OAuth round-trip; pathname alone would drop the
-                        // selection. NextAuth validates callbackUrl against
-                        // NEXTAUTH_URL, so there is no open-redirect risk.
-                        callbackUrl:
-                          typeof window === "undefined"
-                            ? "/"
-                            : window.location.pathname + window.location.search,
-                      })
-                    }
-                  >
-                    Sign in again
-                  </Button>
-                )}
+                submitError.requiresReauth && <ReauthCta />}
             </div>
           )}
 
