@@ -5,6 +5,8 @@
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
 import {
   GoogleApiValidationError,
+  type GoogleCalendarListEntry,
+  type GoogleCalendarListResponse,
   GoogleCalendarListResponseSchema,
   parseGoogleResponse,
 } from "@/lib/google-calendar-schemas";
@@ -93,7 +95,7 @@ export async function GET() {
     }
 
     const rawData: unknown = await response.json();
-    let parsed;
+    let parsed: GoogleCalendarListResponse;
     try {
       parsed = parseGoogleResponse(rawData, GoogleCalendarListResponseSchema, {
         endpoint: "calendarList.list",
@@ -119,15 +121,17 @@ export async function GET() {
     // Transform to our CalendarInfo format. `summary` is optional per the
     // Google schema — fall back to empty string so downstream UI code can
     // treat it as a plain string.
-    const calendars: CalendarInfo[] = (parsed.items ?? []).map((item) => ({
-      id: item.id,
-      summary: item.summary ?? "",
-      description: item.description,
-      backgroundColor: item.backgroundColor || "#4285f4", // Default Google blue
-      foregroundColor: item.foregroundColor || "#ffffff",
-      primary: item.primary || false,
-      selected: item.selected || false,
-    }));
+    const calendars: CalendarInfo[] = (parsed.items ?? []).map(
+      (item: GoogleCalendarListEntry): CalendarInfo => ({
+        id: item.id,
+        summary: item.summary ?? "",
+        description: item.description,
+        backgroundColor: item.backgroundColor || "#4285f4", // Default Google blue
+        foregroundColor: item.foregroundColor || "#ffffff",
+        primary: item.primary || false,
+        selected: item.selected || false,
+      })
+    );
 
     logger.log("Calendar list fetched", {
       calendarCount: calendars.length,

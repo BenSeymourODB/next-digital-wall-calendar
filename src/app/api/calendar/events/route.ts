@@ -10,7 +10,9 @@ import {
 } from "@/lib/google-calendar-mappers";
 import {
   GoogleApiValidationError,
+  type GoogleEventPayload,
   GoogleEventSchema,
+  type GoogleEventsListResponse,
   GoogleEventsListResponseSchema,
   parseGoogleResponse,
 } from "@/lib/google-calendar-schemas";
@@ -91,7 +93,7 @@ async function fetchEventsFromCalendar(
   }
 
   const rawData: unknown = await response.json();
-  let parsed;
+  let parsed: GoogleEventsListResponse;
   try {
     parsed = parseGoogleResponse(rawData, GoogleEventsListResponseSchema, {
       endpoint: "events.list",
@@ -123,8 +125,9 @@ async function fetchEventsFromCalendar(
   // unchanged (the Zod schema is `.loose()` for the same reason). The cast
   // is safe because the schema requires `id` — the contract our mapper relies
   // on — and treats every other field as optional, matching the Google API.
-  const events: GoogleCalendarEvent[] = (parsed.items ?? []).map((event) =>
-    normalizeFetchedEvent(event as gapi.client.calendar.Event, calendarId)
+  const events: GoogleCalendarEvent[] = (parsed.items ?? []).map(
+    (event: GoogleEventPayload) =>
+      normalizeFetchedEvent(event as gapi.client.calendar.Event, calendarId)
   );
 
   return {
@@ -552,7 +555,7 @@ export async function POST(request: NextRequest) {
 
     if (response.ok) {
       const rawCreated: unknown = await response.json();
-      let created;
+      let created: GoogleEventPayload;
       try {
         created = parseGoogleResponse(rawCreated, GoogleEventSchema, {
           endpoint: "events.insert",

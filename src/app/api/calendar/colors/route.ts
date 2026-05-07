@@ -6,6 +6,8 @@ import { AuthError, getAccessToken, getSession } from "@/lib/auth";
 import { mapHexToTailwindColor } from "@/lib/color-utils";
 import {
   GoogleApiValidationError,
+  type GoogleCalendarListEntry,
+  type GoogleCalendarListResponse,
   GoogleCalendarListResponseSchema,
   parseGoogleResponse,
 } from "@/lib/google-calendar-schemas";
@@ -91,7 +93,7 @@ export async function GET() {
     }
 
     const rawData: unknown = await response.json();
-    let parsed;
+    let parsed: GoogleCalendarListResponse;
     try {
       parsed = parseGoogleResponse(rawData, GoogleCalendarListResponseSchema, {
         endpoint: "calendarList.list",
@@ -116,7 +118,7 @@ export async function GET() {
 
     // Map each calendar to its color
     const colorMappings: CalendarColorMapping[] = (parsed.items ?? []).map(
-      (item) => {
+      (item: GoogleCalendarListEntry): CalendarColorMapping => {
         const hexColor = item.backgroundColor || "#3b82f6"; // Default to blue-500
         return {
           calendarId: item.id,
