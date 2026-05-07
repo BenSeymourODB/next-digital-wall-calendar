@@ -14,6 +14,7 @@ import {
   type CalendarMetadataMap,
   transformGoogleEvent,
 } from "@/lib/calendar-transform";
+import { resolveTransitionDurationMs } from "@/lib/calendar/transition-speed";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import type {
@@ -112,6 +113,13 @@ export interface ICalendarContext {
   isLoading: boolean;
   isAuthenticated: boolean;
   maxEventsPerDay: number;
+  /**
+   * Calendar view-transition duration in milliseconds, derived from the
+   * user's `calendarTransitionSpeed` setting. `0` disables animation; the
+   * `AnimatedSwap` short-circuit then matches the `prefers-reduced-motion`
+   * code path. See `src/lib/calendar/transition-speed.ts`.
+   */
+  transitionDurationMs: number;
 }
 
 interface CalendarSettings {
@@ -1033,6 +1041,9 @@ export function CalendarProvider({
     // Clamp defensively so a rogue DB write of 0 or a negative number never
     // collapses every non-empty day into a bare "+N more" label.
     maxEventsPerDay: Math.max(1, userSettings.calendarMaxEventsPerDay),
+    transitionDurationMs: resolveTransitionDurationMs(
+      userSettings.calendarTransitionSpeed
+    ),
   };
 
   return (

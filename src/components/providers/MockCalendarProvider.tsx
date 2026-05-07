@@ -5,6 +5,7 @@ import {
   type CreateEventInput,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { TRANSITION_SPEED_TO_MS } from "@/lib/calendar/transition-speed";
 import type {
   IEvent,
   IUser,
@@ -44,6 +45,8 @@ interface MockCalendarProviderProps {
   isAuthenticated?: boolean;
   /** Max events rendered per day cell before the "+N more" overflow */
   maxEventsPerDay?: number;
+  /** View-transition duration in ms; mirrors `userSettings.calendarTransitionSpeed`. */
+  transitionDurationMs?: number;
 }
 
 /**
@@ -73,6 +76,7 @@ export function MockCalendarProvider({
   loadingDelay = 0,
   isAuthenticated = true,
   maxEventsPerDay = 3,
+  transitionDurationMs = TRANSITION_SPEED_TO_MS.normal,
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -253,6 +257,7 @@ export function MockCalendarProvider({
     isLoading,
     isAuthenticated,
     maxEventsPerDay,
+    transitionDurationMs,
   };
 
   return (
