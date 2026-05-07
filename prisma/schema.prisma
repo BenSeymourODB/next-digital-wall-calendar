@@ -81,6 +81,7 @@ model UserSettings {
   defaultZoomLevel       Float   @default(1.0)
   timeFormat             String  @default("12h")
   dateFormat             String  @default("MM/DD/YYYY")
+  weekStartDay           Int     @default(0) // 0 = Sunday, 1 = Monday
   showPointsOnCompletion Boolean @default(true)
 
   // Scheduler settings

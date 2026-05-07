@@ -46,6 +46,9 @@ export default async function SettingsPage() {
           timeFormat: settings.timeFormat,
           dateFormat: settings.dateFormat,
           defaultZoomLevel: settings.defaultZoomLevel,
+          // Clamp defensively so a manually-edited DB row of e.g. 5 doesn't
+          // poison every `weekStartsOn` parameter; only 0/1 are valid here.
+          weekStartDay: settings.weekStartDay === 1 ? 1 : 0,
           rewardSystemEnabled: settings.rewardSystemEnabled,
           defaultTaskPoints: settings.defaultTaskPoints,
           showPointsOnCompletion: settings.showPointsOnCompletion,

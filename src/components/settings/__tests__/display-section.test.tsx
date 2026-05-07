@@ -28,6 +28,7 @@ const defaultValues = {
   timeFormat: "12h",
   dateFormat: "MM/DD/YYYY",
   defaultZoomLevel: 1.0,
+  weekStartDay: 0 as 0 | 1,
 };
 
 describe("DisplaySection", () => {
@@ -134,6 +135,56 @@ describe("DisplaySection", () => {
     expect(mockSetTheme).toHaveBeenCalledWith("system");
     expect(mockOnChange).toHaveBeenCalledWith(
       expect.objectContaining({ theme: "system" })
+    );
+  });
+
+  it("renders week start day options", () => {
+    render(<DisplaySection values={defaultValues} onChange={mockOnChange} />);
+
+    expect(screen.getByLabelText(/sunday/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/monday/i)).toBeInTheDocument();
+  });
+
+  it("shows correct initial week start day selection", () => {
+    render(
+      <DisplaySection
+        values={{ ...defaultValues, weekStartDay: 1 }}
+        onChange={mockOnChange}
+      />
+    );
+
+    const monday = screen.getByLabelText(/monday/i);
+    expect(monday).toBeChecked();
+  });
+
+  it("onChange fires with weekStartDay when Monday is selected", async () => {
+    const user = userEvent.setup();
+
+    render(<DisplaySection values={defaultValues} onChange={mockOnChange} />);
+
+    const monday = screen.getByLabelText(/monday/i);
+    await user.click(monday);
+
+    expect(mockOnChange).toHaveBeenCalledWith(
+      expect.objectContaining({ weekStartDay: 1 })
+    );
+  });
+
+  it("onChange fires with weekStartDay when Sunday is selected", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <DisplaySection
+        values={{ ...defaultValues, weekStartDay: 1 }}
+        onChange={mockOnChange}
+      />
+    );
+
+    const sunday = screen.getByLabelText(/sunday/i);
+    await user.click(sunday);
+
+    expect(mockOnChange).toHaveBeenCalledWith(
+      expect.objectContaining({ weekStartDay: 0 })
     );
   });
 });
