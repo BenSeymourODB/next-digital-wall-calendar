@@ -106,24 +106,35 @@ export function useUserSettings(): UseUserSettingsResult {
     });
   }, []);
 
-  const mutate = useCallback(async (partial: UserSettingsPartial) => {
-    const response = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(partial),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to update user settings (${response.status})`);
-    }
-    // Optimistically merge the fields we own; the bus delivery to
-    // ourselves will be a no-op because the same picked values are
-    // already in `prev`.
-    const picked = pickCalendarFields(partial);
-    if (Object.keys(picked).length > 0) {
-      setSettings((prev) => ({ ...prev, ...picked }));
-    }
-    emitUserSettingsChange(partial);
-  }, []);
+  const mutate = useCallback(
+    async (partial: UserSettingsPartial) => {
+      // Unauthenticated callers (e.g. /test/* fixture pages, an anonymous
+      // user opening `CalendarSettingsPanel`) get optimistic in-memory
+      // sync via the bus. There's no DB row to persist to until the user
+      // signs in — see /api/settings GET, which 401s without a session.
+      if (status === "authenticated") {
+        const response = await fetch("/api/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(partial),
+        });
+        if (!response.ok) {
+          throw new Error(
+            `Failed to update user settings (${response.status})`
+          );
+        }
+      }
+      // Optimistically merge the fields we own; the bus delivery to
+      // ourselves will be a no-op because the same picked values are
+      // already in `prev`.
+      const picked = pickCalendarFields(partial);
+      if (Object.keys(picked).length > 0) {
+        setSettings((prev) => ({ ...prev, ...picked }));
+      }
+      emitUserSettingsChange(partial);
+    },
+    [status]
+  );
 
   return { settings, isLoading, mutate };
 }

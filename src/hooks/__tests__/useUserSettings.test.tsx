@@ -280,6 +280,22 @@ describe("useUserSettings", () => {
       expect(result.current.settings.timeFormat).toBe("12h");
     });
 
+    it("skips the network PUT when unauthenticated but still updates local state and emits to the bus", async () => {
+      mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+
+      const { result: writer } = renderHook(() => useUserSettings());
+      const { result: reader } = renderHook(() => useUserSettings());
+
+      await act(async () => {
+        await writer.current.mutate({ timeFormat: "24h" });
+      });
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(writer.current.settings.timeFormat).toBe("24h");
+      // Bus delivery still propagates to other in-tab consumers.
+      expect(reader.current.settings.timeFormat).toBe("24h");
+    });
+
     it("emits a bus event so other in-tab consumers see the change", async () => {
       mockUseSession.mockReturnValue({
         data: { user: { id: "u1" } },
