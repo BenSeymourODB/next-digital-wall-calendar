@@ -25,7 +25,10 @@ describe("Prisma migration setup", () => {
   });
 
   it("should have the initial baseline migration", () => {
-    const initialMigrationDir = path.join(MIGRATIONS_DIR, "0001_initial");
+    const initialMigrationDir = path.join(
+      MIGRATIONS_DIR,
+      "20260502052405_initial"
+    );
     expect(fs.existsSync(initialMigrationDir)).toBe(true);
 
     const migrationSql = path.join(initialMigrationDir, "migration.sql");
@@ -35,7 +38,7 @@ describe("Prisma migration setup", () => {
   it("should have valid SQL in the initial migration", () => {
     const migrationSql = path.join(
       MIGRATIONS_DIR,
-      "0001_initial",
+      "20260502052405_initial",
       "migration.sql"
     );
     const content = fs.readFileSync(migrationSql, "utf-8");
@@ -64,7 +67,7 @@ describe("Prisma migration setup", () => {
   it("should have enum definitions in the initial migration", () => {
     const migrationSql = path.join(
       MIGRATIONS_DIR,
-      "0001_initial",
+      "20260502052405_initial",
       "migration.sql"
     );
     const content = fs.readFileSync(migrationSql, "utf-8");
@@ -76,7 +79,7 @@ describe("Prisma migration setup", () => {
   it("should have foreign key constraints in the initial migration", () => {
     const migrationSql = path.join(
       MIGRATIONS_DIR,
-      "0001_initial",
+      "20260502052405_initial",
       "migration.sql"
     );
     const content = fs.readFileSync(migrationSql, "utf-8");
@@ -90,7 +93,7 @@ describe("Prisma migration setup", () => {
   it("should have indexes in the initial migration", () => {
     const migrationSql = path.join(
       MIGRATIONS_DIR,
-      "0001_initial",
+      "20260502052405_initial",
       "migration.sql"
     );
     const content = fs.readFileSync(migrationSql, "utf-8");
@@ -246,7 +249,7 @@ describe("schema and migration consistency", () => {
 describe("meal planning schema (issue #167)", () => {
   const MEAL_MIGRATION_DIR = path.join(
     MIGRATIONS_DIR,
-    "0005_add_meal_planning"
+    "20260506033858_add_meal_planning"
   );
 
   it("declares the MealType and DayOfWeek enums", () => {
@@ -346,10 +349,10 @@ describe("meal planning schema (issue #167)", () => {
     expect(block![0]).not.toMatch(/lastUsed\s+DateTime\s+@default\(now\(\)\)/);
   });
 
-  it("creates a 0005_add_meal_planning migration with the new tables", () => {
+  it("creates a 20260506033858_add_meal_planning migration with the new tables", () => {
     expect(
       fs.existsSync(MEAL_MIGRATION_DIR),
-      "0005_add_meal_planning migration directory missing"
+      "20260506033858_add_meal_planning migration directory missing"
     ).toBe(true);
 
     const sqlPath = path.join(MEAL_MIGRATION_DIR, "migration.sql");
@@ -367,7 +370,7 @@ describe("meal planning schema (issue #167)", () => {
     ]) {
       expect(
         content,
-        `0005 migration is missing CREATE TABLE for "${table}"`
+        `20260506033858_add_meal_planning migration is missing CREATE TABLE for "${table}"`
       ).toContain(`CREATE TABLE "${table}"`);
     }
 
