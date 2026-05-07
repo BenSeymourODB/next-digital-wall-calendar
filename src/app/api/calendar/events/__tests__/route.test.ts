@@ -722,6 +722,16 @@ describe("/api/calendar/events", () => {
             calendarId: "family@group.calendar.google.com",
           })
         );
+        // Validation failures self-log inside `fetchEventsFromCalendar` with
+        // a rich `GoogleApiValidationError` + `validationIssues`. The outer
+        // GET aggregation loop must NOT also fire its generic
+        // `"Calendar fetch error"` log for the same failure — that would
+        // double-log and dilute the structured signal.
+        expect(vi.mocked(logger.error)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(logger.error)).not.toHaveBeenCalledWith(
+          expect.objectContaining({ message: "Calendar fetch error" }),
+          expect.anything()
+        );
       });
     });
 

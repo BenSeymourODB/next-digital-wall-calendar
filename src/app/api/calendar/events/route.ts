@@ -46,6 +46,14 @@ interface CalendarFetchError {
   calendarId: string;
   error: string;
   status?: number;
+  /**
+   * `true` when the producer has already logged a structured `logger.error`
+   * for this failure (e.g. validation errors from `parseGoogleResponse`).
+   * The outer aggregation loop honours this to avoid double-logging the same
+   * failure with a generic "Calendar fetch error" envelope on top of the
+   * rich validation entry.
+   */
+  logged?: boolean;
 }
 
 /**
@@ -103,7 +111,7 @@ async function fetchEventsFromCalendar(
     if (error instanceof GoogleApiValidationError) {
       logger.error(error, {
         endpoint: error.endpoint,
-        calendarId: error.calendarId ?? "",
+        ...(error.calendarId ? { calendarId: error.calendarId } : {}),
         validationIssues: error.issues
           .slice(0, 5)
           .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
@@ -115,6 +123,7 @@ async function fetchEventsFromCalendar(
           calendarId,
           error: "Google Calendar response failed validation",
           status: 502,
+          logged: true,
         },
       };
     }
@@ -211,12 +220,19 @@ export async function GET(request: NextRequest) {
           );
         }
         errors.push(result.error);
-        logger.error(new Error("Calendar fetch error"), {
-          calendarId: result.error.calendarId,
-          errorMessage: result.error.error,
-          errorStatus: result.error.status || 0,
-          userId: session.user.id,
-        });
+        // Skip the generic envelope when the producer already logged a
+        // richer entry (e.g. `GoogleApiValidationError` from
+        // `parseGoogleResponse`). Otherwise we'd emit a bare
+        // "Calendar fetch error" alongside the structured one and degrade
+        // the signal in Application Insights.
+        if (!result.error.logged) {
+          logger.error(new Error("Calendar fetch error"), {
+            calendarId: result.error.calendarId,
+            errorMessage: result.error.error,
+            errorStatus: result.error.status || 0,
+            userId: session.user.id,
+          });
+        }
       }
       // Use summary/timezone from first successful calendar
       if (!summary && result.summary) {
@@ -565,7 +581,9 @@ export async function POST(request: NextRequest) {
         if (validationError instanceof GoogleApiValidationError) {
           logger.error(validationError, {
             endpoint: validationError.endpoint,
-            calendarId: validationError.calendarId ?? "",
+            ...(validationError.calendarId
+              ? { calendarId: validationError.calendarId }
+              : {}),
             userId: session.user.id,
             validationIssues: validationError.issues
               .slice(0, 5)
