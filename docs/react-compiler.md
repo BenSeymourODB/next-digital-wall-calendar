@@ -160,6 +160,15 @@ This project includes `eslint-plugin-react-hooks@latest` which provides **compil
 - Enforce React's Rules of Hooks
 - Highlight potential issues before runtime
 
+### Manual-memoization ban (#271)
+
+The flat config in `eslint.config.mjs` enforces the no-manual-memoization rule from CLAUDE.md so violations fail CI rather than slipping through review:
+
+- `no-restricted-imports` flags any `useMemo`, `useCallback`, or `memo` named-imported from `react`.
+- `no-restricted-syntax` flags `React.memo`, `React.useMemo`, and `React.useCallback` accessed via the `React` namespace (default or `* as React` imports).
+
+Vendored shadcn/ui under `src/components/ui/**` is globally ignored because `pnpm bump-ui` overwrites it from upstream and we don't want to fork those files. If you genuinely need to opt out of compilation for a specific component (debugging, side-effects in render), use the `"use no memo"` directive instead of reintroducing manual memoization — the lint rule will not trip on the directive.
+
 ## Verification
 
 To verify the compiler is working:

@@ -19,6 +19,40 @@ const eslintConfig = defineConfig([
       "local/prefer-logger-over-console": "warn",
     },
   },
+  // #271: ban manual memoization (`useMemo`, `useCallback`, `React.memo`).
+  // The React Compiler memoizes automatically — see docs/react-compiler.md.
+  // Vendored shadcn code under `src/components/ui/**` is excluded by the
+  // global ignore below.
+  {
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "react",
+              importNames: ["useMemo", "useCallback", "memo"],
+              message:
+                "Manual memoization is forbidden — the React Compiler memoizes automatically. See docs/react-compiler.md.",
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          // Catches `React.memo(...)`, `React.useMemo(...)`,
+          // `React.useCallback(...)` accessed via default or namespace
+          // imports (`import React from "react"` /
+          // `import * as React from "react"`).
+          selector:
+            "MemberExpression[object.name='React'][property.name=/^(memo|useMemo|useCallback)$/]",
+          message:
+            "Manual memoization (`React.memo` / `React.useMemo` / `React.useCallback`) is forbidden — the React Compiler memoizes automatically. See docs/react-compiler.md.",
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
