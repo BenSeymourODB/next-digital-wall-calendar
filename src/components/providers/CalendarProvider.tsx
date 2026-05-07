@@ -3,6 +3,11 @@
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import {
+  type HiddenEventCounts,
+  ZERO_HIDDEN_COUNTS,
+  computeHiddenEventCounts,
+} from "@/lib/calendar-filter-counts";
+import {
   getActiveProfileId,
   loadFilterState,
   saveFilterState,
@@ -86,6 +91,14 @@ export interface ICalendarContext {
    * color/user toggle ergonomics.
    */
   filterEventsBySelectedCalendars: (calendarId: string) => void;
+  /**
+   * Issue #208 Phase 3 — count of events hidden by each filter
+   * dimension. For dimension D, this is the number of events that pass
+   * every other dimension's filter but fail D's. When D has no active
+   * filter, the count is necessarily 0, so consumers can use
+   * `count > 0` as the render condition for a "N hidden" chip.
+   */
+  hiddenEventCounts: HiddenEventCounts;
   users: IUser[];
   events: IEvent[];
   addEvent: (event: IEvent) => void;
@@ -782,6 +795,9 @@ export function CalendarProvider({
   // an event must pass every active filter to remain in `filteredEvents`.
   // An empty `selectedColors` / `selectedCalendarIds` means "no constraint
   // on that dimension" — same convention as `selectedUserId === "all"`.
+  const [hiddenEventCounts, setHiddenEventCounts] =
+    useState<HiddenEventCounts>(ZERO_HIDDEN_COUNTS);
+
   useEffect(() => {
     let filtered = allEvents;
 
@@ -802,6 +818,13 @@ export function CalendarProvider({
     }
 
     setFilteredEvents(filtered);
+    setHiddenEventCounts(
+      computeHiddenEventCounts(allEvents, {
+        selectedColors,
+        selectedUserId,
+        selectedCalendarIds,
+      })
+    );
   }, [allEvents, selectedUserId, selectedColors, selectedCalendarIds]);
 
   // Get unique users from events
@@ -843,6 +866,7 @@ export function CalendarProvider({
     calendars,
     selectedCalendarIds,
     filterEventsBySelectedCalendars,
+    hiddenEventCounts,
     users,
     events: filteredEvents,
     addEvent,

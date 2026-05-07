@@ -37,6 +37,7 @@ function createMockContext(
     calendars: [],
     selectedCalendarIds: [],
     filterEventsBySelectedCalendars: vi.fn(),
+    hiddenEventCounts: { color: 0, user: 0, calendar: 0 },
     users: [] as IUser[],
     events: [] as IEvent[],
     addEvent: vi.fn(),
@@ -413,6 +414,75 @@ describe("CalendarFilterPanel", () => {
       expect(
         screen.queryByTestId("filter-panel-calendar-count")
       ).not.toBeInTheDocument();
+    });
+  });
+
+  // Issue #208 Phase 3 — hidden-events chips. Each trigger shows a
+  // "{n} hidden" chip when its dimension hides at least one event.
+  describe("hidden-events chips", () => {
+    it("renders no chips when nothing is hidden", () => {
+      renderPanel({
+        hiddenEventCounts: { color: 0, user: 0, calendar: 0 },
+      });
+      expect(
+        screen.queryByTestId("filter-panel-color-hidden")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("filter-panel-user-hidden")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("filter-panel-calendar-hidden")
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows the color hidden chip with the count when color filter hides events", () => {
+      renderPanel({
+        selectedColors: ["red"],
+        hiddenEventCounts: { color: 3, user: 0, calendar: 0 },
+      });
+      const chip = screen.getByTestId("filter-panel-color-hidden");
+      expect(chip).toHaveTextContent("3 hidden");
+      expect(
+        screen.queryByTestId("filter-panel-user-hidden")
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows the user hidden chip independently from color", () => {
+      renderPanel({
+        users: [{ id: "u1", name: "Mom", picturePath: null }],
+        selectedUserId: "u1",
+        hiddenEventCounts: { color: 0, user: 5, calendar: 0 },
+      });
+      const chip = screen.getByTestId("filter-panel-user-hidden");
+      expect(chip).toHaveTextContent("5 hidden");
+      expect(
+        screen.queryByTestId("filter-panel-color-hidden")
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows the calendar hidden chip when calendar filter hides events", () => {
+      renderPanel({
+        calendars: [{ id: "primary", summary: "Primary", backgroundColor: "" }],
+        selectedCalendarIds: ["primary"],
+        hiddenEventCounts: { color: 0, user: 0, calendar: 2 },
+      });
+      const chip = screen.getByTestId("filter-panel-calendar-hidden");
+      expect(chip).toHaveTextContent("2 hidden");
+    });
+
+    it("renders chips on multiple triggers when multiple dimensions hide events", () => {
+      renderPanel({
+        selectedColors: ["red"],
+        users: [{ id: "u1", name: "Mom", picturePath: null }],
+        selectedUserId: "u1",
+        hiddenEventCounts: { color: 4, user: 1, calendar: 0 },
+      });
+      expect(screen.getByTestId("filter-panel-color-hidden")).toHaveTextContent(
+        "4 hidden"
+      );
+      expect(screen.getByTestId("filter-panel-user-hidden")).toHaveTextContent(
+        "1 hidden"
+      );
     });
   });
 });

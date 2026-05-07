@@ -56,6 +56,24 @@ function UserAvatar({ user, className }: UserAvatarProps) {
   );
 }
 
+interface HiddenChipProps {
+  count: number;
+  testId: string;
+}
+
+function HiddenChip({ count, testId }: HiddenChipProps) {
+  if (count <= 0) return null;
+  return (
+    <Badge
+      variant="outline"
+      className="text-muted-foreground ml-1 h-5 px-1.5 text-xs font-normal"
+      data-testid={testId}
+    >
+      {count} hidden
+    </Badge>
+  );
+}
+
 export function CalendarFilterPanel() {
   const {
     selectedColors,
@@ -66,6 +84,7 @@ export function CalendarFilterPanel() {
     calendars,
     selectedCalendarIds,
     filterEventsBySelectedCalendars,
+    hiddenEventCounts,
     clearFilter,
   } = useCalendar();
 
@@ -105,6 +124,10 @@ export function CalendarFilterPanel() {
                 {colorCount}
               </Badge>
             ) : null}
+            <HiddenChip
+              count={hiddenEventCounts.color}
+              testId="filter-panel-color-hidden"
+            />
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -174,6 +197,10 @@ export function CalendarFilterPanel() {
               </div>
             ) : null}
             <span>{selectedUser ? selectedUser.name : "All"}</span>
+            <HiddenChip
+              count={hiddenEventCounts.user}
+              testId="filter-panel-user-hidden"
+            />
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -269,6 +296,10 @@ export function CalendarFilterPanel() {
                 {calendarCount}
               </Badge>
             ) : null}
+            <HiddenChip
+              count={hiddenEventCounts.calendar}
+              testId="filter-panel-calendar-hidden"
+            />
           </Button>
         </PopoverTrigger>
         <PopoverContent

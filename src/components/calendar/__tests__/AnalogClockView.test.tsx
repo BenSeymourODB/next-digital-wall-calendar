@@ -55,6 +55,7 @@ function createMockContext(
     calendars: [],
     selectedCalendarIds: [],
     filterEventsBySelectedCalendars: vi.fn(),
+    hiddenEventCounts: { color: 0, user: 0, calendar: 0 },
     users: [] as IUser[],
     events: [] as IEvent[],
     addEvent: vi.fn(),

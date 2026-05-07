@@ -4,6 +4,7 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { computeHiddenEventCounts } from "@/lib/calendar-filter-counts";
 import type {
   ICalendarInfo,
   IEvent,
@@ -224,6 +225,16 @@ export function MockCalendarProvider({
     return filtered;
   }, [allEvents, selectedUserId, selectedColors, selectedCalendarIds]);
 
+  const hiddenEventCounts = useMemo(
+    () =>
+      computeHiddenEventCounts(allEvents, {
+        selectedColors,
+        selectedUserId,
+        selectedCalendarIds,
+      }),
+    [allEvents, selectedColors, selectedUserId, selectedCalendarIds]
+  );
+
   // Get unique users from events
   const users = allEvents.reduce((acc, event) => {
     if (!acc.find((u) => u.id === event.user.id)) {
@@ -261,6 +272,7 @@ export function MockCalendarProvider({
     calendars,
     selectedCalendarIds,
     filterEventsBySelectedCalendars,
+    hiddenEventCounts,
     users,
     events: filteredEvents,
     addEvent,
