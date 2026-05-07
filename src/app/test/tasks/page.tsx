@@ -16,12 +16,14 @@ import { TaskList } from "@/components/tasks/task-list";
 import {
   DEFAULT_LIST_COLORS,
   type GoogleTaskList,
+  type TaskApiError,
   type TaskListConfig,
   type TaskListsApiResponse,
 } from "@/components/tasks/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
@@ -78,7 +80,7 @@ function buildLiveConfig(list: GoogleTaskList, color: string): TaskListConfig {
   };
 }
 
-type LiveStatus = "loading" | "error" | "ready";
+type LiveStatus = "loading" | "error" | "reauth" | "ready";
 
 function LiveTasksPanel() {
   const [status, setStatus] = useState<LiveStatus>("loading");
@@ -91,11 +93,27 @@ function LiveTasksPanel() {
 
     fetch("/api/tasks/lists")
       .then(async (response) => {
-        if (cancelled) return;
         if (!response.ok) {
-          setStatus("error");
+          // The error body may be missing or non-JSON (e.g. an HTML 502
+          // from a proxy); guard the parse so a transient gateway error
+          // doesn't crash the panel. The `requiresReauth` flag from the
+          // API tells us a retry is futile — the user has to re-grant
+          // the Google Tasks scope before any future request can succeed.
+          let body: TaskApiError | null = null;
+          try {
+            body = (await response.json()) as TaskApiError;
+          } catch {
+            body = null;
+          }
+          if (cancelled) return;
+          setStatus(body?.requiresReauth ? "reauth" : "error");
           return;
         }
+        // The fetch promise has resolved but `json()` is still streaming
+        // the body; if the component unmounts in this window the second
+        // guard below catches it. We intentionally do not abort the
+        // underlying request — the body parse is cheap and the response
+        // is already in transit.
         const data = (await response.json()) as TaskListsApiResponse;
         if (cancelled) return;
         const fetched = data.lists ?? [];
@@ -124,6 +142,28 @@ function LiveTasksPanel() {
     );
   }
 
+  if (status === "reauth") {
+    return (
+      <Card data-testid="test-tasks-live-reauth">
+        <CardHeader>
+          <CardTitle className="text-base">
+            Sign in again to access Google Tasks
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-gray-600">
+            Your session has expired or is missing the Google Tasks scope.
+            Retrying the request will hit the same error — you need to grant
+            access again.
+          </p>
+          <Button asChild variant="secondary">
+            <Link href="/api/auth/signin">Sign in again</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (status === "error") {
     return (
       <Card data-testid="test-tasks-live-error">
@@ -134,14 +174,17 @@ function LiveTasksPanel() {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-gray-600">
-            The request to <code>/api/tasks/lists</code> failed. This usually
-            means the session is missing the Google Tasks scope; sign out and
-            back in to re-grant access.
+            The request to <code>/api/tasks/lists</code> failed. This is usually
+            a transient network or server issue — try again in a moment.
           </p>
           <Button
             variant="secondary"
             onClick={() => {
               setStatus("loading");
+              // Reset selection so the next successful fetch's
+              // `setSelectedListId(fetched[0]?.id)` is unambiguous and we
+              // never render the picker against a stale id.
+              setSelectedListId("");
               setReloadToken((token) => token + 1);
             }}
           >
@@ -171,11 +214,14 @@ function LiveTasksPanel() {
     );
   }
 
-  const selectedIndex = Math.max(
-    0,
-    lists.findIndex((list) => list.id === selectedListId)
-  );
-  const selectedList = lists[selectedIndex];
+  // Resolve the rendered list from the selected id; fall back to the first
+  // list if the selection is stale (e.g. a previously-selected list was
+  // deleted between fetches). The `<select value>` is driven by
+  // `selectedList.id` rather than `selectedListId` so the picker can never
+  // visually disagree with what TaskList renders.
+  const selectedList =
+    lists.find((list) => list.id === selectedListId) ?? lists[0];
+  const selectedIndex = lists.indexOf(selectedList);
   const color = DEFAULT_LIST_COLORS[selectedIndex % DEFAULT_LIST_COLORS.length];
 
   return (
@@ -190,7 +236,7 @@ function LiveTasksPanel() {
         <select
           id="test-tasks-live-picker"
           data-testid="test-tasks-live-picker"
-          value={selectedListId}
+          value={selectedList.id}
           onChange={(event) => setSelectedListId(event.target.value)}
           className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
         >

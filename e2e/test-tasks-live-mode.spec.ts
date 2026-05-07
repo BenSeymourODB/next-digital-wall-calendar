@@ -22,7 +22,6 @@ async function mockLiveListsApi(
   page: Page,
   options: {
     lists?: MockGoogleTaskList[] | "fail";
-    delayLists?: number;
     tasksByListId?: Record<string, Array<{ id: string; title: string }>>;
   } = {}
 ): Promise<{ failNextLists: () => void; getListsRequestCount: () => number }> {
@@ -39,10 +38,6 @@ async function mockLiveListsApi(
 
   await page.route("**/api/tasks/lists", async (route) => {
     listsRequestCount += 1;
-
-    if (options.delayLists && listsRequestCount === 1) {
-      await new Promise((resolve) => setTimeout(resolve, options.delayLists));
-    }
 
     if (options.lists === "fail" || failNext) {
       failNext = false;
@@ -85,7 +80,7 @@ async function mockLiveListsApi(
 }
 
 test.describe("/test/tasks live mode", () => {
-  test("renders a loading state then auto-selects the first list", async ({
+  test("auto-selects the first list and renders its tasks", async ({
     page,
   }) => {
     await mockLiveListsApi(page, {
@@ -93,7 +88,6 @@ test.describe("/test/tasks live mode", () => {
         { id: "list-personal", title: "Personal" },
         { id: "list-work", title: "Work" },
       ],
-      delayLists: 200,
       tasksByListId: {
         "list-personal": [{ id: "t1", title: "Personal task" }],
         "list-work": [{ id: "t2", title: "Work task" }],
@@ -102,10 +96,10 @@ test.describe("/test/tasks live mode", () => {
 
     await page.goto("/test/tasks");
 
-    // Loading skeleton shows briefly while the lists fetch resolves.
-    await expect(page.getByTestId("test-tasks-live-loading")).toBeVisible();
-
-    // Once ready, the picker is rendered with the first list selected.
+    // The loading skeleton is asserted in the Vitest unit tests where we
+    // can pause the fetch deterministically. In Playwright the skeleton
+    // can flash for less than a frame on a fast CI runner, so we go
+    // straight to asserting the steady-state UI.
     await expect(page.getByTestId("test-tasks-live-ready")).toBeVisible();
     const picker = page.getByTestId("test-tasks-live-picker");
     await expect(picker).toHaveValue("list-personal");
@@ -204,6 +198,35 @@ test.describe("/test/tasks live mode", () => {
       "list-recovered"
     );
     expect(listsCallCount).toBeGreaterThanOrEqual(2);
+  });
+
+  test("renders the reauth state with a Sign-in link when the API requires reauth", async ({
+    page,
+  }) => {
+    await page.route("**/api/tasks/lists", async (route) => {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Missing Google Tasks scope. Please sign in again.",
+          requiresReauth: true,
+        }),
+      });
+    });
+
+    await page.goto("/test/tasks");
+
+    const reauth = page.getByTestId("test-tasks-live-reauth");
+    await expect(reauth).toBeVisible();
+    await expect(reauth).toContainText(/sign in again/i);
+    // Critical: the generic "Try again" button must NOT render in this
+    // state — clicking it would refire the same 401 in a loop.
+    await expect(page.getByRole("button", { name: /try again/i })).toHaveCount(
+      0
+    );
+    await expect(
+      page.getByRole("link", { name: /sign in again/i })
+    ).toHaveAttribute("href", "/api/auth/signin");
   });
 
   test("mock-harness ?lists=single still renders the existing single-list mock", async ({
