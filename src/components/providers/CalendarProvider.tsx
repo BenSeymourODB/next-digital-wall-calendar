@@ -4,6 +4,11 @@ import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import {
+  getActiveProfileId,
+  loadFilterState,
+  saveFilterState,
+} from "@/lib/calendar-filter-storage";
+import {
   type CalendarColorMapping,
   eventCache,
   loadColorMappings,
@@ -274,10 +279,47 @@ export function CalendarProvider({
   }, []);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
-    "all"
+
+  // Issue #208 — filter state is persisted per-profile. The active profile
+  // id is read from the same `activeProfileId` localStorage key that
+  // ProfileProvider writes, so the two providers stay decoupled (neither
+  // imports the other). We listen for `storage` events to react to
+  // cross-tab profile switches.
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(() =>
+    getActiveProfileId()
   );
-  const [selectedColors, setSelectedColors] = useState<TEventColor[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (e: StorageEvent) => {
+      if (e.key === "activeProfileId") {
+        setActiveProfileId(e.newValue);
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, []);
+
+  const [selectedUserId, setSelectedUserIdState] = useState<
+    IUser["id"] | "all"
+  >(() => loadFilterState(getActiveProfileId()).selectedUserId);
+  const [selectedColors, setSelectedColors] = useState<TEventColor[]>(
+    () => loadFilterState(getActiveProfileId()).selectedColors
+  );
+
+  // Track the profile id whose filter state currently lives in `selectedColors`
+  // / `selectedUserId`, so we can detect mid-session profile changes and
+  // re-hydrate without clobbering the new profile's stored state with the
+  // previous one's values.
+  const hydratedProfileRef = useRef(activeProfileId);
+
+  useEffect(() => {
+    if (hydratedProfileRef.current === activeProfileId) return;
+    hydratedProfileRef.current = activeProfileId;
+    const next = loadFilterState(activeProfileId);
+    setSelectedColors(next.selectedColors);
+    setSelectedUserIdState(next.selectedUserId);
+  }, [activeProfileId]);
 
   const [allEvents, setAllEvents] = useState<IEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<IEvent[]>([]);
@@ -336,10 +378,28 @@ export function CalendarProvider({
     updateSettings({ weekStartDay: day });
   };
 
+  const persistFilters = (updates: {
+    selectedColors?: TEventColor[];
+    selectedUserId?: IUser["id"] | "all";
+  }) => {
+    saveFilterState(activeProfileId, {
+      selectedColors: updates.selectedColors ?? selectedColors,
+      selectedUserId: updates.selectedUserId ?? selectedUserId,
+      selectedCalendarIds: [],
+    });
+  };
+
   const filterEventsBySelectedColors = (color: TEventColor) => {
-    setSelectedColors((prev) =>
-      prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color]
-    );
+    const next = selectedColors.includes(color)
+      ? selectedColors.filter((c) => c !== color)
+      : [...selectedColors, color];
+    setSelectedColors(next);
+    persistFilters({ selectedColors: next });
+  };
+
+  const setSelectedUserId = (userId: IUser["id"] | "all") => {
+    setSelectedUserIdState(userId);
+    persistFilters({ selectedUserId: userId });
   };
 
   const filterEventsBySelectedUser = (userId: IUser["id"] | "all") => {
@@ -348,7 +408,8 @@ export function CalendarProvider({
 
   const clearFilter = () => {
     setSelectedColors([]);
-    setSelectedUserId("all");
+    setSelectedUserIdState("all");
+    persistFilters({ selectedColors: [], selectedUserId: "all" });
   };
 
   const addEvent = (event: IEvent) => {

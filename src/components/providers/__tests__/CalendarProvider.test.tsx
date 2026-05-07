@@ -1640,3 +1640,281 @@ describe("CalendarProvider", () => {
     });
   });
 });
+
+// Issue #208 Phase 1 — filter persistence (per-profile localStorage).
+// These tests don't need network access; the unauthenticated session keeps
+// the API code paths dormant so we can focus on the storage round-trip.
+describe("CalendarProvider — filter persistence (#208 Phase 1)", () => {
+  function FilterProbe() {
+    const {
+      selectedColors,
+      selectedUserId,
+      filterEventsBySelectedColors,
+      setSelectedUserId,
+      clearFilter,
+    } = useCalendar();
+    return (
+      <div>
+        <span data-testid="probe-colors">{selectedColors.join(",")}</span>
+        <span data-testid="probe-user">{selectedUserId}</span>
+        <button
+          type="button"
+          onClick={() => filterEventsBySelectedColors("red")}
+        >
+          toggle-red
+        </button>
+        <button
+          type="button"
+          onClick={() => filterEventsBySelectedColors("blue")}
+        >
+          toggle-blue
+        </button>
+        <button type="button" onClick={() => setSelectedUserId("user-1")}>
+          select-user-1
+        </button>
+        <button type="button" onClick={() => clearFilter()}>
+          clear
+        </button>
+      </div>
+    );
+  }
+
+  function renderProbe() {
+    return render(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <FilterProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+  }
+
+  beforeEach(() => {
+    mockSessionState.current = { data: null, status: "unauthenticated" };
+    window.localStorage.clear();
+  });
+
+  it("starts with empty filters when nothing is persisted", async () => {
+    renderProbe();
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("");
+    });
+    expect(screen.getByTestId("probe-user")).toHaveTextContent("all");
+  });
+
+  it("persists color toggles to per-profile storage under the active profile id", async () => {
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    const user = userEvent.setup();
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("");
+    });
+
+    await user.click(screen.getByText("toggle-red"));
+    await user.click(screen.getByText("toggle-blue"));
+
+    await waitFor(() => {
+      const stored = window.localStorage.getItem("calendar-filters:profile-a");
+      expect(stored).not.toBeNull();
+      const parsed = JSON.parse(stored!);
+      expect(parsed.selectedColors).toEqual(["red", "blue"]);
+    });
+  });
+
+  it("persists user selection to per-profile storage", async () => {
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    const user = userEvent.setup();
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-user")).toHaveTextContent("all");
+    });
+
+    await user.click(screen.getByText("select-user-1"));
+
+    await waitFor(() => {
+      const stored = window.localStorage.getItem("calendar-filters:profile-a");
+      expect(stored).not.toBeNull();
+      expect(JSON.parse(stored!).selectedUserId).toBe("user-1");
+    });
+  });
+
+  it("hydrates filter state on mount from per-profile storage", async () => {
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red", "green"],
+        selectedUserId: "user-2",
+        selectedCalendarIds: [],
+      })
+    );
+
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red,green");
+    });
+    expect(screen.getByTestId("probe-user")).toHaveTextContent("user-2");
+  });
+
+  it("uses the default bucket when no active profile id is set", async () => {
+    window.localStorage.setItem(
+      "calendar-filters:default",
+      JSON.stringify({
+        selectedColors: ["yellow"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("yellow");
+    });
+  });
+
+  it("isolates filter state across profiles", async () => {
+    // Profile A and Profile B each have their own stored filter state.
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+    window.localStorage.setItem(
+      "calendar-filters:profile-b",
+      JSON.stringify({
+        selectedColors: ["blue"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+
+    // Mount with profile A active.
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    const { unmount } = renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red");
+    });
+
+    unmount();
+
+    // Switch profiles by editing storage and remounting (the realistic flow
+    // since profile switches happen on a different route).
+    window.localStorage.setItem("activeProfileId", "profile-b");
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("blue");
+    });
+  });
+
+  it("re-hydrates when the active profile id changes mid-session via storage event", async () => {
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+    window.localStorage.setItem(
+      "calendar-filters:profile-b",
+      JSON.stringify({
+        selectedColors: ["green"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+    window.localStorage.setItem("activeProfileId", "profile-a");
+
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red");
+    });
+
+    // Simulate ProfileProvider switching the active profile in another tab.
+    window.localStorage.setItem("activeProfileId", "profile-b");
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "activeProfileId",
+        newValue: "profile-b",
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("green");
+    });
+  });
+
+  it("clearFilter resets in-memory state and persists the empty state", async () => {
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red", "blue"],
+        selectedUserId: "user-1",
+        selectedCalendarIds: [],
+      })
+    );
+
+    const user = userEvent.setup();
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red,blue");
+    });
+    expect(screen.getByTestId("probe-user")).toHaveTextContent("user-1");
+
+    await user.click(screen.getByText("clear"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("");
+    });
+    expect(screen.getByTestId("probe-user")).toHaveTextContent("all");
+
+    const stored = window.localStorage.getItem("calendar-filters:profile-a");
+    expect(stored).not.toBeNull();
+    const parsed = JSON.parse(stored!);
+    expect(parsed.selectedColors).toEqual([]);
+    expect(parsed.selectedUserId).toBe("all");
+  });
+
+  it("only persists changes made in the active session, not the initial hydration", async () => {
+    // Pre-seed storage so the provider hydrates from it.
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red", "green"],
+        selectedUserId: "user-x",
+        selectedCalendarIds: [],
+      })
+    );
+
+    // Spy on setItem so we can prove we don't write back during hydration.
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    setItemSpy.mockClear();
+
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red,green");
+    });
+
+    // No write to the calendar-filters key happened during hydration.
+    const filterWrites = setItemSpy.mock.calls.filter(
+      ([key]) => key === "calendar-filters:profile-a"
+    );
+    expect(filterWrites).toHaveLength(0);
+
+    setItemSpy.mockRestore();
+  });
+});
