@@ -1,14 +1,30 @@
 "use client";
 
 import { logger } from "@/lib/logger";
-import { useEffect, useState } from "react";
+import {
+  type UserSettingsPartial,
+  emitUserSettingsChange,
+  subscribeUserSettings,
+} from "@/lib/user-settings-bus";
+import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+
+export type TTimeFormat = "12h" | "24h";
+
+const VALID_TIME_FORMATS: readonly TTimeFormat[] = ["12h", "24h"] as const;
 
 export interface UserCalendarSettings {
   calendarRefreshIntervalMinutes: number;
   calendarFetchMonthsAhead: number;
   calendarFetchMonthsBehind: number;
   calendarMaxEventsPerDay: number;
+  /**
+   * App-wide time format (#337). The single source of truth replacing the
+   * standalone `CalendarProvider.use24HourFormat` localStorage key.
+   * Mirrors `UserSettings.timeFormat` in the database; default `"12h"`
+   * matches the Prisma schema default.
+   */
+  timeFormat: TTimeFormat;
 }
 
 export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
@@ -16,11 +32,18 @@ export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
   calendarFetchMonthsAhead: 6,
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
+  timeFormat: "12h",
 };
 
 interface UseUserSettingsResult {
   settings: UserCalendarSettings;
   isLoading: boolean;
+  /**
+   * Persist a partial of `UserSettings` to the server, then update local
+   * state and notify every other in-tab `useUserSettings` instance via
+   * the bus. Rejects on non-2xx so callers can toast.
+   */
+  mutate: (partial: UserSettingsPartial) => Promise<void>;
 }
 
 export function useUserSettings(): UseUserSettingsResult {
@@ -49,12 +72,12 @@ export function useUserSettings(): UseUserSettingsResult {
           });
           return;
         }
-        const data = (await response.json()) as Partial<UserCalendarSettings>;
+        const data = (await response.json()) as Record<string, unknown>;
         if (cancelled) return;
-        setSettings({
-          ...DEFAULT_USER_CALENDAR_SETTINGS,
+        setSettings((prev) => ({
+          ...prev,
           ...pickCalendarFields(data),
-        });
+        }));
       } catch (error) {
         logger.error(error as Error, { context: "useUserSettings" });
       } finally {
@@ -69,11 +92,44 @@ export function useUserSettings(): UseUserSettingsResult {
     };
   }, [status]);
 
-  return { settings, isLoading };
+  // Keep this instance's local state in sync with mutations dispatched by
+  // any other `useUserSettings` consumer in the same tab (#337). The bus
+  // is fire-and-forget — every event carries its own partial, so we just
+  // merge the picked subset.
+  useEffect(() => {
+    return subscribeUserSettings((partial) => {
+      const picked = pickCalendarFields(partial);
+      if (Object.keys(picked).length === 0) {
+        return;
+      }
+      setSettings((prev) => ({ ...prev, ...picked }));
+    });
+  }, []);
+
+  const mutate = useCallback(async (partial: UserSettingsPartial) => {
+    const response = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(partial),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update user settings (${response.status})`);
+    }
+    // Optimistically merge the fields we own; the bus delivery to
+    // ourselves will be a no-op because the same picked values are
+    // already in `prev`.
+    const picked = pickCalendarFields(partial);
+    if (Object.keys(picked).length > 0) {
+      setSettings((prev) => ({ ...prev, ...picked }));
+    }
+    emitUserSettingsChange(partial);
+  }, []);
+
+  return { settings, isLoading, mutate };
 }
 
 function pickCalendarFields(
-  data: Partial<UserCalendarSettings>
+  data: Record<string, unknown>
 ): Partial<UserCalendarSettings> {
   const picked: Partial<UserCalendarSettings> = {};
   if (typeof data.calendarRefreshIntervalMinutes === "number") {
@@ -87,6 +143,12 @@ function pickCalendarFields(
   }
   if (typeof data.calendarMaxEventsPerDay === "number") {
     picked.calendarMaxEventsPerDay = data.calendarMaxEventsPerDay;
+  }
+  if (
+    typeof data.timeFormat === "string" &&
+    (VALID_TIME_FORMATS as readonly string[]).includes(data.timeFormat)
+  ) {
+    picked.timeFormat = data.timeFormat as TTimeFormat;
   }
   return picked;
 }
