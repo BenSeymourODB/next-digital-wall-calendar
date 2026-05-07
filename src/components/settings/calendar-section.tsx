@@ -9,6 +9,7 @@ interface CalendarValues {
   calendarFetchMonthsAhead: number;
   calendarFetchMonthsBehind: number;
   calendarMaxEventsPerDay: number;
+  calendarWorkingHoursStart: number;
 }
 
 interface CalendarSectionProps {
@@ -22,6 +23,10 @@ function pluralize(
   plural = `${singular}s`
 ): string {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function formatHourLabel(hour: number): string {
+  return `${hour.toString().padStart(2, "0")}:00`;
 }
 
 export function CalendarSection({ values, onChange }: CalendarSectionProps) {
@@ -121,6 +126,32 @@ export function CalendarSection({ values, onChange }: CalendarSectionProps) {
           <p className="text-xs text-gray-400">
             How many events to show per day cell before collapsing to &ldquo;+N
             more&rdquo;
+          </p>
+        </div>
+
+        {/* Working-hours start hour */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="calendar-working-hours-start">
+              Working Hours Start
+            </Label>
+            <span className="text-sm text-gray-500">
+              {formatHourLabel(values.calendarWorkingHoursStart)}
+            </span>
+          </div>
+          <Slider
+            id="calendar-working-hours-start"
+            value={[values.calendarWorkingHoursStart]}
+            min={0}
+            max={23}
+            step={1}
+            onValueChange={(value) =>
+              onChange({ calendarWorkingHoursStart: value[0] })
+            }
+          />
+          <p className="text-xs text-gray-400">
+            Hour the Day &amp; Week views scroll to on first render so your
+            working-hours events land in view (0:00 – 23:00)
           </p>
         </div>
       </div>
