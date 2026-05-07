@@ -20,7 +20,6 @@ import type { PointAwardReason } from "@/lib/services/reward-points";
 import {
   type ReactNode,
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -42,6 +41,10 @@ export interface AwardPointsResult {
 interface PointsContextValue {
   totalPoints: number;
   isEnabled: boolean;
+  /** Default points awarded for a task completion (mirrors UserSettings). */
+  defaultTaskPoints: number;
+  /** Whether the +N animation should be shown after a successful award. */
+  showPointsOnCompletion: boolean;
   profileId: string | null;
   awardPoints: (
     points: number,
@@ -49,6 +52,16 @@ interface PointsContextValue {
     metadata?: AwardPointsMetadata
   ) => Promise<AwardPointsResult>;
   refreshPoints: () => Promise<void>;
+}
+
+const DEFAULT_TASK_POINTS = 10;
+const DEFAULT_SHOW_POINTS_ON_COMPLETION = true;
+
+interface PointsApiResponse {
+  totalPoints: number;
+  enabled: boolean;
+  defaultTaskPoints?: number;
+  showPointsOnCompletion?: boolean;
 }
 
 const PointsContext = createContext<PointsContextValue | null>(null);
@@ -66,6 +79,10 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
   // cascading renders).
   const [fetchedTotal, setFetchedTotal] = useState(0);
   const [fetchedEnabled, setFetchedEnabled] = useState(false);
+  const [fetchedDefaultTaskPoints, setFetchedDefaultTaskPoints] =
+    useState(DEFAULT_TASK_POINTS);
+  const [fetchedShowPointsOnCompletion, setFetchedShowPointsOnCompletion] =
+    useState(DEFAULT_SHOW_POINTS_ON_COMPLETION);
 
   // Track the currently-mounted profile id so in-flight requests
   // started under a different profile don't write their result into
@@ -92,13 +109,16 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
           setFetchedEnabled(false);
           return;
         }
-        const data = (await response.json()) as {
-          totalPoints: number;
-          enabled: boolean;
-        };
+        const data = (await response.json()) as PointsApiResponse;
         if (controller.signal.aborted) return;
         setFetchedTotal(data.totalPoints);
         setFetchedEnabled(data.enabled);
+        if (typeof data.defaultTaskPoints === "number") {
+          setFetchedDefaultTaskPoints(data.defaultTaskPoints);
+        }
+        if (typeof data.showPointsOnCompletion === "boolean") {
+          setFetchedShowPointsOnCompletion(data.showPointsOnCompletion);
+        }
       } catch (error) {
         if ((error as Error).name === "AbortError") return;
         logger.error(error as Error, { context: "FetchPointsFailed" });
@@ -113,7 +133,7 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
   const totalPoints = profileId ? fetchedTotal : 0;
   const isEnabled = profileId ? fetchedEnabled : false;
 
-  const refreshPoints = useCallback(async () => {
+  const refreshPoints = async () => {
     if (!profileId) {
       return;
     }
@@ -127,78 +147,80 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
         setFetchedEnabled(false);
         return;
       }
-      const data = (await response.json()) as {
-        totalPoints: number;
-        enabled: boolean;
-      };
+      const data = (await response.json()) as PointsApiResponse;
       if (activeProfileIdRef.current !== profileId) return;
       setFetchedTotal(data.totalPoints);
       setFetchedEnabled(data.enabled);
+      if (typeof data.defaultTaskPoints === "number") {
+        setFetchedDefaultTaskPoints(data.defaultTaskPoints);
+      }
+      if (typeof data.showPointsOnCompletion === "boolean") {
+        setFetchedShowPointsOnCompletion(data.showPointsOnCompletion);
+      }
     } catch (error) {
       logger.error(error as Error, { context: "FetchPointsFailed" });
       if (activeProfileIdRef.current !== profileId) return;
       setFetchedTotal(0);
       setFetchedEnabled(false);
     }
-  }, [profileId]);
+  };
 
-  const awardPoints = useCallback(
-    async (
-      points: number,
-      reason: PointAwardReason,
-      metadata?: AwardPointsMetadata
-    ): Promise<AwardPointsResult> => {
-      if (!profileId) {
-        throw new Error("No active profile");
-      }
+  const awardPoints = async (
+    points: number,
+    reason: PointAwardReason,
+    metadata?: AwardPointsMetadata
+  ): Promise<AwardPointsResult> => {
+    if (!profileId) {
+      throw new Error("No active profile");
+    }
 
-      const response = await fetch("/api/points/award", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          profileId,
-          points,
-          reason,
-          ...(metadata?.taskId ? { taskId: metadata.taskId } : {}),
-          ...(metadata?.taskTitle ? { taskTitle: metadata.taskTitle } : {}),
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to award points");
-      }
-
-      const data = (await response.json()) as {
-        success: boolean;
-        newTotal: number;
-        alreadyAwarded: boolean;
-      };
-
-      // Only sync local state if this closure's profile is still the
-      // active one — guards against a profile switch during the POST.
-      if (activeProfileIdRef.current === profileId) {
-        setFetchedTotal(data.newTotal);
-      }
-
-      logger.event("PointsAwarded", {
+    const response = await fetch("/api/points/award", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         profileId,
         points,
         reason,
-        newTotal: data.newTotal,
-        alreadyAwarded: data.alreadyAwarded,
-      });
+        ...(metadata?.taskId ? { taskId: metadata.taskId } : {}),
+        ...(metadata?.taskTitle ? { taskTitle: metadata.taskTitle } : {}),
+      }),
+    });
 
-      return {
-        newTotal: data.newTotal,
-        alreadyAwarded: data.alreadyAwarded,
-      };
-    },
-    [profileId]
-  );
+    if (!response.ok) {
+      throw new Error("Failed to award points");
+    }
+
+    const data = (await response.json()) as {
+      success: boolean;
+      newTotal: number;
+      alreadyAwarded: boolean;
+    };
+
+    // Only sync local state if this closure's profile is still the
+    // active one — guards against a profile switch during the POST.
+    if (activeProfileIdRef.current === profileId) {
+      setFetchedTotal(data.newTotal);
+    }
+
+    logger.event("PointsAwarded", {
+      profileId,
+      points,
+      reason,
+      newTotal: data.newTotal,
+      alreadyAwarded: data.alreadyAwarded,
+    });
+
+    return {
+      newTotal: data.newTotal,
+      alreadyAwarded: data.alreadyAwarded,
+    };
+  };
 
   const value: PointsContextValue = {
     totalPoints,
     isEnabled,
+    defaultTaskPoints: fetchedDefaultTaskPoints,
+    showPointsOnCompletion: fetchedShowPointsOnCompletion,
     profileId,
     awardPoints,
     refreshPoints,
@@ -215,4 +237,14 @@ export function usePoints(): PointsContextValue {
     throw new Error("usePoints must be used within PointsProvider");
   }
   return context;
+}
+
+/**
+ * Like {@link usePoints} but returns `null` when no provider is
+ * mounted instead of throwing. Useful for components that live in
+ * shells (e.g. AppShell) that may render outside the rewards
+ * provider in some test contexts or future deployment splits.
+ */
+export function usePointsOptional(): PointsContextValue | null {
+  return useContext(PointsContext);
 }
