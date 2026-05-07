@@ -165,12 +165,45 @@ describe("token-cipher", () => {
         "NEXTAUTH_SECRET",
         "dev-only-secret-for-testing-xxxxxxxxxxxxxxxxxx"
       );
+      vi.stubEnv("AUTH_SECRET", "");
       vi.stubEnv("NODE_ENV", "development");
 
       const { encryptToken, decryptToken } = await loadCipher();
       const envelope = encryptToken("derived-key-test");
       expect(envelope).not.toBeNull();
       expect(decryptToken(envelope)).toBe("derived-key-test");
+    });
+
+    it("derives a key from AUTH_SECRET (NextAuth v5 idiom) when TOKEN_ENCRYPTION_KEY and NEXTAUTH_SECRET are absent", async () => {
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv(
+        "AUTH_SECRET",
+        "v5-canonical-secret-for-testing-xxxxxxxxxxxxxxx"
+      );
+      vi.stubEnv("NODE_ENV", "development");
+
+      const { encryptToken, decryptToken } = await loadCipher();
+      const envelope = encryptToken("auth-secret-test");
+      expect(envelope).not.toBeNull();
+      expect(decryptToken(envelope)).toBe("auth-secret-test");
+    });
+
+    it("derives the same key whether AUTH_SECRET or NEXTAUTH_SECRET is set with the same value", async () => {
+      const sameValue = "shared-secret-value-xxxxxxxxxxxxxxxxxxxxxx";
+
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("NEXTAUTH_SECRET", sameValue);
+      vi.stubEnv("AUTH_SECRET", "");
+      vi.stubEnv("NODE_ENV", "development");
+      const { encryptToken: encryptViaNext } = await loadCipher();
+      const envelopeFromNext = encryptViaNext("portable")!;
+
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv("AUTH_SECRET", sameValue);
+      const { decryptToken: decryptViaAuth } = await loadCipher();
+      // Cross-decryption proves both env vars resolve to the same derived key.
+      expect(decryptViaAuth(envelopeFromNext)).toBe("portable");
     });
 
     it("throws in production when TOKEN_ENCRYPTION_KEY is missing", async () => {
@@ -182,14 +215,18 @@ describe("token-cipher", () => {
       expect(() => encryptToken("x")).toThrow(/TOKEN_ENCRYPTION_KEY/);
     });
 
-    it("throws a dev-appropriate error when neither key nor NEXTAUTH_SECRET is set in non-production", async () => {
+    it("throws a dev-appropriate error when no key, AUTH_SECRET, or NEXTAUTH_SECRET is set in non-production", async () => {
       vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
       vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv("AUTH_SECRET", "");
       vi.stubEnv("NODE_ENV", "development");
 
       const { encryptToken } = await loadCipher();
-      // Error should NOT say "required in production" — it misleads devs whose
-      // real problem is that NEXTAUTH_SECRET is also missing.
+      // Error should mention BOTH dev-fallback env vars so devs running on
+      // either NextAuth v4 or v5 idioms recognise their config gap. Must NOT
+      // say "required in production" — that misleads devs whose real problem
+      // is in development.
+      expect(() => encryptToken("x")).toThrow(/AUTH_SECRET/);
       expect(() => encryptToken("x")).toThrow(/NEXTAUTH_SECRET/);
       expect(() => encryptToken("x")).not.toThrow(/required in production/);
     });
@@ -225,6 +262,27 @@ describe("token-cipher", () => {
       const envelope = encryptToken("base64url-keyed-secret");
       expect(envelope).not.toBeNull();
       expect(decryptToken(envelope)).toBe("base64url-keyed-secret");
+    });
+
+    it("validateEncryptionKey() returns silently when a key is resolvable", async () => {
+      const { validateEncryptionKey } = await loadCipher();
+      expect(() => validateEncryptionKey()).not.toThrow();
+    });
+
+    it("validateEncryptionKey() throws when no key source is configured", async () => {
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv("AUTH_SECRET", "");
+      vi.stubEnv("NODE_ENV", "development");
+
+      const { validateEncryptionKey } = await loadCipher();
+      expect(() => validateEncryptionKey()).toThrow(/AUTH_SECRET/);
+    });
+
+    it("validateEncryptionKey() throws when TOKEN_ENCRYPTION_KEY decodes to the wrong length", async () => {
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", randomBytes(8).toString("base64"));
+      const { validateEncryptionKey } = await loadCipher();
+      expect(() => validateEncryptionKey()).toThrow(/32 bytes/);
     });
 
     it("warns once when deriving a key from NEXTAUTH_SECRET", async () => {
