@@ -2,6 +2,7 @@
 
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import type { TWeekStartDay } from "@/types/calendar";
 import { useTheme } from "next-themes";
 import { SettingsSection } from "./settings-section";
 
@@ -10,6 +11,7 @@ interface DisplayValues {
   timeFormat: string;
   dateFormat: string;
   defaultZoomLevel: number;
+  weekStartDay: TWeekStartDay;
 }
 
 interface DisplaySectionProps {
@@ -84,6 +86,37 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
                 className="text-blue-600"
               />
               24-hour
+            </Label>
+          </div>
+        </fieldset>
+
+        {/* Week start day */}
+        <fieldset>
+          <legend className="text-foreground text-sm font-medium">
+            Week starts on
+          </legend>
+          <div className="mt-2 flex gap-4">
+            <Label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="weekStartDay"
+                value="0"
+                checked={values.weekStartDay === 0}
+                onChange={() => onChange({ weekStartDay: 0 })}
+                className="text-blue-600"
+              />
+              Sunday
+            </Label>
+            <Label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="weekStartDay"
+                value="1"
+                checked={values.weekStartDay === 1}
+                onChange={() => onChange({ weekStartDay: 1 })}
+                className="text-blue-600"
+              />
+              Monday
             </Label>
           </div>
         </fieldset>

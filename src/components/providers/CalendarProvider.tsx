@@ -229,9 +229,18 @@ export function CalendarProvider({
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
   >(settings.agendaModeGroupBy ?? DEFAULT_SETTINGS.agendaModeGroupBy);
+  // Initialize from localStorage so we have a sensible value before the
+  // server's UserSettings.weekStartDay arrives. Once authenticated, the
+  // effect below promotes the server value to the source of truth and the
+  // setter writes through to the API instead of localStorage (#338).
   const [weekStartDay, setWeekStartDayState] = useState<TWeekStartDay>(
     settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay
   );
+
+  // One-shot guard for the localStorage → server migration. Survives
+  // remounts via localStorage, but a single React StrictMode double-mount
+  // is also covered by the in-memory ref so we never PUT twice.
+  const weekStartMigrationRef = useRef(false);
 
   // Single mount-only write that handles two concerns atomically:
   //
@@ -331,10 +340,82 @@ export function CalendarProvider({
     updateSettings({ agendaModeGroupBy: groupBy });
   };
 
+  /**
+   * Persist the chosen week-start day. Once authenticated, the source of
+   * truth is `UserSettings.weekStartDay` on the server (#338), so the setter
+   * PUTs to `/api/settings` and the next `useUserSettings` refresh reads it
+   * back. We still mirror the value into localStorage so unauthenticated
+   * surfaces (and the next paint while we wait for the server) stay in sync.
+   */
   const setWeekStartDay = (day: TWeekStartDay) => {
     setWeekStartDayState(day);
     updateSettings({ weekStartDay: day });
+    if (status === "authenticated") {
+      void fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekStartDay: day }),
+      }).catch((error) => {
+        logger.error(error as Error, {
+          context: "setWeekStartDay",
+          weekStartDay: day,
+        });
+      });
+    }
   };
+
+  // localStorage → server migration for `weekStartDay` (#338).
+  //
+  // Pre-#338, `weekStartDay` lived only in the per-browser `calendar-settings`
+  // localStorage key. When a user with a non-default localStorage value
+  // (Monday) signs in for the first time after the rollout, push it up to
+  // the server exactly once so subsequent browsers see their preference.
+  // The migration flag lives in its own localStorage key so it survives a
+  // tab close before a future server-driven refactor.
+  useEffect(() => {
+    if (weekStartMigrationRef.current) return;
+    if (status !== "authenticated") return;
+    if (typeof window === "undefined") return;
+
+    const FLAG_KEY = "calendar-week-start-day-migrated";
+    if (window.localStorage.getItem(FLAG_KEY) === "1") {
+      weekStartMigrationRef.current = true;
+      return;
+    }
+
+    const localValue = settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay;
+    const serverValue = userSettings.weekStartDay;
+
+    if (localValue !== serverValue) {
+      // The local value is the user's last explicit choice on this browser;
+      // promote it to the server so other browsers + the main Settings page
+      // see the same default.
+      void fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekStartDay: localValue }),
+      }).catch((error) => {
+        logger.error(error as Error, {
+          context: "weekStartDayMigration",
+        });
+      });
+    }
+
+    window.localStorage.setItem(FLAG_KEY, "1");
+    weekStartMigrationRef.current = true;
+  }, [status, settings.weekStartDay, userSettings.weekStartDay]);
+
+  // Once the server value is known and the migration has run, treat the
+  // server as the source of truth: if it diverges from local state, sync
+  // local state down. This is what makes a change made on a different
+  // browser show up here without a manual reload.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!weekStartMigrationRef.current) return;
+    if (userSettings.weekStartDay !== weekStartDay) {
+      setWeekStartDayState(userSettings.weekStartDay);
+    }
+  }, [status, userSettings.weekStartDay, weekStartDay]);
 
   const filterEventsBySelectedColors = (color: TEventColor) => {
     setSelectedColors((prev) =>

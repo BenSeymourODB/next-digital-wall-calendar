@@ -1640,3 +1640,159 @@ describe("CalendarProvider", () => {
     });
   });
 });
+
+// Issue #338 — `weekStartDay` is now sourced from `UserSettings` on the
+// server. The provider must (a) migrate the existing per-browser localStorage
+// value to the server exactly once on first authenticated mount, and
+// (b) write through to `/api/settings` when the user toggles the value via
+// the calendar settings panel.
+describe("CalendarProvider — weekStartDay server migration (#338)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const FLAG_KEY = "calendar-week-start-day-migrated";
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    mockSessionState.current = {
+      data: {
+        user: { name: "Test", email: "test@test.test" },
+        expires: new Date(Date.now() + 86_400_000).toISOString(),
+      },
+      status: "authenticated",
+    };
+    fetchMock = vi.fn().mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url === "/api/settings") {
+        // Fresh server with default Sunday-start; nothing to migrate down.
+        return Promise.resolve(fetchOk({ weekStartDay: 0 }));
+      }
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(fetchOk({ events: [] }));
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  function findSettingsPut(): RequestInit | undefined {
+    for (const [, init] of fetchMock.mock.calls) {
+      if (
+        typeof init === "object" &&
+        init !== null &&
+        (init as RequestInit).method === "PUT"
+      ) {
+        return init as RequestInit;
+      }
+    }
+    return undefined;
+  }
+
+  it("migrates a non-default localStorage weekStartDay to /api/settings exactly once", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 1, // user previously chose Monday on this browser
+      })
+    );
+
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    await waitFor(() => {
+      // The shim has fired and tagged the flag.
+      expect(window.localStorage.getItem(FLAG_KEY)).toBe("1");
+    });
+
+    const settingsPuts = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        url === "/api/settings" &&
+        typeof init === "object" &&
+        init !== null &&
+        (init as RequestInit).method === "PUT"
+    );
+    expect(settingsPuts).toHaveLength(1);
+    const body = JSON.parse(String(settingsPuts[0][1].body));
+    expect(body).toEqual({ weekStartDay: 1 });
+  });
+
+  it("does not migrate when local matches server (both default Sunday)", async () => {
+    // No localStorage set up — the user has no prior local preference.
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem(FLAG_KEY)).toBe("1");
+    });
+
+    expect(findSettingsPut()).toBeUndefined();
+  });
+
+  it("does not migrate twice if the flag is already set", async () => {
+    window.localStorage.setItem(FLAG_KEY, "1");
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 1,
+      })
+    );
+
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    // Give the effect a tick to potentially fire (it shouldn't).
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(findSettingsPut()).toBeUndefined();
+  });
+
+  it("PUTs to /api/settings when the user toggles weekStartDay", async () => {
+    window.localStorage.setItem(FLAG_KEY, "1");
+    const user = userEvent.setup();
+
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    // Wait for initial mount + effects to settle.
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("0");
+    });
+
+    await user.click(screen.getByText("week-monday"));
+
+    await waitFor(() => {
+      const put = findSettingsPut();
+      expect(put).toBeDefined();
+      expect(JSON.parse(String(put!.body))).toEqual({ weekStartDay: 1 });
+    });
+  });
+});
