@@ -3,21 +3,15 @@
  * Returns all calendars with their color information
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import type { CalendarAccessRole } from "@/lib/google-calendar-mappers";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
 
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
-/**
- * Access role exposed by `calendarList.list`. Determines whether the calendar
- * accepts writes (used by the EventCreateDialog calendar picker — issue #268).
- */
-export type CalendarAccessRole =
-  | "freeBusyReader"
-  | "reader"
-  | "writer"
-  | "owner";
+export type { CalendarAccessRole } from "@/lib/google-calendar-mappers";
+export { canWriteToCalendar } from "@/lib/google-calendar-mappers";
 
 /**
  * Calendar information returned by this endpoint
@@ -38,6 +32,12 @@ export interface CalendarInfo {
   foregroundColor: string;
   primary: boolean;
   selected: boolean;
+  /**
+   * Per-calendar access role from `calendarList.list`. The route fills in
+   * `"reader"` when Google omits it so the EventCreateDialog picker (#268)
+   * and EventDetailModal delete-gating (#266) can fail-closed without
+   * special-casing `undefined`.
+   */
   accessRole: CalendarAccessRole;
 }
 

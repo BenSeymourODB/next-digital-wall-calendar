@@ -1639,4 +1639,139 @@ describe("CalendarProvider", () => {
       expect(screen.getByText("evt-2")).toBeInTheDocument();
     });
   });
+
+  describe("canEditCalendar (#266)", () => {
+    function AccessProbe({ calendarId }: { calendarId: string }) {
+      const { canEditCalendar } = useCalendar();
+      return (
+        <span data-testid={`can-edit-${calendarId}`}>
+          {String(canEditCalendar(calendarId))}
+        </span>
+      );
+    }
+
+    it("returns true for owner and writer calendars", async () => {
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(
+            fetchOk({
+              calendars: [
+                { id: "primary", accessRole: "owner" },
+                { id: "shared", accessRole: "writer" },
+              ],
+            })
+          );
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        return Promise.resolve(fetchOk({ events: [] }));
+      });
+
+      render(
+        <CalendarProvider>
+          <AccessProbe calendarId="primary" />
+          <AccessProbe calendarId="shared" />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("can-edit-primary")).toHaveTextContent(
+          "true"
+        );
+        expect(screen.getByTestId("can-edit-shared")).toHaveTextContent("true");
+      });
+    });
+
+    it("returns false for reader and freeBusyReader calendars", async () => {
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(
+            fetchOk({
+              calendars: [
+                { id: "shared", accessRole: "reader" },
+                { id: "busy", accessRole: "freeBusyReader" },
+              ],
+            })
+          );
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        return Promise.resolve(fetchOk({ events: [] }));
+      });
+
+      render(
+        <CalendarProvider>
+          <AccessProbe calendarId="shared" />
+          <AccessProbe calendarId="busy" />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("can-edit-shared")).toHaveTextContent(
+          "false"
+        );
+        expect(screen.getByTestId("can-edit-busy")).toHaveTextContent("false");
+      });
+    });
+
+    it("defaults to permissive when the calendar's accessRole is unknown", async () => {
+      // Unknown calendar must not silently disable delete buttons — the
+      // server-side 403 toast is the safety net for race conditions.
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(
+            fetchOk({ calendars: [{ id: "primary", accessRole: "owner" }] })
+          );
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        return Promise.resolve(fetchOk({ events: [] }));
+      });
+
+      render(
+        <CalendarProvider>
+          <AccessProbe calendarId="never-fetched" />
+        </CalendarProvider>
+      );
+
+      // The calendar list resolves with only `primary`, so `never-fetched`
+      // is unknown — the helper returns true rather than locking the UI.
+      await waitFor(() => {
+        expect(screen.getByTestId("can-edit-never-fetched")).toHaveTextContent(
+          "true"
+        );
+      });
+    });
+
+    it("treats accessRole missing on the response as permissive", async () => {
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        return Promise.resolve(fetchOk({ events: [] }));
+      });
+
+      render(
+        <CalendarProvider>
+          <AccessProbe calendarId="primary" />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("can-edit-primary")).toHaveTextContent(
+          "true"
+        );
+      });
+    });
+  });
 });

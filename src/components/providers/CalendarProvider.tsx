@@ -15,6 +15,10 @@ import {
   transformGoogleEvent,
 } from "@/lib/calendar-transform";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
+import {
+  type CalendarAccessRole,
+  canWriteToCalendar,
+} from "@/lib/google-calendar-mappers";
 import { logger } from "@/lib/logger";
 import type {
   IEvent,
@@ -101,6 +105,14 @@ export interface ICalendarContext {
    * The promise rejects on failure so the caller can surface a toast.
    */
   deleteEvent: (eventId: string, calendarId: string) => Promise<void>;
+  /**
+   * Whether the current user has write access on the calendar that owns
+   * `calendarId`. Resolves to `true` for `owner`/`writer` roles, `false`
+   * for `reader`/`freeBusyReader`, and `true` (permissive default) when
+   * the calendar's role is unknown — the server-side 403 toast remains
+   * the safety net for mid-session permission changes (issue #266).
+   */
+  canEditCalendar: (calendarId: string) => boolean;
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
   /**
@@ -289,6 +301,12 @@ export function CalendarProvider({
     }
   );
   const [calendarIds, setCalendarIds] = useState<string[]>([]);
+  // Map of calendarId → access role for the current user. Populated when
+  // the calendar list resolves; consumed by `canEditCalendar` so callers
+  // can gate write actions (#266).
+  const [calendarAccessRoles, setCalendarAccessRoles] = useState<
+    Record<string, CalendarAccessRole | undefined>
+  >({});
   // Per-calendar metadata used by `transformGoogleEvent` to pick a
   // human-readable user attribution for shared-calendar events whose creator
   // / organizer have no `displayName` (#307 Bug B). Populated from the same
@@ -298,6 +316,9 @@ export function CalendarProvider({
   );
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
+
+  const canEditCalendar = (calendarId: string) =>
+    canWriteToCalendar(calendarAccessRoles[calendarId]);
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
     setSettings((prev) => ({
@@ -526,6 +547,9 @@ export function CalendarProvider({
    * Fetch the user's calendar list and return both the IDs (for downstream
    * `/api/calendar/events` queries) and a metadata map keyed by id (for the
    * `transformGoogleEvent` user-attribution fallback ladder, #307 Bug B).
+   * Side effect: snapshots each calendar's `accessRole` into
+   * `calendarAccessRoles` so `canEditCalendar` can gate write actions
+   * (#266) without a separate round-trip.
    */
   const fetchCalendarList = useCallback(async (): Promise<{
     ids: string[];
@@ -550,6 +574,11 @@ export function CalendarProvider({
             },
           ])
         );
+        const roles: Record<string, CalendarAccessRole | undefined> = {};
+        for (const cal of data.calendars) {
+          roles[cal.id] = cal.accessRole;
+        }
+        setCalendarAccessRoles(roles);
         logger.log("Fetched calendar list", { count: ids.length });
         return { ids, metadata };
       }
@@ -1025,6 +1054,7 @@ export function CalendarProvider({
     removeEvent,
     createEvent,
     deleteEvent,
+    canEditCalendar,
     clearFilter,
     refreshEvents,
     loadEventsForYear,

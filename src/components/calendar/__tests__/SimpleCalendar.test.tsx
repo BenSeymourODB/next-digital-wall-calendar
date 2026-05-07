@@ -63,6 +63,7 @@ function createMockContext(
     removeEvent: vi.fn(),
     createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
     deleteEvent: vi.fn().mockResolvedValue(undefined),
+    canEditCalendar: () => true,
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     loadEventsForYear: vi.fn(),
@@ -897,6 +898,80 @@ describe("SimpleCalendar", () => {
         screen.getByRole("heading", { name: "Piano Recital" })
       ).toBeInTheDocument();
       expect(screen.getByText("Emma's spring concert")).toBeInTheDocument();
+    });
+
+    it("hides the delete button when the event's calendar is read-only (#266)", async () => {
+      const user = userEvent.setup();
+      const now = new Date();
+      const event = createMockEvent({
+        id: "ro-event",
+        title: "Holiday Closure",
+        calendarId: "shared-readonly",
+        startDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          9,
+          0
+        ).toISOString(),
+        endDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          10,
+          0
+        ).toISOString(),
+      });
+
+      renderWithContext({
+        events: [event],
+        canEditCalendar: (calendarId: string) =>
+          calendarId !== "shared-readonly",
+      });
+
+      await user.click(screen.getByText("Holiday Closure"));
+
+      expect(
+        screen.getByRole("heading", { name: "Holiday Closure" })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows the delete button when the event's calendar is editable (#266)", async () => {
+      const user = userEvent.setup();
+      const now = new Date();
+      const event = createMockEvent({
+        id: "rw-event",
+        title: "Team Sync",
+        calendarId: "primary",
+        startDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          9,
+          0
+        ).toISOString(),
+        endDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          10,
+          0
+        ).toISOString(),
+      });
+
+      renderWithContext({
+        events: [event],
+        canEditCalendar: () => true,
+      });
+
+      await user.click(screen.getByText("Team Sync"));
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
     });
 
     it("closes the modal after opening when the close button is clicked", async () => {

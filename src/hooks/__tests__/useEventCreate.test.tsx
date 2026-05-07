@@ -64,6 +64,7 @@ function makeContext(
     removeEvent: vi.fn(),
     createEvent: vi.fn(),
     deleteEvent: vi.fn().mockResolvedValue(undefined),
+    canEditCalendar: () => true,
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     loadEventsForYear: vi.fn(),

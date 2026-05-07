@@ -383,4 +383,59 @@ describe("EventDetailModal", () => {
       expect(onDelete).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("read-only access (#266)", () => {
+    it("hides the delete button when canDelete is false even if onDelete is provided", () => {
+      // The caller sets canDelete=false for read-only calendars (reader,
+      // freeBusyReader). It might still pass onDelete from a shared helper —
+      // the modal must respect canDelete and never show the action.
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          canDelete={false}
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders the delete button when canDelete is true and onDelete is provided", () => {
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          canDelete={true}
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
+    });
+
+    it("defaults to showing the delete button when canDelete is omitted (back-compat)", () => {
+      // Pre-#266 callers didn't pass canDelete; the modal showed delete
+      // whenever onDelete was wired up. The new prop must default to true
+      // so existing callers don't silently break.
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
+    });
+  });
 });

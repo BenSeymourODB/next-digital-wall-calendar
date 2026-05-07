@@ -5,6 +5,10 @@ import {
   type CreateEventInput,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import {
+  type CalendarAccessRole,
+  canWriteToCalendar,
+} from "@/lib/google-calendar-mappers";
 import type {
   IEvent,
   IUser,
@@ -44,6 +48,14 @@ interface MockCalendarProviderProps {
   isAuthenticated?: boolean;
   /** Max events rendered per day cell before the "+N more" overflow */
   maxEventsPerDay?: number;
+  /**
+   * Per-calendar access roles. Controls the result of `canEditCalendar`
+   * in tests and on the test pages — pass e.g. `{ shared: "reader" }` to
+   * exercise the read-only EventDetailModal path (#266). Calendars
+   * absent from this map default to permissive (`canEditCalendar` returns
+   * `true`).
+   */
+  calendarAccessRoles?: Record<string, CalendarAccessRole | undefined>;
 }
 
 /**
@@ -73,6 +85,7 @@ export function MockCalendarProvider({
   loadingDelay = 0,
   isAuthenticated = true,
   maxEventsPerDay = 3,
+  calendarAccessRoles = {},
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -179,6 +192,9 @@ export function MockCalendarProvider({
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
+  const canEditCalendar = (calendarId: string) =>
+    canWriteToCalendar(calendarAccessRoles[calendarId]);
+
   // Mock refresh - just returns current events
   const refreshEvents = async () => {
     if (loadingDelay > 0) {
@@ -247,6 +263,7 @@ export function MockCalendarProvider({
     removeEvent,
     createEvent,
     deleteEvent,
+    canEditCalendar,
     clearFilter,
     refreshEvents,
     loadEventsForYear,

@@ -191,6 +191,35 @@ function buildMockEventSets(anchor: Date): Record<string, IEvent[]> {
       }),
     ],
 
+    // Single event sourced from a read-only Google Calendar — paired with
+    // the `?readOnly` query param so EventDetailModal hides the delete UI
+    // (issue #266). Use the matching `READ_ONLY_TEST_CALENDAR_ID` constant
+    // when wiring the access-role map.
+    "read-only": [
+      createMockEvent({
+        id: "ro-1",
+        title: "Read Only Event",
+        calendarId: "shared-readonly",
+        startDate: getRelativeDate(0, 10, 0),
+        endDate: getRelativeDate(0, 11, 0),
+        color: "purple",
+      }),
+    ],
+
+    // Single event from a `freeBusyReader` calendar — same delete-gating
+    // path as `read-only`, but covers the stricter accessRole branch in
+    // its own E2E lane (#266).
+    "free-busy": [
+      createMockEvent({
+        id: "fb-1",
+        title: "Free Busy Event",
+        calendarId: "freebusy-cal",
+        startDate: getRelativeDate(0, 10, 0),
+        endDate: getRelativeDate(0, 11, 0),
+        color: "purple",
+      }),
+    ],
+
     // Color test - one of each color
     colors: (
       ["blue", "green", "red", "yellow", "purple", "orange"] as TEventColor[]
@@ -479,6 +508,17 @@ function TestCalendarContent() {
   // Get events for the specified set
   const events = mockEventSets[eventSet] || mockEventSets.default;
 
+  // For the gated event sets, mark each source calendar with the matching
+  // accessRole so EventDetailModal hides the delete button (issue #266).
+  // Other event sets get an empty map and fall back to the permissive
+  // default.
+  const calendarAccessRoles =
+    eventSet === "read-only"
+      ? ({ "shared-readonly": "reader" } as const)
+      : eventSet === "free-busy"
+        ? ({ "freebusy-cal": "freeBusyReader" } as const)
+        : undefined;
+
   return (
     <MockCalendarProvider
       initialEvents={events}
@@ -488,6 +528,7 @@ function TestCalendarContent() {
       isLoading={loading}
       loadingDelay={loadingDelay}
       use24HourFormat={use24Hour}
+      calendarAccessRoles={calendarAccessRoles}
     >
       <div className="container mx-auto max-w-6xl p-4" data-testid="test-page">
         <h1 className="mb-4 text-2xl font-bold text-gray-900">

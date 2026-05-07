@@ -93,6 +93,7 @@ function makeContext(
       .fn()
       .mockImplementation((event: IEvent) => Promise.resolve(event)),
     deleteEvent: vi.fn().mockResolvedValue(undefined),
+    canEditCalendar: () => true,
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     loadEventsForYear: vi.fn(),

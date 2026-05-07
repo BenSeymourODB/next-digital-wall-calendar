@@ -13,7 +13,7 @@ import {
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type CalendarsResponse, GET } from "../route";
+import { type CalendarsResponse, GET, canWriteToCalendar } from "../route";
 
 // Mock modules BEFORE imports
 vi.mock("@/lib/auth", () => ({
@@ -40,18 +40,6 @@ vi.mock("@/lib/logger", () => ({
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-
-// Type definitions for calendar list response
-interface CalendarInfo {
-  id: string;
-  summary: string;
-  summaryOverride?: string;
-  description?: string;
-  backgroundColor: string;
-  foregroundColor: string;
-  primary: boolean;
-  selected: boolean;
-}
 
 describe("/api/calendar/calendars", () => {
   beforeEach(() => {
@@ -211,6 +199,47 @@ describe("/api/calendar/calendars", () => {
       expect(data.calendars[0].summaryOverride).toBe("My Override");
     });
 
+    it("passes accessRole through for read-only and freeBusyReader calendars", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [
+              {
+                id: "shared@group.calendar.google.com",
+                summary: "Shared",
+                backgroundColor: "#7986cb",
+                foregroundColor: "#ffffff",
+                primary: false,
+                selected: true,
+                accessRole: "reader",
+              },
+              {
+                id: "busy@group.calendar.google.com",
+                summary: "Busy",
+                backgroundColor: "#7986cb",
+                foregroundColor: "#ffffff",
+                primary: false,
+                selected: true,
+                accessRole: "freeBusyReader",
+              },
+            ],
+          }),
+      });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<CalendarsResponse>(response);
+
+      expect(status).toBe(200);
+      expect(data.calendars[0].accessRole).toBe("reader");
+      expect(data.calendars[1].accessRole).toBe("freeBusyReader");
+    });
+
     it("returns empty array when no calendars exist", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
       vi.mocked(getAccessToken).mockResolvedValue(
@@ -304,6 +333,20 @@ describe("/api/calendar/calendars", () => {
 
       expect(status).toBe(500);
       expect(data.error).toBe("An unexpected error occurred");
+    });
+
+    it("canWriteToCalendar permits writes for owner and writer", () => {
+      expect(canWriteToCalendar("owner")).toBe(true);
+      expect(canWriteToCalendar("writer")).toBe(true);
+    });
+
+    it("canWriteToCalendar denies writes for reader and freeBusyReader", () => {
+      expect(canWriteToCalendar("reader")).toBe(false);
+      expect(canWriteToCalendar("freeBusyReader")).toBe(false);
+    });
+
+    it("canWriteToCalendar defaults to permissive when role is undefined", () => {
+      expect(canWriteToCalendar(undefined)).toBe(true);
     });
 
     it("handles calendars with missing optional fields", async () => {
