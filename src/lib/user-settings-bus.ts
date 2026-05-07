@@ -18,7 +18,38 @@
 
 const EVENT_NAME = "user-settings-changed";
 
-export type UserSettingsPartial = Record<string, unknown>;
+/**
+ * Closed payload type for bus events. Listing every column in the
+ * `UserSettings` Prisma model that any in-tab consumer might care about
+ * lets typo'd keys (`timeformat` instead of `timeFormat`) fail at
+ * compile time rather than silently no-op at runtime. Add new fields
+ * here as additional `UserSettings` columns get wired through to live
+ * UI sync.
+ *
+ * Value types intentionally mirror the existing `SettingsForm`
+ * `UserSettingsData` shape (`string` for the literal-union columns
+ * `timeFormat` / `dateFormat` / `theme`); subscribers validate the
+ * values via `pickCalendarFields` or equivalent at the consumer
+ * boundary. Tightening is a follow-up once `SettingsForm` adopts the
+ * stronger types end-to-end.
+ */
+export interface UserSettingsBusPayload {
+  timeFormat?: string;
+  dateFormat?: string;
+  theme?: string;
+  defaultZoomLevel?: number;
+  defaultTaskPoints?: number;
+  rewardSystemEnabled?: boolean;
+  showPointsOnCompletion?: boolean;
+  schedulerIntervalSeconds?: number;
+  schedulerPauseOnInteractionSeconds?: number;
+  calendarRefreshIntervalMinutes?: number;
+  calendarFetchMonthsAhead?: number;
+  calendarFetchMonthsBehind?: number;
+  calendarMaxEventsPerDay?: number;
+}
+
+export type UserSettingsPartial = UserSettingsBusPayload;
 
 /**
  * Notify every in-tab subscriber that a partial of `UserSettings` has been

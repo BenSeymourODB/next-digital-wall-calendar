@@ -69,10 +69,7 @@ export default function TestTimeFormatSyncPage() {
 function TimeFormatProbe() {
   const { settings } = useUserSettings();
   return (
-    <div
-      className="border-border bg-card mb-6 rounded-md border p-4"
-      data-testid="time-format-probe"
-    >
+    <div className="border-border bg-card mb-6 rounded-md border p-4">
       <div className="text-foreground text-sm font-semibold">
         Calendar surface (probe)
       </div>

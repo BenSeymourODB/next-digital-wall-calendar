@@ -300,22 +300,35 @@ export function CalendarProvider({
   // Gated on `!isUserSettingsLoading` so the strip-and-maybe-push
   // happens only after `useUserSettings`' initial GET resolves; running
   // the push optimistically before then would let the in-flight GET
-  // clobber our PUT a moment later.
+  // clobber our PUT a moment later. The `migrationRanRef` guard makes
+  // the effect resilient to React Strict Mode's double-invoke and any
+  // future dependency change that would re-trigger the body.
+  const migrationRanRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (isAuthenticated && isUserSettingsLoading) return;
+    if (migrationRanRef.current) return;
+
     const raw = window.localStorage.getItem("calendar-settings");
-    if (!raw) return;
+    if (!raw) {
+      migrationRanRef.current = true;
+      return;
+    }
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(raw) as Record<string, unknown>;
     } catch {
+      migrationRanRef.current = true;
       return;
     }
-    if (typeof parsed.use24HourFormat !== "boolean") return;
+    if (typeof parsed.use24HourFormat !== "boolean") {
+      migrationRanRef.current = true;
+      return;
+    }
     const lsTimeFormat: TTimeFormat = parsed.use24HourFormat ? "24h" : "12h";
     delete parsed.use24HourFormat;
     window.localStorage.setItem("calendar-settings", JSON.stringify(parsed));
+    migrationRanRef.current = true;
 
     if (isAuthenticated && userTimeFormat === "12h" && lsTimeFormat === "24h") {
       void mutateUserSettings({ timeFormat: lsTimeFormat }).catch((error) => {
@@ -324,8 +337,9 @@ export function CalendarProvider({
         });
       });
     }
-    // The effect re-runs as auth + GET resolve; it's idempotent because
-    // the localStorage field is already gone after the first run.
+    // Re-runs are guarded by `migrationRanRef`; the effect intentionally
+    // observes auth + GET resolution to know when it's safe to read the
+    // server-side `userTimeFormat`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, isUserSettingsLoading, userTimeFormat]);
 

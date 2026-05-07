@@ -329,6 +329,80 @@ describe("useUserSettings", () => {
     });
   });
 
+  describe("GET-vs-mutate race (#337)", () => {
+    it("ignores a GET response that resolves AFTER a mutate to avoid clobbering the optimistic write", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      // Initial GET response is held until the test releases it.
+      let resolveGet: (value: Response) => void = () => {};
+      vi.mocked(global.fetch).mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveGet = resolve;
+          })
+      );
+
+      const { result } = renderHook(() => useUserSettings());
+
+      // Mutate to "24h" while the initial GET is still in-flight.
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "24h" }),
+      } as Response);
+      await act(async () => {
+        await result.current.mutate({ timeFormat: "24h" });
+      });
+      expect(result.current.settings.timeFormat).toBe("24h");
+
+      // Now release the original GET — its (stale) "12h" response must
+      // NOT overwrite the optimistic write.
+      await act(async () => {
+        resolveGet({
+          ok: true,
+          json: async () => ({ timeFormat: "12h" }),
+        } as Response);
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(result.current.settings.timeFormat).toBe("24h");
+    });
+
+    it("rolls back optimistic state when the PUT fails", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      // Initial GET — server says 12h.
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "12h" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+      await waitFor(() => {
+        expect(result.current.settings.timeFormat).toBe("12h");
+      });
+
+      // PUT fails after we've optimistically applied "24h".
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: "boom" }),
+      } as Response);
+
+      await expect(
+        act(async () => {
+          await result.current.mutate({ timeFormat: "24h" });
+        })
+      ).rejects.toThrow();
+
+      // Local state is rolled back to the pre-mutate value.
+      expect(result.current.settings.timeFormat).toBe("12h");
+    });
+  });
+
   describe("bus subscription (#337)", () => {
     it("updates state when a bus event arrives from another consumer", async () => {
       mockUseSession.mockReturnValue({
