@@ -28,6 +28,14 @@ const DEFAULT_SIZE = 600;
 const DEFAULT_ARC_THICKNESS = 48;
 
 /**
+ * Arc-span threshold (degrees) at which an arc is wide enough to render its
+ * leading event emoji. Mirrors the `showEmoji` gate inside `EventArc`. The
+ * floating-label feature (#311) uses the same threshold so labels never
+ * point at arc slivers too narrow to display anything.
+ */
+const EMOJI_MIN_SPAN_DEGREES = 10;
+
+/**
  * Detect overlapping events and assign ring indices.
  * Events that overlap in angle range get pushed to inner rings.
  */
@@ -134,12 +142,20 @@ export function AnalogClock({
       innerRadius: ringInnerRadius,
       outerRadius: ringOuterRadius,
     });
+    // Per spec: floating-label trigger is `didOverflow=true` AND the arc
+    // is wide enough to render visibly (the same emoji-visibility threshold
+    // EventArc applies). Sub-10° arcs render no emoji and no in-arc title;
+    // a floating label there would point at a near-invisible sliver.
+    const isOverflow =
+      layout.fit.didOverflow && arcSpan >= EMOJI_MIN_SPAN_DEGREES;
     return {
       event,
       ringIndex,
       ringOuterRadius,
       ringInnerRadius,
+      arcSpan,
       layout,
+      isOverflow,
     };
   });
 
@@ -178,7 +194,14 @@ export function AnalogClock({
       {/* Event arcs layer (behind clock face numbers but in front of background) */}
       <g data-testid="event-arcs-layer">
         {eventLayouts.map(
-          ({ event, ringIndex, ringOuterRadius, ringInnerRadius, layout }) => (
+          ({
+            event,
+            ringIndex,
+            ringOuterRadius,
+            ringInnerRadius,
+            layout,
+            isOverflow,
+          }) => (
             <EventArc
               key={event.id}
               event={event}
@@ -188,7 +211,8 @@ export function AnalogClock({
               cy={cy}
               ringIndex={ringIndex}
               onEventClick={onEventClick}
-              forceHideTitle={layout.fit.didOverflow}
+              forceHideTitle={isOverflow}
+              precomputedLayout={layout}
             />
           )
         )}
@@ -199,7 +223,7 @@ export function AnalogClock({
           label that bleeds toward the centre. */}
       <g data-testid="floating-labels-layer">
         {eventLayouts
-          .filter(({ layout }) => layout.fit.didOverflow)
+          .filter(({ isOverflow }) => isOverflow)
           .sort((a, b) => a.event.startAngle - b.event.startAngle)
           .map(({ event, ringOuterRadius, layout }) => {
             const midAngle = (event.startAngle + event.endAngle) / 2;

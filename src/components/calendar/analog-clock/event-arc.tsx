@@ -48,6 +48,7 @@ export function EventArc({
   cy,
   onEventClick,
   forceHideTitle = false,
+  precomputedLayout,
 }: EventArcProps) {
   const { id, cleanTitle, color, eventEmoji, startAngle, endAngle } = event;
   const isInteractive = Boolean(onEventClick);
@@ -102,13 +103,17 @@ export function EventArc({
 
   // Title layout (radius, font size, 1- vs 2-line, fit) is shared with
   // AnalogClock so the floating-label overflow path (#311) agrees on
-  // didOverflow without recomputing.
-  const { titleRadius, titleFontSize, fit } = computeArcTitleLayout({
-    cleanTitle,
-    arcSpan,
-    innerRadius,
-    outerRadius,
-  });
+  // didOverflow without recomputing. When AnalogClock supplies its
+  // precomputed layout, use that verbatim — guarantees the two surfaces
+  // can never disagree even if inputs drift in a future refactor.
+  const { titleRadius, titleFontSize, fit } =
+    precomputedLayout ??
+    computeArcTitleLayout({
+      cleanTitle,
+      arcSpan,
+      innerRadius,
+      outerRadius,
+    });
 
   // Per-line offset for the 2-line case (per #310 spec). Place the two
   // curved baselines at titleRadius ± lineOffset so their centre-to-centre

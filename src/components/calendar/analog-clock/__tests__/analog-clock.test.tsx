@@ -289,6 +289,30 @@ describe("AnalogClock", () => {
       ).toBeInTheDocument();
     });
 
+    it("does NOT render a FloatingLabel for sub-10° arcs even when didOverflow=true", () => {
+      // A 5° arc is below the emoji-visibility threshold; per spec the
+      // floating-label trigger requires the arc to be wide enough to render
+      // visibly. fitTitleToArc reports didOverflow=true (budget collapses
+      // to ~0–2 chars) but no floating label should appear.
+      const slivers: ClockEvent[] = [
+        {
+          ...overflowEvent,
+          id: "evt-sliver",
+          startAngle: 90,
+          endAngle: 95, // 5° span
+        },
+      ];
+      render(
+        <AnalogClock
+          events={slivers}
+          currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        />
+      );
+      expect(
+        screen.queryByTestId("floating-label-evt-sliver")
+      ).not.toBeInTheDocument();
+    });
+
     it("does NOT render a FloatingLabel for events whose title fits in-arc", () => {
       render(
         <AnalogClock

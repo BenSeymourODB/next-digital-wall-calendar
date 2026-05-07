@@ -103,4 +103,13 @@ export interface EventArcProps {
    * still renders so the arc remains visually identifiable.
    */
   forceHideTitle?: boolean;
+  /**
+   * Optional precomputed title layout. When provided, EventArc skips the
+   * internal `computeArcTitleLayout` call and uses this value — keeps the
+   * arc's `fit.lines` decision strictly identical to the one AnalogClock
+   * used to derive `forceHideTitle`, so the two surfaces cannot silently
+   * disagree if the underlying inputs ever drift apart. When omitted,
+   * EventArc still works standalone (e.g. tests, ad-hoc usage).
+   */
+  precomputedLayout?: import("./arc-title-layout").ArcTitleLayout;
 }
