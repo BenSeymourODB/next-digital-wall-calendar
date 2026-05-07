@@ -21,7 +21,7 @@ This preserves merge order (PR #193 first, PR #198 second) and matches the conve
 
 ## Risk & deploy mitigation
 
-Renaming a migration directory is safe in dev (Prisma keys `_prisma_migrations` rows on the directory name; running `pnpm db:migrate:reset` re-applies cleanly). It is **not** safe in any environment that has already applied the old name, because Prisma will see the row as a stale name and treat the new name as pending.
+Renaming a migration directory is safe in dev (Prisma keys `_prisma_migrations` rows on the directory name; running `pnpm db:migrate:reset` re-applies cleanly — **dev only, this drops all data**). It is **not** safe in any environment that has already applied the old name, because Prisma will see the row as a stale name and treat the new name as pending.
 
 For each environment that has already deployed `0005_pointtransaction_unique_task_award`, run **before** deploying the rename:
 
