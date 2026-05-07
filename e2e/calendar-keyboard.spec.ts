@@ -281,49 +281,6 @@ test.describe("SimpleCalendar — keyboard navigation", () => {
     expect(after).toBe(before);
   });
 
-  test("Home with weekStartDay=1 snaps selection to Monday (a11y wire-through, #231)", async ({
-    page,
-  }) => {
-    // Anchor on a Wednesday in a Monday-first week so Home moves backward
-    // by exactly two days. Picking a fixed local date avoids week-of-year
-    // ambiguity around month boundaries.
-    await page.goto(
-      "/test/calendar?events=default&view=month&controls=false&sidebar=false&weekStartDay=1&anchor=2026-04-15"
-    );
-    await expect(page.getByRole("grid", { name: /calendar$/i })).toBeVisible();
-
-    const selected = page.locator('[role="gridcell"][aria-selected="true"]');
-    await selected.focus();
-    await page.keyboard.press("Home");
-
-    const afterKey = await page
-      .locator('[role="gridcell"][aria-selected="true"]')
-      .getAttribute("data-date");
-    const [y, m, d] = afterKey!.split("-").map(Number);
-    // getDay(): Monday = 1 (the week boundary for Monday-first users).
-    expect(new Date(y, m - 1, d).getDay()).toBe(1);
-  });
-
-  test("End with weekStartDay=1 snaps selection to Sunday (a11y wire-through, #231)", async ({
-    page,
-  }) => {
-    await page.goto(
-      "/test/calendar?events=default&view=month&controls=false&sidebar=false&weekStartDay=1&anchor=2026-04-15"
-    );
-    await expect(page.getByRole("grid", { name: /calendar$/i })).toBeVisible();
-
-    const selected = page.locator('[role="gridcell"][aria-selected="true"]');
-    await selected.focus();
-    await page.keyboard.press("End");
-
-    const afterKey = await page
-      .locator('[role="gridcell"][aria-selected="true"]')
-      .getAttribute("data-date");
-    const [y, m, d] = afterKey!.split("-").map(Number);
-    // getDay(): Sunday = 0 (end of a Monday-first week).
-    expect(new Date(y, m - 1, d).getDay()).toBe(0);
-  });
-
   test("clicking a gridcell selects it", async ({ page }) => {
     // Pick a non-selected in-month cell by scanning gridcells and finding
     // one that isn't today's selected cell and isn't a decorative padding
@@ -341,5 +298,51 @@ test.describe("SimpleCalendar — keyboard navigation", () => {
     await expect(
       page.locator('[role="gridcell"][aria-selected="true"]')
     ).toHaveAttribute("data-date", targetKey!);
+  });
+});
+
+// Sibling describe (not nested) so the parent `beforeEach` doesn't fire
+// before our own goto — these tests need both `weekStartDay=1` and a
+// deterministic anchor in the URL, and a single navigation per test
+// keeps the pair fast on slow runners (#231).
+test.describe("SimpleCalendar — Monday-first keyboard navigation (weekStartDay=1)", () => {
+  // Wednesday in a Monday-first week (Mon Apr 13 – Sun Apr 19, 2026).
+  const ANCHOR = "2026-04-15";
+  const ANCHOR_URL = `/test/calendar?events=default&view=month&controls=false&sidebar=false&weekStartDay=1&anchor=${ANCHOR}`;
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(ANCHOR_URL);
+    await expect(page.getByRole("grid", { name: /calendar$/i })).toBeVisible();
+  });
+
+  test("Home snaps selection to Monday (#231)", async ({ page }) => {
+    const selected = page.locator('[role="gridcell"][aria-selected="true"]');
+    await selected.focus();
+    await page.keyboard.press("Home");
+
+    // Wait for React to commit the new selection before reading the
+    // date — `getAttribute` is non-retrying and would otherwise race
+    // the post-keydown re-render on slow CI.
+    const newSelected = page.locator('[role="gridcell"][aria-selected="true"]');
+    await expect(newSelected).not.toHaveAttribute("data-date", ANCHOR);
+
+    const afterKey = await newSelected.getAttribute("data-date");
+    const [y, m, d] = afterKey!.split("-").map(Number);
+    // getDay(): Monday = 1 (the week boundary for Monday-first users).
+    expect(new Date(y, m - 1, d).getDay()).toBe(1);
+  });
+
+  test("End snaps selection to Sunday (#231)", async ({ page }) => {
+    const selected = page.locator('[role="gridcell"][aria-selected="true"]');
+    await selected.focus();
+    await page.keyboard.press("End");
+
+    const newSelected = page.locator('[role="gridcell"][aria-selected="true"]');
+    await expect(newSelected).not.toHaveAttribute("data-date", ANCHOR);
+
+    const afterKey = await newSelected.getAttribute("data-date");
+    const [y, m, d] = afterKey!.split("-").map(Number);
+    // getDay(): Sunday = 0 (end of a Monday-first week).
+    expect(new Date(y, m - 1, d).getDay()).toBe(0);
   });
 });

@@ -15,7 +15,12 @@ import {
   useCalendar,
 } from "@/components/providers/MockCalendarProvider";
 import { Button } from "@/components/ui/button";
-import type { IEvent, TCalendarView, TEventColor } from "@/types/calendar";
+import type {
+  IEvent,
+  TCalendarView,
+  TEventColor,
+  TWeekStartDay,
+} from "@/types/calendar";
 import { type ReactNode, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -464,12 +469,15 @@ function TestCalendarContent() {
   const use24Hour = searchParams.get("24hour") !== "false";
   const showSidebar = searchParams.get("sidebar") === "true";
   const showFilters = searchParams.get("filters") === "true";
-  // `?weekStartDay=1` flips the mock provider to Monday-first so E2E
-  // specs can exercise weekStartDay-aware behaviour (Home/End, grid
-  // layout, range headers) without needing a logged-in user with the
-  // setting persisted. Defaults to Sunday-first (0) to preserve existing
-  // specs.
-  const weekStartDayParam = searchParams.get("weekStartDay") === "1" ? 1 : 0;
+  // `?weekStartDay=N` flips the mock provider to a non-default week
+  // start so E2E specs can exercise weekStartDay-aware behaviour
+  // (Home/End, grid layout, range headers) without needing a logged-in
+  // user with the setting persisted. Today `TWeekStartDay = 0 | 1`, so
+  // only `0` and `1` are accepted; if that type ever widens (e.g. 6 for
+  // Saturday-first) extend the validator below in the same change so
+  // unknown values aren't silently coerced to Sunday-first.
+  const weekStartDayRaw = Number(searchParams.get("weekStartDay") ?? "0");
+  const weekStartDayParam: TWeekStartDay = weekStartDayRaw === 1 ? 1 : 0;
 
   // Optional `?anchor=YYYY-MM-DD` pins the relative event timestamps to a
   // deterministic "today" and also seeds `MockCalendarProvider`'s

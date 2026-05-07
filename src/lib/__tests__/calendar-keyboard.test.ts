@@ -151,6 +151,19 @@ describe("applyCalendarKeyboardAction", () => {
     expect(result.toDateString()).toBe(monday.toDateString());
   });
 
+  it("WEEK_END with weekStartsOn=1 moves a Saturday forward to the following Sunday (Saturday is not end-of-week)", () => {
+    // Saturday is the last day of a Sunday-first week but the
+    // second-to-last day of a Monday-first week — `WEEK_END` must jump
+    // forward, not stay put. Mon-first week: Mon Apr 13 – Sun Apr 19.
+    const saturday = new Date(2026, 3, 18);
+    const result = applyCalendarKeyboardAction(
+      saturday,
+      { type: "WEEK_END" },
+      1
+    );
+    expect(result.toDateString()).toBe(new Date(2026, 3, 19).toDateString());
+  });
+
   it("non-week actions ignore weekStartsOn (PREVIOUS_DAY behaves identically)", () => {
     const result = applyCalendarKeyboardAction(
       anchor,
