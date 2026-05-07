@@ -3,6 +3,8 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { useEventCreate } from "@/hooks/useEventCreate";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useWritableCalendars } from "@/hooks/useWritableCalendars";
 import type { IEvent, IUser } from "@/types/calendar";
 import { useState } from "react";
 import { Plus } from "lucide-react";
@@ -20,6 +22,7 @@ const LOCAL_USER: IUser = {
 };
 
 const DEFAULT_CALENDAR_ID = "primary";
+const PERSISTED_CALENDAR_KEY = "calendar.lastUsedCalendarId";
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -27,12 +30,22 @@ function generateId(): string {
 
 export function AddEventButton() {
   const { selectedDate } = useCalendar();
+  const { calendars } = useWritableCalendars();
+  const [persistedCalendarId, setPersistedCalendarId] = useLocalStorage<string>(
+    PERSISTED_CALENDAR_KEY,
+    DEFAULT_CALENDAR_ID
+  );
   const createEvent = useEventCreate({
     defaultCalendarId: DEFAULT_CALENDAR_ID,
   });
   const [open, setOpen] = useState(false);
 
   const handleCreate = (input: EventCreateInput) => {
+    // Remember the user's choice for next time. The dialog already validated
+    // it against the writable list (or fell back to primary), so anything
+    // arriving here is safe to store as-is.
+    setPersistedCalendarId(input.calendarId);
+
     const optimistic: IEvent = {
       id: generateId(),
       title: input.title,
@@ -42,7 +55,7 @@ export function AddEventButton() {
       startDate: input.startDate,
       endDate: input.endDate,
       user: LOCAL_USER,
-      calendarId: DEFAULT_CALENDAR_ID,
+      calendarId: input.calendarId,
     };
 
     // Fire-and-forget against the Google write path. The hook owns the
@@ -55,7 +68,7 @@ export function AddEventButton() {
       isAllDay: input.isAllDay,
       startDate: input.startDate,
       endDate: input.endDate,
-      calendarId: DEFAULT_CALENDAR_ID,
+      calendarId: input.calendarId,
     });
   };
 
@@ -75,6 +88,8 @@ export function AddEventButton() {
         onOpenChange={setOpen}
         onCreate={handleCreate}
         defaultDate={selectedDate}
+        calendars={calendars}
+        defaultCalendarId={persistedCalendarId}
       />
     </>
   );

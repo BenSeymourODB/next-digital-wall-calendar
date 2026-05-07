@@ -1,8 +1,12 @@
 /**
  * Test fixtures for Profile API tests
  */
+import type { Prisma } from "@/generated/prisma/client";
 
-// Define local types for testing (matches Prisma schema)
+// Define local types for testing (matches Prisma schema). `avatar` is
+// `Prisma.JsonValue` so fixtures pass strict type checks when handed to
+// `vi.mocked(prisma)…mockResolvedValue` calls. Full retype to the
+// generated Prisma `Profile` lives in #280.
 interface Profile {
   id: string;
   userId: string;
@@ -10,7 +14,7 @@ interface Profile {
   type: "admin" | "standard";
   ageGroup: "adult" | "teen" | "child";
   color: string;
-  avatar: unknown;
+  avatar: Prisma.JsonValue;
   pinHash: string | null;
   pinEnabled: boolean;
   failedPinAttempts: number;

@@ -5,8 +5,13 @@
  * Uses SVG textPath for curved text that follows the arc path,
  * with emoji positioned at the midpoint of the arc.
  */
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { describeArc, polarToCartesian, roundCoord } from "./clock-utils";
+import { fitTitleToArc } from "./fit-title";
 import type { EventArcProps } from "./types";
+
+/** Minimum arc span (degrees) below which 2-line wrap is suppressed. */
+const TWO_LINE_MIN_SPAN_DEGREES = 30;
 
 /**
  * Generate an SVG arc path for textPath (single arc, not a donut).
@@ -44,8 +49,25 @@ export function EventArc({
   innerRadius,
   cx,
   cy,
+  onEventClick,
 }: EventArcProps) {
   const { id, cleanTitle, color, eventEmoji, startAngle, endAngle } = event;
+  const isInteractive = Boolean(onEventClick);
+
+  // Compose the accessible name without a trailing comma when no emoji is set,
+  // so screen readers don't vocalise a stray "comma" at the end.
+  const ariaLabel = eventEmoji
+    ? `Event: ${cleanTitle}, ${eventEmoji}`
+    : `Event: ${cleanTitle}`;
+
+  const handleKeyDown = (e: ReactKeyboardEvent<SVGGElement>) => {
+    if (!onEventClick) return;
+    if (e.key === "Enter" || e.key === " ") {
+      // Prevent the page from scrolling on Space.
+      e.preventDefault();
+      onEventClick(id, e.currentTarget);
+    }
+  };
 
   // Generate the donut-arc path for the colored background
   const arcPath = describeArc(
@@ -82,25 +104,50 @@ export function EventArc({
   const emojiFontSize = roundCoord(Math.min(arcHeight * 0.4, 26));
   const titleFontSize = roundCoord(Math.min(arcHeight * 0.3, 18));
 
-  // Prepare display text: emoji + title combined for textPath
-  const displayText =
-    cleanTitle.length > 15 ? `${cleanTitle.slice(0, 14)}...` : cleanTitle;
-
-  // Text path for curved title
-  const textArcPath = describeTextArc(
-    cx,
-    cy,
+  // Decide between a single curved line and two concentric curved lines based
+  // on the arc's available circumference at titleRadius. Below
+  // TWO_LINE_MIN_SPAN_DEGREES we keep the single-line truncation behavior so
+  // narrow arcs don't end up with 2-char-per-line stubs.
+  const maxLines: 1 | 2 = arcSpan >= TWO_LINE_MIN_SPAN_DEGREES ? 2 : 1;
+  const fit = fitTitleToArc(
+    cleanTitle,
+    arcSpan,
     titleRadius,
-    startAngle,
-    endAngle
+    titleFontSize,
+    maxLines
   );
-  const textPathId = `text-path-${id}`;
+
+  // Per-line offset for the 2-line case (per #310 spec). Place the two
+  // curved baselines at titleRadius ± lineOffset so their centre-to-centre
+  // distance is 2 × lineOffset = ~1.1 × fontSize — just enough to avoid
+  // glyph overlap given dominantBaseline="central" puts each glyph band at
+  // ±fontSize/2 around its centre.
+  const lineOffset = titleFontSize * 0.55;
+  const lineRadii =
+    fit.lines.length === 2
+      ? [titleRadius + lineOffset, titleRadius - lineOffset]
+      : [titleRadius];
+
+  const textArcPaths = lineRadii.map((r) =>
+    describeTextArc(cx, cy, r, startAngle, endAngle)
+  );
+  const textPathIds = lineRadii.map((_, i) => `text-path-${id}-${i}`);
 
   return (
     <g
       data-testid={`event-arc-group-${id}`}
-      role="img"
-      aria-label={`Event: ${cleanTitle}, ${eventEmoji || ""}`}
+      role={isInteractive ? "button" : "img"}
+      aria-label={ariaLabel}
+      tabIndex={isInteractive ? 0 : undefined}
+      onClick={
+        onEventClick ? (e) => onEventClick(id, e.currentTarget) : undefined
+      }
+      onKeyDown={isInteractive ? handleKeyDown : undefined}
+      className={
+        isInteractive
+          ? "cursor-pointer focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+          : undefined
+      }
     >
       {/* Colored arc background */}
       <path
@@ -112,9 +159,11 @@ export function EventArc({
         strokeWidth={1.5}
       />
 
-      {/* Define the text path for curved text */}
+      {/* Define the text path(s) for curved text — one per rendered line. */}
       <defs>
-        <path id={textPathId} d={textArcPath} fill="none" />
+        {textArcPaths.map((d, i) => (
+          <path key={textPathIds[i]} id={textPathIds[i]} d={d} fill="none" />
+        ))}
       </defs>
 
       {/* Event emoji - inner-radius midpoint, rotated to match arc angle */}
@@ -132,24 +181,30 @@ export function EventArc({
         </text>
       )}
 
-      {/* Event title - curved along the arc using textPath */}
-      {showTitle && (
-        <text
-          data-testid={`event-title-${id}`}
-          fontSize={titleFontSize}
-          fontWeight={500}
-          fill="white"
-          fontFamily="system-ui, -apple-system, sans-serif"
-        >
-          <textPath
-            href={`#${textPathId}`}
-            startOffset="50%"
-            textAnchor="middle"
-            dominantBaseline="central"
-          >
-            {displayText}
-          </textPath>
-        </text>
+      {/* Event title — one <text>+<textPath> per rendered line so each line
+          has its own typographic context and there is no SVG 2 "continue
+          on the next path" sequencing concern when two lines render. */}
+      {showTitle && fit.lines.length > 0 && (
+        <g data-testid={`event-title-${id}`}>
+          {fit.lines.map((line, i) => (
+            <text
+              key={textPathIds[i]}
+              fontSize={titleFontSize}
+              fontWeight={500}
+              fill="white"
+              fontFamily="system-ui, -apple-system, sans-serif"
+            >
+              <textPath
+                href={`#${textPathIds[i]}`}
+                startOffset="50%"
+                textAnchor="middle"
+                dominantBaseline="central"
+              >
+                {line}
+              </textPath>
+            </text>
+          ))}
+        </g>
       )}
     </g>
   );

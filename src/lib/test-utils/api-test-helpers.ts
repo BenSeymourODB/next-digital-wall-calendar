@@ -113,3 +113,27 @@ export function createMockHeaders(
 
   return headers;
 }
+
+/**
+ * Build a `Response`-shaped fixture for tests that mock `global.fetch`.
+ *
+ * Always sets `headers: new Headers()` so wrappers like `fetchWithRetry`
+ * (which read `Retry-After`) don't crash on an undefined headers field.
+ * Makes future 503→503→200 exhaustion tests a one-liner without forcing
+ * every fixture to remember the `Headers()` boilerplate.
+ *
+ * Status defaults to 200; `ok` is derived from status unless overridden.
+ */
+export function jsonResponse(
+  body: unknown,
+  init: { ok?: boolean; status?: number } = {}
+): Response {
+  const status = init.status ?? 200;
+  const ok = init.ok ?? (status >= 200 && status < 300);
+  return {
+    ok,
+    status,
+    headers: new Headers(),
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
+}

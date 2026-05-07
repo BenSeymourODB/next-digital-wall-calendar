@@ -9,7 +9,10 @@
  * - Task title with strikethrough for completed tasks
  * - Due date display with overdue styling
  * - Optional notes display
+ * - Profile assignment avatars when the task is owned by one or more
+ *   family profiles
  */
+import { ProfileAvatar } from "@/components/profiles/profile-avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { type TaskWithMeta, formatDueDate } from "./types";
@@ -25,6 +28,7 @@ export interface TaskItemProps {
 
 export function TaskItem({ task, onToggle, disabled = false }: TaskItemProps) {
   const isCompleted = task.status === "completed";
+  const assignees = task.assignments;
 
   return (
     <div className="p-4 transition hover:bg-gray-50">
@@ -49,15 +53,35 @@ export function TaskItem({ task, onToggle, disabled = false }: TaskItemProps) {
 
         {/* Task content */}
         <div className="min-w-0 flex-1">
-          <label
-            htmlFor={`task-${task.id}`}
-            className={cn(
-              "block cursor-pointer text-gray-900",
-              isCompleted && "text-gray-500 line-through"
+          <div className="flex items-start justify-between gap-2">
+            <label
+              htmlFor={`task-${task.id}`}
+              className={cn(
+                "block cursor-pointer text-gray-900",
+                isCompleted && "text-gray-500 line-through"
+              )}
+            >
+              {task.title}
+            </label>
+
+            {assignees.length > 0 && (
+              <div
+                role="group"
+                aria-label={`Assigned to ${assignees
+                  .map((a) => a.profile.name)
+                  .join(", ")}`}
+                className="flex flex-shrink-0 -space-x-1"
+              >
+                {assignees.map((a) => (
+                  <ProfileAvatar
+                    key={a.profileId}
+                    profile={a.profile}
+                    size="sm"
+                  />
+                ))}
+              </div>
             )}
-          >
-            {task.title}
-          </label>
+          </div>
 
           {task.due && (
             <div

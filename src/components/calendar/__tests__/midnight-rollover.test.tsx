@@ -29,6 +29,13 @@ import { SimpleCalendar } from "../SimpleCalendar";
 import { WeekCalendar } from "../WeekCalendar";
 import { YearCalendar } from "../YearCalendar";
 
+// SimpleCalendar (used in some scenarios below) mounts AddEventButton, which
+// reads useWritableCalendars → useSession. These tests don't wrap in
+// SessionProvider; mock the hook so the rollover assertions stay focused.
+vi.mock("@/hooks/useWritableCalendars", () => ({
+  useWritableCalendars: () => ({ calendars: [], isLoading: false }),
+}));
+
 function makeContext(
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
@@ -55,8 +62,8 @@ function makeContext(
     addEvent: vi.fn(),
     updateEvent: vi.fn(),
     removeEvent: vi.fn(),
-    createEvent: vi.fn(),
-    deleteEvent: vi.fn(),
+    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
+    deleteEvent: vi.fn().mockResolvedValue(undefined),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),
     loadEventsForYear: vi.fn().mockResolvedValue(undefined),

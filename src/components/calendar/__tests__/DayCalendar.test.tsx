@@ -2,12 +2,8 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
-import type {
-  IEvent,
-  IUser,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
+import type { IUser, TCalendarView, TEventColor } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { addDays, format, isSameDay, startOfDay, subDays } from "date-fns";
@@ -26,25 +22,6 @@ import { DayCalendar } from "../DayCalendar";
  * - Chronological sorting of timed events
  * - 12-hour and 24-hour time formatting
  */
-
-function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
-  return {
-    id: "test-event-1",
-    title: "Test Event",
-    startDate: new Date().toISOString(),
-    endDate: new Date().toISOString(),
-    color: "blue",
-    description: "",
-    isAllDay: false,
-    calendarId: "primary",
-    user: {
-      id: "user-1",
-      name: "Test User",
-      picturePath: null,
-    },
-    ...overrides,
-  };
-}
 
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
@@ -393,6 +370,21 @@ describe("DayCalendar", () => {
       expect(
         screen.queryByTestId("day-calendar-now-line")
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Initial scroll position (#214)", () => {
+    // HOUR_HEIGHT_PX = 48; working hours start at 07:00
+    // Expected scrollTop: 7 * 48 = 336
+    it("auto-scrolls the time grid to ~7am on mount", () => {
+      renderWithContext({ selectedDate: new Date() });
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(336);
+    });
+
+    it("does not render the grid (and thus does not scroll) in agenda mode", () => {
+      renderWithContext({ selectedDate: new Date(), agendaMode: true });
+      expect(screen.queryByTestId("day-calendar-grid")).not.toBeInTheDocument();
     });
   });
 
