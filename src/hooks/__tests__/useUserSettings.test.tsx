@@ -55,6 +55,7 @@ describe("useUserSettings", () => {
       calendarFetchMonthsAhead: 4,
       calendarFetchMonthsBehind: 2,
       calendarMaxEventsPerDay: 5,
+      defaultZoomLevel: 1.5,
     };
     vi.mocked(global.fetch).mockResolvedValue({
       ok: true,
@@ -70,6 +71,46 @@ describe("useUserSettings", () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith("/api/settings");
     expect(result.current.settings).toEqual(mockSettings);
+  });
+
+  it("surfaces defaultZoomLevel from /api/settings", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ defaultZoomLevel: 1.75 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.defaultZoomLevel).toBe(1.75);
+  });
+
+  it("ignores non-numeric defaultZoomLevel and keeps the default", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ defaultZoomLevel: "1.5" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.defaultZoomLevel).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.defaultZoomLevel
+    );
   });
 
   it("falls back to defaults when the API returns an error", async () => {

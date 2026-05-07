@@ -9,6 +9,7 @@ export interface UserCalendarSettings {
   calendarFetchMonthsAhead: number;
   calendarFetchMonthsBehind: number;
   calendarMaxEventsPerDay: number;
+  defaultZoomLevel: number;
 }
 
 export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
@@ -16,6 +17,7 @@ export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
   calendarFetchMonthsAhead: 6,
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
+  defaultZoomLevel: 1.0,
 };
 
 interface UseUserSettingsResult {
@@ -87,6 +89,9 @@ function pickCalendarFields(
   }
   if (typeof data.calendarMaxEventsPerDay === "number") {
     picked.calendarMaxEventsPerDay = data.calendarMaxEventsPerDay;
+  }
+  if (typeof data.defaultZoomLevel === "number") {
+    picked.defaultZoomLevel = data.defaultZoomLevel;
   }
   return picked;
 }
