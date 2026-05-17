@@ -99,6 +99,7 @@ function makeContext(
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
+    workingHoursStart: 7,
     weekStartDay: 0,
     setWeekStartDay: vi.fn(),
     ...overrides,

@@ -93,6 +93,10 @@ model UserSettings {
   calendarFetchMonthsBehind      Int @default(1)
   calendarMaxEventsPerDay        Int @default(3)
 
+  // Hour (0–23) the Day/Week time grids auto-scroll to on first render
+  // so working-hours events land in view immediately (#288). Default 7.
+  calendarWorkingHoursStart Int @default(7)
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 

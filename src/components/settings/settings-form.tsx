@@ -31,6 +31,7 @@ interface UserSettingsData {
   calendarFetchMonthsAhead: number;
   calendarFetchMonthsBehind: number;
   calendarMaxEventsPerDay: number;
+  calendarWorkingHoursStart: number;
 }
 
 interface SettingsFormProps {
@@ -146,6 +147,7 @@ export function SettingsForm({
           calendarFetchMonthsAhead: settings.calendarFetchMonthsAhead,
           calendarFetchMonthsBehind: settings.calendarFetchMonthsBehind,
           calendarMaxEventsPerDay: settings.calendarMaxEventsPerDay,
+          calendarWorkingHoursStart: settings.calendarWorkingHoursStart,
         }}
         onChange={updateSettings}
       />
