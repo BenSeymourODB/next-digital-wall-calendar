@@ -110,6 +110,15 @@ function validateAndExtract(body: Record<string, unknown>): SettingsUpdate {
   return update;
 }
 
+// Settings on soft-deleted profiles are intentionally inaccessible: the
+// profile is no longer addressable from the UI (filtered out of
+// `/api/profiles`), and `ProfileSettings` is cascade-deleted with the
+// profile, so any soft-deleted profile that still has a settings row is
+// in a transient state we shouldn't expose. Matches the
+// `isActive: true` filter on every sibling sub-route (reset-pin,
+// set-pin, stats, give-points). The parent `PATCH /api/profiles/[id]`
+// deliberately omits it so admins can rename/reactivate a soft-deleted
+// profile — a different use case.
 async function assertProfileOwnership(
   profileId: string,
   userId: string
@@ -146,6 +155,12 @@ export const GET = withApiHandler(
       update: {},
     });
 
+    logger.log("ProfileSettingsFetched", {
+      profileId,
+      userId: session.user.id,
+      endpoint: "/api/profiles/[id]/settings",
+    });
+
     return NextResponse.json(settings);
   }
 );
@@ -164,6 +179,10 @@ export const PUT = withApiHandler(
 
     const body = (await request.json()) as Record<string, unknown>;
     const update = validateAndExtract(body);
+
+    if (Object.keys(update).length === 0) {
+      throw new ApiError("No valid fields to update", 400);
+    }
 
     const settings = await prisma.profileSettings.upsert({
       where: { profileId },

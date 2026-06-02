@@ -5,7 +5,7 @@
  * for the active profile.
  */
 import { useProfile } from "@/components/profiles/profile-context";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -138,17 +138,54 @@ describe("SettingsForm — Tasks settings wiring (#334)", () => {
     );
   });
 
-  it("does not fetch when no active profile is available", () => {
+  it("does not fetch when no active profile is available", async () => {
     mockActiveProfile(null);
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     renderSettings();
 
+    // Wait for effects to settle — if the no-active-profile guard were
+    // removed, fetch would be called asynchronously and a synchronous
+    // assertion would miss it.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     const profileSettingsFetch = fetchMock.mock.calls.find(
       (call) => typeof call[0] === "string" && call[0].includes("/settings")
     );
     expect(profileSettingsFetch).toBeUndefined();
+  });
+
+  it("shows fallback defaults (unchecked) while the fetch is still pending", async () => {
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const pendingFetch = new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(pendingFetch));
+
+    renderSettings();
+
+    const switchEl = await screen.findByRole("switch", {
+      name: /show completed tasks/i,
+    });
+
+    // Settings would say `showCompletedTasks: true`, but the promise hasn't
+    // resolved, so the component must still show the unchecked default.
+    expect(switchEl).toHaveAttribute("data-state", "unchecked");
+
+    // Resolve so the cleanup effect doesn't leak.
+    resolveFetch?.({
+      ok: true,
+      json: async () => ({
+        taskSortOrder: "dueDate",
+        showCompletedTasks: true,
+      }),
+    });
+    await waitFor(() =>
+      expect(switchEl).toHaveAttribute("data-state", "checked")
+    );
   });
 
   it("PUTs to the active profile's settings endpoint when showCompletedTasks toggles", async () => {
@@ -202,6 +239,59 @@ describe("SettingsForm — Tasks settings wiring (#334)", () => {
     });
 
     expect(switchEl).toHaveAttribute("data-state", "checked");
+  });
+
+  it("PUTs the new taskSortOrder when the sort-order Select changes", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          taskSortOrder: "dueDate",
+          showCompletedTasks: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          taskSortOrder: "priority",
+          showCompletedTasks: false,
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSettings();
+
+    // Wait until the GET resolves and the section is fully wired.
+    await screen.findByRole("switch", { name: /show completed tasks/i });
+
+    // SettingsForm has several Select dropdowns (timeFormat, dateFormat,
+    // taskSortOrder, …) — the only one initialised to "Due Date" is the
+    // task-sort-order one.
+    const combobox = screen
+      .getAllByRole("combobox")
+      .find((el) => /due date/i.test(el.textContent ?? ""));
+    expect(combobox).toBeDefined();
+    await user.click(combobox!);
+    const option = await screen.findByRole("option", { name: /priority/i });
+    await user.click(option);
+
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find((call) => {
+        const url = call[0] as string;
+        const init = call[1] as RequestInit | undefined;
+        return (
+          url === `/api/profiles/${ACTIVE_PROFILE_ID}/settings` &&
+          init?.method === "PUT"
+        );
+      });
+      expect(putCall).toBeDefined();
+      const body = JSON.parse((putCall![1] as RequestInit).body as string) as {
+        taskSortOrder: string;
+      };
+      expect(body.taskSortOrder).toBe("priority");
+    });
   });
 
   it("rolls back optimistic toggle and toasts on PUT failure", async () => {

@@ -94,7 +94,7 @@ describe("/api/profiles/[id]/settings", () => {
       });
     });
 
-    it("returns existing settings for an owned profile", async () => {
+    it("returns existing settings for an owned profile (upsert update branch)", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
       mockPrisma.profile.findFirst.mockResolvedValue({ id: profileId });
       mockPrisma.profileSettings.upsert.mockResolvedValue(mockProfileSettings);
@@ -113,6 +113,67 @@ describe("/api/profiles/[id]/settings", () => {
         where: { profileId },
         create: { profileId },
         update: {},
+      });
+    });
+
+    it("creates defaults when settings row is missing (upsert create branch)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst.mockResolvedValue({ id: profileId });
+      // Simulate the upsert's create branch returning a fresh defaults row.
+      const freshDefaults = {
+        ...mockProfileSettings,
+        id: "settings-fresh",
+        taskSortOrder: "dueDate",
+        showCompletedTasks: false,
+        theme: "light",
+        language: "en",
+        enableNotifications: false,
+        notificationTime: null,
+        defaultTaskListId: null,
+      };
+      mockPrisma.profileSettings.upsert.mockResolvedValue(freshDefaults);
+
+      const request = createMockRequest(`/api/profiles/${profileId}/settings`);
+      const response = await GET(request, {
+        params: createParams(profileId),
+      });
+      const { status, data } =
+        await parseResponse<typeof freshDefaults>(response);
+
+      expect(status).toBe(200);
+      expect(data.taskSortOrder).toBe("dueDate");
+      expect(data.showCompletedTasks).toBe(false);
+      // The upsert call shape proves the create branch will be taken when no
+      // row exists — Prisma chooses between create/update based on `where`.
+      expect(mockPrisma.profileSettings.upsert).toHaveBeenCalledWith({
+        where: { profileId },
+        create: { profileId },
+        update: {},
+      });
+    });
+
+    it("returns 404 for a soft-deleted (isActive: false) profile", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      // findFirst returns null because the where clause requires
+      // `isActive: true` — a soft-deleted profile is intentionally
+      // inaccessible. See comment on assertProfileOwnership.
+      mockPrisma.profile.findFirst.mockResolvedValue(null);
+
+      const request = createMockRequest(`/api/profiles/${profileId}/settings`);
+      const response = await GET(request, {
+        params: createParams(profileId),
+      });
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(404);
+      expect(data.error).toBe("Profile not found");
+      expect(mockPrisma.profile.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: profileId,
+          userId: mockUserId,
+          isActive: true,
+        },
+        select: { id: true },
       });
     });
 
@@ -360,6 +421,42 @@ describe("/api/profiles/[id]/settings", () => {
         await parseResponse<typeof mockProfileSettings>(response);
 
       expect(status).toBe(200);
+    });
+
+    it("rejects an empty body (no valid fields to update)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst.mockResolvedValue({ id: profileId });
+
+      const request = createMockRequest(`/api/profiles/${profileId}/settings`, {
+        method: "PUT",
+        body: {},
+      });
+      const response = await PUT(request, {
+        params: createParams(profileId),
+      });
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toContain("No valid fields");
+      expect(mockPrisma.profileSettings.upsert).not.toHaveBeenCalled();
+    });
+
+    it("rejects a body containing only unknown fields (no valid fields to update)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.profile.findFirst.mockResolvedValue({ id: profileId });
+
+      const request = createMockRequest(`/api/profiles/${profileId}/settings`, {
+        method: "PUT",
+        body: { bogus: "field", id: "evil" },
+      });
+      const response = await PUT(request, {
+        params: createParams(profileId),
+      });
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toContain("No valid fields");
+      expect(mockPrisma.profileSettings.upsert).not.toHaveBeenCalled();
     });
 
     it("ignores unknown fields (does not persist them)", async () => {
