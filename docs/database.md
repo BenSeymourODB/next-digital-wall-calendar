@@ -151,6 +151,44 @@ The CI pipeline validates two things on every push:
    ```
 2. **Naming convention** — `pnpm db:migrate:check-names` runs in CI and fails if any migration directory does not match `^[0-9]{4}_[a-z0-9_]+$` or if prefixes are not strictly sequential. See [Migration Naming Convention](#migration-naming-convention).
 
+### Shadow database
+
+`prisma migrate diff --from-migrations` needs a real Postgres instance to replay the migration SQL against, then computes the resulting schema and diffs it against `prisma/schema.prisma`. CI provisions one as a [service container](https://docs.github.com/en/actions/using-containerized-services/about-service-containers) so the drift check is deterministic and self-contained:
+
+```yaml
+# .github/workflows/main_nextjs-template-build.yml
+services:
+  postgres:
+    image: postgres:16-alpine
+    env:
+      POSTGRES_USER: prisma
+      POSTGRES_PASSWORD: prisma
+      POSTGRES_DB: shadow
+    ports:
+      - 5432:5432
+    options: >-
+      --health-cmd "pg_isready -U prisma -d shadow"
+      --health-interval 5s
+      --health-timeout 5s
+      --health-retries 10
+```
+
+The validation step passes the container URL explicitly via `--shadow-database-url` (Prisma 7) rather than relying on `SHADOW_DATABASE_URL` env-only discovery:
+
+```yaml
+- name: Validate Prisma migrations are up to date
+  env:
+    SHADOW_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
+  run: |
+    npx prisma migrate diff \
+      --from-migrations prisma/migrations \
+      --to-schema-datamodel prisma/schema.prisma \
+      --shadow-database-url "$SHADOW_DATABASE_URL" \
+      --exit-code
+```
+
+Credentials are throwaway and scoped to the container lifetime. **Local development does not need a separate shadow DB** — `pnpm db:migrate` manages one ad-hoc against your local Postgres server.
+
 ## Migration Directory Structure
 
 ```
