@@ -37,7 +37,7 @@ jobs:
           # Exit code 2 means there is a diff (migrations are out of date).
           npx prisma migrate diff \
             --from-migrations prisma/migrations \
-            --to-schema-datamodel prisma/schema.prisma \
+            --to-schema prisma/schema.prisma \
             --exit-code || {
             echo "::error::Prisma migrations are out of date. Run 'pnpm db:migrate' to create a new migration."
             exit 1
