@@ -206,6 +206,44 @@ describe("token-cipher", () => {
       expect(decryptViaAuth(envelopeFromNext)).toBe("portable");
     });
 
+    it("prefers AUTH_SECRET over NEXTAUTH_SECRET when both are set with different values", async () => {
+      // Without this precedence, a project that has migrated v4 → v5 would
+      // keep deriving from a stale NEXTAUTH_SECRET value. Encrypt with
+      // AUTH_SECRET only as the source of truth, then verify NEXTAUTH_SECRET
+      // alone (with a different value) cannot decrypt — meaning the original
+      // encrypt used AUTH_SECRET, not NEXTAUTH_SECRET.
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("AUTH_SECRET", "auth-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxx");
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv("NODE_ENV", "development");
+      const { encryptToken } = await loadCipher();
+      const envelope = encryptToken("priority-test")!;
+
+      // Now flip: only NEXTAUTH_SECRET (different value) is available. If
+      // resolveKey() had been reading NEXTAUTH_SECRET, decrypt would have
+      // worked on the same value; here it must produce a different key and
+      // throw (GCM auth-tag mismatch) when used on the AUTH_SECRET envelope.
+      vi.stubEnv("AUTH_SECRET", "");
+      vi.stubEnv(
+        "NEXTAUTH_SECRET",
+        "nextauth-secret-yyyyyyyyyyyyyyyyyyyyyyyyy"
+      );
+      const { decryptToken } = await loadCipher();
+      expect(() => decryptToken(envelope)).toThrow();
+
+      // Sanity-check the inverse: when AUTH_SECRET wins, encrypt-then-decrypt
+      // round-trips even with NEXTAUTH_SECRET set to a divergent value.
+      vi.stubEnv("AUTH_SECRET", "auth-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxx");
+      vi.stubEnv(
+        "NEXTAUTH_SECRET",
+        "nextauth-secret-yyyyyyyyyyyyyyyyyyyyyyyyy"
+      );
+      const both = await loadCipher();
+      expect(both.decryptToken(both.encryptToken("round-trip")!)).toBe(
+        "round-trip"
+      );
+    });
+
     it("throws in production when TOKEN_ENCRYPTION_KEY is missing", async () => {
       vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
       vi.stubEnv("NEXTAUTH_SECRET", "some-production-secret");
@@ -291,6 +329,7 @@ describe("token-cipher", () => {
         "NEXTAUTH_SECRET",
         "dev-only-secret-for-testing-xxxxxxxxxxxxxxxxxx"
       );
+      vi.stubEnv("AUTH_SECRET", "");
       vi.stubEnv("NODE_ENV", "development");
 
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -299,6 +338,31 @@ describe("token-cipher", () => {
       encryptToken("a");
       encryptToken("b");
       encryptToken("c");
+
+      const derivationWarns = warnSpy.mock.calls.filter(
+        (args) =>
+          typeof args[0] === "string" &&
+          args[0].includes("TOKEN_ENCRYPTION_KEY")
+      );
+      expect(derivationWarns.length).toBe(1);
+
+      warnSpy.mockRestore();
+    });
+
+    it("warns once when deriving a key from AUTH_SECRET (v5 idiom)", async () => {
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv(
+        "AUTH_SECRET",
+        "v5-only-secret-for-testing-xxxxxxxxxxxxxxxxxxxxx"
+      );
+      vi.stubEnv("NODE_ENV", "development");
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { encryptToken } = await loadCipher();
+      encryptToken("a");
+      encryptToken("b");
 
       const derivationWarns = warnSpy.mock.calls.filter(
         (args) =>

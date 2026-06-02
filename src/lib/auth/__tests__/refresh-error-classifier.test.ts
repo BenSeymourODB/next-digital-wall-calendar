@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { classifyTokenRefreshError } from "../refresh-error-classifier";
+import {
+  MissingRefreshTokenError,
+  RefreshTokenDecryptError,
+  classifyTokenRefreshError,
+} from "../refresh-error-classifier";
 import { GoogleTokenRefreshError } from "../refresh-google-token";
 
 describe("classifyTokenRefreshError", () => {
@@ -22,6 +26,35 @@ describe("classifyTokenRefreshError", () => {
         error: "unauthorized_client",
       });
       expect(classifyTokenRefreshError(err)).toBe("terminal");
+    });
+
+    it("classifies unsupported_grant_type as terminal", () => {
+      // Misconfiguration on our side — sending the wrong grant_type can
+      // never succeed on retry, so force re-auth.
+      const err = new GoogleTokenRefreshError(400, {
+        error: "unsupported_grant_type",
+      });
+      expect(classifyTokenRefreshError(err)).toBe("terminal");
+    });
+  });
+
+  describe("internal sentinel errors (locally-permanent state)", () => {
+    it("classifies MissingRefreshTokenError as terminal", () => {
+      // No refresh token in the DB row — no number of retries can conjure
+      // one. The session must invalidate so the user re-authenticates and a
+      // fresh refresh_token gets stored.
+      expect(classifyTokenRefreshError(new MissingRefreshTokenError())).toBe(
+        "terminal"
+      );
+    });
+
+    it("classifies RefreshTokenDecryptError as terminal", () => {
+      // GCM auth-tag mismatch / unknown envelope version / key rotation —
+      // the stored ciphertext can never be decrypted with the current key,
+      // so the user must re-authenticate.
+      expect(classifyTokenRefreshError(new RefreshTokenDecryptError())).toBe(
+        "terminal"
+      );
     });
   });
 
