@@ -1,5 +1,6 @@
 "use client";
 
+import { useProfile } from "@/components/profiles/profile-context";
 import type { TransitionConfig } from "@/components/scheduler/types";
 import { DEFAULT_TRANSITION_CONFIG } from "@/lib/scheduler/schedule-config";
 import {
@@ -16,6 +17,16 @@ import { RewardSection } from "./reward-section";
 import { SchedulerSection } from "./scheduler-section";
 import { TaskSection } from "./task-section";
 import { TransitionSection } from "./transition-section";
+
+interface ProfileTaskSettings {
+  taskSortOrder: string;
+  showCompletedTasks: boolean;
+}
+
+const DEFAULT_TASK_SETTINGS: ProfileTaskSettings = {
+  taskSortOrder: "dueDate",
+  showCompletedTasks: false,
+};
 
 interface UserSettingsData {
   theme: string;
@@ -50,11 +61,13 @@ export function SettingsForm({
   providers,
   initialSettings,
 }: SettingsFormProps) {
+  const { activeProfile } = useProfile();
+  const activeProfileId = activeProfile?.id ?? null;
+
   const [settings, setSettings] = useState<UserSettingsData>(initialSettings);
-  const [taskSettings, setTaskSettings] = useState({
-    taskSortOrder: "dueDate",
-    showCompletedTasks: false,
-  });
+  const [taskSettings, setTaskSettings] = useState<ProfileTaskSettings>(
+    DEFAULT_TASK_SETTINGS
+  );
   const [transitionConfig, setTransitionConfig] = useState<TransitionConfig>(
     () => DEFAULT_TRANSITION_CONFIG
   );
@@ -64,6 +77,37 @@ export function SettingsForm({
     const config = loadScheduleConfig();
     setTransitionConfig(config.transition ?? DEFAULT_TRANSITION_CONFIG);
   }, []);
+
+  // Load profile-scoped task settings whenever the active profile changes.
+  useEffect(() => {
+    if (!activeProfileId) return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const response = await fetch(
+          `/api/profiles/${activeProfileId}/settings`
+        );
+        if (!response.ok) return;
+        const data = (await response.json()) as Partial<ProfileTaskSettings>;
+        if (cancelled) return;
+        setTaskSettings({
+          taskSortOrder:
+            data.taskSortOrder ?? DEFAULT_TASK_SETTINGS.taskSortOrder,
+          showCompletedTasks:
+            data.showCompletedTasks ?? DEFAULT_TASK_SETTINGS.showCompletedTasks,
+        });
+      } catch {
+        // Leave defaults in place on network failure; toast is reserved for
+        // user-initiated changes.
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProfileId]);
 
   const updateSettings = async (partial: Partial<UserSettingsData>) => {
     const updated = { ...settings, ...partial };
@@ -109,6 +153,35 @@ export function SettingsForm({
 
   const handleDeleteAllData = async () => {
     await handleDeleteAccount();
+  };
+
+  const updateTaskSettings = async (partial: Partial<ProfileTaskSettings>) => {
+    if (!activeProfileId) {
+      toast.error("No active profile — task settings cannot be saved");
+      return;
+    }
+
+    const previous = taskSettings;
+    const next = { ...previous, ...partial };
+    setTaskSettings(next);
+
+    try {
+      const response = await fetch(
+        `/api/profiles/${activeProfileId}/settings`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(partial),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update task settings");
+      }
+    } catch {
+      toast.error("Failed to save task settings");
+      setTaskSettings(previous);
+    }
   };
 
   return (
@@ -164,12 +237,7 @@ export function SettingsForm({
         onChange={updateSettings}
       />
 
-      <TaskSection
-        values={taskSettings}
-        onChange={(partial) =>
-          setTaskSettings((prev) => ({ ...prev, ...partial }))
-        }
-      />
+      <TaskSection values={taskSettings} onChange={updateTaskSettings} />
 
       <PrivacySection
         permissions={["Google Calendar (read)", "Google Tasks (read/write)"]}
