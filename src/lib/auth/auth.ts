@@ -9,6 +9,7 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { encryptLinkedAccount } from "./link-account";
+import { classifyTokenRefreshError } from "./refresh-error-classifier";
 import { refreshGoogleAccessToken } from "./refresh-google-token";
 import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
 
@@ -17,7 +18,14 @@ import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
 // and silently degrades to `session.error = "RefreshTokenError"` — which the
 // user sees as "Session expired. Please sign in again." every hour even
 // though the underlying problem is a server-side env-var gap (#315).
-validateEncryptionKey();
+//
+// Skipped during `next build`: page-data collection evaluates this module
+// without runtime env vars and a throw here aborts the build. Production
+// runtime still validates eagerly on server start (NEXT_PHASE is unset or
+// "phase-production-server").
+if (process.env.NEXT_PHASE !== "phase-production-build") {
+  validateEncryptionKey();
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -165,12 +173,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             success: true,
           });
         } catch (error) {
-          logger.error(error as Error, {
-            context: "TokenRefreshFailed",
-            userId: user.id,
-          });
-          // Return error so we can handle it on the client
-          session.error = "RefreshTokenError";
+          // Only force re-auth when Google itself says the refresh token is
+          // dead (terminal). Transient failures — network blip, rate limit,
+          // decrypt hiccup, 5xx — must NOT touch session.error or the user
+          // sees "Session expired" every refresh cycle on a healthy device
+          // (#315). The next session callback retries; upstream API routes
+          // continue to serve cached data via the IndexedDB fallback.
+          const classification = classifyTokenRefreshError(error);
+          if (classification === "terminal") {
+            logger.error(error as Error, {
+              context: "TokenRefreshFailed",
+              userId: user.id,
+            });
+            session.error = "RefreshTokenError";
+          } else {
+            logger.error(error as Error, {
+              context: "TokenRefreshTransientFailure",
+              userId: user.id,
+            });
+          }
         }
       }
 
