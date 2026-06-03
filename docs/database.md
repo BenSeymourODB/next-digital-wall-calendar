@@ -160,6 +160,43 @@ The CI pipeline validates two things on every push:
    any migration directory does not match `^[0-9]{14}_[a-z0-9]+(?:_[a-z0-9]+)*$` or if any two
    directories share the same 14-digit prefix.
 
+### Shadow database
+
+`prisma migrate diff --from-migrations` needs a real Postgres instance to replay the migration SQL against, then computes the resulting schema and diffs it against `prisma/schema.prisma`. CI provisions one as a [service container](https://docs.github.com/en/actions/using-containerized-services/about-service-containers) so the drift check is deterministic and self-contained:
+
+```yaml
+# .github/workflows/main_nextjs-template-build.yml
+services:
+  postgres:
+    image: postgres:16-alpine
+    env:
+      POSTGRES_USER: prisma
+      POSTGRES_PASSWORD: prisma
+      POSTGRES_DB: shadow
+    ports:
+      - 5432:5432
+    options: >-
+      --health-cmd "pg_isready -U prisma -d shadow"
+      --health-interval 5s
+      --health-timeout 5s
+      --health-retries 10
+```
+
+The validation step passes the container URL via `SHADOW_DATABASE_URL`, which `prisma.config.ts` exposes as `datasource.shadowDatabaseUrl`. `prisma migrate diff --from-migrations` in Prisma 7 requires either that field or a `--shadow-database-url` flag (the flag is rejected by the `migrate diff` parser despite being suggested in Prisma's own error text — config-driven is the working path).
+
+```yaml
+- name: Validate Prisma migrations are up to date
+  env:
+    SHADOW_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
+  run: |
+    npx prisma migrate diff \
+      --from-migrations prisma/migrations \
+      --to-schema prisma/schema.prisma \
+      --exit-code
+```
+
+Credentials are throwaway and scoped to the container lifetime. **Local development is unaffected** — `SHADOW_DATABASE_URL` is `undefined` when not set in your environment, and `pnpm db:migrate` (which uses `prisma migrate dev`, not `migrate diff`) auto-manages a shadow DB on your local Postgres server without needing the variable.
+
 ## Migration Directory Structure
 
 ```
