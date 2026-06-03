@@ -2,6 +2,7 @@
  * Tests for useReducedMotion hook.
  */
 import { act, renderHook } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import {
   type MockInstance,
   afterEach,
@@ -109,8 +110,11 @@ describe("useReducedMotion", () => {
     const { result } = renderHook(() => useReducedMotion());
     expect(result.current).toBe(false);
 
+    // useSyncExternalStore re-reads getSnapshot on subscription notifications,
+    // so flip the mock's matches value before firing the listener.
     const handler = mql.addEventListener.mock.calls[0][1];
     act(() => {
+      mql.matches = true;
       handler({ matches: true } as MediaQueryListEvent);
     });
 
@@ -126,9 +130,65 @@ describe("useReducedMotion", () => {
 
     const handler = mql.addEventListener.mock.calls[0][1];
     act(() => {
+      mql.matches = false;
       handler({ matches: false } as MediaQueryListEvent);
     });
 
     expect(result.current).toBe(false);
+  });
+
+  // Regression coverage for #306: the SSR pass and the client's first render
+  // must produce the same value (`false`), regardless of what matchMedia
+  // would report. Previously the function-initializer read window.matchMedia
+  // synchronously on the client's first render, producing a hydration mismatch
+  // whenever the user had `prefers-reduced-motion: reduce` enabled.
+  it("returns false during server-render even when matchMedia reports a match", () => {
+    const mql = createMockMediaQueryList(true);
+    window.matchMedia = vi.fn().mockReturnValue(mql);
+
+    function Probe() {
+      return <div data-testid="value">{String(useReducedMotion())}</div>;
+    }
+
+    // renderToString triggers the useSyncExternalStore SSR path
+    // (getServerSnapshot) regardless of whether `window` exists in the test
+    // environment — React detects the SSR rendering context internally — so
+    // running this in jsdom with a stubbed matchMedia is still a valid proof
+    // that the SSR pass returns `false`.
+    const html = renderToString(<Probe />);
+
+    expect(html).toContain(">false<");
+    expect(html).not.toContain(">true<");
+  });
+
+  it("transitions to the live matchMedia value after mount", () => {
+    const mql = createMockMediaQueryList(true);
+    window.matchMedia = vi.fn().mockReturnValue(mql);
+
+    const { result } = renderHook(() => useReducedMotion());
+
+    // After mount, useSyncExternalStore reads the live snapshot.
+    expect(result.current).toBe(true);
+  });
+
+  // Older Android WebViews and a few JSDOM configs ship without
+  // `window.matchMedia`. Both `getSnapshot` and `subscribe` guard against this
+  // and degrade to `false` / no-op; this test exercises that path.
+  it("returns false when window.matchMedia is unavailable on the client", () => {
+    const original = window.matchMedia;
+    // Simulate an environment that does not expose matchMedia.
+    (
+      window as unknown as { matchMedia?: typeof window.matchMedia }
+    ).matchMedia = undefined;
+
+    try {
+      const { result, unmount } = renderHook(() => useReducedMotion());
+      expect(result.current).toBe(false);
+      // Unmounting must not throw even though subscribe never registered a
+      // listener.
+      expect(() => unmount()).not.toThrow();
+    } finally {
+      window.matchMedia = original;
+    }
   });
 });

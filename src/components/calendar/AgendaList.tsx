@@ -193,7 +193,7 @@ export function AgendaList({
 }: AgendaListProps) {
   const { use24HourFormat, agendaModeGroupBy } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
 
   const openModal = (event: IEvent, trigger: HTMLElement) => {
     triggerRef.current = trigger;

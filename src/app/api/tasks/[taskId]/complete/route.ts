@@ -4,7 +4,11 @@
  *
  * POST - Complete a task and update streak
  */
-import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  getSession,
+  requireGoogleTasksAccessToken,
+} from "@/lib/auth";
 import { patchTask } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
@@ -52,6 +56,9 @@ export async function POST(
       );
     }
 
+    // Combined scope check + token decryption in a single DB call (#260).
+    const accessToken = await requireGoogleTasksAccessToken(session);
+
     const { taskId } = await params;
 
     let body: RequestBody = {};
@@ -77,7 +84,6 @@ export async function POST(
       );
     }
 
-    const accessToken = await getAccessToken();
     const task = await patchTask(accessToken, listId, taskId, {
       status: "completed",
     });
@@ -87,8 +93,9 @@ export async function POST(
     return NextResponse.json({ task, streak });
   } catch (error) {
     if (error instanceof AuthError) {
+      const requiresReauth = error.status === 401 || error.status === 403;
       return NextResponse.json(
-        { error: error.message, requiresReauth: error.status === 401 },
+        { error: error.message, requiresReauth },
         { status: error.status }
       );
     }

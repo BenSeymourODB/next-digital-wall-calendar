@@ -1,7 +1,10 @@
+import { createMockEvent as createBaseMockEvent } from "@/test/fixtures/calendar-event";
 import type { IEvent, TCalendarView } from "@/types/calendar";
+import { parseISO } from "date-fns";
 import { describe, expect, it } from "vitest";
 import {
   WEEK_STARTS_ON,
+  WORKING_HOURS_START_HOUR,
   assignBarRows,
   computeEventColumns,
   formatTime,
@@ -17,6 +20,7 @@ import {
   getEventsForWeek,
   getEventsForYear,
   getFirstLetters,
+  getInitialScrollTop,
   getShortWeekdayLabels,
   getWeekDates,
   groupEvents,
@@ -25,23 +29,15 @@ import {
   toCapitalize,
 } from "../calendar-helpers";
 
-// Test fixtures
-const createMockEvent = (overrides: Partial<IEvent> = {}): IEvent => ({
-  id: "test-event-1",
-  title: "Test Event",
-  startDate: "2024-03-15T10:00:00",
-  endDate: "2024-03-15T11:00:00",
-  color: "blue",
-  description: "Test description",
-  isAllDay: false,
-  calendarId: "primary",
-  user: {
-    id: "user-1",
-    name: "Test User",
-    picturePath: null,
-  },
-  ...overrides,
-});
+// Local wrapper that pins the date defaults this file's tests assume.
+// Sequenced default ids come from the shared fixture.
+const createMockEvent = (overrides: Partial<IEvent> = {}): IEvent =>
+  createBaseMockEvent({
+    startDate: "2024-03-15T10:00:00",
+    endDate: "2024-03-15T11:00:00",
+    description: "Test description",
+    ...overrides,
+  });
 
 describe("rangeText", () => {
   const testDate = new Date(2024, 2, 15); // March 15, 2024
@@ -354,6 +350,146 @@ describe("getEventsForWeek", () => {
     const result = getEventsForWeek(events, new Date(2024, 2, 13));
     expect(result.length).toBe(2);
   });
+
+  it("includes Saturday-afternoon events on the last day of the week (regression: #201)", () => {
+    // Week of Sun Mar 10 – Sat Mar 16, 2024 (WEEK_STARTS_ON = 0).
+    // Events at every hour of Saturday should be included; the previous
+    // implementation used `weekDates[6]` (start-of-Saturday) as the upper
+    // bound and silently dropped anything after Saturday 00:00:00.
+    const saturdayAfternoon = createMockEvent({
+      id: "sat-afternoon",
+      startDate: "2024-03-16T14:00:00",
+      endDate: "2024-03-16T15:00:00",
+    });
+    const saturdayLateNight = createMockEvent({
+      id: "sat-late",
+      startDate: "2024-03-16T23:30:00",
+      endDate: "2024-03-16T23:59:00",
+    });
+    const saturdayMorning = createMockEvent({
+      id: "sat-morning",
+      startDate: "2024-03-16T08:00:00",
+      endDate: "2024-03-16T09:00:00",
+    });
+
+    const result = getEventsForWeek(
+      [saturdayMorning, saturdayAfternoon, saturdayLateNight],
+      new Date(2024, 2, 13)
+    );
+    const ids = result.map((e) => e.id).sort();
+    expect(ids).toEqual(["sat-afternoon", "sat-late", "sat-morning"]);
+  });
+
+  it("excludes events that start on Sunday of the next week", () => {
+    // Boundary check the other direction: the next week starts at
+    // Sun Mar 17 00:00:00 and should NOT be included in the prior week.
+    const nextSundayMidnight = createMockEvent({
+      id: "next-sun",
+      startDate: "2024-03-17T00:00:00",
+      endDate: "2024-03-17T01:00:00",
+    });
+    const result = getEventsForWeek(
+      [nextSundayMidnight],
+      new Date(2024, 2, 13)
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("excludes events fully before the week (Saturday of the prior week)", () => {
+    // Week prior runs Sun Mar 3 – Sat Mar 9, 2024. An event at Sat Mar 9
+    // 23:30 is in the prior week and should not leak into Mar 10–16.
+    const priorSaturdayLate = createMockEvent({
+      id: "prior-sat",
+      startDate: "2024-03-09T23:30:00",
+      endDate: "2024-03-09T23:59:00",
+    });
+    const result = getEventsForWeek([priorSaturdayLate], new Date(2024, 2, 13));
+    expect(result).toEqual([]);
+  });
+
+  it("includes a multi-day event that ends Saturday afternoon", () => {
+    // Spans Thu Mar 14 22:00 → Sat Mar 16 15:00. Locks in the overlap
+    // logic against the symmetric off-by-one we just fixed.
+    const spanning = createMockEvent({
+      id: "span",
+      startDate: "2024-03-14T22:00:00",
+      endDate: "2024-03-16T15:00:00",
+    });
+    const result = getEventsForWeek([spanning], new Date(2024, 2, 13));
+    expect(result.map((e) => e.id)).toEqual(["span"]);
+  });
+
+  it("includes a multi-day event that starts Saturday afternoon and runs into next week", () => {
+    // Spans Sat Mar 16 14:00 → Mon Mar 18 09:00. Pre-fix this would be
+    // dropped: `eventStart` (Sat 14:00) was greater than the old upper
+    // bound (Sat 00:00), even though the event clearly belongs in the
+    // week.
+    const spanningOut = createMockEvent({
+      id: "span-out",
+      startDate: "2024-03-16T14:00:00",
+      endDate: "2024-03-18T09:00:00",
+    });
+    const result = getEventsForWeek([spanningOut], new Date(2024, 2, 13));
+    expect(result.map((e) => e.id)).toEqual(["span-out"]);
+  });
+
+  // Regression: #234 — events that start on the last day of the week (Saturday
+  // when WEEK_STARTS_ON = 0) at any time after 00:00 were being filtered out
+  // because the upper bound was `weekDates[6]`, i.e. Saturday at midnight.
+  it("includes events that start on the last day of the week", () => {
+    // Sat May 2, 2026 is the last day of the Apr 26 – May 2 Sunday-first week.
+    const sat = (h: number, m = 0): string =>
+      new Date(2026, 4, 2, h, m, 0, 0).toISOString();
+    const referenceDate = new Date(2026, 4, 2);
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "sat-morning",
+        startDate: sat(9),
+        endDate: sat(10),
+      }),
+      createMockEvent({
+        id: "sat-afternoon",
+        startDate: sat(14),
+        endDate: sat(15),
+      }),
+      createMockEvent({
+        id: "sat-late-night",
+        startDate: sat(23, 30),
+        endDate: sat(23, 59),
+      }),
+    ];
+
+    const result = getEventsForWeek(events, referenceDate);
+    expect(result.map((e) => e.id).sort()).toEqual([
+      "sat-afternoon",
+      "sat-late-night",
+      "sat-morning",
+    ]);
+
+    // Spot-check that the timestamps actually match the variable names
+    // (catches accidental shared-Date mutation).
+    const morning = result.find((e) => e.id === "sat-morning")!;
+    expect(parseISO(morning.startDate).getHours()).toBe(9);
+    const afternoon = result.find((e) => e.id === "sat-afternoon")!;
+    expect(parseISO(afternoon.startDate).getHours()).toBe(14);
+    const lateNight = result.find((e) => e.id === "sat-late-night")!;
+    expect(parseISO(lateNight.startDate).getHours()).toBe(23);
+  });
+
+  it("excludes events that start the day after the week ends", () => {
+    // Sun May 3, 2026 is the first day of the next week.
+    const referenceDate = new Date(2026, 4, 2); // selectedDate sits on Saturday
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "next-week",
+        startDate: "2026-05-03T00:30:00",
+        endDate: "2026-05-03T01:30:00",
+      }),
+    ];
+
+    const result = getEventsForWeek(events, referenceDate);
+    expect(result).toEqual([]);
+  });
 });
 
 describe("getEventsForMonth", () => {
@@ -591,6 +727,18 @@ describe("getCurrentTimePosition", () => {
       (23 * 60 + 59) / 14.4,
       5
     );
+  });
+});
+
+describe("getInitialScrollTop (#214)", () => {
+  it("multiplies the hour by the row height", () => {
+    expect(getInitialScrollTop(7, 48)).toBe(336);
+    expect(getInitialScrollTop(7, 40)).toBe(280);
+    expect(getInitialScrollTop(0, 48)).toBe(0);
+  });
+
+  it("WORKING_HOURS_START_HOUR defaults to 7 (start of working day)", () => {
+    expect(WORKING_HOURS_START_HOUR).toBe(7);
   });
 });
 

@@ -3,12 +3,14 @@
 import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { useSlideDirection } from "@/hooks/use-slide-direction";
 import { useEventDelete } from "@/hooks/useEventDelete";
 import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import {
   applyCalendarKeyboardAction,
   keyboardEventToAction,
 } from "@/lib/calendar-keyboard";
+import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -38,8 +40,6 @@ function toDateKey(date: Date): string {
   return format(date, "yyyy-MM-dd");
 }
 
-const MONTH_SLIDE_DURATION_MS = 300;
-
 /** Stable absolute month index used to derive slide direction across year
  * boundaries (e.g. Dec 2024 -> Jan 2025 should still slide "forward"). */
 function absoluteMonthIndex(date: Date): number {
@@ -55,9 +55,10 @@ export function SimpleCalendar() {
     maxEventsPerDay,
     use24HourFormat,
     weekStartDay,
+    transitionDurationMs,
   } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
 
   const weekdayHeaders = getShortWeekdayLabels(weekStartDay);
@@ -100,22 +101,10 @@ export function SimpleCalendar() {
     weekRows.push(allCells.slice(i, i + 7));
   }
 
-  // Track the previously rendered month so we can derive slide direction
-  // automatically as the user navigates (next/prev buttons, today, keyboard,
-  // mini-calendar). Uses the React-recommended "setState during render" pattern
-  // (same as AnimatedSwap) so the direction is settled in a single pass; React
-  // Compiler handles memoization automatically — no useMemo/useCallback needed.
-  const currentMonthIndex = absoluteMonthIndex(monthStart);
-  const [prevMonthIndex, setPrevMonthIndex] = useState(currentMonthIndex);
-  const [slideDirection, setSlideDirection] = useState<"forward" | "backward">(
-    "forward"
-  );
-  if (prevMonthIndex !== currentMonthIndex) {
-    setSlideDirection(
-      currentMonthIndex < prevMonthIndex ? "backward" : "forward"
-    );
-    setPrevMonthIndex(currentMonthIndex);
-  }
+  // Slide direction follows the absolute-month-index delta so navigating
+  // forward/backward (next/prev, today, keyboard, mini-calendar) is detected
+  // uniformly. Day/Week/Year views use the same hook.
+  const slideDirection = useSlideDirection(absoluteMonthIndex(monthStart));
 
   const previousMonth = () => {
     const newDate = new Date(selectedDate);
@@ -136,7 +125,7 @@ export function SimpleCalendar() {
     });
   };
 
-  const today = new Date();
+  const today = useDateNow();
   const isCurrentMonth = isSameMonth(selectedDate, today);
 
   // Count events in the displayed month
@@ -304,7 +293,7 @@ export function SimpleCalendar() {
           swapKey={format(monthStart, "yyyy-MM")}
           type="slide"
           direction={slideDirection}
-          durationMs={MONTH_SLIDE_DURATION_MS}
+          durationMs={transitionDurationMs}
         >
           <div role="rowgroup" data-testid="calendar-month-grid">
             {weekRows.map((row, rowIndex) => (

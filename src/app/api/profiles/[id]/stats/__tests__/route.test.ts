@@ -14,7 +14,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   mockAdminProfile,
   mockProfileRewardPoints,
-  mockUserId,
 } from "../../../__tests__/fixtures";
 import { GET } from "../route";
 

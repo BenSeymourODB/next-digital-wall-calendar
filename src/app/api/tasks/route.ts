@@ -2,10 +2,15 @@
  * API endpoint for Google Tasks
  * Uses server-side authentication with NextAuth.js
  */
-import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  getSession,
+  requireGoogleTasksAccessToken,
+} from "@/lib/auth";
 import { createTask, listTasks } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
+import { getTaskAssignmentsByTaskIds } from "@/lib/services/task-assignments";
 import { NextRequest, NextResponse } from "next/server";
 
 interface CreateTaskBody {
@@ -13,6 +18,11 @@ interface CreateTaskBody {
   title?: string;
   notes?: string;
   due?: string;
+}
+
+interface GoogleTaskItem {
+  id: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -39,6 +49,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Combined scope check + token decryption in a single DB call (#260).
+    // Short-circuits users missing the Tasks scope (#237) before URL
+    // parsing, matching the original assertGoogleTasksScope ordering.
+    const accessToken = await requireGoogleTasksAccessToken(session);
+
     const { searchParams } = new URL(request.url);
     const listId = searchParams.get("listId");
 
@@ -63,8 +78,6 @@ export async function GET(request: NextRequest) {
       maxResults = Math.trunc(parsed);
     }
 
-    const accessToken = await getAccessToken();
-
     const { tasks, nextPageToken } = await listTasks(accessToken, listId, {
       showCompleted,
       ...(maxResults !== undefined && { maxResults }),
@@ -76,7 +89,37 @@ export async function GET(request: NextRequest) {
       userId: session.user.id,
     });
 
-    return NextResponse.json({ tasks, nextPageToken });
+    const includeAssignments =
+      searchParams.get("includeAssignments") === "true";
+
+    if (!includeAssignments) {
+      return NextResponse.json({
+        tasks,
+        nextPageToken,
+      });
+    }
+
+    // Embed per-task profile assignments so the client can filter by
+    // active profile without a second round-trip per task. Scoped to
+    // the caller's userId so two accounts with the same Google task
+    // ID don't see each other's assignments.
+    const assignmentMap =
+      tasks.length === 0
+        ? new Map()
+        : await getTaskAssignmentsByTaskIds(
+            tasks.map((t) => t.id),
+            session.user.id
+          );
+
+    const tasksWithAssignments = tasks.map((task) => ({
+      ...task,
+      assignments: assignmentMap.get(task.id) ?? [],
+    }));
+
+    return NextResponse.json({
+      tasks: tasksWithAssignments,
+      nextPageToken,
+    });
   } catch (error) {
     return handleTasksApiError(error, "fetch_tasks");
   }
@@ -103,6 +146,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Combined scope check + token decryption in a single DB call (#260).
+    const accessToken = await requireGoogleTasksAccessToken(session);
+
     const body = (await request.json()) as CreateTaskBody;
     const { listId, title, notes, due } = body;
 
@@ -112,8 +158,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const accessToken = await getAccessToken();
 
     const task = await createTask(accessToken, listId, { title, notes, due });
 
@@ -134,8 +178,11 @@ function handleTasksApiError(
   errorType: "fetch_tasks" | "create_task"
 ): NextResponse {
   if (error instanceof AuthError) {
+    // Both 401 (no/expired session) and 403 (scope missing) are recoverable
+    // by re-authenticating, so the client uses the same `requiresReauth` flow.
+    const requiresReauth = error.status === 401 || error.status === 403;
     return NextResponse.json(
-      { error: error.message, requiresReauth: error.status === 401 },
+      { error: error.message, requiresReauth },
       { status: error.status }
     );
   }

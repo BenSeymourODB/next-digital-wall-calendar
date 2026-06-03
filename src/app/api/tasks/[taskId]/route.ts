@@ -2,7 +2,11 @@
  * API endpoint for updating a Google Task
  * Uses server-side authentication with NextAuth.js
  */
-import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  getSession,
+  requireGoogleTasksAccessToken,
+} from "@/lib/auth";
 import { patchTask } from "@/lib/google/tasks-api";
 import {
   GoogleTasksApiError,
@@ -42,6 +46,9 @@ export async function PATCH(
       );
     }
 
+    // Combined scope check + token decryption in a single DB call (#260).
+    const accessToken = await requireGoogleTasksAccessToken(session);
+
     const { taskId } = await params;
     const { searchParams } = new URL(request.url);
     const listId = searchParams.get("listId");
@@ -62,7 +69,6 @@ export async function PATCH(
       );
     }
 
-    const accessToken = await getAccessToken();
     const updatedTask = await patchTask(accessToken, listId, taskId, body);
 
     logger.event("TaskUpdated", {
@@ -75,8 +81,9 @@ export async function PATCH(
     return NextResponse.json({ task: updatedTask });
   } catch (error) {
     if (error instanceof AuthError) {
+      const requiresReauth = error.status === 401 || error.status === 403;
       return NextResponse.json(
-        { error: error.message, requiresReauth: error.status === 401 },
+        { error: error.message, requiresReauth },
         { status: error.status }
       );
     }

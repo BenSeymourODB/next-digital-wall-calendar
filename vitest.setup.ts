@@ -15,6 +15,32 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     ResizeObserverStub as unknown as typeof ResizeObserver;
 }
 
+// jsdom does not implement Pointer Events API (hasPointerCapture /
+// releasePointerCapture / setPointerCapture) or scrollIntoView. Radix Select
+// drives its open/close state from pointerdown handlers and uses
+// scrollIntoView when the listbox mounts — without these stubs userEvent
+// clicks throw before the listbox ever opens. Stub them at the prototype
+// level so every Element instance picks them up.
+type ElementWithPointerCapture = Element & {
+  hasPointerCapture(pointerId: number): boolean;
+  releasePointerCapture(pointerId: number): void;
+  setPointerCapture(pointerId: number): void;
+  scrollIntoView(arg?: boolean | ScrollIntoViewOptions): void;
+};
+const elProto = Element.prototype as ElementWithPointerCapture;
+if (typeof elProto.hasPointerCapture !== "function") {
+  elProto.hasPointerCapture = () => false;
+}
+if (typeof elProto.releasePointerCapture !== "function") {
+  elProto.releasePointerCapture = () => {};
+}
+if (typeof elProto.setPointerCapture !== "function") {
+  elProto.setPointerCapture = () => {};
+}
+if (typeof elProto.scrollIntoView !== "function") {
+  elProto.scrollIntoView = () => {};
+}
+
 // Cleanup after each test to prevent memory leaks
 afterEach(() => {
   cleanup();

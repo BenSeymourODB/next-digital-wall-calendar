@@ -2,8 +2,10 @@
 
 import {
   CalendarContext,
+  type CreateEventInput,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { TRANSITION_SPEED_TO_MS } from "@/lib/calendar/transition-speed";
 import type {
   IEvent,
   IUser,
@@ -12,7 +14,7 @@ import type {
   TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 // Re-export useCalendar from CalendarProvider for backward compatibility
 export { useCalendar } from "@/components/providers/CalendarProvider";
@@ -43,6 +45,10 @@ interface MockCalendarProviderProps {
   isAuthenticated?: boolean;
   /** Max events rendered per day cell before the "+N more" overflow */
   maxEventsPerDay?: number;
+  /** Hour (0–23) the Day/Week grids auto-scroll to on first render. */
+  workingHoursStart?: number;
+  /** View-transition duration in ms; mirrors `userSettings.calendarTransitionSpeed`. */
+  transitionDurationMs?: number;
 }
 
 /**
@@ -72,6 +78,8 @@ export function MockCalendarProvider({
   loadingDelay = 0,
   isAuthenticated = true,
   maxEventsPerDay = 3,
+  workingHoursStart = 7,
+  transitionDurationMs = TRANSITION_SPEED_TO_MS.normal,
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -158,6 +166,18 @@ export function MockCalendarProvider({
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
+  // Mock createEvent: hermetic local insert that resolves with the
+  // optimistic event so AddEventButton's happy path works in E2E without
+  // mocking fetch. Tests that need failure behaviour should override this
+  // in their own provider wrapper.
+  const createEvent = async (
+    optimistic: IEvent,
+    _input: CreateEventInput
+  ): Promise<IEvent> => {
+    setAllEvents((prev) => [...prev, optimistic]);
+    return optimistic;
+  };
+
   // Mock deleteEvent matches the real provider's optimistic-remove signature
   // but skips the network call so tests can drive UI flows without mocking
   // fetch. Tests that care about failure behavior should override this in
@@ -175,22 +195,23 @@ export function MockCalendarProvider({
     }
   };
 
-  // Filter events using useMemo to avoid effect-based setState
-  const filteredEvents = useMemo(() => {
-    let filtered = allEvents;
+  // No-op: the mock provider holds a static fixture, so widening the
+  // year window doesn't need to fetch anything.
+  const loadEventsForYear = async () => {};
 
-    if (selectedUserId !== "all") {
-      filtered = filtered.filter((event) => event.user.id === selectedUserId);
-    }
-
-    if (selectedColors.length > 0) {
-      filtered = filtered.filter((event) =>
-        selectedColors.includes(event.color)
-      );
-    }
-
-    return filtered;
-  }, [allEvents, selectedUserId, selectedColors]);
+  // Derive filtered events at render time. React Compiler memoizes the
+  // result automatically; manual `useMemo` is forbidden by CLAUDE.md.
+  let filteredEvents = allEvents;
+  if (selectedUserId !== "all") {
+    filteredEvents = filteredEvents.filter(
+      (event) => event.user.id === selectedUserId
+    );
+  }
+  if (selectedColors.length > 0) {
+    filteredEvents = filteredEvents.filter((event) =>
+      selectedColors.includes(event.color)
+    );
+  }
 
   // Get unique users from events
   const users = allEvents.reduce((acc, event) => {
@@ -231,12 +252,16 @@ export function MockCalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    createEvent,
     deleteEvent,
     clearFilter,
     refreshEvents,
+    loadEventsForYear,
     isLoading,
     isAuthenticated,
     maxEventsPerDay,
+    workingHoursStart,
+    transitionDurationMs,
   };
 
   return (

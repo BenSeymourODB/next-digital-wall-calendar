@@ -7,7 +7,11 @@
  * focuses on the handler's concerns: auth, validation, the Google
  * Tasks call, and response shaping.
  */
-import { getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  getSession,
+  requireGoogleTasksAccessToken,
+} from "@/lib/auth";
 import {
   mockSession,
   mockSessionWithError,
@@ -19,7 +23,7 @@ import { POST } from "../route";
 
 vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
-  getAccessToken: vi.fn(),
+  requireGoogleTasksAccessToken: vi.fn(),
   AuthError: class AuthError extends Error {
     status: number;
     constructor(message: string, status: number = 401) {
@@ -82,7 +86,11 @@ describe("Task Complete API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getSession).mockResolvedValue(mockSession);
-    vi.mocked(getAccessToken).mockResolvedValue("mock-access-token");
+    // Default: combined helper resolves with the mock token. Specific tests
+    // override to throw for the no-account / missing-scope / no-token paths.
+    vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
+      "mock-access-token"
+    );
     mockFetch.mockResolvedValue({
       ok: true,
       json: () =>
@@ -125,6 +133,29 @@ describe("Task Complete API", () => {
       expect(response.status).toBe(401);
       expect(data.error).toBe("Session expired. Please sign in again.");
       expect(data.requiresReauth).toBe(true);
+    });
+
+    it("returns 403 with requiresReauth when stored grant is missing the Tasks scope (#237)", async () => {
+      vi.mocked(requireGoogleTasksAccessToken).mockRejectedValue(
+        new AuthError(
+          "Re-authentication required: Google Tasks scope missing.",
+          403
+        )
+      );
+
+      const request = createRequest({
+        listId: "list-1",
+        profileId: "profile-1",
+      });
+      const response = await POST(request, {
+        params: Promise.resolve({ taskId: "task-123" }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.requiresReauth).toBe(true);
+      expect(data.error).toMatch(/Google Tasks/);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
@@ -290,6 +321,18 @@ describe("Task Complete API", () => {
         status: "completed",
       });
       expect(data.streak).toEqual({ current: 4, longest: 5 });
+    });
+
+    it("calls getSession and the combined helper exactly once each per request (#260)", async () => {
+      const request = createRequest({
+        listId: "list-1",
+        profileId: "profile-1",
+      });
+      await POST(request, { params: Promise.resolve({ taskId: "task-123" }) });
+
+      expect(getSession).toHaveBeenCalledTimes(1);
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledTimes(1);
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(mockSession);
     });
   });
 });

@@ -7,9 +7,11 @@ import {
   formatTime,
   getCurrentTimePosition,
   getEventTimePosition,
+  getInitialScrollTop,
 } from "@/lib/calendar-helpers";
+import { useTodayStartOfDay } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   addDays,
   endOfDay,
@@ -25,8 +27,6 @@ import { AgendaList } from "./AgendaList";
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 48;
 const TIME_GRID_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
-
-const today = startOfDay(new Date());
 
 function getEventBlockClasses(color: TEventColor): string {
   const classes: Record<TEventColor, string> = {
@@ -110,7 +110,9 @@ export function DayCalendar() {
     isLoading,
     use24HourFormat,
     agendaMode,
+    workingHoursStart,
   } = useCalendar();
+  const today = useTodayStartOfDay();
 
   const isToday = isSameDay(selectedDate, today);
 
@@ -230,6 +232,7 @@ export function DayCalendar() {
           selectedDate={selectedDate}
           use24HourFormat={use24HourFormat}
           isLoading={isLoading}
+          workingHoursStart={workingHoursStart}
         />
       )}
     </div>
@@ -243,6 +246,7 @@ interface DayGridViewProps {
   selectedDate: Date;
   use24HourFormat: boolean;
   isLoading: boolean;
+  workingHoursStart: number;
 }
 
 function DayGridView({
@@ -252,7 +256,27 @@ function DayGridView({
   selectedDate,
   use24HourFormat,
   isLoading,
+  workingHoursStart,
 }: DayGridViewProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Capture the start hour into a ref so the mount effect doesn't need
+  // to depend on `workingHoursStart` (which would re-run the effect
+  // every time the user moves the slider, yanking their scroll
+  // position). Subsequent setting changes apply on the next remount
+  // (e.g. switching back from agenda mode).
+  const workingHoursStartRef = useRef(workingHoursStart);
+
+  // useLayoutEffect runs synchronously before paint, avoiding a visible
+  // flash from scrollTop=0 to the working-hours row.
+  useLayoutEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = getInitialScrollTop(
+        workingHoursStartRef.current,
+        HOUR_HEIGHT_PX
+      );
+    }
+  }, []);
+
   return (
     <>
       {allDayEvents.length > 0 && (
@@ -300,6 +324,7 @@ function DayGridView({
       )}
 
       <div
+        ref={scrollContainerRef}
         className="border-border bg-card relative max-h-[calc(100vh-280px)] overflow-y-auto rounded-lg border"
         data-testid="day-calendar-grid"
         role="grid"

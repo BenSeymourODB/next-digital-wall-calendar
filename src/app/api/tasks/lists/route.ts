@@ -2,7 +2,11 @@
  * API endpoint for Google Task Lists
  * Uses server-side authentication with NextAuth.js
  */
-import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  getSession,
+  requireGoogleTasksAccessToken,
+} from "@/lib/auth";
 import { listTaskLists } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
@@ -28,7 +32,10 @@ export async function GET() {
       );
     }
 
-    const accessToken = await getAccessToken();
+    // Combined scope check + token decryption in a single DB call (#260).
+    // Short-circuits users missing the Tasks scope (#237) without burning a
+    // separate prisma.account.findMany.
+    const accessToken = await requireGoogleTasksAccessToken(session);
     const lists = await listTaskLists(accessToken);
 
     logger.event("TaskListsFetched", {
@@ -39,8 +46,9 @@ export async function GET() {
     return NextResponse.json({ lists });
   } catch (error) {
     if (error instanceof AuthError) {
+      const requiresReauth = error.status === 401 || error.status === 403;
       return NextResponse.json(
-        { error: error.message, requiresReauth: error.status === 401 },
+        { error: error.message, requiresReauth },
         { status: error.status }
       );
     }
