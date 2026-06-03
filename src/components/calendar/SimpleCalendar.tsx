@@ -180,7 +180,13 @@ export function SimpleCalendar() {
     const action = keyboardEventToAction(event);
     if (!action) return;
     event.preventDefault();
-    const nextDate = applyCalendarKeyboardAction(selectedDate, action);
+    // Honour the user's weekStartDay preference for Home/End so a
+    // Monday-first user lands on Monday (not Sunday) at the week boundary.
+    const nextDate = applyCalendarKeyboardAction(
+      selectedDate,
+      action,
+      weekStartDay
+    );
     pendingFocusRef.current = true;
     setSelectedDate(nextDate);
   };
