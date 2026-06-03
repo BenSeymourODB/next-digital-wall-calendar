@@ -54,8 +54,6 @@ function isLegacyViewAlias(value: string | null): value is TLegacyViewAlias {
   );
 }
 
-const VIEW_FADE_DURATION_MS = 250;
-
 function CalendarView({ view }: { view: TCalendarView }) {
   switch (view) {
     case "day":
@@ -77,7 +75,7 @@ function CalendarView({ view }: { view: TCalendarView }) {
  * Extracted to access useCalendar hook
  */
 function CalendarContent() {
-  const { view, agendaMode } = useCalendar();
+  const { view, agendaMode, transitionDurationMs } = useCalendar();
   const [showSettings, setShowSettings] = useState(false);
 
   // Sidebar belongs to the day/week time-grid views only. Month, Year,
@@ -137,7 +135,7 @@ function CalendarContent() {
               swapKey={view}
               type="fade"
               direction="forward"
-              durationMs={VIEW_FADE_DURATION_MS}
+              durationMs={transitionDurationMs}
             >
               <CalendarView view={view} />
             </AnimatedSwap>

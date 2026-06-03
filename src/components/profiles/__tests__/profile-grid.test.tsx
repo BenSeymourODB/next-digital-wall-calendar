@@ -3,6 +3,7 @@
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Profile } from "../profile-context";
 import { ProfileGrid, ProfileGridSkeleton } from "../profile-grid";
 
 // Mock fetch for stats API
@@ -10,16 +11,16 @@ const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 // Mock profile data
-const mockProfiles = [
+const mockProfiles: Profile[] = [
   {
     id: "profile-1",
     userId: "user-1",
     name: "Admin User",
-    type: "admin" as const,
-    ageGroup: "adult" as const,
+    type: "admin",
+    ageGroup: "adult",
     color: "#3b82f6",
     avatar: {
-      type: "initials" as const,
+      type: "initials",
       value: "AU",
       backgroundColor: "#3b82f6",
     },
@@ -30,11 +31,11 @@ const mockProfiles = [
     id: "profile-2",
     userId: "user-1",
     name: "Child User",
-    type: "standard" as const,
-    ageGroup: "child" as const,
+    type: "standard",
+    ageGroup: "child",
     color: "#22c55e",
     avatar: {
-      type: "emoji" as const,
+      type: "emoji",
       value: "👦",
     },
     pinEnabled: false,
@@ -44,11 +45,11 @@ const mockProfiles = [
     id: "profile-3",
     userId: "user-1",
     name: "Teen User",
-    type: "standard" as const,
-    ageGroup: "teen" as const,
+    type: "standard",
+    ageGroup: "teen",
     color: "#a855f7",
     avatar: {
-      type: "initials" as const,
+      type: "initials",
       value: "TU",
       backgroundColor: "#a855f7",
     },

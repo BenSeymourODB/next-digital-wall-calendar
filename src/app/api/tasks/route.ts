@@ -4,9 +4,8 @@
  */
 import {
   AuthError,
-  assertGoogleTasksScope,
-  getAccessToken,
   getSession,
+  requireGoogleTasksAccessToken,
 } from "@/lib/auth";
 import { createTask, listTasks } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
@@ -50,9 +49,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Short-circuit users whose stored grant is missing the Tasks scope so we
-    // never burn an upstream call we already know will 403 (#237).
-    await assertGoogleTasksScope();
+    // Combined scope check + token decryption in a single DB call (#260).
+    // Short-circuits users missing the Tasks scope (#237) before URL
+    // parsing, matching the original assertGoogleTasksScope ordering.
+    const accessToken = await requireGoogleTasksAccessToken(session);
 
     const { searchParams } = new URL(request.url);
     const listId = searchParams.get("listId");
@@ -77,8 +77,6 @@ export async function GET(request: NextRequest) {
       }
       maxResults = Math.trunc(parsed);
     }
-
-    const accessToken = await getAccessToken();
 
     const { tasks, nextPageToken } = await listTasks(accessToken, listId, {
       showCompleted,
@@ -148,9 +146,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Short-circuit users whose stored grant is missing the Tasks scope so we
-    // never burn an upstream call we already know will 403 (#237).
-    await assertGoogleTasksScope();
+    // Combined scope check + token decryption in a single DB call (#260).
+    const accessToken = await requireGoogleTasksAccessToken(session);
 
     const body = (await request.json()) as CreateTaskBody;
     const { listId, title, notes, due } = body;
@@ -161,8 +158,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const accessToken = await getAccessToken();
 
     const task = await createTask(accessToken, listId, { title, notes, due });
 

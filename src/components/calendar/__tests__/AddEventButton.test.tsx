@@ -2,6 +2,8 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import type { WritableCalendar } from "@/hooks/useWritableCalendars";
+import { useWritableCalendars } from "@/hooks/useWritableCalendars";
 import type {
   IEvent,
   IUser,
@@ -10,7 +12,7 @@ import type {
 } from "@/types/calendar";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AddEventButton } from "../AddEventButton";
 
 // `useEventCreate` is wired through to `CalendarContext.createEvent`, so the
@@ -23,6 +25,32 @@ vi.mock("sonner", () => ({
     error: vi.fn(),
   },
 }));
+
+vi.mock("@/hooks/useWritableCalendars", () => ({
+  useWritableCalendars: vi.fn(),
+}));
+
+const PERSISTED_CALENDAR_KEY = "calendar.lastUsedCalendarId";
+
+function makeCalendar(overrides: Partial<WritableCalendar>): WritableCalendar {
+  return {
+    id: "primary",
+    summary: "Primary",
+    backgroundColor: "#4285f4",
+    foregroundColor: "#ffffff",
+    primary: true,
+    selected: true,
+    accessRole: "owner",
+    ...overrides,
+  };
+}
+
+function mockCalendars(calendars: WritableCalendar[]): void {
+  vi.mocked(useWritableCalendars).mockReturnValue({
+    calendars,
+    isLoading: false,
+  });
+}
 
 /**
  * Tests for AddEventButton — the "smart" wrapper around EventCreateDialog
@@ -71,6 +99,8 @@ function makeContext(
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
+    workingHoursStart: 7,
+    transitionDurationMs: 300,
     weekStartDay: 0,
     setWeekStartDay: vi.fn(),
     ...overrides,
@@ -90,6 +120,11 @@ function renderWithContext(overrides: Partial<ICalendarContext> = {}) {
 }
 
 describe("AddEventButton", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    mockCalendars([]); // default: no writable list (legacy behaviour)
+  });
+
   it("renders a button labelled 'Add event'", () => {
     renderWithContext();
     expect(
@@ -189,5 +224,120 @@ describe("AddEventButton", () => {
     // Month is 0-indexed
     expect(start.getMonth()).toBe(6);
     expect(start.getDate()).toBe(4);
+  });
+
+  describe("multi-calendar selector (#268)", () => {
+    it("does not show the picker when only one writable calendar exists", async () => {
+      mockCalendars([
+        makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+      ]);
+      const user = userEvent.setup();
+      renderWithContext();
+
+      await user.click(screen.getByRole("button", { name: /add event/i }));
+
+      expect(screen.queryByLabelText(/^calendar/i)).not.toBeInTheDocument();
+    });
+
+    it("renders the picker when multiple writable calendars are available", async () => {
+      mockCalendars([
+        makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+        makeCalendar({
+          id: "family@cal",
+          summary: "Family",
+          primary: false,
+          accessRole: "writer",
+        }),
+      ]);
+      const user = userEvent.setup();
+      renderWithContext();
+
+      await user.click(screen.getByRole("button", { name: /add event/i }));
+
+      expect(screen.getByLabelText(/^calendar/i)).toBeInTheDocument();
+    });
+
+    it("hydrates the dialog from a previously persisted last-used calendar", async () => {
+      window.localStorage.setItem(
+        PERSISTED_CALENDAR_KEY,
+        JSON.stringify("family@cal")
+      );
+      mockCalendars([
+        makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+        makeCalendar({
+          id: "family@cal",
+          summary: "Family",
+          primary: false,
+          accessRole: "writer",
+        }),
+      ]);
+      const user = userEvent.setup();
+      const { ctx } = renderWithContext();
+
+      await user.click(screen.getByRole("button", { name: /add event/i }));
+      await user.type(screen.getByLabelText(/title/i), "BBQ");
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      await waitFor(() => {
+        expect(ctx.createEvent).toHaveBeenCalledTimes(1);
+      });
+
+      const [optimistic, input] = vi.mocked(ctx.createEvent).mock.calls[0];
+      expect(optimistic.calendarId).toBe("family@cal");
+      expect(input.calendarId).toBe("family@cal");
+    });
+
+    it("falls back to primary when the persisted id is no longer writable", async () => {
+      window.localStorage.setItem(
+        PERSISTED_CALENDAR_KEY,
+        JSON.stringify("revoked@cal")
+      );
+      mockCalendars([
+        makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+        makeCalendar({
+          id: "family@cal",
+          summary: "Family",
+          primary: false,
+          accessRole: "writer",
+        }),
+      ]);
+      const user = userEvent.setup();
+      const { ctx } = renderWithContext();
+
+      await user.click(screen.getByRole("button", { name: /add event/i }));
+      await user.type(screen.getByLabelText(/title/i), "Recovered");
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      await waitFor(() => {
+        expect(ctx.createEvent).toHaveBeenCalledTimes(1);
+      });
+      const [, input] = vi.mocked(ctx.createEvent).mock.calls[0];
+      expect(input.calendarId).toBe("primary");
+    });
+
+    it("persists the user's chosen calendar to localStorage on submit", async () => {
+      mockCalendars([
+        makeCalendar({ id: "primary", summary: "you@x.com", primary: true }),
+        makeCalendar({
+          id: "family@cal",
+          summary: "Family",
+          primary: false,
+          accessRole: "writer",
+        }),
+      ]);
+      const user = userEvent.setup();
+      renderWithContext();
+
+      await user.click(screen.getByRole("button", { name: /add event/i }));
+      await user.type(screen.getByLabelText(/title/i), "Picnic");
+      await user.click(screen.getByLabelText(/^calendar/i));
+      await user.click(await screen.findByRole("option", { name: "Family" }));
+      await user.click(screen.getByRole("button", { name: /create event/i }));
+
+      await waitFor(() => {
+        const persisted = window.localStorage.getItem(PERSISTED_CALENDAR_KEY);
+        expect(persisted).toBe(JSON.stringify("family@cal"));
+      });
+    });
   });
 });

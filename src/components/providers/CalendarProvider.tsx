@@ -1,5 +1,6 @@
 "use client";
 
+import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import {
@@ -8,7 +9,12 @@ import {
   loadColorMappings,
   saveColorMappings,
 } from "@/lib/calendar-storage";
-import { transformGoogleEvent } from "@/lib/calendar-transform";
+import {
+  type CalendarAttributionMetadata,
+  type CalendarMetadataMap,
+  transformGoogleEvent,
+} from "@/lib/calendar-transform";
+import { resolveTransitionDurationMs } from "@/lib/calendar/transition-speed";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import type {
@@ -107,6 +113,19 @@ export interface ICalendarContext {
   isLoading: boolean;
   isAuthenticated: boolean;
   maxEventsPerDay: number;
+  /**
+   * Hour of day (0–23) the Day/Week time grids auto-scroll to on first
+   * render so working-hours events are immediately visible. Sourced
+   * from the user's `calendarWorkingHoursStart` setting (#288).
+   */
+  workingHoursStart: number;
+  /**
+   * Calendar view-transition duration in milliseconds, derived from the
+   * user's `calendarTransitionSpeed` setting. `0` disables animation; the
+   * `AnimatedSwap` short-circuit then matches the `prefers-reduced-motion`
+   * code path. See `src/lib/calendar/transition-speed.ts`.
+   */
+  transitionDurationMs: number;
 }
 
 interface CalendarSettings {
@@ -192,8 +211,12 @@ export function CalendarProvider({
 
   // User-configurable data-loading settings (fetched from server when authed,
   // falls back to defaults otherwise). Powers auto-refresh interval and
-  // fetch-window sizing for refreshEvents.
-  const { settings: userSettings } = useUserSettings();
+  // fetch-window sizing for refreshEvents. `hasLoadedFromServer` flips to
+  // true only after the first successful `/api/settings` fetch — the
+  // `weekStartDay` migration shim below uses it to avoid acting on the
+  // in-memory default value during the first render after sign-in.
+  const { settings: userSettings, hasLoadedFromServer: userSettingsLoaded } =
+    useUserSettings();
 
   // Cast through unknown so the legacy `"agenda"` literal can flow through
   // the hook even though it's no longer part of TCalendarView (#150).
@@ -224,9 +247,18 @@ export function CalendarProvider({
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
   >(settings.agendaModeGroupBy ?? DEFAULT_SETTINGS.agendaModeGroupBy);
+  // Initialize from localStorage so we have a sensible value before the
+  // server's UserSettings.weekStartDay arrives. Once authenticated, the
+  // effect below promotes the server value to the source of truth and the
+  // setter writes through to the API instead of localStorage (#338).
   const [weekStartDay, setWeekStartDayState] = useState<TWeekStartDay>(
     settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay
   );
+
+  // One-shot guard for the localStorage → server migration. Survives
+  // remounts via localStorage, but a single React StrictMode double-mount
+  // is also covered by the in-memory ref so we never PUT twice.
+  const weekStartMigrationRef = useRef(false);
 
   // Single mount-only write that handles two concerns atomically:
   //
@@ -284,6 +316,13 @@ export function CalendarProvider({
     }
   );
   const [calendarIds, setCalendarIds] = useState<string[]>([]);
+  // Per-calendar metadata used by `transformGoogleEvent` to pick a
+  // human-readable user attribution for shared-calendar events whose creator
+  // / organizer have no `displayName` (#307 Bug B). Populated from the same
+  // `/api/calendar/calendars` payload that produces `calendarIds`.
+  const [calendarMetadata, setCalendarMetadata] = useState<CalendarMetadataMap>(
+    () => new Map()
+  );
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
 
@@ -319,10 +358,114 @@ export function CalendarProvider({
     updateSettings({ agendaModeGroupBy: groupBy });
   };
 
+  /**
+   * Persist the chosen week-start day. Once authenticated, the source of
+   * truth is `UserSettings.weekStartDay` on the server (#338), so the setter
+   * PUTs to `/api/settings` and the next `useUserSettings` refresh reads it
+   * back. We still mirror the value into localStorage so unauthenticated
+   * surfaces (and the next paint while we wait for the server) stay in sync.
+   *
+   * On PUT failure we revert the optimistic state + localStorage update so
+   * the UI doesn't drift from the persisted value, mirroring the rollback
+   * pattern used by `createEvent` / `deleteEvent` in this provider.
+   */
   const setWeekStartDay = (day: TWeekStartDay) => {
+    const previousDay = weekStartDay;
     setWeekStartDayState(day);
     updateSettings({ weekStartDay: day });
+    if (status === "authenticated") {
+      void fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekStartDay: day }),
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`PUT /api/settings ${response.status}`);
+          }
+        })
+        .catch((error) => {
+          // Revert optimistic update so the UI matches the persisted value.
+          setWeekStartDayState(previousDay);
+          updateSettings({ weekStartDay: previousDay });
+          logger.error(error as Error, {
+            context: "setWeekStartDay",
+            weekStartDay: day,
+          });
+        });
+    }
   };
+
+  // localStorage → server migration for `weekStartDay` (#338).
+  //
+  // Pre-#338, `weekStartDay` lived only in the per-browser `calendar-settings`
+  // localStorage key. When a user with a non-default localStorage value
+  // (Monday) signs in for the first time after the rollout, push it up to
+  // the server exactly once so subsequent browsers see their preference.
+  // The migration flag lives in its own localStorage key so it survives a
+  // tab close before a future server-driven refactor.
+  //
+  // Gated on `userSettingsLoaded` so we only compare against the real
+  // server value, not the in-memory default `userSettings.weekStartDay`
+  // that ships before the first `/api/settings` GET resolves. Without this
+  // guard the very first authenticated render fires a redundant PUT in
+  // the case where the user already migrated on another browser.
+  useEffect(() => {
+    if (weekStartMigrationRef.current) return;
+    if (status !== "authenticated") return;
+    if (!userSettingsLoaded) return;
+    if (typeof window === "undefined") return;
+
+    const FLAG_KEY = "calendar-week-start-day-migrated";
+    if (window.localStorage.getItem(FLAG_KEY) === "1") {
+      weekStartMigrationRef.current = true;
+      return;
+    }
+
+    const localValue = settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay;
+    const serverValue = userSettings.weekStartDay;
+
+    if (localValue !== serverValue) {
+      // The local value is the user's last explicit choice on this browser;
+      // promote it to the server so other browsers + the main Settings page
+      // see the same default.
+      void fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekStartDay: localValue }),
+      }).catch((error) => {
+        logger.error(error as Error, {
+          context: "weekStartDayMigration",
+        });
+      });
+    }
+
+    window.localStorage.setItem(FLAG_KEY, "1");
+    weekStartMigrationRef.current = true;
+    // `settings.weekStartDay` is intentionally omitted: the effect is
+    // mount-only after the flag is set, and reads the localStorage value
+    // imperatively above. Including it would re-run the effect every time
+    // the user toggles the radio (the early-return guard short-circuits,
+    // but the dep is misleading).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, userSettingsLoaded, userSettings.weekStartDay]);
+
+  // Once the server value is known and the migration has run, treat the
+  // server as the source of truth: copy the server value into local state
+  // whenever it changes. The `=== 1 ? 1 : 0` clamp mirrors the same
+  // defensive guard in `src/app/settings/page.tsx`, in case
+  // `useUserSettings`'s pick filter is ever bypassed.
+  //
+  // `weekStartDay` is intentionally NOT in the dep array: an optimistic
+  // local update (from `setWeekStartDay`) must not retrigger this effect,
+  // or it would immediately revert the optimistic flip back to the stale
+  // server value held by `userSettings.weekStartDay`.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!weekStartMigrationRef.current) return;
+    const safe: TWeekStartDay = userSettings.weekStartDay === 1 ? 1 : 0;
+    setWeekStartDayState(safe);
+  }, [status, userSettings.weekStartDay]);
 
   const filterEventsBySelectedColors = (color: TEventColor) => {
     setSelectedColors((prev) =>
@@ -388,10 +531,16 @@ export function CalendarProvider({
       }
 
       const body = (await response.json()) as { event: GoogleCalendarEvent };
-      // Reconcile through the in-memory colorMappings state — refreshEvents
-      // keeps it current via saveColorMappings, and re-reading localStorage
-      // here would race with that path on subsequent creates.
-      const reconciled = transformGoogleEvent(body.event, colorMappings);
+      // Reconcile through the in-memory colorMappings + calendarMetadata
+      // state — refreshEvents keeps both current, and re-reading localStorage
+      // here would race with that path on subsequent creates. The metadata
+      // feeds the user-attribution fallback ladder for shared calendars
+      // (#307 Bug B).
+      const reconciled = transformGoogleEvent(
+        body.event,
+        colorMappings,
+        calendarMetadata
+      );
 
       // Replace the optimistic row with the server's canonical event in a
       // single setState so the list never flickers.
@@ -474,7 +623,8 @@ export function CalendarProvider({
       timeMin: Date,
       timeMax: Date,
       calIds: string[],
-      mappings: CalendarColorMapping[]
+      mappings: CalendarColorMapping[],
+      metadata: CalendarMetadataMap
     ): Promise<IEvent[]> => {
       const url = new URL("/api/calendar/events", window.location.origin);
       url.searchParams.set("calendarIds", calIds.join(","));
@@ -494,36 +644,50 @@ export function CalendarProvider({
       const data = await response.json();
       const googleEvents: GoogleCalendarEvent[] = data.events || [];
 
-      // Transform events using color mappings
-      return googleEvents.map((event) => transformGoogleEvent(event, mappings));
+      // Transform events using color mappings + per-calendar metadata so
+      // shared-calendar events get a recognisable user attribution (#307).
+      return googleEvents.map((event) =>
+        transformGoogleEvent(event, mappings, metadata)
+      );
     },
     []
   );
 
   /**
-   * Fetch calendar list and return calendar IDs
+   * Fetch the user's calendar list and return both the IDs (for downstream
+   * `/api/calendar/events` queries) and a metadata map keyed by id (for the
+   * `transformGoogleEvent` user-attribution fallback ladder, #307 Bug B).
    */
-  const fetchCalendarList = useCallback(async (): Promise<string[]> => {
+  const fetchCalendarList = useCallback(async (): Promise<{
+    ids: string[];
+    metadata: CalendarMetadataMap;
+  }> => {
     try {
       const response = await fetch("/api/calendar/calendars");
       if (!response.ok) {
         logger.log("Failed to fetch calendar list, using primary only");
-        return ["primary"];
+        return { ids: ["primary"], metadata: new Map() };
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as CalendarsResponse;
       if (data.calendars && data.calendars.length > 0) {
-        // Return IDs of all calendars (user can filter later)
-        const ids = data.calendars.map(
-          (cal: { id: string; selected?: boolean }) => cal.id
+        const ids = data.calendars.map((cal) => cal.id);
+        const metadata = new Map<string, CalendarAttributionMetadata>(
+          data.calendars.map((cal) => [
+            cal.id,
+            {
+              summary: cal.summary,
+              summaryOverride: cal.summaryOverride,
+            },
+          ])
         );
         logger.log("Fetched calendar list", { count: ids.length });
-        return ids;
+        return { ids, metadata };
       }
     } catch {
       logger.log("Could not fetch calendar list, using primary only");
     }
-    return ["primary"];
+    return { ids: ["primary"], metadata: new Map() };
   }, []);
 
   // Refresh events from server-side API
@@ -547,32 +711,49 @@ export function CalendarProvider({
         return;
       }
 
-      // Fetch calendar list first (if not already fetched)
-      let calIds = calendarIds;
-      if (calIds.length === 0) {
-        calIds = await fetchCalendarList();
-        setCalendarIds(calIds);
-      }
+      // Always re-fetch the calendar list on every refresh — the same
+      // staleness reasoning that drives the unconditional color refresh
+      // below applies here. If a user adds (or renames, or has the owner
+      // change the override on) a shared calendar in Google, the next
+      // manual refresh has to pick up the new id and metadata; otherwise
+      // the colors update (Bug A fix) but the user-attribution map is
+      // stale and every event from the new calendar falls through to the
+      // humanized-email rung instead of the friendly summary (#307 Bug B).
+      const list = await fetchCalendarList();
+      const calIds = list.ids;
+      const currentMetadata = list.metadata;
+      setCalendarIds(calIds);
+      setCalendarMetadata(currentMetadata);
 
-      // Fetch current color mappings
+      // Fetch the canonical color mappings from the server on every refresh.
+      // localStorage is treated as a paint-fast warm cache, not the source of
+      // truth — the server-derived mapping (per-user override on
+      // `calendarList.list.backgroundColor`) is. Pre-#307 this was a
+      // fetch-once-per-session cache that never noticed an override change in
+      // Google Calendar nor reconciled across browsers; on every refresh we
+      // now write through to localStorage so the next paint stays fast.
       let currentMappings = colorMappings;
-      if (currentMappings.length === 0) {
-        try {
-          const colorResponse = await fetch("/api/calendar/colors");
-          if (colorResponse.ok) {
-            const colorData = await colorResponse.json();
-            if (colorData.colorMappings && colorData.colorMappings.length > 0) {
-              currentMappings = colorData.colorMappings;
-              saveColorMappings(currentMappings);
-              setColorMappings(currentMappings);
-              logger.log("Fetched color mappings during refresh", {
-                count: currentMappings.length,
-              });
-            }
+      try {
+        const colorResponse = await fetch("/api/calendar/colors");
+        if (colorResponse.ok) {
+          const colorData = await colorResponse.json();
+          // Intentionally skip the write when the server returns no mappings:
+          // an empty response could indicate a transient API hiccup or a
+          // momentarily empty calendarList, and overwriting a warm cache with
+          // [] would flash all events to the default blue. True
+          // source-of-truth behaviour is deferred to the server-side
+          // CalendarSettings persistence tracked as a follow-up to #307.
+          if (colorData.colorMappings && colorData.colorMappings.length > 0) {
+            currentMappings = colorData.colorMappings;
+            saveColorMappings(currentMappings);
+            setColorMappings(currentMappings);
+            logger.log("Fetched color mappings during refresh", {
+              count: currentMappings.length,
+            });
           }
-        } catch {
-          logger.log("Could not fetch colors during refresh");
         }
+      } catch {
+        logger.log("Could not fetch colors during refresh");
       }
 
       // Calculate time range from user settings (defaults: -1 month, +6 months)
@@ -593,7 +774,8 @@ export function CalendarProvider({
         timeMin,
         timeMax,
         calIds,
-        currentMappings
+        currentMappings,
+        currentMetadata
       );
 
       setAllEvents(transformedEvents);
@@ -623,7 +805,7 @@ export function CalendarProvider({
       try {
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
-          transformGoogleEvent(event, colorMappings)
+          transformGoogleEvent(event, colorMappings, calendarMetadata)
         );
         setAllEvents(transformedEvents);
         logger.log("Loaded events from cache", {
@@ -638,7 +820,7 @@ export function CalendarProvider({
   }, [
     status,
     session,
-    calendarIds,
+    calendarMetadata,
     colorMappings,
     fetchCalendarList,
     fetchEventsForRange,
@@ -693,7 +875,8 @@ export function CalendarProvider({
             fetchStart,
             fetchEnd,
             calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings
+            colorMappings,
+            calendarMetadata
           );
 
           setAllEvents((prev) => {
@@ -721,7 +904,8 @@ export function CalendarProvider({
             fetchStart,
             fetchEnd,
             calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings
+            colorMappings,
+            calendarMetadata
           );
 
           setAllEvents((prev) => {
@@ -742,7 +926,14 @@ export function CalendarProvider({
         isLoadingRangeRef.current = false;
       }
     },
-    [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
+    [
+      status,
+      loadedRange,
+      calendarIds,
+      calendarMetadata,
+      colorMappings,
+      fetchEventsForRange,
+    ]
   );
 
   /**
@@ -793,7 +984,8 @@ export function CalendarProvider({
             yearStart,
             loadedRange.start,
             calIds,
-            colorMappings
+            colorMappings,
+            calendarMetadata
           );
 
           setAllEvents((prev) => {
@@ -814,7 +1006,8 @@ export function CalendarProvider({
             loadedRange.end,
             yearEnd,
             calIds,
-            colorMappings
+            colorMappings,
+            calendarMetadata
           );
 
           setAllEvents((prev) => {
@@ -833,7 +1026,14 @@ export function CalendarProvider({
         isLoadingRangeRef.current = false;
       }
     },
-    [status, loadedRange, calendarIds, colorMappings, fetchEventsForRange]
+    [
+      status,
+      loadedRange,
+      calendarIds,
+      calendarMetadata,
+      colorMappings,
+      fetchEventsForRange,
+    ]
   );
 
   // Color mappings are initialized synchronously from localStorage in useState.
@@ -843,10 +1043,12 @@ export function CalendarProvider({
   useEffect(() => {
     const initializeEvents = async () => {
       try {
-        // First, load cached events for immediate display
+        // First, load cached events for immediate display. Metadata may be
+        // empty on first paint (we haven't fetched the calendar list yet);
+        // the ladder simply skips that rung and falls through to the next.
         const cachedEvents = await eventCache.getEvents();
         const transformedEvents = cachedEvents.map((event) =>
-          transformGoogleEvent(event, colorMappings)
+          transformGoogleEvent(event, colorMappings, calendarMetadata)
         );
         setAllEvents(transformedEvents);
         logger.log("Loaded events from cache on mount", {
@@ -962,6 +1164,16 @@ export function CalendarProvider({
     // Clamp defensively so a rogue DB write of 0 or a negative number never
     // collapses every non-empty day into a bare "+N more" label.
     maxEventsPerDay: Math.max(1, userSettings.calendarMaxEventsPerDay),
+    // Clamp to the valid 0–23 hour range so a malformed cached payload
+    // can't push the grid scroll into negative or beyond-day territory
+    // (the API validator already enforces this for fresh writes).
+    workingHoursStart: Math.min(
+      23,
+      Math.max(0, Math.trunc(userSettings.calendarWorkingHoursStart))
+    ),
+    transitionDurationMs: resolveTransitionDurationMs(
+      userSettings.calendarTransitionSpeed
+    ),
   };
 
   return (
