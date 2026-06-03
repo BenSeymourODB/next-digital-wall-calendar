@@ -245,6 +245,53 @@ describe("useScreenScheduler", () => {
       expect(result.current.state.activeTimeSpecific).not.toBeNull();
       expect(result.current.state.activeTimeSpecific?.id).toBe("ts-1");
     });
+
+    // Regression test for issue #221, bug 4: time-specific check skipped the
+    // initial run, leaving detection delayed up to 60s if the scheduler booted
+    // inside an active time window.
+    it("runs the time-specific check immediately on activation, not after a 60s wait", () => {
+      const configWithTimeSpecific: ScheduleConfig = {
+        sequences: [
+          {
+            id: "seq-1",
+            name: "Main",
+            enabled: true,
+            screens: ["/calendar", "/tasks"],
+            intervalSeconds: 60,
+            pauseOnInteractionSeconds: 120,
+          },
+        ],
+        timeSpecific: [
+          {
+            id: "ts-1",
+            enabled: true,
+            screen: "/recipe",
+            time: "17:30",
+            durationMinutes: 30,
+          },
+        ],
+      };
+
+      vi.setSystemTime(new Date(2024, 2, 15, 17, 30, 0));
+
+      const { result } = renderHook(() =>
+        useScreenScheduler(configWithTimeSpecific)
+      );
+
+      act(() => {
+        result.current.controls.start();
+      });
+
+      // Run only the microtask + setTimeout(0) that schedules the immediate
+      // check. Critically, do NOT advance the 60s interval.
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+
+      expect(result.current.state.activeTimeSpecific).not.toBeNull();
+      expect(result.current.state.activeTimeSpecific?.id).toBe("ts-1");
+      expect(mockPush).toHaveBeenCalledWith("/recipe");
+    });
   });
 
   describe("auto-rotation", () => {
@@ -280,6 +327,39 @@ describe("useScreenScheduler", () => {
       });
 
       expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    // Regression test for issue #221, bug 6: the countdown previously had
+    // its own setInterval that drifted from the navigation interval. The
+    // fix unifies them into a single 1s tick — the countdown is derived
+    // from the same timer that triggers navigation, eliminating drift by
+    // construction. This test pins that invariant: while rotation is
+    // running, exactly one 1000ms interval is registered.
+    it("uses a single 1s interval as the shared source of truth for countdown and navigation", () => {
+      mockPathname.mockReturnValue("/calendar");
+      const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      act(() => {
+        result.current.controls.start();
+      });
+
+      // Drain the immediate time-specific check.
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+
+      const intervalDelays = setIntervalSpy.mock.calls.map((call) => call[1]);
+      const oneSecondIntervals = intervalDelays.filter((d) => d === 1000);
+      const sixtySecondIntervals = intervalDelays.filter((d) => d === 60_000);
+
+      // Exactly one 1s tick (drives countdown AND navigation).
+      expect(oneSecondIntervals).toHaveLength(1);
+      // Plus the unrelated 60s time-specific check interval.
+      expect(sixtySecondIntervals).toHaveLength(1);
+
+      setIntervalSpy.mockRestore();
     });
 
     it("does not auto-navigate when externalPaused is true", () => {
