@@ -41,6 +41,8 @@ const baseInitialSettings = {
   calendarFetchMonthsAhead: 6,
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
+  calendarWorkingHoursStart: 7,
+  calendarTransitionSpeed: "normal" as const,
 };
 
 const baseUser = {

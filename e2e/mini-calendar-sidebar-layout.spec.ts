@@ -53,9 +53,9 @@ test.describe("MiniCalendarSidebar layout rule", () => {
     await expect(page.getByTestId("calendar-display")).toBeVisible();
     await expect(page.getByTestId("mini-calendar-sidebar")).toHaveCount(0);
 
-    // Switch to Day-agenda via the new dropdown — sidebar appears
+    // Switch to Day-agenda via the caret menu — sidebar appears
     // (sidebar rule keys on view ∈ {day, week}).
-    await page.getByTestId("view-switcher-day").click();
+    await page.getByTestId("view-switcher-day-mode").click();
     await page.getByRole("menuitemradio", { name: /agenda/i }).click();
     await expect(page.getByTestId("mini-calendar-sidebar")).toBeVisible();
 
