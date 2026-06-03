@@ -1,50 +1,11 @@
 /**
  * Test fixtures for Profile API tests
  */
-import type { Prisma } from "@/generated/prisma/client";
-
-// Define local types for testing (matches Prisma schema). `avatar` is
-// `Prisma.JsonValue` so fixtures pass strict type checks when handed to
-// `vi.mocked(prisma)…mockResolvedValue` calls. Full retype to the
-// generated Prisma `Profile` lives in #280.
-interface Profile {
-  id: string;
-  userId: string;
-  name: string;
-  type: "admin" | "standard";
-  ageGroup: "adult" | "teen" | "child";
-  color: string;
-  avatar: Prisma.JsonValue;
-  pinHash: string | null;
-  pinEnabled: boolean;
-  failedPinAttempts: number;
-  pinLockedUntil: Date | null;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-interface ProfileRewardPoints {
-  id: string;
-  profileId: string;
-  totalPoints: number;
-  currentStreak: number;
-  longestStreak: number;
-  lastActivityDate: Date;
-  updatedAt: Date;
-}
-
-interface ProfileSettings {
-  id: string;
-  profileId: string;
-  defaultTaskListId: string | null;
-  showCompletedTasks: boolean;
-  taskSortOrder: string;
-  theme: string;
-  language: string;
-  enableNotifications: boolean;
-  notificationTime: string | null;
-}
+import type {
+  Profile,
+  ProfileRewardPoints,
+  ProfileSettings,
+} from "@/generated/prisma/client";
 
 export const mockUserId = "test-user-123";
 
