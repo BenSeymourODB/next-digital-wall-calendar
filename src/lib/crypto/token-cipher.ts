@@ -234,8 +234,11 @@ export function decryptToken(
 
   // Dual-read (#215): try the active key first; on auth-tag mismatch
   // fall back to the previous key (if configured) so a rolling
-  // rotation can decrypt envelopes written under either key. Surface
-  // the active-key error if both attempts fail — operators triaging
+  // rotation can decrypt envelopes written under either key. Cross-
+  // key false-positive probability is 2⁻¹²⁸ (GCM's MAC length), so a
+  // ciphertext written under one key cannot spuriously pass auth-tag
+  // verification under an unrelated key. Surface the active-key
+  // error if both attempts fail — operators triaging
   // `RefreshTokenDecryptFailed` see the failure that matters.
   const { active, previous } = resolveKeys();
   try {

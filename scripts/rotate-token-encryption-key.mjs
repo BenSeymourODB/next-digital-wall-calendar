@@ -237,12 +237,24 @@ export async function main(argv) {
         }
       }
 
+      // Advance counters and the page cursor only after the batch
+      // transaction commits. A throw from `$transaction` aborts the
+      // run (caller restarts from the beginning of the table); the
+      // `rotated` count must never reflect rows that weren't written.
       if (!dryRun && updates.length > 0) {
-        await prisma.$transaction(
-          updates.map((u) =>
-            prisma.account.update({ where: { id: u.id }, data: u.data })
-          )
-        );
+        try {
+          await prisma.$transaction(
+            updates.map((u) =>
+              prisma.account.update({ where: { id: u.id }, data: u.data })
+            )
+          );
+        } catch (err) {
+          failed += updates.length;
+          process.stderr.write(
+            `[rotate] batch transaction failed (${updates.length} rows rolled back): ${err instanceof Error ? err.message : String(err)}\n`
+          );
+          break;
+        }
       }
       rotated += updates.length;
       cursor = batch[batch.length - 1].id;

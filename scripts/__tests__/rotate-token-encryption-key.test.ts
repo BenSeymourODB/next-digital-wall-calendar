@@ -66,6 +66,9 @@ describe("reencryptAccountTokens", () => {
     const oldId = writer.encryptToken("id-plaintext")!;
 
     // Step 2: rotation window — NEW key is ACTIVE, OLD is PREVIOUS.
+    // `loadHelper()` resets modules again; the `cipher` reference is
+    // already imported so subsequent calls keep the dual-key env
+    // snapshot that was active when the cipher module was loaded.
     vi.stubEnv("TOKEN_ENCRYPTION_KEY", NEW_KEY);
     vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", OLD_KEY);
     const cipher = await loadCipher();
@@ -156,7 +159,10 @@ describe("reencryptAccountTokens", () => {
     // tokens are already under the active key still gets re-written,
     // but the new envelope decrypts to the same plaintext (new IV, same
     // key — the on-disk shape changes but the secret value is
-    // preserved).
+    // preserved). This test exercises only the active-key path; the
+    // dual-read fallback is covered by the "re-encrypts an envelope
+    // written under the previous key" test above and the cipher's own
+    // suite.
     vi.stubEnv("TOKEN_ENCRYPTION_KEY", NEW_KEY);
     vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", OLD_KEY);
     const cipher = await loadCipher();

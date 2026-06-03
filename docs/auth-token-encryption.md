@@ -167,9 +167,11 @@ envelopes.
    `Account.id` and counted in the final summary; the CLI exits
    non-zero so an automation can detect partial completion.
 
-   Re-running the CLI is safe — it is idempotent (rows already
-   encrypted under the active key get fresh IVs but the same
-   plaintext).
+   Re-running the CLI is safe — rows already encrypted under the
+   active key get a fresh IV but the same plaintext. Note that a
+   rerun **always restarts from the beginning of the table** — the
+   page cursor lives only in process memory, so a crashed run is not
+   resumable from where it left off.
 
 4. **Verify and retire the previous key.** Confirm the CLI summary
    shows `failed=0`. Unset `TOKEN_ENCRYPTION_KEY_PREVIOUS` and
