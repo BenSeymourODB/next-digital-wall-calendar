@@ -160,6 +160,20 @@ This project includes `eslint-plugin-react-hooks@latest` which provides **compil
 - Enforce React's Rules of Hooks
 - Highlight potential issues before runtime
 
+### Manual-memoization ban (#271)
+
+The flat config in `eslint.config.mjs` enforces the no-manual-memoization rule from CLAUDE.md so violations fail CI rather than slipping through review. Two rules cooperate:
+
+- **`local/no-react-manual-memoization`** (custom — see `eslint-local-rules.mjs`) tracks every binding imported from `react` and flags any reference, including aliasing forms that pure AST-pattern rules can't see. Examples it catches:
+  - `import { memo } from "react"; memo(...)`
+  - `import { memo as M } from "react"; M(...)`
+  - `import { useMemo as um } from "react"; um(...)`
+  - `import React from "react"; React.useCallback(...)`
+  - `import * as Foo from "react"; Foo.memo(...)`
+- **`no-restricted-imports`** is a belt-and-braces backup that flags the unaliased named-import form on the import line itself (so the error is reported close to the source even if the local rule is somehow disabled).
+
+Vendored shadcn/ui under `src/components/ui/**` is globally ignored because `pnpm bump-ui` overwrites it from upstream and we don't want to fork those files. If you genuinely need to opt out of compilation for a specific component (debugging, side-effects in render), use the `"use no memo"` directive instead of reintroducing manual memoization — the lint rule will not trip on the directive.
+
 ## Verification
 
 To verify the compiler is working:

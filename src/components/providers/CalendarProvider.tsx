@@ -25,14 +25,7 @@ import type {
   TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { endOfMonth, isAfter, isBefore, startOfMonth } from "date-fns";
 
@@ -618,47 +611,44 @@ export function CalendarProvider({
   /**
    * Fetch events for a specific date range and merge with existing events
    */
-  const fetchEventsForRange = useCallback(
-    async (
-      timeMin: Date,
-      timeMax: Date,
-      calIds: string[],
-      mappings: CalendarColorMapping[],
-      metadata: CalendarMetadataMap
-    ): Promise<IEvent[]> => {
-      const url = new URL("/api/calendar/events", window.location.origin);
-      url.searchParams.set("calendarIds", calIds.join(","));
-      url.searchParams.set("timeMin", timeMin.toISOString());
-      url.searchParams.set("timeMax", timeMax.toISOString());
+  const fetchEventsForRange = async (
+    timeMin: Date,
+    timeMax: Date,
+    calIds: string[],
+    mappings: CalendarColorMapping[],
+    metadata: CalendarMetadataMap
+  ): Promise<IEvent[]> => {
+    const url = new URL("/api/calendar/events", window.location.origin);
+    url.searchParams.set("calendarIds", calIds.join(","));
+    url.searchParams.set("timeMin", timeMin.toISOString());
+    url.searchParams.set("timeMax", timeMax.toISOString());
 
-      const response = await fetch(url.toString());
+    const response = await fetch(url.toString());
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (errorData.requiresReauth) {
-          logger.log("API requires re-authentication");
-        }
-        throw new Error(errorData.error || "Failed to fetch events");
+    if (!response.ok) {
+      const errorData = await response.json();
+      if (errorData.requiresReauth) {
+        logger.log("API requires re-authentication");
       }
+      throw new Error(errorData.error || "Failed to fetch events");
+    }
 
-      const data = await response.json();
-      const googleEvents: GoogleCalendarEvent[] = data.events || [];
+    const data = await response.json();
+    const googleEvents: GoogleCalendarEvent[] = data.events || [];
 
-      // Transform events using color mappings + per-calendar metadata so
-      // shared-calendar events get a recognisable user attribution (#307).
-      return googleEvents.map((event) =>
-        transformGoogleEvent(event, mappings, metadata)
-      );
-    },
-    []
-  );
+    // Transform events using color mappings + per-calendar metadata so
+    // shared-calendar events get a recognisable user attribution (#307).
+    return googleEvents.map((event) =>
+      transformGoogleEvent(event, mappings, metadata)
+    );
+  };
 
   /**
    * Fetch the user's calendar list and return both the IDs (for downstream
    * `/api/calendar/events` queries) and a metadata map keyed by id (for the
    * `transformGoogleEvent` user-attribution fallback ladder, #307 Bug B).
    */
-  const fetchCalendarList = useCallback(async (): Promise<{
+  const fetchCalendarList = async (): Promise<{
     ids: string[];
     metadata: CalendarMetadataMap;
   }> => {
@@ -688,10 +678,14 @@ export function CalendarProvider({
       logger.log("Could not fetch calendar list, using primary only");
     }
     return { ids: ["primary"], metadata: new Map() };
-  }, []);
+  };
 
-  // Refresh events from server-side API
-  const refreshEvents = useCallback(async () => {
+  // Refresh events from server-side API. React Compiler memoizes this and
+  // the effect at the bottom of the body uses it via a ref, so the
+  // `react-hooks/exhaustive-deps` warning that demands a banned
+  // `useCallback` is a false positive (#271).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const refreshEvents = async () => {
     try {
       setIsLoading(true);
 
@@ -817,124 +811,105 @@ export function CalendarProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [
-    status,
-    session,
-    calendarMetadata,
-    colorMappings,
-    fetchCalendarList,
-    fetchEventsForRange,
-    userSettings.calendarFetchMonthsAhead,
-    userSettings.calendarFetchMonthsBehind,
-  ]);
+  };
 
   /**
    * Load additional events when navigating outside loaded range
    */
-  const loadEventsForDate = useCallback(
-    async (date: Date) => {
-      // Skip if not authenticated or already loading
-      if (
-        status !== "authenticated" ||
-        !loadedRange ||
-        isLoadingRangeRef.current
-      ) {
-        return;
+  const loadEventsForDate = async (date: Date) => {
+    // Skip if not authenticated or already loading
+    if (
+      status !== "authenticated" ||
+      !loadedRange ||
+      isLoadingRangeRef.current
+    ) {
+      return;
+    }
+
+    const targetMonth = startOfMonth(date);
+    const targetMonthEnd = endOfMonth(date);
+
+    // Check if target month is within loaded range
+    if (
+      !isBefore(targetMonth, loadedRange.start) &&
+      !isAfter(targetMonthEnd, loadedRange.end)
+    ) {
+      return; // Already loaded
+    }
+
+    isLoadingRangeRef.current = true;
+    logger.log("Loading events for date outside loaded range", {
+      date: date.toISOString(),
+    });
+
+    try {
+      let newStart = loadedRange.start;
+      let newEnd = loadedRange.end;
+
+      // Fetch earlier events
+      if (isBefore(targetMonth, loadedRange.start)) {
+        const fetchEnd = loadedRange.start;
+        const fetchStart = new Date(
+          targetMonth.getFullYear(),
+          targetMonth.getMonth() - 1,
+          1
+        );
+
+        const newEvents = await fetchEventsForRange(
+          fetchStart,
+          fetchEnd,
+          calendarIds.length > 0 ? calendarIds : ["primary"],
+          colorMappings,
+          calendarMetadata
+        );
+
+        setAllEvents((prev) => {
+          // Merge and dedupe events
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...uniqueNewEvents, ...prev];
+        });
+
+        newStart = fetchStart;
       }
 
-      const targetMonth = startOfMonth(date);
-      const targetMonthEnd = endOfMonth(date);
+      // Fetch later events
+      if (isAfter(targetMonthEnd, loadedRange.end)) {
+        const fetchStart = loadedRange.end;
+        const fetchEnd = new Date(
+          targetMonthEnd.getFullYear(),
+          targetMonthEnd.getMonth() + 2,
+          0
+        );
 
-      // Check if target month is within loaded range
-      if (
-        !isBefore(targetMonth, loadedRange.start) &&
-        !isAfter(targetMonthEnd, loadedRange.end)
-      ) {
-        return; // Already loaded
+        const newEvents = await fetchEventsForRange(
+          fetchStart,
+          fetchEnd,
+          calendarIds.length > 0 ? calendarIds : ["primary"],
+          colorMappings,
+          calendarMetadata
+        );
+
+        setAllEvents((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...prev, ...uniqueNewEvents];
+        });
+
+        newEnd = fetchEnd;
       }
 
-      isLoadingRangeRef.current = true;
-      logger.log("Loading events for date outside loaded range", {
-        date: date.toISOString(),
-      });
-
-      try {
-        let newStart = loadedRange.start;
-        let newEnd = loadedRange.end;
-
-        // Fetch earlier events
-        if (isBefore(targetMonth, loadedRange.start)) {
-          const fetchEnd = loadedRange.start;
-          const fetchStart = new Date(
-            targetMonth.getFullYear(),
-            targetMonth.getMonth() - 1,
-            1
-          );
-
-          const newEvents = await fetchEventsForRange(
-            fetchStart,
-            fetchEnd,
-            calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            // Merge and dedupe events
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...uniqueNewEvents, ...prev];
-          });
-
-          newStart = fetchStart;
-        }
-
-        // Fetch later events
-        if (isAfter(targetMonthEnd, loadedRange.end)) {
-          const fetchStart = loadedRange.end;
-          const fetchEnd = new Date(
-            targetMonthEnd.getFullYear(),
-            targetMonthEnd.getMonth() + 2,
-            0
-          );
-
-          const newEvents = await fetchEventsForRange(
-            fetchStart,
-            fetchEnd,
-            calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...prev, ...uniqueNewEvents];
-          });
-
-          newEnd = fetchEnd;
-        }
-
-        setLoadedRange({ start: newStart, end: newEnd });
-      } catch (error) {
-        logger.error(error as Error, { context: "loadEventsForDate" });
-      } finally {
-        isLoadingRangeRef.current = false;
-      }
-    },
-    [
-      status,
-      loadedRange,
-      calendarIds,
-      calendarMetadata,
-      colorMappings,
-      fetchEventsForRange,
-    ]
-  );
+      setLoadedRange({ start: newStart, end: newEnd });
+    } catch (error) {
+      logger.error(error as Error, { context: "loadEventsForDate" });
+    } finally {
+      isLoadingRangeRef.current = false;
+    }
+  };
 
   /**
    * Ensure events for an entire calendar year are loaded.
@@ -946,95 +921,83 @@ export function CalendarProvider({
    * requested year by fetching only the missing edges and merging them
    * into `allEvents`.
    */
-  const loadEventsForYear = useCallback(
-    async (year: number) => {
-      if (
-        status !== "authenticated" ||
-        !loadedRange ||
-        isLoadingRangeRef.current
-      ) {
-        return;
+  const loadEventsForYear = async (year: number) => {
+    if (
+      status !== "authenticated" ||
+      !loadedRange ||
+      isLoadingRangeRef.current
+    ) {
+      return;
+    }
+
+    const yearStart = new Date(year, 0, 1, 0, 0, 0, 0);
+    const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+
+    // Year already fully covered by loadedRange — nothing to do.
+    if (
+      !isBefore(yearStart, loadedRange.start) &&
+      !isAfter(yearEnd, loadedRange.end)
+    ) {
+      return;
+    }
+
+    isLoadingRangeRef.current = true;
+    logger.log("Loading events for full year", { year });
+
+    try {
+      const calIds = calendarIds.length > 0 ? calendarIds : ["primary"];
+
+      // Advance `loadedRange` after each successful edge fetch rather
+      // than batching both updates at the end. If the Dec edge throws
+      // after the Jan edge has already merged its events into state,
+      // the range pointer must reflect what's actually stored — else
+      // a retry would needlessly re-fetch Jan and rely on the dedupe
+      // guard to discard the duplicates.
+      if (isBefore(yearStart, loadedRange.start)) {
+        const newEvents = await fetchEventsForRange(
+          yearStart,
+          loadedRange.start,
+          calIds,
+          colorMappings,
+          calendarMetadata
+        );
+
+        setAllEvents((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...uniqueNewEvents, ...prev];
+        });
+
+        setLoadedRange((prev) => (prev ? { ...prev, start: yearStart } : prev));
       }
 
-      const yearStart = new Date(year, 0, 1, 0, 0, 0, 0);
-      const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+      if (isAfter(yearEnd, loadedRange.end)) {
+        const newEvents = await fetchEventsForRange(
+          loadedRange.end,
+          yearEnd,
+          calIds,
+          colorMappings,
+          calendarMetadata
+        );
 
-      // Year already fully covered by loadedRange — nothing to do.
-      if (
-        !isBefore(yearStart, loadedRange.start) &&
-        !isAfter(yearEnd, loadedRange.end)
-      ) {
-        return;
+        setAllEvents((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...prev, ...uniqueNewEvents];
+        });
+
+        setLoadedRange((prev) => (prev ? { ...prev, end: yearEnd } : prev));
       }
-
-      isLoadingRangeRef.current = true;
-      logger.log("Loading events for full year", { year });
-
-      try {
-        const calIds = calendarIds.length > 0 ? calendarIds : ["primary"];
-
-        // Advance `loadedRange` after each successful edge fetch rather
-        // than batching both updates at the end. If the Dec edge throws
-        // after the Jan edge has already merged its events into state,
-        // the range pointer must reflect what's actually stored — else
-        // a retry would needlessly re-fetch Jan and rely on the dedupe
-        // guard to discard the duplicates.
-        if (isBefore(yearStart, loadedRange.start)) {
-          const newEvents = await fetchEventsForRange(
-            yearStart,
-            loadedRange.start,
-            calIds,
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...uniqueNewEvents, ...prev];
-          });
-
-          setLoadedRange((prev) =>
-            prev ? { ...prev, start: yearStart } : prev
-          );
-        }
-
-        if (isAfter(yearEnd, loadedRange.end)) {
-          const newEvents = await fetchEventsForRange(
-            loadedRange.end,
-            yearEnd,
-            calIds,
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...prev, ...uniqueNewEvents];
-          });
-
-          setLoadedRange((prev) => (prev ? { ...prev, end: yearEnd } : prev));
-        }
-      } catch (error) {
-        logger.error(error as Error, { context: "loadEventsForYear" });
-      } finally {
-        isLoadingRangeRef.current = false;
-      }
-    },
-    [
-      status,
-      loadedRange,
-      calendarIds,
-      calendarMetadata,
-      colorMappings,
-      fetchEventsForRange,
-    ]
-  );
+    } catch (error) {
+      logger.error(error as Error, { context: "loadEventsForYear" });
+    } finally {
+      isLoadingRangeRef.current = false;
+    }
+  };
 
   // Color mappings are initialized synchronously from localStorage in useState.
   // They are also refreshed from the API as part of refreshEvents.
@@ -1075,6 +1038,8 @@ export function CalendarProvider({
 
   // Keep a ref to the latest refreshEvents so the interval always calls the
   // current closure (avoids stale state from earlier effect runs).
+  // React Compiler memoizes `refreshEvents` based on its captured deps so
+  // the effect only re-runs when those underlying inputs actually change.
   const refreshEventsRef = useRef(refreshEvents);
   useEffect(() => {
     refreshEventsRef.current = refreshEvents;

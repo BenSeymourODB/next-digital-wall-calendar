@@ -70,6 +70,8 @@ Application Insights is **not yet implemented**. The logger abstraction exists f
 
 Enabled by default. **DO NOT** use manual memoization (`useMemo`, `useCallback`, `React.memo`). Write clean, simple React code. See [docs/react-compiler.md](./docs/react-compiler.md).
 
+This is enforced by ESLint: `no-restricted-imports` bans `useMemo`/`useCallback`/`memo` named imports from `react`, and `no-restricted-syntax` bans `React.memo`/`React.useMemo`/`React.useCallback` member access. Vendored `src/components/ui/**` is exempt because `pnpm bump-ui` overwrites it from upstream shadcn.
+
 ### shadcn/ui
 
 Components are **copied into `src/components/ui/`**, not installed as a package. Warn the user if installing components would overwrite existing customizations. Use the Shadcn MCP server to browse and install.
