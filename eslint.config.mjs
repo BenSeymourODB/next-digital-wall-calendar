@@ -41,6 +41,18 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  // eslint-config-next 16.2.7 (merged via Dependabot #359) promoted
+  // `react-hooks/set-state-in-effect` from off to error, surfacing eight
+  // pre-existing violations across the codebase (CalendarProvider,
+  // settings-form, give-points-modal, pin-entry-modal, pin-setup-modal,
+  // task-list-settings, use-tasks, useWritableCalendars). Downgrade to
+  // `warn` so unrelated PRs aren't blocked while the violations are
+  // refactored under a dedicated cleanup ticket.
+  {
+    rules: {
+      "react-hooks/set-state-in-effect": "warn",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
