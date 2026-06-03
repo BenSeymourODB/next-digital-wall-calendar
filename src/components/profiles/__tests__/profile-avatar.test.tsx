@@ -6,15 +6,11 @@ import { describe, expect, it } from "vitest";
 import { ProfileAvatar } from "../profile-avatar";
 import type { Profile } from "../profile-context";
 
-// ProfileAvatar consumes a narrow subset of Profile (name + color + avatar);
-// the `id` is retained here for clarity since fixtures historically include it.
-type ProfileAvatarFixture = Pick<Profile, "name" | "color" | "avatar"> & {
-  id: string;
-};
+// ProfileAvatar's prop type is the narrow subset { name, color, avatar }.
+type ProfileAvatarFixture = Pick<Profile, "name" | "color" | "avatar">;
 
 // Mock profile data
 const mockProfile: ProfileAvatarFixture = {
-  id: "profile-1",
   name: "Test User",
   color: "#3b82f6",
   avatar: {

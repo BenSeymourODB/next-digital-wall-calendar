@@ -274,8 +274,10 @@ describe("ProfileContext", () => {
         expect(result.current.allProfiles).toHaveLength(2);
       });
 
-      // Add a new profile to the response
-      const updatedProfiles = [
+      // Add a new profile to the response. The appended fragment is a
+      // deliberately partial Profile — the test only checks `allProfiles`
+      // length after refresh, so a minimal shape exercises the path.
+      const updatedProfiles: Array<Profile | Partial<Profile>> = [
         ...mockProfiles,
         {
           id: "profile-new",
