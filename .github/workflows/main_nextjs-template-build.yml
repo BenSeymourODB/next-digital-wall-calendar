@@ -58,8 +58,10 @@ jobs:
           # configure it via the config file instead.
           SHADOW_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
         run: |
-          # Check that migrations directory matches the schema
-          # Exit code 2 means there is a diff (migrations are out of date)
+          # Detect schema-vs-migrations drift: fails when schema.prisma has been
+          # edited without a corresponding migration, or when two merged branches
+          # each added valid but conflicting schema changes.
+          # Exit code 2 means there is a diff (migrations are out of date).
           npx prisma migrate diff \
             --from-migrations prisma/migrations \
             --to-schema prisma/schema.prisma \
