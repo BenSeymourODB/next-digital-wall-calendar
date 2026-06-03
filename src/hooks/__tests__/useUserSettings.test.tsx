@@ -55,6 +55,8 @@ describe("useUserSettings", () => {
       calendarFetchMonthsAhead: 4,
       calendarFetchMonthsBehind: 2,
       calendarMaxEventsPerDay: 5,
+      weekStartDay: 1,
+      calendarWorkingHoursStart: 9,
     };
     vi.mocked(global.fetch).mockResolvedValue({
       ok: true,
@@ -69,7 +71,12 @@ describe("useUserSettings", () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith("/api/settings");
-    expect(result.current.settings).toEqual(mockSettings);
+    // Server payload merges over defaults, so fields the server omitted
+    // (here: calendarTransitionSpeed) come from DEFAULT_USER_CALENDAR_SETTINGS.
+    expect(result.current.settings).toEqual({
+      ...DEFAULT_USER_CALENDAR_SETTINGS,
+      ...mockSettings,
+    });
   });
 
   it("falls back to defaults when the API returns an error", async () => {
@@ -142,6 +149,68 @@ describe("useUserSettings", () => {
     consoleError.mockRestore();
   });
 
+  it("surfaces calendarTransitionSpeed when the server provides it", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarTransitionSpeed: "fast" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.calendarTransitionSpeed).toBe("fast");
+  });
+
+  it("falls back to the default speed when the server omits it", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarMaxEventsPerDay: 7 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.calendarTransitionSpeed).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.calendarTransitionSpeed
+    );
+  });
+
+  it("rejects garbage calendarTransitionSpeed values from the server", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarTransitionSpeed: "ludicrous" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    // Unknown value should not propagate; default stands.
+    expect(result.current.settings.calendarTransitionSpeed).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.calendarTransitionSpeed
+    );
+  });
+
   it("merges partial server values over defaults", async () => {
     mockUseSession.mockReturnValue({
       data: { user: { id: "u1" } },
@@ -163,4 +232,101 @@ describe("useUserSettings", () => {
       calendarMaxEventsPerDay: 7,
     });
   });
+
+  it("exposes weekStartDay with default 0 when unauthenticated", () => {
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+
+    const { result } = renderHook(() => useUserSettings());
+
+    expect(result.current.settings.weekStartDay).toBe(0);
+  });
+
+  it("returns server-side weekStartDay when authenticated", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ weekStartDay: 1 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.weekStartDay).toBe(1);
+  });
+
+  it("ignores out-of-range weekStartDay from the server (defensive)", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      // A rogue value (e.g. from a manually-edited DB row) should not
+      // poison the helper's `weekStartsOn` parameter.
+      json: async () => ({ weekStartDay: 5 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.weekStartDay).toBe(0);
+  });
+
+  it("picks calendarWorkingHoursStart from server response", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarWorkingHoursStart: 5 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.calendarWorkingHoursStart).toBe(5);
+  });
+
+  it.each([
+    ["string", "9"],
+    ["float", 7.5],
+    ["negative", -1],
+    ["above range", 24],
+    ["null", null],
+  ])(
+    "ignores invalid calendarWorkingHoursStart (%s) from a malformed response",
+    async (_label, value) => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ calendarWorkingHoursStart: value }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.settings.calendarWorkingHoursStart).toBe(
+        DEFAULT_USER_CALENDAR_SETTINGS.calendarWorkingHoursStart
+      );
+    }
+  );
 });

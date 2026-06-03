@@ -3,6 +3,7 @@ import {
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
 import type {
   IEvent,
   IUser,
@@ -15,6 +16,13 @@ import { format, isSameMonth } from "date-fns";
 import { describe, expect, it, vi } from "vitest";
 import { SimpleCalendar } from "../SimpleCalendar";
 
+// SimpleCalendar mounts AddEventButton, which now reads useWritableCalendars
+// (and therefore useSession). These tests don't wrap in SessionProvider; mock
+// the hook so the calendar surface stays decoupled from the data layer.
+vi.mock("@/hooks/useWritableCalendars", () => ({
+  useWritableCalendars: () => ({ calendars: [], isLoading: false }),
+}));
+
 /**
  * Tests for SimpleCalendar component.
  *
@@ -24,25 +32,6 @@ import { SimpleCalendar } from "../SimpleCalendar";
  * - Date range display
  * - Day overflow popover (+X more trigger, event list, close behavior, focus)
  */
-
-function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
-  return {
-    id: "test-event-1",
-    title: "Test Event",
-    startDate: new Date().toISOString(),
-    endDate: new Date().toISOString(),
-    color: "blue",
-    description: "",
-    isAllDay: false,
-    calendarId: "primary",
-    user: {
-      id: "user-1",
-      name: "Test User",
-      picturePath: null,
-    },
-    ...overrides,
-  };
-}
 
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
@@ -80,6 +69,8 @@ function createMockContext(
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
+    workingHoursStart: 7,
+    transitionDurationMs: 300,
     ...overrides,
   };
 }
@@ -843,6 +834,40 @@ describe("SimpleCalendar", () => {
       expect(outgoing.style.transform).toBe("translateX(100%)");
     });
 
+    it("consumes transitionDurationMs from context — duration=0 swaps instantly with no outgoing snapshot", async () => {
+      // When the user picks "Off" in settings, transitionDurationMs is 0.
+      // AnimatedSwap then short-circuits, rendering only the new month —
+      // no outgoing snapshot mid-transition. Same off-path that
+      // prefers-reduced-motion produces.
+      const user = userEvent.setup();
+      const initialDate = new Date(2026, 3, 15);
+
+      const { rerender, contextValue } = renderWithContext({
+        selectedDate: initialDate,
+        transitionDurationMs: 0,
+      });
+
+      await user.click(screen.getByTestId("calendar-next-month"));
+      rerender(
+        <CalendarContext.Provider
+          value={{
+            ...contextValue,
+            transitionDurationMs: 0,
+            selectedDate: new Date(2026, 4, 15),
+          }}
+        >
+          <SimpleCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("grid", { name: /May 2026/ })
+      ).toBeInTheDocument();
+    });
+
     it("keeps the role='grid' element stable across month changes (no remount)", async () => {
       const user = userEvent.setup();
       const initialDate = new Date(2026, 3, 15);
@@ -1170,6 +1195,52 @@ describe("SimpleCalendar", () => {
       await vi.waitFor(() => {
         expect(trigger).toHaveFocus();
       });
+    });
+
+    it("opens the event detail modal when a popover event card is activated with Enter", async () => {
+      const user = userEvent.setup();
+      const events = makeOverflowEvents(5);
+      renderWithContext({
+        selectedDate: overflowDate,
+        events,
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+      await screen.findByTestId(`day-events-popover-${dayKey}`);
+
+      const card = screen.getByTestId(
+        `day-events-popover-event-${events[3].id}`
+      );
+      card.focus();
+      expect(card).toHaveFocus();
+      await user.keyboard("{Enter}");
+
+      expect(
+        await screen.findByRole("heading", { name: "Event 4" })
+      ).toBeInTheDocument();
+    });
+
+    it("opens the event detail modal when a popover event card is activated with Space", async () => {
+      const user = userEvent.setup();
+      const events = makeOverflowEvents(5);
+      renderWithContext({
+        selectedDate: overflowDate,
+        events,
+      });
+
+      await user.click(screen.getByTestId(`day-overflow-trigger-${dayKey}`));
+      await screen.findByTestId(`day-events-popover-${dayKey}`);
+
+      const card = screen.getByTestId(
+        `day-events-popover-event-${events[2].id}`
+      );
+      card.focus();
+      expect(card).toHaveFocus();
+      await user.keyboard(" ");
+
+      expect(
+        await screen.findByRole("heading", { name: "Event 3" })
+      ).toBeInTheDocument();
     });
   });
 });

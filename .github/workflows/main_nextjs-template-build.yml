@@ -11,6 +11,25 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
+    services:
+      # Shadow database for `prisma migrate diff --from-migrations`. Prisma
+      # replays the SQL migrations into this container to compute their
+      # resulting schema, then diffs against prisma/schema.prisma. See
+      # docs/database.md → "CI Validation".
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: shadow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d shadow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v6
 
@@ -30,9 +49,19 @@ jobs:
         run: pnpm lint && pnpm check-types
 
       - name: Validate Prisma migrations are up to date
+        env:
+          # Prisma 7's `migrate diff --from-migrations` requires a shadow DB
+          # URL declared via `datasource.shadowDatabaseUrl` in
+          # prisma.config.ts; the config reads it from this env var. The
+          # `--shadow-database-url` CLI flag is documented in Prisma's own
+          # error message but rejected by the `migrate diff` parser, so we
+          # configure it via the config file instead.
+          SHADOW_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
         run: |
-          # Check that migrations directory matches the schema
-          # Exit code 2 means there is a diff (migrations are out of date)
+          # Detect schema-vs-migrations drift: fails when schema.prisma has been
+          # edited without a corresponding migration, or when two merged branches
+          # each added valid but conflicting schema changes.
+          # Exit code 2 means there is a diff (migrations are out of date).
           npx prisma migrate diff \
             --from-migrations prisma/migrations \
             --to-schema prisma/schema.prisma \
@@ -43,7 +72,7 @@ jobs:
 
       - name: Validate Prisma migration naming convention
         run: pnpm db:migrate:check-names
-        
+
       - name: Test
         run: pnpm test:run
 

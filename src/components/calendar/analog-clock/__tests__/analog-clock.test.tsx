@@ -1,6 +1,6 @@
 import type { IEvent } from "@/types/calendar";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { AnalogClock } from "../analog-clock";
 import type { ClockEvent } from "../types";
 
@@ -170,6 +170,57 @@ describe("AnalogClock", () => {
     render(<AnalogClock rawEvents={rawEvents} currentTime={now} />);
     expect(screen.getByTestId("event-arc-raw-am")).toBeInTheDocument();
     expect(screen.queryByTestId("event-arc-raw-pm")).not.toBeInTheDocument();
+  });
+
+  it("forwards onEventClick to event arcs (clicking an arc fires the callback with the event id and the <g> element)", () => {
+    const onEventClick = vi.fn();
+    render(
+      <AnalogClock
+        events={mockEvents}
+        currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        onEventClick={onEventClick}
+      />
+    );
+    const group = screen.getByTestId("event-arc-group-evt-2");
+    fireEvent.click(group);
+    expect(onEventClick).toHaveBeenCalledTimes(1);
+    expect(onEventClick).toHaveBeenCalledWith("evt-2", group);
+  });
+
+  it("makes arcs focusable buttons when onEventClick is provided", () => {
+    render(
+      <AnalogClock
+        events={mockEvents}
+        currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        onEventClick={vi.fn()}
+      />
+    );
+    const group = screen.getByTestId("event-arc-group-evt-1");
+    expect(group.getAttribute("role")).toBe("button");
+    expect(group.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("widens the outer <svg> role to 'group' when interactive so AT exposes inner role='button' arcs", () => {
+    render(
+      <AnalogClock
+        events={mockEvents}
+        currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+        onEventClick={vi.fn()}
+      />
+    );
+    const svg = screen.getByTestId("analog-clock");
+    expect(svg.getAttribute("role")).toBe("group");
+  });
+
+  it("keeps the outer <svg> role='img' when no onEventClick is provided", () => {
+    render(
+      <AnalogClock
+        events={mockEvents}
+        currentTime={new Date(2026, 3, 12, 10, 10, 0)}
+      />
+    );
+    const svg = screen.getByTestId("analog-clock");
+    expect(svg.getAttribute("role")).toBe("img");
   });
 
   it("handles overlapping events by stacking at different radii", () => {

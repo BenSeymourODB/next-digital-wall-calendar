@@ -2,6 +2,7 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
 import type {
   IEvent,
   IUser,
@@ -20,26 +21,6 @@ import { AgendaCalendar } from "../AgendaCalendar";
  * - Bug 1: All-day event detection uses event.isAllDay (not duration)
  * - Bug 4: Events show on correct dates in agenda view (no offset)
  */
-
-// Helper to create mock events with required isAllDay and calendarId fields
-function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
-  return {
-    id: "test-event-1",
-    title: "Test Event",
-    startDate: new Date().toISOString(),
-    endDate: new Date().toISOString(),
-    color: "blue",
-    description: "",
-    isAllDay: false,
-    calendarId: "primary",
-    user: {
-      id: "user-1",
-      name: "Test User",
-      picturePath: null,
-    },
-    ...overrides,
-  };
-}
 
 // Helper to get a date string for N days from now at specific time
 function getFutureDate(daysFromNow: number, hours = 10, minutes = 0): string {
@@ -97,6 +78,8 @@ function createMockContext(
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
+    workingHoursStart: 7,
+    transitionDurationMs: 300,
     ...overrides,
   };
 }
@@ -417,6 +400,66 @@ describe("AgendaCalendar", () => {
       expect(screen.getByText("Dentist Appointment")).toBeInTheDocument();
       expect(screen.getByText("Soccer Practice")).toBeInTheDocument();
       expect(screen.getByText("Birthday Party")).toBeInTheDocument();
+    });
+
+    describe("Visible match count badge (#214)", () => {
+      it("does not render the badge when the query is empty", () => {
+        renderWithContext(buildEvents());
+        expect(
+          screen.queryByTestId("agenda-search-match-count")
+        ).not.toBeInTheDocument();
+      });
+
+      it("does not render the badge for a whitespace-only query", async () => {
+        const user = userEvent.setup();
+        renderWithContext(buildEvents());
+
+        await user.type(screen.getByPlaceholderText(/search events/i), "   ");
+
+        expect(
+          screen.queryByTestId("agenda-search-match-count")
+        ).not.toBeInTheDocument();
+      });
+
+      it("shows '1 match' (singular) when exactly one event matches", async () => {
+        const user = userEvent.setup();
+        renderWithContext(buildEvents());
+
+        await user.type(
+          screen.getByPlaceholderText(/search events/i),
+          "soccer"
+        );
+
+        expect(
+          screen.getByTestId("agenda-search-match-count")
+        ).toHaveTextContent("1 match");
+      });
+
+      it("shows 'N matches' (plural) when multiple events match", async () => {
+        const user = userEvent.setup();
+        renderWithContext(buildEvents());
+
+        // All three fixture titles include the letter "e".
+        await user.type(screen.getByPlaceholderText(/search events/i), "e");
+
+        expect(
+          screen.getByTestId("agenda-search-match-count")
+        ).toHaveTextContent("3 matches");
+      });
+
+      it("shows '0 matches' when no events match", async () => {
+        const user = userEvent.setup();
+        renderWithContext(buildEvents());
+
+        await user.type(
+          screen.getByPlaceholderText(/search events/i),
+          "nothing-matches-this"
+        );
+
+        expect(
+          screen.getByTestId("agenda-search-match-count")
+        ).toHaveTextContent("0 matches");
+      });
     });
   });
 
