@@ -1,11 +1,17 @@
 "use client";
 
+import {
+  type CalendarTransitionSpeed,
+  DEFAULT_CALENDAR_TRANSITION_SPEED,
+  isCalendarTransitionSpeed,
+} from "@/lib/calendar/transition-speed";
 import { logger } from "@/lib/logger";
 import {
   type UserSettingsPartial,
   emitUserSettingsChange,
   subscribeUserSettings,
 } from "@/lib/user-settings-bus";
+import type { TWeekStartDay } from "@/types/calendar";
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 
@@ -25,6 +31,10 @@ export interface UserCalendarSettings {
    * matches the Prisma schema default.
    */
   timeFormat: TTimeFormat;
+  weekStartDay: TWeekStartDay;
+  /** Hour (0–23) the Day/Week grids auto-scroll to on first render (#288). */
+  calendarWorkingHoursStart: number;
+  calendarTransitionSpeed: CalendarTransitionSpeed;
 }
 
 export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
@@ -33,6 +43,9 @@ export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
   timeFormat: "12h",
+  weekStartDay: 0,
+  calendarWorkingHoursStart: 7,
+  calendarTransitionSpeed: DEFAULT_CALENDAR_TRANSITION_SPEED,
 };
 
 interface UseUserSettingsResult {
@@ -52,6 +65,16 @@ interface UseUserSettingsResult {
    * the DB is the source of truth for an authenticated user.
    */
   mutate: (partial: UserSettingsPartial) => Promise<void>;
+  /**
+   * True only after a `/api/settings` fetch has resolved successfully at
+   * least once for the current authenticated session. Distinct from
+   * `!isLoading` because the latter is also `false` on the very first
+   * render where `status === "authenticated"` but the effect hasn't yet
+   * set it to `true` — that window is where consumers must avoid acting
+   * on the in-memory default value (e.g. the `weekStartDay` migration
+   * shim in `CalendarProvider`, #338).
+   */
+  hasLoadedFromServer: boolean;
 }
 
 export function useUserSettings(): UseUserSettingsResult {
@@ -60,6 +83,7 @@ export function useUserSettings(): UseUserSettingsResult {
     DEFAULT_USER_CALENDAR_SETTINGS
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedFromServer, setHasLoadedFromServer] = useState(false);
 
   // Generation counter incremented on every mutate. The settings GET
   // captures the gen at start and refuses to write its result back to
@@ -105,6 +129,7 @@ export function useUserSettings(): UseUserSettingsResult {
           ...prev,
           ...pickCalendarFields(data),
         }));
+        setHasLoadedFromServer(true);
       } catch (error) {
         logger.error(error as Error, { context: "useUserSettings" });
       } finally {
@@ -186,7 +211,7 @@ export function useUserSettings(): UseUserSettingsResult {
     }
   };
 
-  return { settings, isLoading, mutate };
+  return { settings, isLoading, hasLoadedFromServer, mutate };
 }
 
 function pickCalendarFields(
@@ -210,6 +235,26 @@ function pickCalendarFields(
     (VALID_TIME_FORMATS as readonly string[]).includes(data.timeFormat)
   ) {
     picked.timeFormat = data.timeFormat as TTimeFormat;
+  }
+  // Discard rogue values: a manually-edited DB row of `5` would silently
+  // poison every `weekStartsOn` parameter we feed into date-fns, so reject
+  // anything outside the {0, 1} contract enforced server-side.
+  if (data.weekStartDay === 0 || data.weekStartDay === 1) {
+    picked.weekStartDay = data.weekStartDay;
+  }
+  if (
+    typeof data.calendarWorkingHoursStart === "number" &&
+    Number.isInteger(data.calendarWorkingHoursStart) &&
+    data.calendarWorkingHoursStart >= 0 &&
+    data.calendarWorkingHoursStart <= 23
+  ) {
+    picked.calendarWorkingHoursStart = data.calendarWorkingHoursStart;
+  }
+  // Defensive: the server should already validate this, but if a stale row
+  // ever ships an unknown value we drop back to the default rather than
+  // crash a strict union elsewhere.
+  if (isCalendarTransitionSpeed(data.calendarTransitionSpeed)) {
+    picked.calendarTransitionSpeed = data.calendarTransitionSpeed;
   }
   return picked;
 }

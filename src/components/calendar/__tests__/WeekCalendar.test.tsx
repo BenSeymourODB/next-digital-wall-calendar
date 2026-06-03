@@ -64,6 +64,8 @@ function createMockContext(
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
+    workingHoursStart: 7,
+    transitionDurationMs: 300,
     weekStartDay: 0,
     setWeekStartDay: vi.fn(),
     ...overrides,
@@ -399,13 +401,32 @@ describe("WeekCalendar", () => {
     });
   });
 
-  describe("Initial scroll position (#214)", () => {
-    // HOUR_HEIGHT_PX = 40; working hours start at 07:00
+  describe("Initial scroll position (#214, #288)", () => {
+    // HOUR_HEIGHT_PX = 40; working hours start at 07:00 by default.
     // Expected scrollTop: 7 * 40 = 280
     it("auto-scrolls the time grid to ~7am on mount", () => {
       renderWithContext({ selectedDate: new Date() });
       const grid = screen.getByTestId("week-calendar-grid-scroll");
       expect(grid.scrollTop).toBe(280);
+    });
+
+    // Issue #288: the start hour is now configurable per user.
+    it("honours a non-default workingHoursStart from context (early shift)", () => {
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 5,
+      });
+      const grid = screen.getByTestId("week-calendar-grid-scroll");
+      expect(grid.scrollTop).toBe(5 * 40);
+    });
+
+    it("honours a non-default workingHoursStart from context (night owl)", () => {
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 14,
+      });
+      const grid = screen.getByTestId("week-calendar-grid-scroll");
+      expect(grid.scrollTop).toBe(14 * 40);
     });
 
     it("does not render the grid (and thus does not scroll) in agenda mode", () => {

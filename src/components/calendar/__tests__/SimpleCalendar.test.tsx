@@ -69,6 +69,8 @@ function createMockContext(
     isLoading: false,
     isAuthenticated: true,
     maxEventsPerDay: 3,
+    workingHoursStart: 7,
+    transitionDurationMs: 300,
     ...overrides,
   };
 }
@@ -830,6 +832,40 @@ describe("SimpleCalendar", () => {
 
       const outgoing = screen.getByTestId("animated-swap-outgoing");
       expect(outgoing.style.transform).toBe("translateX(100%)");
+    });
+
+    it("consumes transitionDurationMs from context — duration=0 swaps instantly with no outgoing snapshot", async () => {
+      // When the user picks "Off" in settings, transitionDurationMs is 0.
+      // AnimatedSwap then short-circuits, rendering only the new month —
+      // no outgoing snapshot mid-transition. Same off-path that
+      // prefers-reduced-motion produces.
+      const user = userEvent.setup();
+      const initialDate = new Date(2026, 3, 15);
+
+      const { rerender, contextValue } = renderWithContext({
+        selectedDate: initialDate,
+        transitionDurationMs: 0,
+      });
+
+      await user.click(screen.getByTestId("calendar-next-month"));
+      rerender(
+        <CalendarContext.Provider
+          value={{
+            ...contextValue,
+            transitionDurationMs: 0,
+            selectedDate: new Date(2026, 4, 15),
+          }}
+        >
+          <SimpleCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("grid", { name: /May 2026/ })
+      ).toBeInTheDocument();
     });
 
     it("keeps the role='grid' element stable across month changes (no remount)", async () => {

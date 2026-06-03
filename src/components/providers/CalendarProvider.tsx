@@ -14,6 +14,7 @@ import {
   type CalendarMetadataMap,
   transformGoogleEvent,
 } from "@/lib/calendar-transform";
+import { resolveTransitionDurationMs } from "@/lib/calendar/transition-speed";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import type {
@@ -24,14 +25,7 @@ import type {
   TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { endOfMonth, isAfter, isBefore, startOfMonth } from "date-fns";
 
@@ -112,6 +106,19 @@ export interface ICalendarContext {
   isLoading: boolean;
   isAuthenticated: boolean;
   maxEventsPerDay: number;
+  /**
+   * Hour of day (0–23) the Day/Week time grids auto-scroll to on first
+   * render so working-hours events are immediately visible. Sourced
+   * from the user's `calendarWorkingHoursStart` setting (#288).
+   */
+  workingHoursStart: number;
+  /**
+   * Calendar view-transition duration in milliseconds, derived from the
+   * user's `calendarTransitionSpeed` setting. `0` disables animation; the
+   * `AnimatedSwap` short-circuit then matches the `prefers-reduced-motion`
+   * code path. See `src/lib/calendar/transition-speed.ts`.
+   */
+  transitionDurationMs: number;
 }
 
 interface CalendarSettings {
@@ -204,10 +211,14 @@ export function CalendarProvider({
   // User-configurable data-loading settings (fetched from server when authed,
   // falls back to defaults otherwise). Powers auto-refresh interval, fetch-
   // window sizing for refreshEvents, and the app-wide `timeFormat` (#337).
+  // `hasLoadedFromServer` flips to true only after the first successful
+  // `/api/settings` fetch — the `weekStartDay` migration shim below uses it
+  // to avoid acting on the in-memory default value during the first render
+  // after sign-in.
   const {
     settings: userSettings,
     mutate: mutateUserSettings,
-    isLoading: isUserSettingsLoading,
+    hasLoadedFromServer: userSettingsLoaded,
   } = useUserSettings();
   const userTimeFormat: TTimeFormat = userSettings.timeFormat;
   const use24HourFormat = userTimeFormat === "24h";
@@ -238,9 +249,18 @@ export function CalendarProvider({
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
   >(settings.agendaModeGroupBy ?? DEFAULT_SETTINGS.agendaModeGroupBy);
+  // Initialize from localStorage so we have a sensible value before the
+  // server's UserSettings.weekStartDay arrives. Once authenticated, the
+  // effect below promotes the server value to the source of truth and the
+  // setter writes through to the API instead of localStorage (#338).
   const [weekStartDay, setWeekStartDayState] = useState<TWeekStartDay>(
     settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay
   );
+
+  // One-shot guard for the localStorage → server migration. Survives
+  // remounts via localStorage, but a single React StrictMode double-mount
+  // is also covered by the in-memory ref so we never PUT twice.
+  const weekStartMigrationRef = useRef(false);
 
   // Single mount-only write that handles two concerns atomically:
   //
@@ -297,16 +317,20 @@ export function CalendarProvider({
   //      "user explicitly chose 12h elsewhere" — and it's the case that
   //      preserves continuity for the largest cohort.
   //
-  // Gated on `!isUserSettingsLoading` so the strip-and-maybe-push
-  // happens only after `useUserSettings`' initial GET resolves; running
-  // the push optimistically before then would let the in-flight GET
-  // clobber our PUT a moment later. The `migrationRanRef` guard makes
-  // the effect resilient to React Strict Mode's double-invoke and any
-  // future dependency change that would re-trigger the body.
+  // Gated on `userSettingsLoaded` (`hasLoadedFromServer`) so the
+  // strip-and-maybe-push happens only after `useUserSettings`' initial GET
+  // has resolved at least once — not merely when `isLoading` is false,
+  // which is also the case on the very first render before the GET starts.
+  // Reading `userTimeFormat` in that pre-GET window would compare the
+  // in-memory default ("12h") instead of the real server value and could
+  // push a spurious PUT (the same race `hasLoadedFromServer` was added to
+  // close for the #338 weekStartDay migration below). The `migrationRanRef`
+  // guard makes the effect resilient to React Strict Mode's double-invoke
+  // and any future dependency change that would re-trigger the body.
   const migrationRanRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (isAuthenticated && isUserSettingsLoading) return;
+    if (isAuthenticated && !userSettingsLoaded) return;
     if (migrationRanRef.current) return;
 
     const raw = window.localStorage.getItem("calendar-settings");
@@ -341,7 +365,7 @@ export function CalendarProvider({
     // observes auth + GET resolution to know when it's safe to read the
     // server-side `userTimeFormat`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, isUserSettingsLoading, userTimeFormat]);
+  }, [isAuthenticated, userSettingsLoaded, userTimeFormat]);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
@@ -410,10 +434,114 @@ export function CalendarProvider({
     updateSettings({ agendaModeGroupBy: groupBy });
   };
 
+  /**
+   * Persist the chosen week-start day. Once authenticated, the source of
+   * truth is `UserSettings.weekStartDay` on the server (#338), so the setter
+   * PUTs to `/api/settings` and the next `useUserSettings` refresh reads it
+   * back. We still mirror the value into localStorage so unauthenticated
+   * surfaces (and the next paint while we wait for the server) stay in sync.
+   *
+   * On PUT failure we revert the optimistic state + localStorage update so
+   * the UI doesn't drift from the persisted value, mirroring the rollback
+   * pattern used by `createEvent` / `deleteEvent` in this provider.
+   */
   const setWeekStartDay = (day: TWeekStartDay) => {
+    const previousDay = weekStartDay;
     setWeekStartDayState(day);
     updateSettings({ weekStartDay: day });
+    if (status === "authenticated") {
+      void fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekStartDay: day }),
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`PUT /api/settings ${response.status}`);
+          }
+        })
+        .catch((error) => {
+          // Revert optimistic update so the UI matches the persisted value.
+          setWeekStartDayState(previousDay);
+          updateSettings({ weekStartDay: previousDay });
+          logger.error(error as Error, {
+            context: "setWeekStartDay",
+            weekStartDay: day,
+          });
+        });
+    }
   };
+
+  // localStorage → server migration for `weekStartDay` (#338).
+  //
+  // Pre-#338, `weekStartDay` lived only in the per-browser `calendar-settings`
+  // localStorage key. When a user with a non-default localStorage value
+  // (Monday) signs in for the first time after the rollout, push it up to
+  // the server exactly once so subsequent browsers see their preference.
+  // The migration flag lives in its own localStorage key so it survives a
+  // tab close before a future server-driven refactor.
+  //
+  // Gated on `userSettingsLoaded` so we only compare against the real
+  // server value, not the in-memory default `userSettings.weekStartDay`
+  // that ships before the first `/api/settings` GET resolves. Without this
+  // guard the very first authenticated render fires a redundant PUT in
+  // the case where the user already migrated on another browser.
+  useEffect(() => {
+    if (weekStartMigrationRef.current) return;
+    if (status !== "authenticated") return;
+    if (!userSettingsLoaded) return;
+    if (typeof window === "undefined") return;
+
+    const FLAG_KEY = "calendar-week-start-day-migrated";
+    if (window.localStorage.getItem(FLAG_KEY) === "1") {
+      weekStartMigrationRef.current = true;
+      return;
+    }
+
+    const localValue = settings.weekStartDay ?? DEFAULT_SETTINGS.weekStartDay;
+    const serverValue = userSettings.weekStartDay;
+
+    if (localValue !== serverValue) {
+      // The local value is the user's last explicit choice on this browser;
+      // promote it to the server so other browsers + the main Settings page
+      // see the same default.
+      void fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekStartDay: localValue }),
+      }).catch((error) => {
+        logger.error(error as Error, {
+          context: "weekStartDayMigration",
+        });
+      });
+    }
+
+    window.localStorage.setItem(FLAG_KEY, "1");
+    weekStartMigrationRef.current = true;
+    // `settings.weekStartDay` is intentionally omitted: the effect is
+    // mount-only after the flag is set, and reads the localStorage value
+    // imperatively above. Including it would re-run the effect every time
+    // the user toggles the radio (the early-return guard short-circuits,
+    // but the dep is misleading).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, userSettingsLoaded, userSettings.weekStartDay]);
+
+  // Once the server value is known and the migration has run, treat the
+  // server as the source of truth: copy the server value into local state
+  // whenever it changes. The `=== 1 ? 1 : 0` clamp mirrors the same
+  // defensive guard in `src/app/settings/page.tsx`, in case
+  // `useUserSettings`'s pick filter is ever bypassed.
+  //
+  // `weekStartDay` is intentionally NOT in the dep array: an optimistic
+  // local update (from `setWeekStartDay`) must not retrigger this effect,
+  // or it would immediately revert the optimistic flip back to the stale
+  // server value held by `userSettings.weekStartDay`.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!weekStartMigrationRef.current) return;
+    const safe: TWeekStartDay = userSettings.weekStartDay === 1 ? 1 : 0;
+    setWeekStartDayState(safe);
+  }, [status, userSettings.weekStartDay]);
 
   const filterEventsBySelectedColors = (color: TEventColor) => {
     setSelectedColors((prev) =>
@@ -566,47 +694,44 @@ export function CalendarProvider({
   /**
    * Fetch events for a specific date range and merge with existing events
    */
-  const fetchEventsForRange = useCallback(
-    async (
-      timeMin: Date,
-      timeMax: Date,
-      calIds: string[],
-      mappings: CalendarColorMapping[],
-      metadata: CalendarMetadataMap
-    ): Promise<IEvent[]> => {
-      const url = new URL("/api/calendar/events", window.location.origin);
-      url.searchParams.set("calendarIds", calIds.join(","));
-      url.searchParams.set("timeMin", timeMin.toISOString());
-      url.searchParams.set("timeMax", timeMax.toISOString());
+  const fetchEventsForRange = async (
+    timeMin: Date,
+    timeMax: Date,
+    calIds: string[],
+    mappings: CalendarColorMapping[],
+    metadata: CalendarMetadataMap
+  ): Promise<IEvent[]> => {
+    const url = new URL("/api/calendar/events", window.location.origin);
+    url.searchParams.set("calendarIds", calIds.join(","));
+    url.searchParams.set("timeMin", timeMin.toISOString());
+    url.searchParams.set("timeMax", timeMax.toISOString());
 
-      const response = await fetch(url.toString());
+    const response = await fetch(url.toString());
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (errorData.requiresReauth) {
-          logger.log("API requires re-authentication");
-        }
-        throw new Error(errorData.error || "Failed to fetch events");
+    if (!response.ok) {
+      const errorData = await response.json();
+      if (errorData.requiresReauth) {
+        logger.log("API requires re-authentication");
       }
+      throw new Error(errorData.error || "Failed to fetch events");
+    }
 
-      const data = await response.json();
-      const googleEvents: GoogleCalendarEvent[] = data.events || [];
+    const data = await response.json();
+    const googleEvents: GoogleCalendarEvent[] = data.events || [];
 
-      // Transform events using color mappings + per-calendar metadata so
-      // shared-calendar events get a recognisable user attribution (#307).
-      return googleEvents.map((event) =>
-        transformGoogleEvent(event, mappings, metadata)
-      );
-    },
-    []
-  );
+    // Transform events using color mappings + per-calendar metadata so
+    // shared-calendar events get a recognisable user attribution (#307).
+    return googleEvents.map((event) =>
+      transformGoogleEvent(event, mappings, metadata)
+    );
+  };
 
   /**
    * Fetch the user's calendar list and return both the IDs (for downstream
    * `/api/calendar/events` queries) and a metadata map keyed by id (for the
    * `transformGoogleEvent` user-attribution fallback ladder, #307 Bug B).
    */
-  const fetchCalendarList = useCallback(async (): Promise<{
+  const fetchCalendarList = async (): Promise<{
     ids: string[];
     metadata: CalendarMetadataMap;
   }> => {
@@ -636,10 +761,14 @@ export function CalendarProvider({
       logger.log("Could not fetch calendar list, using primary only");
     }
     return { ids: ["primary"], metadata: new Map() };
-  }, []);
+  };
 
-  // Refresh events from server-side API
-  const refreshEvents = useCallback(async () => {
+  // Refresh events from server-side API. React Compiler memoizes this and
+  // the effect at the bottom of the body uses it via a ref, so the
+  // `react-hooks/exhaustive-deps` warning that demands a banned
+  // `useCallback` is a false positive (#271).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const refreshEvents = async () => {
     try {
       setIsLoading(true);
 
@@ -765,124 +894,105 @@ export function CalendarProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [
-    status,
-    session,
-    calendarMetadata,
-    colorMappings,
-    fetchCalendarList,
-    fetchEventsForRange,
-    userSettings.calendarFetchMonthsAhead,
-    userSettings.calendarFetchMonthsBehind,
-  ]);
+  };
 
   /**
    * Load additional events when navigating outside loaded range
    */
-  const loadEventsForDate = useCallback(
-    async (date: Date) => {
-      // Skip if not authenticated or already loading
-      if (
-        status !== "authenticated" ||
-        !loadedRange ||
-        isLoadingRangeRef.current
-      ) {
-        return;
+  const loadEventsForDate = async (date: Date) => {
+    // Skip if not authenticated or already loading
+    if (
+      status !== "authenticated" ||
+      !loadedRange ||
+      isLoadingRangeRef.current
+    ) {
+      return;
+    }
+
+    const targetMonth = startOfMonth(date);
+    const targetMonthEnd = endOfMonth(date);
+
+    // Check if target month is within loaded range
+    if (
+      !isBefore(targetMonth, loadedRange.start) &&
+      !isAfter(targetMonthEnd, loadedRange.end)
+    ) {
+      return; // Already loaded
+    }
+
+    isLoadingRangeRef.current = true;
+    logger.log("Loading events for date outside loaded range", {
+      date: date.toISOString(),
+    });
+
+    try {
+      let newStart = loadedRange.start;
+      let newEnd = loadedRange.end;
+
+      // Fetch earlier events
+      if (isBefore(targetMonth, loadedRange.start)) {
+        const fetchEnd = loadedRange.start;
+        const fetchStart = new Date(
+          targetMonth.getFullYear(),
+          targetMonth.getMonth() - 1,
+          1
+        );
+
+        const newEvents = await fetchEventsForRange(
+          fetchStart,
+          fetchEnd,
+          calendarIds.length > 0 ? calendarIds : ["primary"],
+          colorMappings,
+          calendarMetadata
+        );
+
+        setAllEvents((prev) => {
+          // Merge and dedupe events
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...uniqueNewEvents, ...prev];
+        });
+
+        newStart = fetchStart;
       }
 
-      const targetMonth = startOfMonth(date);
-      const targetMonthEnd = endOfMonth(date);
+      // Fetch later events
+      if (isAfter(targetMonthEnd, loadedRange.end)) {
+        const fetchStart = loadedRange.end;
+        const fetchEnd = new Date(
+          targetMonthEnd.getFullYear(),
+          targetMonthEnd.getMonth() + 2,
+          0
+        );
 
-      // Check if target month is within loaded range
-      if (
-        !isBefore(targetMonth, loadedRange.start) &&
-        !isAfter(targetMonthEnd, loadedRange.end)
-      ) {
-        return; // Already loaded
+        const newEvents = await fetchEventsForRange(
+          fetchStart,
+          fetchEnd,
+          calendarIds.length > 0 ? calendarIds : ["primary"],
+          colorMappings,
+          calendarMetadata
+        );
+
+        setAllEvents((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...prev, ...uniqueNewEvents];
+        });
+
+        newEnd = fetchEnd;
       }
 
-      isLoadingRangeRef.current = true;
-      logger.log("Loading events for date outside loaded range", {
-        date: date.toISOString(),
-      });
-
-      try {
-        let newStart = loadedRange.start;
-        let newEnd = loadedRange.end;
-
-        // Fetch earlier events
-        if (isBefore(targetMonth, loadedRange.start)) {
-          const fetchEnd = loadedRange.start;
-          const fetchStart = new Date(
-            targetMonth.getFullYear(),
-            targetMonth.getMonth() - 1,
-            1
-          );
-
-          const newEvents = await fetchEventsForRange(
-            fetchStart,
-            fetchEnd,
-            calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            // Merge and dedupe events
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...uniqueNewEvents, ...prev];
-          });
-
-          newStart = fetchStart;
-        }
-
-        // Fetch later events
-        if (isAfter(targetMonthEnd, loadedRange.end)) {
-          const fetchStart = loadedRange.end;
-          const fetchEnd = new Date(
-            targetMonthEnd.getFullYear(),
-            targetMonthEnd.getMonth() + 2,
-            0
-          );
-
-          const newEvents = await fetchEventsForRange(
-            fetchStart,
-            fetchEnd,
-            calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...prev, ...uniqueNewEvents];
-          });
-
-          newEnd = fetchEnd;
-        }
-
-        setLoadedRange({ start: newStart, end: newEnd });
-      } catch (error) {
-        logger.error(error as Error, { context: "loadEventsForDate" });
-      } finally {
-        isLoadingRangeRef.current = false;
-      }
-    },
-    [
-      status,
-      loadedRange,
-      calendarIds,
-      calendarMetadata,
-      colorMappings,
-      fetchEventsForRange,
-    ]
-  );
+      setLoadedRange({ start: newStart, end: newEnd });
+    } catch (error) {
+      logger.error(error as Error, { context: "loadEventsForDate" });
+    } finally {
+      isLoadingRangeRef.current = false;
+    }
+  };
 
   /**
    * Ensure events for an entire calendar year are loaded.
@@ -894,95 +1004,83 @@ export function CalendarProvider({
    * requested year by fetching only the missing edges and merging them
    * into `allEvents`.
    */
-  const loadEventsForYear = useCallback(
-    async (year: number) => {
-      if (
-        status !== "authenticated" ||
-        !loadedRange ||
-        isLoadingRangeRef.current
-      ) {
-        return;
+  const loadEventsForYear = async (year: number) => {
+    if (
+      status !== "authenticated" ||
+      !loadedRange ||
+      isLoadingRangeRef.current
+    ) {
+      return;
+    }
+
+    const yearStart = new Date(year, 0, 1, 0, 0, 0, 0);
+    const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+
+    // Year already fully covered by loadedRange — nothing to do.
+    if (
+      !isBefore(yearStart, loadedRange.start) &&
+      !isAfter(yearEnd, loadedRange.end)
+    ) {
+      return;
+    }
+
+    isLoadingRangeRef.current = true;
+    logger.log("Loading events for full year", { year });
+
+    try {
+      const calIds = calendarIds.length > 0 ? calendarIds : ["primary"];
+
+      // Advance `loadedRange` after each successful edge fetch rather
+      // than batching both updates at the end. If the Dec edge throws
+      // after the Jan edge has already merged its events into state,
+      // the range pointer must reflect what's actually stored — else
+      // a retry would needlessly re-fetch Jan and rely on the dedupe
+      // guard to discard the duplicates.
+      if (isBefore(yearStart, loadedRange.start)) {
+        const newEvents = await fetchEventsForRange(
+          yearStart,
+          loadedRange.start,
+          calIds,
+          colorMappings,
+          calendarMetadata
+        );
+
+        setAllEvents((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...uniqueNewEvents, ...prev];
+        });
+
+        setLoadedRange((prev) => (prev ? { ...prev, start: yearStart } : prev));
       }
 
-      const yearStart = new Date(year, 0, 1, 0, 0, 0, 0);
-      const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+      if (isAfter(yearEnd, loadedRange.end)) {
+        const newEvents = await fetchEventsForRange(
+          loadedRange.end,
+          yearEnd,
+          calIds,
+          colorMappings,
+          calendarMetadata
+        );
 
-      // Year already fully covered by loadedRange — nothing to do.
-      if (
-        !isBefore(yearStart, loadedRange.start) &&
-        !isAfter(yearEnd, loadedRange.end)
-      ) {
-        return;
+        setAllEvents((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...prev, ...uniqueNewEvents];
+        });
+
+        setLoadedRange((prev) => (prev ? { ...prev, end: yearEnd } : prev));
       }
-
-      isLoadingRangeRef.current = true;
-      logger.log("Loading events for full year", { year });
-
-      try {
-        const calIds = calendarIds.length > 0 ? calendarIds : ["primary"];
-
-        // Advance `loadedRange` after each successful edge fetch rather
-        // than batching both updates at the end. If the Dec edge throws
-        // after the Jan edge has already merged its events into state,
-        // the range pointer must reflect what's actually stored — else
-        // a retry would needlessly re-fetch Jan and rely on the dedupe
-        // guard to discard the duplicates.
-        if (isBefore(yearStart, loadedRange.start)) {
-          const newEvents = await fetchEventsForRange(
-            yearStart,
-            loadedRange.start,
-            calIds,
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...uniqueNewEvents, ...prev];
-          });
-
-          setLoadedRange((prev) =>
-            prev ? { ...prev, start: yearStart } : prev
-          );
-        }
-
-        if (isAfter(yearEnd, loadedRange.end)) {
-          const newEvents = await fetchEventsForRange(
-            loadedRange.end,
-            yearEnd,
-            calIds,
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...prev, ...uniqueNewEvents];
-          });
-
-          setLoadedRange((prev) => (prev ? { ...prev, end: yearEnd } : prev));
-        }
-      } catch (error) {
-        logger.error(error as Error, { context: "loadEventsForYear" });
-      } finally {
-        isLoadingRangeRef.current = false;
-      }
-    },
-    [
-      status,
-      loadedRange,
-      calendarIds,
-      calendarMetadata,
-      colorMappings,
-      fetchEventsForRange,
-    ]
-  );
+    } catch (error) {
+      logger.error(error as Error, { context: "loadEventsForYear" });
+    } finally {
+      isLoadingRangeRef.current = false;
+    }
+  };
 
   // Color mappings are initialized synchronously from localStorage in useState.
   // They are also refreshed from the API as part of refreshEvents.
@@ -1023,6 +1121,8 @@ export function CalendarProvider({
 
   // Keep a ref to the latest refreshEvents so the interval always calls the
   // current closure (avoids stale state from earlier effect runs).
+  // React Compiler memoizes `refreshEvents` based on its captured deps so
+  // the effect only re-runs when those underlying inputs actually change.
   const refreshEventsRef = useRef(refreshEvents);
   useEffect(() => {
     refreshEventsRef.current = refreshEvents;
@@ -1112,6 +1212,16 @@ export function CalendarProvider({
     // Clamp defensively so a rogue DB write of 0 or a negative number never
     // collapses every non-empty day into a bare "+N more" label.
     maxEventsPerDay: Math.max(1, userSettings.calendarMaxEventsPerDay),
+    // Clamp to the valid 0–23 hour range so a malformed cached payload
+    // can't push the grid scroll into negative or beyond-day territory
+    // (the API validator already enforces this for fresh writes).
+    workingHoursStart: Math.min(
+      23,
+      Math.max(0, Math.trunc(userSettings.calendarWorkingHoursStart))
+    ),
+    transitionDurationMs: resolveTransitionDurationMs(
+      userSettings.calendarTransitionSpeed
+    ),
   };
 
   return (

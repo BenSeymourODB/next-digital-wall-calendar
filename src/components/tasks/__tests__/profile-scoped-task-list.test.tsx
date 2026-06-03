@@ -3,6 +3,7 @@
  * surrounding ProfileContext into a TaskList's per-profile filter.
  */
 import {
+  type Profile,
   ProfileProvider,
   useProfile,
 } from "@/components/profiles/profile-context";
@@ -21,7 +22,7 @@ vi.mock("../task-list", () => ({
 
 const mockTaskList = vi.mocked(TaskList);
 
-const mockProfiles = [
+const mockProfiles: Profile[] = [
   {
     id: "profile-admin-1",
     userId: "user-1",
