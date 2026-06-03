@@ -5,6 +5,7 @@
  * for the active profile.
  */
 import { useProfile } from "@/components/profiles/profile-context";
+import { makeUserSettings } from "@/test/fixtures/user-settings";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
@@ -27,24 +28,7 @@ vi.mock("@/lib/scheduler/schedule-storage", () => ({
   saveScheduleConfig: vi.fn(),
 }));
 
-const baseInitialSettings = {
-  theme: "light",
-  timeFormat: "12h",
-  dateFormat: "MM/DD/YYYY",
-  defaultZoomLevel: 1,
-  rewardSystemEnabled: false,
-  defaultTaskPoints: 10,
-  showPointsOnCompletion: true,
-  schedulerIntervalSeconds: 10,
-  schedulerPauseOnInteractionSeconds: 30,
-  calendarRefreshIntervalMinutes: 15,
-  calendarFetchMonthsAhead: 6,
-  calendarFetchMonthsBehind: 1,
-  calendarMaxEventsPerDay: 3,
-  calendarWorkingHoursStart: 7,
-  calendarTransitionSpeed: "normal" as const,
-  weekStartDay: 0 as const,
-};
+const baseInitialSettings = makeUserSettings();
 
 const baseUser = {
   name: "Test User",

@@ -3,6 +3,7 @@
  * Following TDD - tests are written before implementation
  */
 import { MockSlider } from "@/lib/test-utils/ui-component-mocks";
+import { makeUserSettings } from "@/test/fixtures/user-settings";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,13 +24,7 @@ vi.mock("next-themes", () => ({
   }),
 }));
 
-const defaultValues = {
-  theme: "light",
-  timeFormat: "12h",
-  dateFormat: "MM/DD/YYYY",
-  defaultZoomLevel: 1.0,
-  weekStartDay: 0 as 0 | 1,
-};
+const defaultValues = makeUserSettings();
 
 describe("DisplaySection", () => {
   const mockOnChange = vi.fn();

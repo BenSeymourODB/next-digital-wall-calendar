@@ -10,6 +10,7 @@ import {
   createMockRequest,
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
+import { makeUserSettings } from "@/test/fixtures/user-settings";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, PUT } from "../route";
 
@@ -44,25 +45,7 @@ const mockPrisma = prisma as unknown as {
   };
 };
 
-const mockSettings = {
-  id: "settings-1",
-  userId: "test-user-123",
-  defaultTaskPoints: 10,
-  rewardSystemEnabled: false,
-  theme: "light",
-  defaultZoomLevel: 1.0,
-  timeFormat: "12h",
-  dateFormat: "MM/DD/YYYY",
-  showPointsOnCompletion: true,
-  schedulerIntervalSeconds: 10,
-  schedulerPauseOnInteractionSeconds: 30,
-  calendarRefreshIntervalMinutes: 15,
-  calendarFetchMonthsAhead: 6,
-  calendarFetchMonthsBehind: 1,
-  calendarMaxEventsPerDay: 3,
-  weekStartDay: 0,
-  calendarWorkingHoursStart: 7,
-};
+const mockSettings = makeUserSettings();
 
 describe("/api/settings", () => {
   beforeEach(() => {
