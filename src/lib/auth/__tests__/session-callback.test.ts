@@ -110,7 +110,6 @@ describe("refreshGoogleSessionTokensIfNeeded", () => {
       });
       expect(deps.logger.event).toHaveBeenCalledWith("TokenRefreshed", {
         userId: USER_ID,
-        success: true,
       });
     });
 

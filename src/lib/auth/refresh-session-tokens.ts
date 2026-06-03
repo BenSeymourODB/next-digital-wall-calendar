@@ -100,7 +100,8 @@ export async function refreshGoogleSessionTokensIfNeeded(
     try {
       refreshTokenPlaintext = deps.decryptToken(account.refresh_token);
     } catch (error) {
-      deps.logger.error(error as Error, {
+      const err = error instanceof Error ? error : new Error(String(error));
+      deps.logger.error(err, {
         context: "RefreshTokenDecryptFailed",
         userId,
       });
@@ -136,21 +137,26 @@ export async function refreshGoogleSessionTokensIfNeeded(
       },
     });
 
-    deps.logger.event("TokenRefreshed", { userId, success: true });
+    deps.logger.event("TokenRefreshed", { userId });
     return { kind: "refreshed" };
   } catch (error) {
-    const classification = classifyTokenRefreshError(error);
+    // Normalise once so `logger.error` (typed `error: Error`) always receives a
+    // real Error even if a non-Error value ever propagates out of decrypt /
+    // refresh / prisma. The classifier already safe-defaults non-Error inputs
+    // to "transient"; this just guarantees `.message`/`.stack` aren't undefined.
+    const err = error instanceof Error ? error : new Error(String(error));
+    const classification = classifyTokenRefreshError(err);
     if (classification === "terminal") {
-      deps.logger.error(error as Error, {
+      deps.logger.error(err, {
         context: "TokenRefreshFailed",
         userId,
       });
-      return { kind: "terminal-error", error: error as Error };
+      return { kind: "terminal-error", error: err };
     }
-    deps.logger.error(error as Error, {
+    deps.logger.error(err, {
       context: "TokenRefreshTransientFailure",
       userId,
     });
-    return { kind: "transient-error", error: error as Error };
+    return { kind: "transient-error", error: err };
   }
 }

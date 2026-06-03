@@ -28,6 +28,18 @@ The user's `.env.local` follows the **NextAuth v5** idiom (`AUTH_SECRET`), but `
 | `src/lib/auth/__tests__/session-callback.test.ts` (new)         | Wraps the session-callback logic so terminal vs transient paths can be asserted directly                                                             |
 | `.env.local.example`                                            | Documents `AUTH_SECRET` and `TOKEN_ENCRYPTION_KEY` (currently missing)                                                                               |
 
+## Implementation notes
+
+- **`NEXT_PHASE` guard scope (`auth.ts`):** the eager `validateEncryptionKey()`
+  call is skipped only when `NEXT_PHASE === "phase-production-build"` (Next.js's
+  page-data collection during `next build`, which evaluates `auth.ts` without
+  runtime env vars). It does **not** gate all non-test paths — `NEXT_PHASE` is
+  set by Next.js's own build/start commands, so anything that loads `auth.ts`
+  outside of those (custom server, worker script, ad-hoc Node REPL on the
+  compiled module) will still fire the eager validation. That is the desired
+  fail-fast behaviour for the misconfig #315 fixes; don't widen the guard to
+  cover those paths.
+
 ## TDD plan
 
 ### Phase 1
