@@ -61,6 +61,7 @@ const mockSettings = {
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
   weekStartDay: 0,
+  calendarWorkingHoursStart: 7,
 };
 
 describe("/api/settings", () => {
@@ -497,6 +498,60 @@ describe("/api/settings", () => {
       expect(data.calendarMaxEventsPerDay).toBe(5);
     });
 
+    it.each([
+      ["negative", -1],
+      ["above range", 24],
+      ["fractional", 7.5],
+      ["string", "7"],
+    ])(
+      "rejects calendarWorkingHoursStart %s value (%s) with a 400 + field-named error",
+      async (_label, value) => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+
+        const request = createMockRequest("/api/settings", {
+          method: "PUT",
+          body: { calendarWorkingHoursStart: value },
+        });
+        const response = await PUT(request);
+        const { status, data } =
+          await parseResponse<ApiErrorResponse>(response);
+
+        expect(status).toBe(400);
+        expect(data.error).toContain("calendarWorkingHoursStart");
+      }
+    );
+
+    it("accepts calendarWorkingHoursStart at boundaries 0 and 23", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      mockPrisma.userSettings.upsert.mockResolvedValueOnce({
+        ...mockSettings,
+        calendarWorkingHoursStart: 0,
+      });
+      const requestMin = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarWorkingHoursStart: 0 },
+      });
+      const responseMin = await PUT(requestMin);
+      const { status: statusMin, data: dataMin } =
+        await parseResponse<typeof mockSettings>(responseMin);
+      expect(statusMin).toBe(200);
+      expect(dataMin.calendarWorkingHoursStart).toBe(0);
+
+      mockPrisma.userSettings.upsert.mockResolvedValueOnce({
+        ...mockSettings,
+        calendarWorkingHoursStart: 23,
+      });
+      const requestMax = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarWorkingHoursStart: 23 },
+      });
+      const responseMax = await PUT(requestMax);
+      const { status: statusMax, data: dataMax } =
+        await parseResponse<typeof mockSettings>(responseMax);
+      expect(statusMax).toBe(200);
+      expect(dataMax.calendarWorkingHoursStart).toBe(23);
+    });
+
     it("returns 500 on database error", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
       mockPrisma.userSettings.upsert.mockRejectedValue(
@@ -586,5 +641,59 @@ describe("/api/settings", () => {
       expect(status).toBe(200);
       expect(data.weekStartDay).toBe(1);
     });
+
+    it("rejects unknown calendarTransitionSpeed values", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const request = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarTransitionSpeed: "ludicrous" },
+      });
+
+      const response = await PUT(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toContain("calendarTransitionSpeed");
+    });
+
+    it("rejects non-string calendarTransitionSpeed values", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const request = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { calendarTransitionSpeed: 300 },
+      });
+
+      const response = await PUT(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toContain("calendarTransitionSpeed");
+    });
+
+    it.each(["off", "fast", "normal", "slow"])(
+      "accepts %s as a valid calendarTransitionSpeed",
+      async (speed) => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        const updatedSettings = {
+          ...mockSettings,
+          calendarTransitionSpeed: speed,
+        };
+        mockPrisma.userSettings.upsert.mockResolvedValue(updatedSettings);
+
+        const request = createMockRequest("/api/settings", {
+          method: "PUT",
+          body: { calendarTransitionSpeed: speed },
+        });
+
+        const response = await PUT(request);
+        const { status, data } =
+          await parseResponse<typeof updatedSettings>(response);
+
+        expect(status).toBe(200);
+        expect(data.calendarTransitionSpeed).toBe(speed);
+      }
+    );
   });
 });
