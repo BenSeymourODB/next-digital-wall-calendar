@@ -17,6 +17,28 @@ const eslintConfig = defineConfig([
       "local/no-direct-appinsights-client-import": "error",
       "local/no-direct-appinsights-server-import": "error",
       "local/prefer-logger-over-console": "warn",
+      // #271: ban manual memoization (`useMemo`, `useCallback`,
+      // `React.memo`). The React Compiler memoizes automatically — see
+      // docs/react-compiler.md. The custom rule tracks `react` import
+      // bindings so it catches every aliasing form (named, named-with-as,
+      // default, namespace) — no-restricted-imports below is a belt-and-
+      // braces backup that catches the unaliased named-import form even
+      // if the local rule is somehow disabled. Vendored shadcn under
+      // `src/components/ui/**` is excluded by the global ignore.
+      "local/no-react-manual-memoization": "error",
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "react",
+              importNames: ["useMemo", "useCallback", "memo"],
+              message:
+                "Manual memoization is forbidden — the React Compiler memoizes automatically. See docs/react-compiler.md.",
+            },
+          ],
+        },
+      ],
     },
   },
   // Override default ignores of eslint-config-next.

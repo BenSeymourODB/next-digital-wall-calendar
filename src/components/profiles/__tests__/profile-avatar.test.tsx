@@ -4,14 +4,17 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ProfileAvatar } from "../profile-avatar";
+import type { Profile } from "../profile-context";
+
+// ProfileAvatar's prop type is the narrow subset { name, color, avatar }.
+type ProfileAvatarFixture = Pick<Profile, "name" | "color" | "avatar">;
 
 // Mock profile data
-const mockProfile = {
-  id: "profile-1",
+const mockProfile: ProfileAvatarFixture = {
   name: "Test User",
   color: "#3b82f6",
   avatar: {
-    type: "initials" as const,
+    type: "initials",
     value: "TU",
     backgroundColor: "#3b82f6",
   },
@@ -33,10 +36,10 @@ describe("ProfileAvatar", () => {
     });
 
     it("falls back to profile color if avatar backgroundColor not set", () => {
-      const profileWithoutBgColor = {
+      const profileWithoutBgColor: ProfileAvatarFixture = {
         ...mockProfile,
         avatar: {
-          type: "initials" as const,
+          type: "initials",
           value: "TU",
         },
       };
@@ -52,10 +55,10 @@ describe("ProfileAvatar", () => {
 
   describe("emoji avatar type", () => {
     it("renders emoji correctly", () => {
-      const emojiProfile = {
+      const emojiProfile: ProfileAvatarFixture = {
         ...mockProfile,
         avatar: {
-          type: "emoji" as const,
+          type: "emoji",
           value: "👦",
         },
       };
@@ -68,10 +71,10 @@ describe("ProfileAvatar", () => {
 
   describe("photo avatar type", () => {
     it("renders image with correct src", () => {
-      const photoProfile = {
+      const photoProfile: ProfileAvatarFixture = {
         ...mockProfile,
         avatar: {
-          type: "photo" as const,
+          type: "photo",
           value: "https://example.com/avatar.jpg",
         },
       };
