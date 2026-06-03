@@ -3,7 +3,6 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import {
-  WORKING_HOURS_START_HOUR,
   computeEventColumns,
   formatTime,
   getCurrentTimePosition,
@@ -28,10 +27,6 @@ import { AgendaList } from "./AgendaList";
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 48;
 const TIME_GRID_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
-const INITIAL_SCROLL_TOP_PX = getInitialScrollTop(
-  WORKING_HOURS_START_HOUR,
-  HOUR_HEIGHT_PX
-);
 
 function getEventBlockClasses(color: TEventColor): string {
   const classes: Record<TEventColor, string> = {
@@ -115,6 +110,7 @@ export function DayCalendar() {
     isLoading,
     use24HourFormat,
     agendaMode,
+    workingHoursStart,
   } = useCalendar();
   const today = useTodayStartOfDay();
 
@@ -236,6 +232,7 @@ export function DayCalendar() {
           selectedDate={selectedDate}
           use24HourFormat={use24HourFormat}
           isLoading={isLoading}
+          workingHoursStart={workingHoursStart}
         />
       )}
     </div>
@@ -249,6 +246,7 @@ interface DayGridViewProps {
   selectedDate: Date;
   use24HourFormat: boolean;
   isLoading: boolean;
+  workingHoursStart: number;
 }
 
 function DayGridView({
@@ -258,15 +256,24 @@ function DayGridView({
   selectedDate,
   use24HourFormat,
   isLoading,
+  workingHoursStart,
 }: DayGridViewProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Capture the start hour into a ref so the mount effect doesn't need
+  // to depend on `workingHoursStart` (which would re-run the effect
+  // every time the user moves the slider, yanking their scroll
+  // position). Subsequent setting changes apply on the next remount
+  // (e.g. switching back from agenda mode).
+  const workingHoursStartRef = useRef(workingHoursStart);
 
-  // Scroll the time grid to the start of working hours on mount so
-  // morning events are immediately visible. useLayoutEffect runs
-  // synchronously before paint, avoiding a visible flash from 00:00.
+  // useLayoutEffect runs synchronously before paint, avoiding a visible
+  // flash from scrollTop=0 to the working-hours row.
   useLayoutEffect(() => {
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = INITIAL_SCROLL_TOP_PX;
+      scrollContainerRef.current.scrollTop = getInitialScrollTop(
+        workingHoursStartRef.current,
+        HOUR_HEIGHT_PX
+      );
     }
   }, []);
 

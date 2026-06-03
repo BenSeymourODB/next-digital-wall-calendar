@@ -14,6 +14,8 @@ export interface UserCalendarSettings {
   calendarFetchMonthsAhead: number;
   calendarFetchMonthsBehind: number;
   calendarMaxEventsPerDay: number;
+  /** Hour (0–23) the Day/Week grids auto-scroll to on first render (#288). */
+  calendarWorkingHoursStart: number;
   calendarTransitionSpeed: CalendarTransitionSpeed;
 }
 
@@ -22,6 +24,7 @@ export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
   calendarFetchMonthsAhead: 6,
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
+  calendarWorkingHoursStart: 7,
   calendarTransitionSpeed: DEFAULT_CALENDAR_TRANSITION_SPEED,
 };
 
@@ -94,6 +97,14 @@ function pickCalendarFields(
   }
   if (typeof data.calendarMaxEventsPerDay === "number") {
     picked.calendarMaxEventsPerDay = data.calendarMaxEventsPerDay;
+  }
+  if (
+    typeof data.calendarWorkingHoursStart === "number" &&
+    Number.isInteger(data.calendarWorkingHoursStart) &&
+    data.calendarWorkingHoursStart >= 0 &&
+    data.calendarWorkingHoursStart <= 23
+  ) {
+    picked.calendarWorkingHoursStart = data.calendarWorkingHoursStart;
   }
   // Defensive: the server should already validate this, but if a stale row
   // ever ships an unknown value we drop back to the default rather than

@@ -45,6 +45,8 @@ interface MockCalendarProviderProps {
   isAuthenticated?: boolean;
   /** Max events rendered per day cell before the "+N more" overflow */
   maxEventsPerDay?: number;
+  /** Hour (0–23) the Day/Week grids auto-scroll to on first render. */
+  workingHoursStart?: number;
   /** View-transition duration in ms; mirrors `userSettings.calendarTransitionSpeed`. */
   transitionDurationMs?: number;
 }
@@ -76,6 +78,7 @@ export function MockCalendarProvider({
   loadingDelay = 0,
   isAuthenticated = true,
   maxEventsPerDay = 3,
+  workingHoursStart = 7,
   transitionDurationMs = TRANSITION_SPEED_TO_MS.normal,
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
@@ -257,6 +260,7 @@ export function MockCalendarProvider({
     isLoading,
     isAuthenticated,
     maxEventsPerDay,
+    workingHoursStart,
     transitionDurationMs,
   };
 

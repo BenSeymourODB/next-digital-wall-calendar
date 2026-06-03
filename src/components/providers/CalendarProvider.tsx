@@ -114,6 +114,12 @@ export interface ICalendarContext {
   isAuthenticated: boolean;
   maxEventsPerDay: number;
   /**
+   * Hour of day (0–23) the Day/Week time grids auto-scroll to on first
+   * render so working-hours events are immediately visible. Sourced
+   * from the user's `calendarWorkingHoursStart` setting (#288).
+   */
+  workingHoursStart: number;
+  /**
    * Calendar view-transition duration in milliseconds, derived from the
    * user's `calendarTransitionSpeed` setting. `0` disables animation; the
    * `AnimatedSwap` short-circuit then matches the `prefers-reduced-motion`
@@ -1041,6 +1047,13 @@ export function CalendarProvider({
     // Clamp defensively so a rogue DB write of 0 or a negative number never
     // collapses every non-empty day into a bare "+N more" label.
     maxEventsPerDay: Math.max(1, userSettings.calendarMaxEventsPerDay),
+    // Clamp to the valid 0–23 hour range so a malformed cached payload
+    // can't push the grid scroll into negative or beyond-day territory
+    // (the API validator already enforces this for fresh writes).
+    workingHoursStart: Math.min(
+      23,
+      Math.max(0, Math.trunc(userSettings.calendarWorkingHoursStart))
+    ),
     transitionDurationMs: resolveTransitionDurationMs(
       userSettings.calendarTransitionSpeed
     ),

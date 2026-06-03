@@ -61,6 +61,7 @@ export default async function SettingsPage() {
           calendarFetchMonthsAhead: settings.calendarFetchMonthsAhead,
           calendarFetchMonthsBehind: settings.calendarFetchMonthsBehind,
           calendarMaxEventsPerDay: settings.calendarMaxEventsPerDay,
+          calendarWorkingHoursStart: settings.calendarWorkingHoursStart,
           calendarTransitionSpeed: isCalendarTransitionSpeed(
             settings.calendarTransitionSpeed
           )
