@@ -1,6 +1,7 @@
 "use client";
 
 import type { TransitionConfig } from "@/components/scheduler/types";
+import type { CalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
 import { DEFAULT_TRANSITION_CONFIG } from "@/lib/scheduler/schedule-config";
 import {
   loadScheduleConfig,
@@ -10,6 +11,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AccountSection } from "./account-section";
 import { CalendarSection } from "./calendar-section";
+import { CalendarTransitionSection } from "./calendar-transition-section";
 import { DisplaySection } from "./display-section";
 import { PrivacySection } from "./privacy-section";
 import { RewardSection } from "./reward-section";
@@ -31,6 +33,7 @@ interface UserSettingsData {
   calendarFetchMonthsAhead: number;
   calendarFetchMonthsBehind: number;
   calendarMaxEventsPerDay: number;
+  calendarTransitionSpeed: CalendarTransitionSpeed;
 }
 
 interface SettingsFormProps {
@@ -146,6 +149,13 @@ export function SettingsForm({
           calendarFetchMonthsAhead: settings.calendarFetchMonthsAhead,
           calendarFetchMonthsBehind: settings.calendarFetchMonthsBehind,
           calendarMaxEventsPerDay: settings.calendarMaxEventsPerDay,
+        }}
+        onChange={updateSettings}
+      />
+
+      <CalendarTransitionSection
+        values={{
+          calendarTransitionSpeed: settings.calendarTransitionSpeed,
         }}
         onChange={updateSettings}
       />

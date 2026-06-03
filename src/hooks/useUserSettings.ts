@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  type CalendarTransitionSpeed,
+  DEFAULT_CALENDAR_TRANSITION_SPEED,
+  isCalendarTransitionSpeed,
+} from "@/lib/calendar/transition-speed";
 import { logger } from "@/lib/logger";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -9,6 +14,7 @@ export interface UserCalendarSettings {
   calendarFetchMonthsAhead: number;
   calendarFetchMonthsBehind: number;
   calendarMaxEventsPerDay: number;
+  calendarTransitionSpeed: CalendarTransitionSpeed;
 }
 
 export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
@@ -16,6 +22,7 @@ export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
   calendarFetchMonthsAhead: 6,
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
+  calendarTransitionSpeed: DEFAULT_CALENDAR_TRANSITION_SPEED,
 };
 
 interface UseUserSettingsResult {
@@ -73,7 +80,7 @@ export function useUserSettings(): UseUserSettingsResult {
 }
 
 function pickCalendarFields(
-  data: Partial<UserCalendarSettings>
+  data: Partial<UserCalendarSettings> & { calendarTransitionSpeed?: unknown }
 ): Partial<UserCalendarSettings> {
   const picked: Partial<UserCalendarSettings> = {};
   if (typeof data.calendarRefreshIntervalMinutes === "number") {
@@ -87,6 +94,12 @@ function pickCalendarFields(
   }
   if (typeof data.calendarMaxEventsPerDay === "number") {
     picked.calendarMaxEventsPerDay = data.calendarMaxEventsPerDay;
+  }
+  // Defensive: the server should already validate this, but if a stale row
+  // ever ships an unknown value we drop back to the default rather than
+  // crash a strict union elsewhere.
+  if (isCalendarTransitionSpeed(data.calendarTransitionSpeed)) {
+    picked.calendarTransitionSpeed = data.calendarTransitionSpeed;
   }
   return picked;
 }
