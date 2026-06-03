@@ -173,21 +173,20 @@ services:
       --health-retries 10
 ```
 
-The validation step passes the container URL explicitly via `--shadow-database-url` (Prisma 7) rather than relying on `SHADOW_DATABASE_URL` env-only discovery:
+The validation step passes the container URL via `DATABASE_URL` (which `prisma.config.ts` reads). When `migrate diff --from-migrations` runs against the `postgresql` provider, Prisma auto-provisions a transient shadow database on the same server — it creates a `prisma_migrate_shadow_db_<uuid>`, applies the migrations into it, captures the resulting schema, then drops it. This requires the connecting user to have `CREATEDB`, which the `POSTGRES_USER` configured on the service container has by default.
 
 ```yaml
 - name: Validate Prisma migrations are up to date
   env:
-    SHADOW_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
+    DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
   run: |
     npx prisma migrate diff \
       --from-migrations prisma/migrations \
-      --to-schema-datamodel prisma/schema.prisma \
-      --shadow-database-url "$SHADOW_DATABASE_URL" \
+      --to-schema prisma/schema.prisma \
       --exit-code
 ```
 
-Credentials are throwaway and scoped to the container lifetime. **Local development does not need a separate shadow DB** — `pnpm db:migrate` manages one ad-hoc against your local Postgres server.
+Credentials are throwaway and scoped to the container lifetime. **Local development does not need anything extra** — `pnpm db:migrate` follows the same pattern against your local Postgres server, using your existing `DATABASE_URL` and the same auto-shadow-DB mechanism.
 
 ## Migration Directory Structure
 

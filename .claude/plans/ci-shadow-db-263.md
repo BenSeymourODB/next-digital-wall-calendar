@@ -27,7 +27,7 @@ Single phase — this is a YAML + docs change, no application code.
 
 ### 1. CI workflow
 
-Add a Postgres 16 service container to the `ci` job with a health-check, and pass its URL to `prisma migrate diff` via the `--shadow-database-url` flag. Prisma 7 supports this flag on `migrate diff` directly.
+Add a Postgres 16 service container to the `ci` job with a health-check, and point Prisma at it via `DATABASE_URL` scoped to the validate step. When `migrate diff --from-migrations` runs against the `postgresql` provider, Prisma auto-provisions a transient shadow database on the same server (creates a `prisma_migrate_shadow_db_<uuid>`, applies the migrations, captures the resulting schema, drops it). This requires the connecting user to have `CREATEDB`, which the container's `POSTGRES_USER` has by default.
 
 ```yaml
 services:
@@ -51,12 +51,11 @@ The validation step becomes:
 ```yaml
 - name: Validate Prisma migrations are up to date
   env:
-    SHADOW_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
+    DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
   run: |
     npx prisma migrate diff \
       --from-migrations prisma/migrations \
-      --to-schema-datamodel prisma/schema.prisma \
-      --shadow-database-url "$SHADOW_DATABASE_URL" \
+      --to-schema prisma/schema.prisma \
       --exit-code || {
       echo "::error::Prisma migrations are out of date. Run 'pnpm db:migrate' to create a new migration."
       exit 1
@@ -65,8 +64,8 @@ The validation step becomes:
 
 Notes:
 
-- `--to-schema` is the Prisma 6-era flag name; the canonical Prisma 7 flag is `--to-schema-datamodel` (the current YAML uses `--to-schema` which still works as an alias but is clearer to switch to the documented name in the same edit).
-- Passing the URL via env + CLI flag is more explicit than relying on `SHADOW_DATABASE_URL` env-only discovery.
+- Prisma 7.3's `migrate diff` does **not** accept a `--shadow-database-url` CLI flag (verified against the installed version's `--help`). The shadow DB is sourced from the datasource URL — `prisma.config.ts` reads `DATABASE_URL` from env, which is why scoping that env var to this single step is enough.
+- `--to-schema` is the correct flag in Prisma 7. `--to-schema-datamodel` was removed.
 - `postgres:16-alpine` matches the typical Prisma + Next.js production target and keeps the container small.
 - Credentials are throwaway (CI-only, container lifetime).
 
@@ -74,9 +73,9 @@ Notes:
 
 Add a short subsection under `## CI Validation` explaining:
 
-- CI provisions a Postgres service container as the shadow database.
-- `--shadow-database-url` is required for `migrate diff --from-migrations`.
-- Local devs do not need a separate shadow DB to run `pnpm db:migrate` — Prisma manages one ad hoc against the local server.
+- CI provisions a Postgres service container.
+- `DATABASE_URL` is set on the validate step; Prisma auto-creates the shadow DB on that server.
+- Local devs do not need anything extra — `pnpm db:migrate` follows the same pattern against the local Postgres server.
 
 ## Out of scope
 

@@ -50,14 +50,19 @@ jobs:
 
       - name: Validate Prisma migrations are up to date
         env:
-          SHADOW_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
+          # Prisma reads DATABASE_URL via prisma.config.ts. When
+          # `migrate diff --from-migrations` runs against the postgresql
+          # provider, Prisma auto-provisions a transient shadow database on
+          # this server (creates + drops a `prisma_migrate_shadow_db_<uuid>`),
+          # which requires the user to have CREATEDB — the container's
+          # POSTGRES_USER is a superuser, so this works out of the box.
+          DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
         run: |
           # Check that migrations directory matches the schema
           # Exit code 2 means there is a diff (migrations are out of date)
           npx prisma migrate diff \
             --from-migrations prisma/migrations \
-            --to-schema-datamodel prisma/schema.prisma \
-            --shadow-database-url "$SHADOW_DATABASE_URL" \
+            --to-schema prisma/schema.prisma \
             --exit-code || {
             echo "::error::Prisma migrations are out of date. Run 'pnpm db:migrate' to create a new migration."
             exit 1
