@@ -383,6 +383,35 @@ describe("ScreenTransition", () => {
       expect(outgoing.style.transform).toBe("translateX(100%)");
       expect(outgoing.style.opacity).toBe("0");
     });
+
+    it("emits an incoming @keyframes that starts at translateX(100%) opacity 0 for forward", () => {
+      const { rerender, container } = render(
+        <ScreenTransition
+          pathname="/page-a"
+          direction="forward"
+          transition={slideFadeConfig}
+        >
+          <div>Page A</div>
+        </ScreenTransition>
+      );
+
+      rerender(
+        <ScreenTransition
+          pathname="/page-b"
+          direction="forward"
+          transition={slideFadeConfig}
+        >
+          <div>Page B</div>
+        </ScreenTransition>
+      );
+
+      // The injected <style> tag encodes the enterFrom geometry. For
+      // forward slide-fade the incoming child should begin off-screen to
+      // the right (translateX(100%)) and fully transparent.
+      const styleEl = container.querySelector("style");
+      expect(styleEl?.textContent).toMatch(/translateX\(100%\)/);
+      expect(styleEl?.textContent).toMatch(/opacity:\s*0/);
+    });
   });
 
   describe("reduced motion", () => {

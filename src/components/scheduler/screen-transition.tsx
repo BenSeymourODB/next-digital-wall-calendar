@@ -177,6 +177,10 @@ export function ScreenTransition({
           data-testid="transition-outgoing"
           className="absolute inset-0"
           style={{
+            // Inline transform/opacity match the keyframe's `to` state so
+            // they act as a forwards-fill fallback if the CSS animation
+            // doesn't run (e.g. jsdom). The @keyframes `from` overrides
+            // these immediately once the animation starts.
             transform: activeGeometry.exitTo.transform,
             opacity: activeGeometry.exitTo.opacity,
             animation: `${exitKeyframeName} ${durationStyle} ease-in-out forwards`,
