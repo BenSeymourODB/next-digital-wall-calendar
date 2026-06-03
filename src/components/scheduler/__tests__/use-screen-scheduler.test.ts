@@ -462,6 +462,99 @@ describe("useScreenScheduler", () => {
     });
   });
 
+  // Regression tests for issue #221, bug 1: the `controls` object was
+  // recreated as a fresh literal on every render, so consumers that
+  // listed `controls` in their `useEffect` dependency array re-ran their
+  // effects on every internal state change — including the 1-second
+  // countdown tick.
+  describe("stable controls reference (#221, bug 1)", () => {
+    it("returns the same controls reference across renders triggered by state changes", () => {
+      mockPathname.mockReturnValue("/calendar");
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      const initialControls = result.current.controls;
+
+      // Trigger an internal state change: start the scheduler.
+      act(() => {
+        result.current.controls.start();
+      });
+
+      expect(result.current.controls).toBe(initialControls);
+
+      // Trigger another internal state change: advance one countdown tick.
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      expect(result.current.controls).toBe(initialControls);
+
+      // Pause / resume cycles must not break identity either.
+      act(() => {
+        result.current.controls.pause();
+      });
+      expect(result.current.controls).toBe(initialControls);
+
+      act(() => {
+        result.current.controls.resume();
+      });
+      expect(result.current.controls).toBe(initialControls);
+    });
+
+    it("preserves individual control function identities across renders", () => {
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      const initial = {
+        start: result.current.controls.start,
+        stop: result.current.controls.stop,
+        pause: result.current.controls.pause,
+        resume: result.current.controls.resume,
+        navigateToNext: result.current.controls.navigateToNext,
+        navigateToPrevious: result.current.controls.navigateToPrevious,
+      };
+
+      act(() => {
+        result.current.controls.start();
+      });
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      expect(result.current.controls.start).toBe(initial.start);
+      expect(result.current.controls.stop).toBe(initial.stop);
+      expect(result.current.controls.pause).toBe(initial.pause);
+      expect(result.current.controls.resume).toBe(initial.resume);
+      expect(result.current.controls.navigateToNext).toBe(
+        initial.navigateToNext
+      );
+      expect(result.current.controls.navigateToPrevious).toBe(
+        initial.navigateToPrevious
+      );
+    });
+
+    it("stable wrappers still observe the latest state when invoked later", () => {
+      mockPathname.mockReturnValue("/calendar");
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      // Capture controls before starting.
+      const captured = result.current.controls;
+
+      act(() => {
+        captured.start();
+      });
+
+      // The captured `navigateToNext` was created when the hook had not
+      // yet started. After start, calling it via the same captured ref
+      // must still dispatch correctly because the wrapper reads through
+      // a live ref, not a stale closure.
+      act(() => {
+        captured.navigateToNext();
+      });
+
+      expect(mockPush).toHaveBeenCalledWith("/recipe");
+      expect(result.current.state.currentIndex).toBe(1);
+    });
+  });
+
   describe("edge cases", () => {
     it("single-screen sequence wraps to same index on navigateToNext", () => {
       const singleScreenConfig: ScheduleConfig = {
