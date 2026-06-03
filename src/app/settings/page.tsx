@@ -1,5 +1,9 @@
 import { SettingsForm } from "@/components/settings/settings-form";
 import { getSession } from "@/lib/auth";
+import {
+  DEFAULT_CALENDAR_TRANSITION_SPEED,
+  isCalendarTransitionSpeed,
+} from "@/lib/calendar/transition-speed";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 
@@ -58,6 +62,11 @@ export default async function SettingsPage() {
           calendarFetchMonthsBehind: settings.calendarFetchMonthsBehind,
           calendarMaxEventsPerDay: settings.calendarMaxEventsPerDay,
           calendarWorkingHoursStart: settings.calendarWorkingHoursStart,
+          calendarTransitionSpeed: isCalendarTransitionSpeed(
+            settings.calendarTransitionSpeed
+          )
+            ? settings.calendarTransitionSpeed
+            : DEFAULT_CALENDAR_TRANSITION_SPEED,
         }}
       />
     </div>

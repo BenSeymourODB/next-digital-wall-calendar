@@ -42,6 +42,7 @@ export default function TestSettingsPage() {
             calendarFetchMonthsBehind: 1,
             calendarMaxEventsPerDay: 3,
             calendarWorkingHoursStart: 7,
+            calendarTransitionSpeed: "normal",
           }}
         />
       </div>

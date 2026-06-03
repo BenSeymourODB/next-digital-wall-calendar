@@ -14,6 +14,7 @@ import {
   type CalendarMetadataMap,
   transformGoogleEvent,
 } from "@/lib/calendar-transform";
+import { resolveTransitionDurationMs } from "@/lib/calendar/transition-speed";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import type {
@@ -118,6 +119,13 @@ export interface ICalendarContext {
    * from the user's `calendarWorkingHoursStart` setting (#288).
    */
   workingHoursStart: number;
+  /**
+   * Calendar view-transition duration in milliseconds, derived from the
+   * user's `calendarTransitionSpeed` setting. `0` disables animation; the
+   * `AnimatedSwap` short-circuit then matches the `prefers-reduced-motion`
+   * code path. See `src/lib/calendar/transition-speed.ts`.
+   */
+  transitionDurationMs: number;
 }
 
 interface CalendarSettings {
@@ -1045,6 +1053,9 @@ export function CalendarProvider({
     workingHoursStart: Math.min(
       23,
       Math.max(0, Math.trunc(userSettings.calendarWorkingHoursStart))
+    ),
+    transitionDurationMs: resolveTransitionDurationMs(
+      userSettings.calendarTransitionSpeed
     ),
   };
 

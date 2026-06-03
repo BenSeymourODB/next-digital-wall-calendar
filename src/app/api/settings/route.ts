@@ -3,6 +3,7 @@ import {
   requireUserSession,
   withApiHandler,
 } from "@/lib/api/handler";
+import { isCalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
@@ -194,6 +195,15 @@ export const PUT = withApiHandler(
       ) {
         throw new ApiError(
           "calendarWorkingHoursStart must be an integer between 0 and 23",
+          400
+        );
+      }
+    }
+
+    if (body.calendarTransitionSpeed !== undefined) {
+      if (!isCalendarTransitionSpeed(body.calendarTransitionSpeed)) {
+        throw new ApiError(
+          "calendarTransitionSpeed must be one of: off, fast, normal, slow",
           400
         );
       }

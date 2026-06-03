@@ -66,6 +66,7 @@ function createMockContext(
     isAuthenticated: true,
     maxEventsPerDay: 3,
     workingHoursStart: 7,
+    transitionDurationMs: 300,
     weekStartDay: 0,
     setWeekStartDay: vi.fn(),
     ...overrides,

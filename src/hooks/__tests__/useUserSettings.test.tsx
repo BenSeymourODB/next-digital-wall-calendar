@@ -70,7 +70,12 @@ describe("useUserSettings", () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith("/api/settings");
-    expect(result.current.settings).toEqual(mockSettings);
+    // Server payload merges over defaults, so fields the server omitted
+    // (here: calendarTransitionSpeed) come from DEFAULT_USER_CALENDAR_SETTINGS.
+    expect(result.current.settings).toEqual({
+      ...DEFAULT_USER_CALENDAR_SETTINGS,
+      ...mockSettings,
+    });
   });
 
   it("falls back to defaults when the API returns an error", async () => {
@@ -141,6 +146,68 @@ describe("useUserSettings", () => {
       expect.stringContaining("unmounted component")
     );
     consoleError.mockRestore();
+  });
+
+  it("surfaces calendarTransitionSpeed when the server provides it", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarTransitionSpeed: "fast" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.calendarTransitionSpeed).toBe("fast");
+  });
+
+  it("falls back to the default speed when the server omits it", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarMaxEventsPerDay: 7 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.calendarTransitionSpeed).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.calendarTransitionSpeed
+    );
+  });
+
+  it("rejects garbage calendarTransitionSpeed values from the server", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarTransitionSpeed: "ludicrous" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    // Unknown value should not propagate; default stands.
+    expect(result.current.settings.calendarTransitionSpeed).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.calendarTransitionSpeed
+    );
   });
 
   it("merges partial server values over defaults", async () => {

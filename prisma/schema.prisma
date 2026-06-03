@@ -96,6 +96,10 @@ model UserSettings {
   // Hour (0–23) the Day/Week time grids auto-scroll to on first render
   // so working-hours events land in view immediately (#288). Default 7.
   calendarWorkingHoursStart Int @default(7)
+  // Calendar UI: view-transition speed (off | fast | normal | slow). Stored
+  // as a string so we can extend the enumeration without an enum migration.
+  // Validated in src/lib/calendar/transition-speed.ts.
+  calendarTransitionSpeed String @default("normal")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
