@@ -27,7 +27,7 @@ Single phase — this is a YAML + docs change, no application code.
 
 ### 1. CI workflow
 
-Add a Postgres 16 service container to the `ci` job with a health-check, and point Prisma at it via `DATABASE_URL` scoped to the validate step. When `migrate diff --from-migrations` runs against the `postgresql` provider, Prisma auto-provisions a transient shadow database on the same server (creates a `prisma_migrate_shadow_db_<uuid>`, applies the migrations, captures the resulting schema, drops it). This requires the connecting user to have `CREATEDB`, which the container's `POSTGRES_USER` has by default.
+Add a Postgres 16 service container to the `ci` job with a health-check, then expose its URL to the validate step via `SHADOW_DATABASE_URL`. Prisma 7's `migrate diff --from-migrations` does **not** auto-create a shadow DB from the datasource URL — it requires `datasource.shadowDatabaseUrl` to be set in `prisma.config.ts` (or a `--shadow-database-url` CLI flag that Prisma's own error suggests but the `migrate diff` parser actually rejects as "unknown or unexpected option"). The config path is the working one.
 
 ```yaml
 services:
@@ -46,12 +46,23 @@ services:
       --health-retries 10
 ```
 
+`prisma.config.ts` gets a new `datasource.shadowDatabaseUrl` field reading from env:
+
+```ts
+datasource: {
+  url: process.env["DATABASE_URL"],
+  shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"],
+},
+```
+
+`undefined` is safe locally — `pnpm db:migrate` uses `prisma migrate dev`, which auto-manages a shadow DB on the user's local Postgres without needing this field.
+
 The validation step becomes:
 
 ```yaml
 - name: Validate Prisma migrations are up to date
   env:
-    DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
+    SHADOW_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/shadow
   run: |
     npx prisma migrate diff \
       --from-migrations prisma/migrations \
@@ -64,18 +75,22 @@ The validation step becomes:
 
 Notes:
 
-- Prisma 7.3's `migrate diff` does **not** accept a `--shadow-database-url` CLI flag (verified against the installed version's `--help`). The shadow DB is sourced from the datasource URL — `prisma.config.ts` reads `DATABASE_URL` from env, which is why scoping that env var to this single step is enough.
+- Prisma 7.3's `migrate diff` parser rejects `--shadow-database-url` as "unknown or unexpected option" — verified on the first CI run. The runtime check on a missing shadow DB then suggests using that very flag, which is misleading; the config-file path is the only one that actually works.
 - `--to-schema` is the correct flag in Prisma 7. `--to-schema-datamodel` was removed.
 - `postgres:16-alpine` matches the typical Prisma + Next.js production target and keeps the container small.
 - Credentials are throwaway (CI-only, container lifetime).
 
-### 2. docs/database.md
+### 2. prisma.config.ts
+
+Add `shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"]` to the `datasource` block. Required by Prisma 7's `migrate diff --from-migrations`; harmless in dev where the variable is unset.
+
+### 3. docs/database.md
 
 Add a short subsection under `## CI Validation` explaining:
 
 - CI provisions a Postgres service container.
-- `DATABASE_URL` is set on the validate step; Prisma auto-creates the shadow DB on that server.
-- Local devs do not need anything extra — `pnpm db:migrate` follows the same pattern against the local Postgres server.
+- `SHADOW_DATABASE_URL` is set on the validate step; `prisma.config.ts` reads it into `datasource.shadowDatabaseUrl`.
+- Local devs do not need anything extra — the env var stays unset and `pnpm db:migrate` continues to work.
 
 ## Out of scope
 
