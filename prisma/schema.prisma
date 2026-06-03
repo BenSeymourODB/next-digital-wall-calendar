@@ -81,6 +81,7 @@ model UserSettings {
   defaultZoomLevel       Float   @default(1.0)
   timeFormat             String  @default("12h")
   dateFormat             String  @default("MM/DD/YYYY")
+  weekStartDay           Int     @default(0) // 0 = Sunday, 1 = Monday
   showPointsOnCompletion Boolean @default(true)
 
   // Scheduler settings
@@ -92,6 +93,14 @@ model UserSettings {
   calendarFetchMonthsAhead       Int @default(6)
   calendarFetchMonthsBehind      Int @default(1)
   calendarMaxEventsPerDay        Int @default(3)
+
+  // Hour (0–23) the Day/Week time grids auto-scroll to on first render
+  // so working-hours events land in view immediately (#288). Default 7.
+  calendarWorkingHoursStart Int @default(7)
+  // Calendar UI: view-transition speed (off | fast | normal | slow). Stored
+  // as a string so we can extend the enumeration without an enum migration.
+  // Validated in src/lib/calendar/transition-speed.ts.
+  calendarTransitionSpeed String @default("normal")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -5,21 +5,22 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileCard, ProfileCardSkeleton } from "../profile-card";
+import type { Profile } from "../profile-context";
 
 // Mock fetch for stats API
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 // Mock profile data
-const mockProfile = {
+const mockProfile: Profile = {
   id: "profile-1",
   userId: "user-1",
   name: "Test User",
-  type: "standard" as const,
-  ageGroup: "adult" as const,
+  type: "standard",
+  ageGroup: "adult",
   color: "#3b82f6",
   avatar: {
-    type: "initials" as const,
+    type: "initials",
     value: "TU",
     backgroundColor: "#3b82f6",
   },
@@ -27,13 +28,13 @@ const mockProfile = {
   isActive: true,
 };
 
-const mockAdminProfile = {
+const mockAdminProfile: Profile = {
   ...mockProfile,
   id: "profile-admin",
   name: "Admin User",
-  type: "admin" as const,
+  type: "admin",
   avatar: {
-    type: "initials" as const,
+    type: "initials",
     value: "AU",
     backgroundColor: "#3b82f6",
   },
