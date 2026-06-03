@@ -225,15 +225,18 @@ export class IndexedDBEventStore implements EventStore {
       let evicted = 0;
       cursorRequest.onsuccess = () => {
         const cursor = cursorRequest.result;
-        if (!cursor || evicted >= count) {
-          resolve(evicted);
-          return;
-        }
+        // Stop iterating either at end-of-range or once we've evicted N.
+        // Resolution itself is deferred to `transaction.oncomplete` so the
+        // promise only settles after every `cursor.delete()` has actually
+        // committed — otherwise the caller could open a follow-up `put`
+        // before the disk space is reclaimed (#290 review).
+        if (!cursor || evicted >= count) return;
         cursor.delete();
         evicted += 1;
         cursor.continue();
       };
       cursorRequest.onerror = () => reject(cursorRequest.error);
+      transaction.oncomplete = () => resolve(evicted);
       transaction.onerror = () => reject(transaction.error);
     });
   }
@@ -279,9 +282,13 @@ export class EventCache {
     store: EventStore,
     events: GoogleCalendarEvent[]
   ): Promise<void> {
-    const cachedAt = Date.now();
+    // `cachedAt` is re-sampled before every `store.put` attempt so the row's
+    // recency reflects when it was actually written — otherwise the eviction
+    // loop's `evictOldest` latency could backdate the eventual successful
+    // write by hundreds of ms, which would make it look LRU-eligible
+    // sooner than it deserves on the next quota event.
     try {
-      await store.put(events, cachedAt);
+      await store.put(events, Date.now());
       return;
     } catch (error) {
       if (!isQuotaExceededError(error)) throw error;
@@ -297,7 +304,7 @@ export class EventCache {
           throw error;
         }
         try {
-          await store.put(events, cachedAt);
+          await store.put(events, Date.now());
           logger.event(
             "event-cache.lru-evicted",
             { context: "EventCache.saveEvents" },

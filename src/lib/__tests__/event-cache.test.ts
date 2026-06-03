@@ -274,15 +274,16 @@ describe("EventCache facade", () => {
       const c = new EventCache(store);
       await c.saveEvents([makeEvent("a")]);
 
+      // Exact positional match — pins `evicted`/`attempts` to the third
+      // argument (measurements bucket) rather than the second (properties).
+      // A future refactor that swaps them around will fail this test.
       expect(logger.event).toHaveBeenCalledWith(
         "event-cache.lru-evicted",
-        expect.objectContaining({
-          context: "EventCache.saveEvents",
-        }),
-        expect.objectContaining({
+        { context: "EventCache.saveEvents" },
+        {
           evicted: expect.any(Number) as number,
           attempts: expect.any(Number) as number,
-        })
+        }
       );
     });
 
@@ -335,6 +336,38 @@ describe("EventCache facade", () => {
       expect((c as unknown as { hasFallenBack: boolean }).hasFallenBack).toBe(
         true
       );
+    });
+
+    it("propagates a non-quota error thrown on the retry put (after eviction)", async () => {
+      // First put: quota error. Eviction runs. Second put: non-quota error
+      // (e.g. AbortError, disk corruption). The retry loop must NOT swallow
+      // the non-quota error — it should propagate so `withFallback` can
+      // engage the in-memory store. Catches a future refactor that
+      // accidentally widens the inner `catch` to non-quota errors.
+      let putCalls = 0;
+      const nonQuotaError = new Error("AbortError");
+      nonQuotaError.name = "AbortError";
+      const store: EventStore = {
+        put: vi.fn(async () => {
+          putCalls += 1;
+          if (putCalls === 1) throw quotaExceededError();
+          throw nonQuotaError;
+        }),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async (count: number) => count),
+      };
+
+      const c = new EventCache(store);
+      // `withFallback` catches the re-thrown AbortError → engages fallback.
+      await c.saveEvents([makeEvent("a")]);
+      expect((c as unknown as { hasFallenBack: boolean }).hasFallenBack).toBe(
+        true
+      );
+      // Eviction was attempted exactly once before the non-quota error
+      // terminated the retry loop.
+      expect(store.evictOldest).toHaveBeenCalledTimes(1);
+      expect(store.put).toHaveBeenCalledTimes(2);
     });
 
     it("does NOT invoke the eviction path for non-quota errors", async () => {
