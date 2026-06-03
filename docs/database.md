@@ -51,7 +51,7 @@ for full context.
 ### Enforcement
 
 `pnpm db:migrate:check-names` (also wired into CI) validates that every entry
-under `prisma/migrations/` matches `^[0-9]{14}_[a-z0-9_]+$` and that no two
+under `prisma/migrations/` matches `^[0-9]{14}_[a-z0-9]+(?:_[a-z0-9]+)*$` and that no two
 directories share the same 14-digit prefix. Run it locally before pushing if
 you've added a migration.
 
@@ -157,7 +157,7 @@ The CI pipeline validates two things on every push:
    each be valid in isolation but conflict when merged; this check catches the
    discrepancy on the merged result.
 2. **Naming convention** — `pnpm db:migrate:check-names` runs in CI and fails if
-   any migration directory does not match `^[0-9]{14}_[a-z0-9_]+$` or if any two
+   any migration directory does not match `^[0-9]{14}_[a-z0-9]+(?:_[a-z0-9]+)*$` or if any two
    directories share the same 14-digit prefix.
 
 ## Migration Directory Structure

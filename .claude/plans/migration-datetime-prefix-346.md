@@ -81,7 +81,7 @@ UPDATE _prisma_migrations SET migration_name = '20260507135533_pointtransaction_
 
 ## Acceptance
 
-- [x] `scripts/check-migration-naming.mjs` enforces `^[0-9]{14}_[a-z0-9_]+$` with duplicate-timestamp detection
+- [x] `scripts/check-migration-naming.mjs` enforces `^[0-9]{14}_[a-z0-9]+(?:_[a-z0-9]+)*$` with duplicate-timestamp detection
 - [x] All existing migrations renamed to timestamp form (six directories)
 - [x] `pnpm db:migrate:check-names` exits 0
 - [x] CI drift check retains `--to-schema` (Prisma 7 removed `--to-schema-datamodel`)
