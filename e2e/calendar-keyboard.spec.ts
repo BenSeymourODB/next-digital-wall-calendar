@@ -300,3 +300,49 @@ test.describe("SimpleCalendar — keyboard navigation", () => {
     ).toHaveAttribute("data-date", targetKey!);
   });
 });
+
+// Sibling describe (not nested) so the parent `beforeEach` doesn't fire
+// before our own goto — these tests need both `weekStartDay=1` and a
+// deterministic anchor in the URL, and a single navigation per test
+// keeps the pair fast on slow runners (#231).
+test.describe("SimpleCalendar — Monday-first keyboard navigation (weekStartDay=1)", () => {
+  // Wednesday in a Monday-first week (Mon Apr 13 – Sun Apr 19, 2026).
+  const ANCHOR = "2026-04-15";
+  const ANCHOR_URL = `/test/calendar?events=default&view=month&controls=false&sidebar=false&weekStartDay=1&anchor=${ANCHOR}`;
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(ANCHOR_URL);
+    await expect(page.getByRole("grid", { name: /calendar$/i })).toBeVisible();
+  });
+
+  test("Home snaps selection to Monday (#231)", async ({ page }) => {
+    const selected = page.locator('[role="gridcell"][aria-selected="true"]');
+    await selected.focus();
+    await page.keyboard.press("Home");
+
+    // Wait for React to commit the new selection before reading the
+    // date — `getAttribute` is non-retrying and would otherwise race
+    // the post-keydown re-render on slow CI.
+    const newSelected = page.locator('[role="gridcell"][aria-selected="true"]');
+    await expect(newSelected).not.toHaveAttribute("data-date", ANCHOR);
+
+    const afterKey = await newSelected.getAttribute("data-date");
+    const [y, m, d] = afterKey!.split("-").map(Number);
+    // getDay(): Monday = 1 (the week boundary for Monday-first users).
+    expect(new Date(y, m - 1, d).getDay()).toBe(1);
+  });
+
+  test("End snaps selection to Sunday (#231)", async ({ page }) => {
+    const selected = page.locator('[role="gridcell"][aria-selected="true"]');
+    await selected.focus();
+    await page.keyboard.press("End");
+
+    const newSelected = page.locator('[role="gridcell"][aria-selected="true"]');
+    await expect(newSelected).not.toHaveAttribute("data-date", ANCHOR);
+
+    const afterKey = await newSelected.getAttribute("data-date");
+    const [y, m, d] = afterKey!.split("-").map(Number);
+    // getDay(): Sunday = 0 (end of a Monday-first week).
+    expect(new Date(y, m - 1, d).getDay()).toBe(0);
+  });
+});

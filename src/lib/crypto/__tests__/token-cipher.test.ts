@@ -374,4 +374,109 @@ describe("token-cipher", () => {
       warnSpy.mockRestore();
     });
   });
+
+  // Issue #215 — dual-read decryption keyed on the envelope contents lets us
+  // run a rolling key rotation: encrypt under the new (active) key, but still
+  // decrypt tokens that were written under the previous key until the CLI
+  // re-encrypts every row.
+  describe("dual-read with TOKEN_ENCRYPTION_KEY_PREVIOUS", () => {
+    it("decrypts an envelope written under the previous key after the active key rotates", async () => {
+      // Step 1: encrypt under what will become the "previous" key.
+      const oldKey = randomBytes(32).toString("base64");
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", oldKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", "");
+      const { encryptToken } = await loadCipher();
+      const envelope = encryptToken("rotation-secret");
+      expect(envelope).not.toBeNull();
+
+      // Step 2: simulate a rotation — flip env so the old key becomes
+      // PREVIOUS and a fresh key is ACTIVE. Reload the module so the
+      // resolver sees the new env.
+      const newKey = randomBytes(32).toString("base64");
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", newKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", oldKey);
+      const { decryptToken } = await loadCipher();
+
+      // The old envelope must still decrypt to the original plaintext.
+      expect(decryptToken(envelope)).toBe("rotation-secret");
+    });
+
+    it("encrypts under the active key only — re-encrypted envelopes do not decrypt with the previous key", async () => {
+      const oldKey = randomBytes(32).toString("base64");
+      const newKey = randomBytes(32).toString("base64");
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", newKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", oldKey);
+      const { encryptToken } = await loadCipher();
+      const envelope = encryptToken("written-after-rotation");
+      expect(envelope).not.toBeNull();
+
+      // If we re-load the module with only the old key as ACTIVE
+      // (and no previous), the envelope must NOT decrypt — proving
+      // it was encrypted under the new key.
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", oldKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", "");
+      const { decryptToken } = await loadCipher();
+      expect(() => decryptToken(envelope)).toThrow();
+    });
+
+    it("throws when neither the active nor the previous key matches the envelope", async () => {
+      const writeKey = randomBytes(32).toString("base64");
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", writeKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", "");
+      const { encryptToken } = await loadCipher();
+      const envelope = encryptToken("orphaned-secret");
+
+      // Reload with two unrelated keys — neither can decrypt the
+      // original envelope.
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
+      vi.stubEnv(
+        "TOKEN_ENCRYPTION_KEY_PREVIOUS",
+        randomBytes(32).toString("base64")
+      );
+      const { decryptToken } = await loadCipher();
+      expect(() => decryptToken(envelope)).toThrow();
+    });
+
+    it("ignores TOKEN_ENCRYPTION_KEY_PREVIOUS when empty (single-key behaviour preserved)", async () => {
+      // Regression guard: an absent / empty previous key must keep the
+      // pre-#215 behaviour exactly. No fallback, no surprise re-tries.
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", "");
+      const { encryptToken, decryptToken } = await loadCipher();
+      const envelope = encryptToken("simple-roundtrip");
+      expect(decryptToken(envelope)).toBe("simple-roundtrip");
+    });
+
+    it("throws when TOKEN_ENCRYPTION_KEY_PREVIOUS is set but malformed", async () => {
+      // The previous key follows the same parsing rules as the active
+      // key — fail fast at first use instead of silently dropping it.
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", "!!!not-base64!!!");
+      const { encryptToken } = await loadCipher();
+      expect(() => encryptToken("x")).toThrow(/TOKEN_ENCRYPTION_KEY_PREVIOUS/);
+    });
+
+    it("throws when TOKEN_ENCRYPTION_KEY_PREVIOUS decodes to the wrong length", async () => {
+      vi.stubEnv(
+        "TOKEN_ENCRYPTION_KEY_PREVIOUS",
+        randomBytes(16).toString("base64")
+      );
+      const { encryptToken } = await loadCipher();
+      expect(() => encryptToken("x")).toThrow(/TOKEN_ENCRYPTION_KEY_PREVIOUS/);
+    });
+
+    it("does not log the derivation warning when both keys are explicit", async () => {
+      // Sanity: setting the previous-key env shouldn't accidentally trip
+      // the dev-mode HKDF fallback branch.
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", TEST_KEY_B64);
+      const { encryptToken } = await loadCipher();
+      encryptToken("anything");
+      const derivationWarns = warnSpy.mock.calls.filter(
+        (args) =>
+          typeof args[0] === "string" &&
+          args[0].includes("TOKEN_ENCRYPTION_KEY")
+      );
+      expect(derivationWarns.length).toBe(0);
+      warnSpy.mockRestore();
+    });
+  });
 });

@@ -10,5 +10,9 @@ export default defineConfig({
   },
   datasource: {
     url: process.env["DATABASE_URL"],
+    // Optional in dev (Prisma manages an ad-hoc shadow DB locally during
+    // `prisma migrate dev`). Required in CI for `prisma migrate diff
+    // --from-migrations` — see docs/database.md → "CI Validation".
+    shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"],
   },
 });
