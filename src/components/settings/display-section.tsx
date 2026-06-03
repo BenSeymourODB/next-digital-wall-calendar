@@ -103,7 +103,7 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
                 value="0"
                 checked={values.weekStartDay === 0}
                 onChange={() => onChange({ weekStartDay: 0 })}
-                className="text-blue-600"
+                className="accent-blue-600"
               />
               Sunday
             </Label>
@@ -114,7 +114,7 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
                 value="1"
                 checked={values.weekStartDay === 1}
                 onChange={() => onChange({ weekStartDay: 1 })}
-                className="text-blue-600"
+                className="accent-blue-600"
               />
               Monday
             </Label>
