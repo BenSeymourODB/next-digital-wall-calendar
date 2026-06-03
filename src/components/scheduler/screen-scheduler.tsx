@@ -123,20 +123,23 @@ export function ScreenScheduler({
     if (!state.isActive) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Arrow keys and Space are explicit scheduler commands. The
+      // keydown event itself is also caught by the window-level
+      // interaction detector, so without an explicit reset the user
+      // would navigate or unpause and then immediately get re-paused.
       switch (e.key) {
         case "ArrowLeft":
           controls.navigateToPrevious();
+          resetInteractionPause();
           break;
         case "ArrowRight":
           controls.navigateToNext();
+          resetInteractionPause();
           break;
         case " ":
           e.preventDefault();
           if (effectivelyPaused) {
             controls.resume();
-            // Mirror the toggle-button behaviour: the Space keypress is
-            // an explicit manual resume, so any active interaction-pause
-            // must be cleared too or the user can't unpause.
             resetInteractionPause();
           } else {
             controls.pause();

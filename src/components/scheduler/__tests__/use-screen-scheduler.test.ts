@@ -333,33 +333,45 @@ describe("useScreenScheduler", () => {
     // its own setInterval that drifted from the navigation interval. The
     // fix unifies them into a single 1s tick — the countdown is derived
     // from the same timer that triggers navigation, eliminating drift by
-    // construction. This test pins that invariant: while rotation is
-    // running, exactly one 1000ms interval is registered.
+    // construction. This test pins that invariant via both the
+    // structural shape (one 1s interval) and the behavioural one (the
+    // navigation fires after `intervalSeconds` ticks).
     it("uses a single 1s interval as the shared source of truth for countdown and navigation", () => {
       mockPathname.mockReturnValue("/calendar");
       const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
 
-      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+      try {
+        const { result } = renderHook(() => useScreenScheduler(defaultConfig));
 
-      act(() => {
-        result.current.controls.start();
-      });
+        act(() => {
+          result.current.controls.start();
+        });
 
-      // Drain the immediate time-specific check.
-      act(() => {
-        vi.advanceTimersByTime(0);
-      });
+        // Drain the immediate time-specific check.
+        act(() => {
+          vi.advanceTimersByTime(0);
+        });
 
-      const intervalDelays = setIntervalSpy.mock.calls.map((call) => call[1]);
-      const oneSecondIntervals = intervalDelays.filter((d) => d === 1000);
-      const sixtySecondIntervals = intervalDelays.filter((d) => d === 60_000);
+        const intervalDelays = setIntervalSpy.mock.calls.map((call) => call[1]);
+        const oneSecondIntervals = intervalDelays.filter((d) => d === 1000);
+        const sixtySecondIntervals = intervalDelays.filter((d) => d === 60_000);
 
-      // Exactly one 1s tick (drives countdown AND navigation).
-      expect(oneSecondIntervals).toHaveLength(1);
-      // Plus the unrelated 60s time-specific check interval.
-      expect(sixtySecondIntervals).toHaveLength(1);
+        // Exactly one 1s tick (drives countdown AND navigation).
+        expect(oneSecondIntervals).toHaveLength(1);
+        // Plus the unrelated 60s time-specific check interval.
+        expect(sixtySecondIntervals).toHaveLength(1);
 
-      setIntervalSpy.mockRestore();
+        // Behavioural pin: that single 1s interval drives navigation at
+        // exactly `intervalSeconds * 1000`ms — no separate timer fires
+        // navigation early, none fires late.
+        act(() => {
+          vi.advanceTimersByTime(60_000);
+        });
+        expect(mockPush).toHaveBeenCalledTimes(1);
+        expect(mockPush).toHaveBeenCalledWith("/recipe");
+      } finally {
+        setIntervalSpy.mockRestore();
+      }
     });
 
     it("does not auto-navigate when externalPaused is true", () => {

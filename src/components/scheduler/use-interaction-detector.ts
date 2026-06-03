@@ -60,15 +60,6 @@ export function useInteractionDetector(
   const { pauseDurationMs, enabled, ignoreRef } = options;
   const [isPaused, setIsPaused] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Mirror `ignoreRef` into an internal ref so the effect can read the
-  // latest value without re-subscribing listeners when the ref identity
-  // changes (refs are stable, but the prop slot is optional).
-  const ignoreRefMirror = useRef<RefObject<HTMLElement | null> | undefined>(
-    ignoreRef
-  );
-  useEffect(() => {
-    ignoreRefMirror.current = ignoreRef;
-  });
 
   useEffect(() => {
     if (!enabled) {
@@ -78,7 +69,9 @@ export function useInteractionDetector(
     }
 
     const handleInteraction = (event: Event) => {
-      const ignoreEl = ignoreRefMirror.current?.current;
+      // `ignoreRef` is a stable `RefObject`; `.current` is read at
+      // event-firing time so it always sees the latest assignment.
+      const ignoreEl = ignoreRef?.current;
       if (
         ignoreEl &&
         event.target instanceof Node &&
@@ -115,7 +108,7 @@ export function useInteractionDetector(
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [enabled, pauseDurationMs]);
+  }, [enabled, pauseDurationMs, ignoreRef]);
 
   const [reset] = useState(() => () => {
     if (timeoutRef.current) {

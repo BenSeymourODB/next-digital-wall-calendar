@@ -184,6 +184,37 @@ describe("ScreenScheduler", () => {
         expect.stringMatching(/next screen in/i)
       );
     });
+
+    it("pressing ArrowRight while interaction-paused resumes rotation", () => {
+      render(
+        <ScreenScheduler config={defaultConfig} autoStart>
+          <div data-testid="content">Content</div>
+        </ScreenScheduler>
+      );
+
+      // Trigger an interaction-pause via a click outside the controls.
+      act(() => {
+        fireEvent.click(screen.getByTestId("content"));
+      });
+      expect(screen.getByRole("status")).toHaveAttribute(
+        "aria-label",
+        "Screen rotation paused"
+      );
+
+      // Press ArrowRight to manually navigate. The keydown event fires
+      // on window — outside the controls container — and so without the
+      // explicit reset would extend the interaction-pause. The fix
+      // calls `resetInteractionPause()` in the arrow-key handlers, so
+      // navigation should resume rotation.
+      act(() => {
+        fireEvent.keyDown(window, { key: "ArrowRight" });
+      });
+
+      expect(screen.getByRole("status")).toHaveAttribute(
+        "aria-label",
+        expect.stringMatching(/next screen in/i)
+      );
+    });
   });
 
   it("applies transition config from schedule config", () => {
