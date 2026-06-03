@@ -3,14 +3,14 @@
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PinSetupModal } from "../pin-setup-modal";
+import { PinSetupModal, type PinSetupModalProfile } from "../pin-setup-modal";
 
 // Mock fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 // Sample profile for testing
-const mockProfile = {
+const mockProfile: PinSetupModalProfile = {
   id: "profile-1",
   name: "Test User",
   pinEnabled: false,
