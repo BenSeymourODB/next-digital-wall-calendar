@@ -24,7 +24,12 @@ const AUTH_TAG_LENGTH = 16;
 const CURRENT_VERSION = "v1";
 const HKDF_INFO = "token-cipher/v1";
 
-let cachedKey: Buffer | null = null;
+interface ResolvedKeys {
+  active: Buffer;
+  previous: Buffer | null;
+}
+
+let cachedKeys: ResolvedKeys | null = null;
 let cachedKeySource: string | null = null;
 let loggedDerivationWarning = false;
 
@@ -49,32 +54,39 @@ function decodeBase64Key(input: string): Buffer | null {
   return decoded;
 }
 
-function resolveKey(): Buffer {
+function decodeNamedKey(envVar: string, value: string): Buffer {
+  const decoded = decodeBase64Key(value);
+  if (!decoded) {
+    throw new Error(
+      `${envVar} is not valid base64/base64url (generate with \`openssl rand -base64 32\`).`
+    );
+  }
+  if (decoded.length !== KEY_LENGTH) {
+    throw new Error(
+      `${envVar} must decode to ${KEY_LENGTH} bytes (got ${decoded.length}).`
+    );
+  }
+  return decoded;
+}
+
+function resolveKeys(): ResolvedKeys {
   const envKey = process.env.TOKEN_ENCRYPTION_KEY;
+  const previousEnvKey = process.env.TOKEN_ENCRYPTION_KEY_PREVIOUS;
   const nodeEnv = process.env.NODE_ENV;
   const nextAuthSecret = process.env.NEXTAUTH_SECRET;
 
+  // Cache key must include the previous-key value so a rotation
+  // (active ↔ previous flip in env) invalidates the cached pair.
   const source = envKey
-    ? `env:${envKey}`
-    : `derived:${nextAuthSecret ?? ""}:${nodeEnv ?? ""}`;
-  if (cachedKey && cachedKeySource === source) {
-    return cachedKey;
+    ? `env:${envKey}|prev:${previousEnvKey ?? ""}`
+    : `derived:${nextAuthSecret ?? ""}:${nodeEnv ?? ""}|prev:${previousEnvKey ?? ""}`;
+  if (cachedKeys && cachedKeySource === source) {
+    return cachedKeys;
   }
 
-  let key: Buffer;
+  let active: Buffer;
   if (envKey && envKey.length > 0) {
-    const decoded = decodeBase64Key(envKey);
-    if (!decoded) {
-      throw new Error(
-        "TOKEN_ENCRYPTION_KEY is not valid base64/base64url (generate with `openssl rand -base64 32`)."
-      );
-    }
-    if (decoded.length !== KEY_LENGTH) {
-      throw new Error(
-        `TOKEN_ENCRYPTION_KEY must decode to ${KEY_LENGTH} bytes (got ${decoded.length}).`
-      );
-    }
-    key = decoded;
+    active = decodeNamedKey("TOKEN_ENCRYPTION_KEY", envKey);
   } else if (nodeEnv !== "production" && nextAuthSecret) {
     // Dev / test convenience: derive a stable 32-byte key from NEXTAUTH_SECRET
     // so developers don't need to generate and distribute a second secret.
@@ -95,7 +107,7 @@ function resolveKey(): Buffer {
       Buffer.from(HKDF_INFO, "utf8"),
       KEY_LENGTH
     );
-    key = Buffer.from(derived);
+    active = Buffer.from(derived);
   } else if (nodeEnv === "production") {
     throw new Error(
       "TOKEN_ENCRYPTION_KEY is required in production. " +
@@ -108,9 +120,15 @@ function resolveKey(): Buffer {
     );
   }
 
-  cachedKey = key;
+  const previous =
+    previousEnvKey && previousEnvKey.length > 0
+      ? decodeNamedKey("TOKEN_ENCRYPTION_KEY_PREVIOUS", previousEnvKey)
+      : null;
+
+  const keys: ResolvedKeys = { active, previous };
+  cachedKeys = keys;
   cachedKeySource = source;
-  return key;
+  return keys;
 }
 
 function toBase64Url(buf: Buffer): string {
@@ -142,9 +160,9 @@ export function encryptToken(
 ): string | null {
   if (plaintext == null) return null;
 
-  const key = resolveKey();
+  const { active } = resolveKeys();
   const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
+  const cipher = createCipheriv(ALGORITHM, active, iv);
   const ciphertext = Buffer.concat([
     cipher.update(plaintext, "utf8"),
     cipher.final(),
@@ -157,6 +175,21 @@ export function encryptToken(
     toBase64Url(authTag),
     toBase64Url(ciphertext),
   ].join(":");
+}
+
+function decryptWithKey(
+  key: Buffer,
+  iv: Buffer,
+  authTag: Buffer,
+  ciphertext: Buffer
+): string {
+  const decipher = createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+  const plaintext = Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]);
+  return plaintext.toString("utf8");
 }
 
 /**
@@ -199,12 +232,20 @@ export function decryptToken(
     );
   }
 
-  const key = resolveKey();
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
-  const plaintext = Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]);
-  return plaintext.toString("utf8");
+  // Dual-read (#215): try the active key first; on auth-tag mismatch
+  // fall back to the previous key (if configured) so a rolling
+  // rotation can decrypt envelopes written under either key. Surface
+  // the active-key error if both attempts fail — operators triaging
+  // `RefreshTokenDecryptFailed` see the failure that matters.
+  const { active, previous } = resolveKeys();
+  try {
+    return decryptWithKey(active, iv, authTag, ciphertext);
+  } catch (activeErr) {
+    if (!previous) throw activeErr;
+    try {
+      return decryptWithKey(previous, iv, authTag, ciphertext);
+    } catch {
+      throw activeErr;
+    }
+  }
 }
