@@ -1,0 +1,101 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/e2e
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/e2e
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: e2e-test-secret-not-used-in-production
+      AUTH_SECRET: e2e-test-secret-not-used-in-production
+      GOOGLE_CLIENT_ID: e2e-dummy-client-id
+      GOOGLE_CLIENT_SECRET: e2e-dummy-client-secret
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.x"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: |
+          version=$(node -p "require('./node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Playwright OS deps (cache hit path)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Apply Prisma migrations
+        run: pnpm db:migrate:deploy
+
+      - name: Run Playwright tests (chromium)
+        run: pnpm test:e2e --project=chromium
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload Playwright test results
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 14
+          if-no-files-found: ignore
