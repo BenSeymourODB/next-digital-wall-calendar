@@ -48,6 +48,11 @@ export function ScreenScheduler({
 }: ScreenSchedulerProps) {
   const [controlsVisible, setControlsVisible] = useState(true);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Wrapping element around the scheduler's own controls. Interactions
+  // inside this subtree (e.g. clicking the pause/resume button) are
+  // explicit scheduler commands and must not be re-interpreted as
+  // generic user activity by the interaction detector.
+  const controlsContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Get pause duration from first enabled sequence
   const enabledSequence = config.sequences.find(
@@ -58,10 +63,12 @@ export function ScreenScheduler({
     : 120000;
 
   // Interaction detector runs unconditionally; externalPaused is threaded into hook
-  const { isPaused: isInteractionPaused } = useInteractionDetector({
-    pauseDurationMs,
-    enabled: true,
-  });
+  const { isPaused: isInteractionPaused, reset: resetInteractionPause } =
+    useInteractionDetector({
+      pauseDurationMs,
+      enabled: true,
+      ignoreRef: controlsContainerRef,
+    });
 
   const { state, controls } = useScreenScheduler(config, isInteractionPaused);
   const pathname = usePathname();
@@ -127,6 +134,10 @@ export function ScreenScheduler({
           e.preventDefault();
           if (effectivelyPaused) {
             controls.resume();
+            // Mirror the toggle-button behaviour: the Space keypress is
+            // an explicit manual resume, so any active interaction-pause
+            // must be cleared too or the user can't unpause.
+            resetInteractionPause();
           } else {
             controls.pause();
           }
@@ -139,7 +150,7 @@ export function ScreenScheduler({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [state.isActive, effectivelyPaused, controls]);
+  }, [state.isActive, effectivelyPaused, controls, resetInteractionPause]);
 
   return (
     <>
@@ -152,21 +163,26 @@ export function ScreenScheduler({
       </ScreenTransition>
       {state.isActive && totalScreens > 0 && (
         <>
-          <NavigationControls
-            currentIndex={state.currentIndex}
-            totalScreens={totalScreens}
-            isPaused={effectivelyPaused}
-            isVisible={controlsVisible}
-            onPrevious={controls.navigateToPrevious}
-            onNext={controls.navigateToNext}
-            onTogglePause={() => {
-              if (effectivelyPaused) {
-                controls.resume();
-              } else {
-                controls.pause();
-              }
-            }}
-          />
+          <div ref={controlsContainerRef}>
+            <NavigationControls
+              currentIndex={state.currentIndex}
+              totalScreens={totalScreens}
+              isPaused={effectivelyPaused}
+              isVisible={controlsVisible}
+              onPrevious={controls.navigateToPrevious}
+              onNext={controls.navigateToNext}
+              onTogglePause={() => {
+                if (effectivelyPaused) {
+                  controls.resume();
+                  // Also clear any interaction-induced pause so the
+                  // resume actually takes effect.
+                  resetInteractionPause();
+                } else {
+                  controls.pause();
+                }
+              }}
+            />
+          </div>
           <SchedulerStatusIndicator
             isRotating={isRotating}
             isPaused={effectivelyPaused}
