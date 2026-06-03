@@ -7,6 +7,7 @@
  * and pauses the scheduler for a configurable duration. Uses passive
  * event listeners for performance and debounces rapid interactions.
  */
+import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 
 interface UseInteractionDetectorOptions {
@@ -14,11 +15,25 @@ interface UseInteractionDetectorOptions {
   pauseDurationMs: number;
   /** Whether the detector is enabled */
   enabled: boolean;
+  /**
+   * Optional element subtree to exempt from interaction detection.
+   * When provided, interactions whose `event.target` is contained within
+   * `ignoreRef.current` are ignored — they will neither set nor extend
+   * the pause. Used to let users operate the scheduler's own navigation
+   * controls without immediately re-pausing the scheduler.
+   */
+  ignoreRef?: RefObject<HTMLElement | null>;
 }
 
 interface UseInteractionDetectorResult {
   /** Whether the scheduler is currently paused due to user interaction */
   isPaused: boolean;
+  /**
+   * Clear the current interaction-induced pause immediately. Use when
+   * the user explicitly resumes via a manual control so the existing
+   * pause timer does not keep the scheduler paused.
+   */
+  reset: () => void;
 }
 
 const INTERACTION_EVENTS = [
@@ -42,7 +57,7 @@ const INTERACTION_EVENTS = [
 export function useInteractionDetector(
   options: UseInteractionDetectorOptions
 ): UseInteractionDetectorResult {
-  const { pauseDurationMs, enabled } = options;
+  const { pauseDurationMs, enabled, ignoreRef } = options;
   const [isPaused, setIsPaused] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -53,7 +68,18 @@ export function useInteractionDetector(
       return;
     }
 
-    const handleInteraction = () => {
+    const handleInteraction = (event: Event) => {
+      // `ignoreRef` is a stable `RefObject`; `.current` is read at
+      // event-firing time so it always sees the latest assignment.
+      const ignoreEl = ignoreRef?.current;
+      if (
+        ignoreEl &&
+        event.target instanceof Node &&
+        ignoreEl.contains(event.target)
+      ) {
+        return;
+      }
+
       // Pause immediately on interaction
       setIsPaused(true);
 
@@ -82,7 +108,15 @@ export function useInteractionDetector(
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [enabled, pauseDurationMs]);
+  }, [enabled, pauseDurationMs, ignoreRef]);
 
-  return { isPaused };
+  const [reset] = useState(() => () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setIsPaused(false);
+  });
+
+  return { isPaused, reset };
 }
