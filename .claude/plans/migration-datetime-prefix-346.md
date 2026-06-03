@@ -59,9 +59,11 @@ Six `git mv` renames; migration SQL contents unchanged.
 
 ### `.github/workflows/main_nextjs-template-build.yml`
 
-Update "Validate Prisma migrations are up to date" step to use
-`--to-schema-datamodel` instead of `--to-schema` for more accurate drift
-detection between the schema datamodel and the applied migrations.
+Update the "Validate Prisma migrations are up to date" step's leading comment
+to describe the drift-check's role under concurrent schema edits (catching
+two-branch merge conflicts where each branch is valid in isolation). The
+existing `--to-schema prisma/schema.prisma` flag is retained — Prisma 7
+removed the older `--to-schema-datamodel` form.
 
 ## Production `_prisma_migrations` SQL
 
@@ -82,7 +84,7 @@ UPDATE _prisma_migrations SET migration_name = '20260507135533_pointtransaction_
 - [x] `scripts/check-migration-naming.mjs` enforces `^[0-9]{14}_[a-z0-9_]+$` with duplicate-timestamp detection
 - [x] All existing migrations renamed to timestamp form (six directories)
 - [x] `pnpm db:migrate:check-names` exits 0
-- [x] CI drift check updated to `--to-schema-datamodel`
+- [x] CI drift check retains `--to-schema` (Prisma 7 removed `--to-schema-datamodel`)
 - [x] `docs/database.md` updated
 - [x] Tests updated (unit + on-disk regression)
 - [x] PR body documents per-row `_prisma_migrations` SQL

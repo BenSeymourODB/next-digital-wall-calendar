@@ -151,7 +151,7 @@ npx prisma migrate resolve --applied 20260502052405_initial
 The CI pipeline validates two things on every push:
 
 1. **Schema-vs-migrations drift** — `prisma migrate diff --from-migrations
---to-schema-datamodel` detects when `prisma/schema.prisma` has drifted from
+--to-schema` detects when `prisma/schema.prisma` has drifted from
    the applied migration set. Fails with a non-zero exit code when drift is found.
    This is the primary safety net for concurrent schema editing: two branches can
    each be valid in isolation but conflict when merged; this check catches the
