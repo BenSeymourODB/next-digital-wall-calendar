@@ -39,6 +39,10 @@ jobs:
       AUTH_SECRET: e2e-test-secret-not-used-in-production
       GOOGLE_CLIENT_ID: e2e-dummy-client-id
       GOOGLE_CLIENT_SECRET: e2e-dummy-client-secret
+      # TOKEN_ENCRYPTION_KEY intentionally omitted: src/lib/crypto/token-cipher.ts
+      # falls back to an HKDF-derived key from NEXTAUTH_SECRET in non-production
+      # builds, which is sufficient for E2E. If a future workflow runs the app
+      # with NODE_ENV=production, this var must be set explicitly.
 
     steps:
       - uses: actions/checkout@v6
@@ -68,19 +72,18 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
+      # `playwright install` is idempotent: when the browser binary is already
+      # in the cache it skips the download. `--with-deps` always runs the apt
+      # step, which is required on every fresh runner regardless of cache hit
+      # since OS packages live outside ~/.cache/ms-playwright.
+      - name: Install Playwright browsers and OS deps
         run: pnpm exec playwright install --with-deps chromium
-
-      - name: Install Playwright OS deps (cache hit path)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
 
       - name: Apply Prisma migrations
         run: pnpm db:migrate:deploy
 
       - name: Run Playwright tests (chromium)
-        run: pnpm test:e2e --project=chromium
+        run: pnpm test:e2e -- --project=chromium
 
       - name: Upload Playwright report
         if: failure()
