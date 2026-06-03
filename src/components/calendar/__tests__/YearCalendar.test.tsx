@@ -138,7 +138,9 @@ describe("YearCalendar", () => {
   });
 
   describe("Year navigation", () => {
-    it("navigates to the previous year", async () => {
+    it("navigates to January 1 of the previous year (#203 bug 4)", async () => {
+      // Starting from April 15 — month/day must not bleed into the target
+      // year. Issue #203 specifies prev/next-year nav lands on Jan 1.
       const user = userEvent.setup();
       const { contextValue } = renderWithContext({
         selectedDate: new Date(2026, 3, 15),
@@ -151,9 +153,11 @@ describe("YearCalendar", () => {
         contextValue.setSelectedDate as ReturnType<typeof vi.fn>
       ).mock.calls[0][0] as Date;
       expect(calledWith.getFullYear()).toBe(2025);
+      expect(calledWith.getMonth()).toBe(0);
+      expect(calledWith.getDate()).toBe(1);
     });
 
-    it("navigates to the next year", async () => {
+    it("navigates to January 1 of the next year (#203 bug 4)", async () => {
       const user = userEvent.setup();
       const { contextValue } = renderWithContext({
         selectedDate: new Date(2026, 3, 15),
@@ -166,6 +170,8 @@ describe("YearCalendar", () => {
         contextValue.setSelectedDate as ReturnType<typeof vi.fn>
       ).mock.calls[0][0] as Date;
       expect(calledWith.getFullYear()).toBe(2027);
+      expect(calledWith.getMonth()).toBe(0);
+      expect(calledWith.getDate()).toBe(1);
     });
 
     it("disables the Today button when viewing the current year", () => {

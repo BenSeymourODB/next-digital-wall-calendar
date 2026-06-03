@@ -231,12 +231,16 @@ export function YearCalendar() {
   // case from the Jan-side year's count.
   const yearEventCount = getEventsForYear(events, selectedDate).length;
 
+  // Prev/next-year nav lands on Jan 1 of the target year so the destination
+  // doesn't depend on the month the user happened to be viewing. Issue #203
+  // bug 4: previously preserved `selectedDate.getMonth()`, which made the
+  // semantics "go to April 1 of the next year" rather than "go to next year".
   const previousYear = () => {
-    setSelectedDate(new Date(year - 1, selectedDate.getMonth(), 1));
+    setSelectedDate(new Date(year - 1, 0, 1));
   };
 
   const nextYear = () => {
-    setSelectedDate(new Date(year + 1, selectedDate.getMonth(), 1));
+    setSelectedDate(new Date(year + 1, 0, 1));
   };
 
   const goToToday = () => {
