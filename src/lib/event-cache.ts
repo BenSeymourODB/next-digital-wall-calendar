@@ -38,6 +38,28 @@ export interface EventStore {
   put(events: GoogleCalendarEvent[], cachedAt: number): Promise<void>;
   getAll(now: number): Promise<GoogleCalendarEvent[]>;
   clear(): Promise<void>;
+  /**
+   * Remove up to `count` rows in least-recently-cached order
+   * (smallest `cachedAt` first). Resolves with the actual number of rows
+   * removed (may be less than `count` if the store has fewer rows).
+   * Used by `EventCache` to recover from `QuotaExceededError` (#290).
+   */
+  evictOldest(count: number): Promise<number>;
+}
+
+/**
+ * Recovery configuration for the `QuotaExceededError` → LRU-evict → retry
+ * loop in `EventCache.saveEvents` (#290). The values are deliberately
+ * conservative: enough to make a dent on a typical Chromium IndexedDB
+ * quota without thrashing the cache, and bounded enough that an
+ * unrecoverable quota error short-circuits to the in-memory fallback
+ * quickly. See `.claude/plans/event-cache-lru-eviction-290.md`.
+ */
+const EVICTION_BATCH_SIZE = 50;
+const MAX_EVICTION_ATTEMPTS = 5;
+
+function isQuotaExceededError(error: unknown): boolean {
+  return error instanceof Error && error.name === "QuotaExceededError";
 }
 
 export class InMemoryEventStore implements EventStore {
@@ -63,6 +85,18 @@ export class InMemoryEventStore implements EventStore {
 
   async clear(): Promise<void> {
     this.rows.clear();
+  }
+
+  async evictOldest(count: number): Promise<number> {
+    if (count <= 0 || this.rows.size === 0) return 0;
+    const sorted = Array.from(this.rows.entries()).sort(
+      (a, b) => a[1].cachedAt - b[1].cachedAt
+    );
+    const toEvict = sorted.slice(0, count);
+    for (const [id] of toEvict) {
+      this.rows.delete(id);
+    }
+    return toEvict.length;
   }
 }
 
@@ -175,6 +209,34 @@ export class IndexedDBEventStore implements EventStore {
       request.onerror = () => reject(request.error);
     });
   }
+
+  async evictOldest(count: number): Promise<number> {
+    if (count <= 0) return 0;
+    await this.init();
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], "readwrite");
+      const objectStore = transaction.objectStore(STORE_NAME);
+      const index = objectStore.index("cachedAt");
+      // Ascending cursor over `cachedAt` — first key is the oldest row.
+      const cursorRequest = index.openCursor(null, "next");
+      let evicted = 0;
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor || evicted >= count) {
+          resolve(evicted);
+          return;
+        }
+        cursor.delete();
+        evicted += 1;
+        cursor.continue();
+      };
+      cursorRequest.onerror = () => reject(cursorRequest.error);
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
 }
 
 /**
@@ -201,9 +263,56 @@ export class EventCache {
 
   async saveEvents(events: GoogleCalendarEvent[]): Promise<void> {
     return this.withFallback(
-      async (store) => store.put(events, Date.now()),
+      async (store) => this.putWithLruRetry(store, events),
       "EventCache.saveEvents"
     );
+  }
+
+  /**
+   * Attempt `store.put`; on `QuotaExceededError`, evict the least-recently-
+   * cached rows in bounded batches and retry. Non-quota errors propagate
+   * immediately so the existing `withFallback` path handles them. Loop
+   * terminates on success, on `MAX_EVICTION_ATTEMPTS`, or when
+   * `evictOldest` reports nothing left to evict (#290).
+   */
+  private async putWithLruRetry(
+    store: EventStore,
+    events: GoogleCalendarEvent[]
+  ): Promise<void> {
+    const cachedAt = Date.now();
+    try {
+      await store.put(events, cachedAt);
+      return;
+    } catch (error) {
+      if (!isQuotaExceededError(error)) throw error;
+
+      let totalEvicted = 0;
+      for (let attempt = 1; attempt <= MAX_EVICTION_ATTEMPTS; attempt++) {
+        const evicted = await store.evictOldest(EVICTION_BATCH_SIZE);
+        totalEvicted += evicted;
+        if (evicted === 0) {
+          // Nothing left to evict — propagate so the in-memory fallback
+          // can take over. The thrown error is the original quota error,
+          // preserved so logs upstream stay accurate.
+          throw error;
+        }
+        try {
+          await store.put(events, cachedAt);
+          logger.event(
+            "event-cache.lru-evicted",
+            { context: "EventCache.saveEvents" },
+            { evicted: totalEvicted, attempts: attempt }
+          );
+          return;
+        } catch (retryError) {
+          if (!isQuotaExceededError(retryError)) throw retryError;
+          // Still quota-bound — loop and evict another batch.
+        }
+      }
+      // Exhausted the bounded retry budget. Propagate the original quota
+      // error so `withFallback` switches to the in-memory store.
+      throw error;
+    }
   }
 
   async getEvents(): Promise<GoogleCalendarEvent[]> {
