@@ -55,6 +55,7 @@ describe("useUserSettings", () => {
       calendarFetchMonthsAhead: 4,
       calendarFetchMonthsBehind: 2,
       calendarMaxEventsPerDay: 5,
+      weekStartDay: 1,
       calendarWorkingHoursStart: 9,
     };
     vi.mocked(global.fetch).mockResolvedValue({
@@ -230,6 +231,54 @@ describe("useUserSettings", () => {
       ...DEFAULT_USER_CALENDAR_SETTINGS,
       calendarMaxEventsPerDay: 7,
     });
+  });
+
+  it("exposes weekStartDay with default 0 when unauthenticated", () => {
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+
+    const { result } = renderHook(() => useUserSettings());
+
+    expect(result.current.settings.weekStartDay).toBe(0);
+  });
+
+  it("returns server-side weekStartDay when authenticated", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ weekStartDay: 1 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.weekStartDay).toBe(1);
+  });
+
+  it("ignores out-of-range weekStartDay from the server (defensive)", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      // A rogue value (e.g. from a manually-edited DB row) should not
+      // poison the helper's `weekStartsOn` parameter.
+      json: async () => ({ weekStartDay: 5 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.weekStartDay).toBe(0);
   });
 
   it("picks calendarWorkingHoursStart from server response", async () => {

@@ -8,6 +8,7 @@ import {
   loadScheduleConfig,
   saveScheduleConfig,
 } from "@/lib/scheduler/schedule-storage";
+import type { TWeekStartDay } from "@/types/calendar";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AccountSection } from "./account-section";
@@ -35,6 +36,7 @@ interface UserSettingsData {
   timeFormat: string;
   dateFormat: string;
   defaultZoomLevel: number;
+  weekStartDay: TWeekStartDay;
   rewardSystemEnabled: boolean;
   defaultTaskPoints: number;
   showPointsOnCompletion: boolean;
@@ -203,6 +205,7 @@ export function SettingsForm({
           timeFormat: settings.timeFormat,
           dateFormat: settings.dateFormat,
           defaultZoomLevel: settings.defaultZoomLevel,
+          weekStartDay: settings.weekStartDay,
         }}
         onChange={updateSettings}
       />

@@ -186,6 +186,19 @@ export const PUT = withApiHandler(
       }
     }
 
+    if (body.weekStartDay !== undefined) {
+      if (
+        typeof body.weekStartDay !== "number" ||
+        !Number.isInteger(body.weekStartDay) ||
+        (body.weekStartDay !== 0 && body.weekStartDay !== 1)
+      ) {
+        throw new ApiError(
+          "weekStartDay must be 0 (Sunday) or 1 (Monday)",
+          400
+        );
+      }
+    }
+
     if (body.calendarWorkingHoursStart !== undefined) {
       if (
         typeof body.calendarWorkingHoursStart !== "number" ||
