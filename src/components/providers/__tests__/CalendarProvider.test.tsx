@@ -128,7 +128,11 @@ describe("CalendarProvider — settings state", () => {
       expect(screen.getByTestId("badge")).toHaveTextContent("colored");
     });
 
-    expect(screen.getByTestId("hour")).toHaveTextContent("true");
+    // #337 — `use24HourFormat` is now derived from `userSettings.timeFormat`,
+    // whose default ("12h") matches the Prisma schema. Pre-#337 the
+    // CalendarProvider had its own conflicting default (`true`/24h); that
+    // dual-source bug is what this issue resolves.
+    expect(screen.getByTestId("hour")).toHaveTextContent("false");
     expect(screen.getByTestId("group")).toHaveTextContent("date");
     // 0 = Sunday per product requirement
     expect(screen.getByTestId("week-start")).toHaveTextContent("0");
@@ -164,10 +168,11 @@ describe("CalendarProvider — settings state", () => {
 
     await user.click(screen.getByText("badge-dot"));
     await user.click(screen.getByText("group-color"));
+    // Default after #337 is "12h" (false); toggling flips to "24h" (true).
     await user.click(screen.getByText("toggle-hour"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("hour")).toHaveTextContent("false");
+      expect(screen.getByTestId("hour")).toHaveTextContent("true");
     });
 
     const parsed = JSON.parse(
@@ -175,10 +180,38 @@ describe("CalendarProvider — settings state", () => {
     );
     expect(parsed.badgeVariant).toBe("dot");
     expect(parsed.agendaModeGroupBy).toBe("color");
-    expect(parsed.use24HourFormat).toBe(false);
+    // #337 — `use24HourFormat` is no longer persisted to localStorage; it
+    // flows through `useUserSettings.timeFormat` instead.
+    expect(parsed.use24HourFormat).toBeUndefined();
   });
 
   it("rehydrates weekStartDay from localStorage on mount", async () => {
+    // No `use24HourFormat` in this fixture — that field has been retired
+    // from the localStorage payload (#337). The migration test below
+    // covers the legacy upgrade path.
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "dot",
+        view: "month",
+        agendaModeGroupBy: "color",
+        weekStartDay: 1,
+      })
+    );
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("1");
+    });
+    expect(screen.getByTestId("group")).toHaveTextContent("color");
+    expect(screen.getByTestId("badge")).toHaveTextContent("dot");
+  });
+
+  // #337 — legacy localStorage payloads (pre-#337) carried `use24HourFormat`
+  // alongside the other fields. On first mount we strip the field so it
+  // can never drift away from `UserSettings.timeFormat` again.
+  it("strips legacy `use24HourFormat` from localStorage on mount (#337 migration)", async () => {
     window.localStorage.setItem(
       "calendar-settings",
       JSON.stringify({
@@ -195,13 +228,49 @@ describe("CalendarProvider — settings state", () => {
     await waitFor(() => {
       expect(screen.getByTestId("week-start")).toHaveTextContent("1");
     });
-    expect(screen.getByTestId("group")).toHaveTextContent("color");
-    expect(screen.getByTestId("hour")).toHaveTextContent("false");
-    expect(screen.getByTestId("badge")).toHaveTextContent("dot");
+
+    const parsed = JSON.parse(
+      window.localStorage.getItem("calendar-settings") ?? "{}"
+    );
+    expect(parsed.use24HourFormat).toBeUndefined();
+    // Other fields remain intact through the migration.
+    expect(parsed.badgeVariant).toBe("dot");
+    expect(parsed.weekStartDay).toBe(1);
+    expect(parsed.agendaModeGroupBy).toBe("color");
+  });
+
+  it("does not modify localStorage when there is no legacy `use24HourFormat` field", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("badge")).toHaveTextContent("colored");
+    });
+
+    const parsed = JSON.parse(
+      window.localStorage.getItem("calendar-settings") ?? "{}"
+    );
+    expect(parsed).toEqual({
+      badgeVariant: "colored",
+      view: "month",
+      agendaModeGroupBy: "date",
+      weekStartDay: 0,
+    });
   });
 
   it("falls back to defaults when the stored payload is missing the new field", async () => {
-    // Legacy payload (pre-#86) — no weekStartDay key
+    // Legacy payload (pre-#86) — no weekStartDay key. `use24HourFormat`
+    // included here is the pre-#337 dual-source field; the migration
+    // strips it on mount.
     window.localStorage.setItem(
       "calendar-settings",
       JSON.stringify({
@@ -218,7 +287,10 @@ describe("CalendarProvider — settings state", () => {
       expect(screen.getByTestId("week-start")).toHaveTextContent("0");
     });
     expect(screen.getByTestId("group")).toHaveTextContent("date");
-    expect(screen.getByTestId("hour")).toHaveTextContent("true");
+    // After #337 migration, the legacy `use24HourFormat: true` is
+    // stripped from localStorage; the value flows from
+    // `useUserSettings.timeFormat` (default "12h" → false).
+    expect(screen.getByTestId("hour")).toHaveTextContent("false");
     expect(screen.getByTestId("badge")).toHaveTextContent("colored");
   });
 
@@ -1684,14 +1756,25 @@ describe("CalendarProvider — weekStartDay server migration (#338)", () => {
     vi.clearAllMocks();
   });
 
+  // A legacy localStorage payload can also trigger the #337 `timeFormat`
+  // migration, which PUTs `{ timeFormat }` to the same endpoint. Scope this
+  // helper to the weekStartDay migration so the two coexisting migrations
+  // don't cross-contaminate these assertions.
   function findSettingsPut(): RequestInit | undefined {
-    for (const [, init] of fetchMock.mock.calls) {
+    for (const [url, init] of fetchMock.mock.calls) {
       if (
+        url === "/api/settings" &&
         typeof init === "object" &&
         init !== null &&
         (init as RequestInit).method === "PUT"
       ) {
-        return init as RequestInit;
+        const body = (init as RequestInit).body;
+        if (
+          typeof body === "string" &&
+          Object.prototype.hasOwnProperty.call(JSON.parse(body), "weekStartDay")
+        ) {
+          return init as RequestInit;
+        }
       }
     }
     return undefined;
@@ -1725,7 +1808,12 @@ describe("CalendarProvider — weekStartDay server migration (#338)", () => {
         url === "/api/settings" &&
         typeof init === "object" &&
         init !== null &&
-        (init as RequestInit).method === "PUT"
+        (init as RequestInit).method === "PUT" &&
+        typeof (init as RequestInit).body === "string" &&
+        Object.prototype.hasOwnProperty.call(
+          JSON.parse(String((init as RequestInit).body)),
+          "weekStartDay"
+        )
     );
     expect(settingsPuts).toHaveLength(1);
     const body = JSON.parse(String(settingsPuts[0][1].body));
