@@ -2,13 +2,9 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
-import type {
-  IEvent,
-  IUser,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
+import type { IEvent, TCalendarView } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -45,42 +41,14 @@ function createMockContext(
   events: IEvent[],
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
-  return {
-    selectedDate: new Date(),
+  return makeCalendarContext({
+    // "agenda" isn't a real TCalendarView (agenda mode is `agendaMode` + a
+    // day/week view); AgendaCalendar ignores `view`, so the original literal
+    // force-cast it. Preserved here to keep behaviour identical.
     view: "agenda" as TCalendarView,
-    setView: vi.fn(),
-    agendaMode: false,
-    setAgendaMode: vi.fn(),
-    agendaModeGroupBy: "date",
-    setAgendaModeGroupBy: vi.fn(),
-    weekStartDay: 0,
-    setWeekStartDay: vi.fn(),
-    use24HourFormat: true,
-    toggleTimeFormat: vi.fn(),
-    setSelectedDate: vi.fn(),
-    selectedUserId: "all",
-    setSelectedUserId: vi.fn(),
-    badgeVariant: "colored",
-    setBadgeVariant: vi.fn(),
-    selectedColors: [] as TEventColor[],
-    filterEventsBySelectedColors: vi.fn(),
-    filterEventsBySelectedUser: vi.fn(),
-    users: [] as IUser[],
     events,
-    addEvent: vi.fn(),
-    updateEvent: vi.fn(),
-    removeEvent: vi.fn(),
-    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
-    deleteEvent: vi.fn().mockResolvedValue(undefined),
-    clearFilter: vi.fn(),
-    refreshEvents: vi.fn(),
-    loadEventsForYear: vi.fn(),
-    getAccessRole: () => undefined,
-    isLoading: false,
-    isAuthenticated: true,
-    maxEventsPerDay: 3,
     ...overrides,
-  };
+  });
 }
 
 // Wrapper to render AgendaCalendar with mock context

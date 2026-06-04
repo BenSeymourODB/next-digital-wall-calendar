@@ -3,12 +3,8 @@ import {
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import { useEventCreate } from "@/hooks/useEventCreate";
-import type {
-  IEvent,
-  IUser,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
+import type { IEvent, IUser } from "@/types/calendar";
 import { type ReactNode } from "react";
 import { renderHook } from "@testing-library/react";
 import { toast } from "sonner";
@@ -39,42 +35,12 @@ function makeEvent(overrides: Partial<IEvent> = {}): IEvent {
 function makeContext(
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
-  return {
+  return makeCalendarContext({
+    view: "month",
     selectedDate: new Date(2026, 4, 1),
-    view: "month" as TCalendarView,
-    setView: vi.fn(),
-    agendaMode: false,
-    setAgendaMode: vi.fn(),
-    agendaModeGroupBy: "date",
-    setAgendaModeGroupBy: vi.fn(),
-    use24HourFormat: true,
-    toggleTimeFormat: vi.fn(),
-    setSelectedDate: vi.fn(),
-    selectedUserId: "all",
-    setSelectedUserId: vi.fn(),
-    badgeVariant: "colored",
-    setBadgeVariant: vi.fn(),
-    selectedColors: [] as TEventColor[],
-    filterEventsBySelectedColors: vi.fn(),
-    filterEventsBySelectedUser: vi.fn(),
-    users: [] as IUser[],
-    events: [] as IEvent[],
-    addEvent: vi.fn(),
-    updateEvent: vi.fn(),
-    removeEvent: vi.fn(),
     createEvent: vi.fn(),
-    deleteEvent: vi.fn().mockResolvedValue(undefined),
-    clearFilter: vi.fn(),
-    refreshEvents: vi.fn(),
-    loadEventsForYear: vi.fn(),
-    getAccessRole: () => undefined,
-    isLoading: false,
-    isAuthenticated: true,
-    maxEventsPerDay: 3,
-    weekStartDay: 0,
-    setWeekStartDay: vi.fn(),
     ...overrides,
-  };
+  });
 }
 
 function wrapper(ctx: ICalendarContext) {

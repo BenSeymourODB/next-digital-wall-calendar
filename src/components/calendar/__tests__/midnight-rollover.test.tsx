@@ -13,12 +13,7 @@ import {
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import { __resetUseDateNowForTests } from "@/lib/hooks/use-date-now";
-import type {
-  IEvent,
-  IUser,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { act, render, screen } from "@testing-library/react";
 import { addDays, format, startOfDay } from "date-fns";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,42 +34,10 @@ vi.mock("@/hooks/useWritableCalendars", () => ({
 function makeContext(
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
-  return {
-    selectedDate: new Date(),
-    view: "day" as TCalendarView,
-    setView: vi.fn(),
-    agendaMode: false,
-    setAgendaMode: vi.fn(),
-    agendaModeGroupBy: "date",
-    setAgendaModeGroupBy: vi.fn(),
-    use24HourFormat: true,
-    toggleTimeFormat: vi.fn(),
-    setSelectedDate: vi.fn(),
-    selectedUserId: "all",
-    setSelectedUserId: vi.fn(),
-    badgeVariant: "colored",
-    setBadgeVariant: vi.fn(),
-    selectedColors: [] as TEventColor[],
-    filterEventsBySelectedColors: vi.fn(),
-    filterEventsBySelectedUser: vi.fn(),
-    users: [] as IUser[],
-    events: [] as IEvent[],
-    addEvent: vi.fn(),
-    updateEvent: vi.fn(),
-    removeEvent: vi.fn(),
-    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
-    deleteEvent: vi.fn().mockResolvedValue(undefined),
-    clearFilter: vi.fn(),
-    refreshEvents: vi.fn(),
-    loadEventsForYear: vi.fn().mockResolvedValue(undefined),
-    getAccessRole: () => undefined,
-    isLoading: false,
-    isAuthenticated: true,
-    maxEventsPerDay: 3,
-    weekStartDay: 0,
-    setWeekStartDay: vi.fn(),
+  return makeCalendarContext({
+    view: "day",
     ...overrides,
-  };
+  });
 }
 
 function renderWithContext(
