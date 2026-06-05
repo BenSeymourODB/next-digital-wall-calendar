@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 // Validates Prisma migration directory names match the project convention:
-// NNNN_snake_case_description, with NNNN a strictly increasing 4-digit prefix
-// starting at 0001. See docs/database.md for the rationale.
+// YYYYMMDDHHMMSS_snake_case_description (Prisma's default timestamp prefix).
+// See docs/database.md for rationale.
 import { lstatSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Forbids a trailing underscore and double-underscores (e.g. "0001_add_",
-// "0001___") while still accepting "0001_initial" and "0004_add_calendar_settings".
-export const MIGRATION_NAME_PATTERN = /^[0-9]{4}_[a-z0-9]+(?:_[a-z0-9]+)*$/;
+// 14-digit timestamp followed by snake_case description.
+// Forbids a trailing underscore and double-underscores (e.g.
+// "20260502052405_add_", "20260502052405___") while still accepting
+// "20260502052405_initial" and "20260506033858_add_meal_planning".
+export const MIGRATION_NAME_PATTERN = /^[0-9]{14}_[a-z0-9]+(?:_[a-z0-9]+)*$/;
 
 /**
  * @typedef {{ name: string; isDirectory: boolean }} MigrationEntry
@@ -17,15 +19,17 @@ export const MIGRATION_NAME_PATTERN = /^[0-9]{4}_[a-z0-9]+(?:_[a-z0-9]+)*$/;
 /**
  * Validate a list of migration directory entries.
  *
+ * Rules:
+ *  1. Every directory name must match MIGRATION_NAME_PATTERN.
+ *  2. No two directories may share the same 14-digit timestamp prefix.
+ *     Gaps between timestamps are allowed (non-sequential is normal).
+ *
  * @param {MigrationEntry[]} entries
  * @returns {string[]} list of error messages (empty when everything is valid)
  */
 export function validateMigrationNames(entries) {
   const errors = [];
 
-  // Lexicographic sort equals numeric order because prefixes are always
-  // zero-padded to exactly 4 digits (0001–9999). Do not switch to a numeric
-  // comparator without revisiting the ordering invariant below.
   const dirNames = entries
     .filter((e) => e.isDirectory)
     .map((e) => e.name)
@@ -34,21 +38,26 @@ export function validateMigrationNames(entries) {
   for (const name of dirNames) {
     if (!MIGRATION_NAME_PATTERN.test(name)) {
       errors.push(
-        `Invalid migration name: "${name}". Expected NNNN_snake_case_description (e.g. "0005_add_meal_planning"). See docs/database.md.`
+        `Invalid migration name: "${name}". Expected YYYYMMDDHHMMSS_snake_case_description (e.g. "20260506033858_add_meal_planning"). See docs/database.md.`
       );
     }
   }
 
+  // Detect duplicate 14-digit timestamp prefixes among valid names.
   const valid = dirNames.filter((n) => MIGRATION_NAME_PATTERN.test(n));
-  for (let i = 0; i < valid.length; i++) {
-    const prefix = Number.parseInt(valid[i].slice(0, 4), 10);
-    const expected = i + 1;
-    if (prefix !== expected) {
-      const expectedPrefix = String(expected).padStart(4, "0");
+  /** @type {Map<string, string[]>} */
+  const byTimestamp = new Map();
+  for (const name of valid) {
+    const ts = name.slice(0, 14);
+    const group = byTimestamp.get(ts) ?? [];
+    group.push(name);
+    byTimestamp.set(ts, group);
+  }
+  for (const [ts, names] of byTimestamp) {
+    if (names.length > 1) {
       errors.push(
-        `Migration "${valid[i]}" has prefix ${String(prefix).padStart(4, "0")}, ` +
-          `expected ${expectedPrefix}. Prefixes must be strictly sequential ` +
-          `starting at 0001 (no gaps, no duplicates).`
+        `Duplicate timestamp prefix "${ts}": ${names.map((n) => `"${n}"`).join(", ")}. ` +
+          `Each migration must have a unique 14-digit timestamp. See docs/database.md.`
       );
     }
   }
@@ -92,7 +101,7 @@ function main() {
 
   const count = entries.filter((e) => e.isDirectory).length;
   console.log(
-    `✓ ${count} migration${count === 1 ? "" : "s"} follow the NNNN_snake_case convention`
+    `✓ ${count} migration${count === 1 ? "" : "s"} follow the YYYYMMDDHHMMSS_snake_case convention`
   );
 }
 

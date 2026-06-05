@@ -51,6 +51,14 @@ export interface AnalogClockProps {
   currentTime?: Date;
   /** Arc thickness in pixels (default: 48) */
   arcThickness?: number;
+  /**
+   * Click handler for an event arc. When provided, each arc becomes a
+   * focusable role="button" that fires this handler on click and on
+   * Enter/Space keypress. The `trigger` element is the focused arc <g>;
+   * callers should stash it so a modal can restore focus on close.
+   * The clock surface is read-only when omitted.
+   */
+  onEventClick?: (eventId: string, trigger: SVGGElement) => void;
 }
 
 /** Props for the ClockFace component */
@@ -81,4 +89,27 @@ export interface EventArcProps {
   cy: number;
   /** Ring index for stacked overlapping events (0 = outermost) */
   ringIndex?: number;
+  /**
+   * Optional click handler. When provided, the arc group becomes a
+   * focusable role="button" that fires on click and on Enter/Space.
+   * The `trigger` is the focused arc <g> so callers can restore focus
+   * after a modal closes.
+   */
+  onEventClick?: (eventId: string, trigger: SVGGElement) => void;
+  /**
+   * When true, suppresses in-arc title rendering even if the title would
+   * have fit. Used by AnalogClock for overflowing events whose titles are
+   * promoted to a sibling FloatingLabel (#311). The leading event emoji
+   * still renders so the arc remains visually identifiable.
+   */
+  forceHideTitle?: boolean;
+  /**
+   * Optional precomputed title layout. When provided, EventArc skips the
+   * internal `computeArcTitleLayout` call and uses this value — keeps the
+   * arc's `fit.lines` decision strictly identical to the one AnalogClock
+   * used to derive `forceHideTitle`, so the two surfaces cannot silently
+   * disagree if the underlying inputs ever drift apart. When omitted,
+   * EventArc still works standalone (e.g. tests, ad-hoc usage).
+   */
+  precomputedLayout?: import("./arc-title-layout").ArcTitleLayout;
 }

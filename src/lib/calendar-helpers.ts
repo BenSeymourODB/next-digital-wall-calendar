@@ -47,11 +47,16 @@ const FORMAT_STRING = "MMM d, yyyy";
 export const WEEK_STARTS_ON: Day = 0;
 
 /**
- * Hour of day the Day/Week time grids scroll to on mount so working-hours
- * events are immediately visible. (#214)
+ * Default hour of day the Day/Week time grids scroll to on mount when
+ * the user has not overridden it. (#214)
  *
  * 0 = midnight, 7 = 7am, etc. Plumbed through `getInitialScrollTop` so
  * each calendar can derive its scrollTop from its own row height.
+ *
+ * @deprecated Prefer `useCalendar().workingHoursStart` (#288). This
+ * constant is the default for `UserSettings.calendarWorkingHoursStart`
+ * and `DEFAULT_USER_CALENDAR_SETTINGS`; new components must read the
+ * per-user value from context rather than hard-coding 7.
  */
 export const WORKING_HOURS_START_HOUR = 7;
 
@@ -390,9 +395,11 @@ export const getEventsForWeek = (
   date: Date,
   weekStartsOn: Day = WEEK_STARTS_ON
 ): IEvent[] => {
-  const weekDates = getWeekDates(date, weekStartsOn);
-  const startOfWeekDate = weekDates[0];
-  const endOfWeekDate = weekDates[6];
+  // Use startOfWeek/endOfWeek so the upper bound covers the last
+  // millisecond of the last day (fix from PR #228 / issue #201). Indexing
+  // into `getWeekDates` would give the start-of-Saturday off-by-one again.
+  const startOfWeekDate = startOfWeek(date, { weekStartsOn });
+  const endOfWeekDate = endOfWeek(date, { weekStartsOn });
 
   return events.filter((event) => {
     const eventStart = parseISO(event.startDate);

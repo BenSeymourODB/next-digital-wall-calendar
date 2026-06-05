@@ -5,6 +5,8 @@ import {
   type CreateEventInput,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { TRANSITION_SPEED_TO_MS } from "@/lib/calendar/transition-speed";
+import type { TCalendarAccessRole } from "@/types/calendar";
 import type {
   IEvent,
   IUser,
@@ -44,6 +46,17 @@ interface MockCalendarProviderProps {
   isAuthenticated?: boolean;
   /** Max events rendered per day cell before the "+N more" overflow */
   maxEventsPerDay?: number;
+  /**
+   * Optional per-calendar access roles, used by the read-only delete-button
+   * gating (#266). Keys are calendar IDs (matching `IEvent.calendarId`),
+   * values are Google `accessRole` literals. Calendars not in this map
+   * resolve to `undefined`, which the modal treats as "writable" by default.
+   */
+  accessRolesByCalendarId?: Record<string, TCalendarAccessRole>;
+  /** Hour (0–23) the Day/Week grids auto-scroll to on first render. */
+  workingHoursStart?: number;
+  /** View-transition duration in ms; mirrors `userSettings.calendarTransitionSpeed`. */
+  transitionDurationMs?: number;
 }
 
 /**
@@ -73,6 +86,9 @@ export function MockCalendarProvider({
   loadingDelay = 0,
   isAuthenticated = true,
   maxEventsPerDay = 3,
+  accessRolesByCalendarId = {},
+  workingHoursStart = 7,
+  transitionDurationMs = TRANSITION_SPEED_TO_MS.normal,
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -192,6 +208,9 @@ export function MockCalendarProvider({
   // year window doesn't need to fetch anything.
   const loadEventsForYear = async () => {};
 
+  const getAccessRole = (calendarId: string) =>
+    accessRolesByCalendarId[calendarId];
+
   // Derive filtered events at render time. React Compiler memoizes the
   // result automatically; manual `useMemo` is forbidden by CLAUDE.md.
   let filteredEvents = allEvents;
@@ -250,9 +269,12 @@ export function MockCalendarProvider({
     clearFilter,
     refreshEvents,
     loadEventsForYear,
+    getAccessRole,
     isLoading,
     isAuthenticated,
     maxEventsPerDay,
+    workingHoursStart,
+    transitionDurationMs,
   };
 
   return (

@@ -89,12 +89,23 @@ This guide will walk you through setting up Google Calendar API credentials for 
 2. Open `.env.local` and add your credentials:
 
    ```
+   # Server-only — used by NextAuth and the token-refresh API route.
+   # Unprefixed so Next.js does NOT inline these into the browser bundle.
+   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=your-client-secret
+
+   # Browser-only — required by the legacy client-side gapi/GIS flow in
+   # src/lib/google-calendar.ts. The NEXT_PUBLIC_ prefix is intentional:
+   # these values are consumed in the browser. The same OAuth 2.0 Client ID
+   # can be used for both server- and browser-side variables while the
+   # legacy flow is still in place.
    NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
    NEXT_PUBLIC_GOOGLE_API_KEY=your-api-key
-   GOOGLE_CLIENT_SECRET=your-client-secret
    ```
 
    ⚠️ **Important**: The `GOOGLE_CLIENT_SECRET` is used server-side to refresh access tokens automatically. Keep it secure and never expose it in client-side code.
+
+   ℹ️ **For contributors**: New server-side code (API routes, server components, NextAuth callbacks) MUST read `process.env.GOOGLE_CLIENT_ID`, never `process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID`. The `NEXT_PUBLIC_` prefix forces Next.js to inline the value into every browser bundle that transitively imports the file — which leaks the client id even when the consumer is server-only.
 
 3. Replace the placeholders with the values you copied in previous steps
 

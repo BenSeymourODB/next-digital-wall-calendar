@@ -9,6 +9,7 @@
  * because Vitest hoists them. This module provides the type casts and
  * setup helpers that come after the mocks.
  */
+import type { Profile } from "@/generated/prisma/client";
 import type { prisma } from "@/lib/db";
 import bcrypt from "bcrypt";
 import { vi } from "vitest";
@@ -33,20 +34,14 @@ export function castPinPrisma(prismaMock: typeof prisma): MockPinPrisma {
 /**
  * Create a mock profile object with PIN-related fields.
  */
-export function mockPinProfile(overrides: {
-  id: string;
-  pinEnabled?: boolean;
-  pinHash?: string | null;
-  failedPinAttempts?: number;
-  pinLockedUntil?: Date | null;
-  type?: "admin" | "standard" | "child";
-  [key: string]: unknown;
-}) {
+export function mockPinProfile(
+  overrides: Partial<Profile> & Pick<Profile, "id">
+): Profile {
   return {
     userId: "user-1",
     name: "Test Profile",
-    type: "standard" as const,
-    ageGroup: "adult" as const,
+    type: "standard",
+    ageGroup: "adult",
     color: "#3b82f6",
     avatar: { type: "initials", value: "TP", backgroundColor: "#3b82f6" },
     pinEnabled: false,

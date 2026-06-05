@@ -1,4 +1,8 @@
-import { decryptToken, encryptToken } from "@/lib/crypto/token-cipher";
+import {
+  decryptToken,
+  encryptToken,
+  validateEncryptionKey,
+} from "@/lib/crypto/token-cipher";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import NextAuth from "next-auth";
@@ -6,7 +10,22 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { encryptLinkedAccount } from "./link-account";
 import { refreshGoogleAccessToken } from "./refresh-google-token";
+import { refreshGoogleSessionTokensIfNeeded } from "./refresh-session-tokens";
 import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
+
+// Fail fast on a missing / misconfigured encryption key. Without this, the
+// per-request `encryptToken` call in the session callback throws, gets caught,
+// and silently degrades to `session.error = "RefreshTokenError"` — which the
+// user sees as "Session expired. Please sign in again." every hour even
+// though the underlying problem is a server-side env-var gap (#315).
+//
+// Skipped during `next build`: page-data collection evaluates this module
+// without runtime env vars and a throw here aborts the build. Production
+// runtime still validates eagerly on server start (NEXT_PHASE is unset or
+// "phase-production-server").
+if (process.env.NEXT_PHASE !== "phase-production-build") {
+  validateEncryptionKey();
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -79,7 +98,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return true;
     },
     async session({ session, user }) {
-      // Get the Google account for this user
       const [googleAccount] = await prisma.account.findMany({
         where: { userId: user.id, provider: "google" },
         orderBy: { expires_at: "desc" },
@@ -90,80 +108,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return session;
       }
 
-      // Check if access token has expired
-      if (
-        googleAccount.expires_at &&
-        googleAccount.expires_at * 1000 < Date.now()
-      ) {
-        // Access token has expired, try to refresh it
-        try {
-          if (!googleAccount.refresh_token) {
-            throw new Error("No refresh token available");
-          }
-
-          // Stored refresh_token may be a v1 envelope (encrypted) or a legacy
-          // plaintext value written before this PR; decryptToken handles both.
-          // Decryption can throw on tamper / GCM auth-tag mismatch / unknown
-          // envelope version (e.g. after a key rotation). Surface that with a
-          // distinct log context so operators can tell a cipher failure apart
-          // from a Google-side refresh failure.
-          let refreshTokenPlaintext: string | null;
-          try {
-            refreshTokenPlaintext = decryptToken(googleAccount.refresh_token);
-          } catch (error) {
-            logger.error(error as Error, {
-              context: "RefreshTokenDecryptFailed",
-              userId: user.id,
-            });
-            throw new Error(
-              "Failed to decrypt stored refresh token (possible key rotation or tampering)"
-            );
-          }
-          if (!refreshTokenPlaintext) {
-            throw new Error("No refresh token available");
-          }
-
-          const newTokens = await refreshGoogleAccessToken(
-            refreshTokenPlaintext,
-            process.env.GOOGLE_CLIENT_ID!,
-            process.env.GOOGLE_CLIENT_SECRET!
-          );
-
-          // Update tokens in database, encrypting at rest. Google only returns
-          // a new refresh_token on the first consent or after revocation, so
-          // fall back to re-encrypting the existing plaintext refresh token
-          // when one isn't included in the response.
-          await prisma.account.update({
-            data: {
-              access_token: encryptToken(newTokens.access_token),
-              expires_at: Math.floor(Date.now() / 1000 + newTokens.expires_in),
-              refresh_token: encryptToken(
-                newTokens.refresh_token ?? refreshTokenPlaintext
-              ),
-            },
-            where: {
-              provider_providerAccountId: {
-                provider: "google",
-                providerAccountId: googleAccount.providerAccountId,
-              },
-            },
-          });
-
-          logger.event("TokenRefreshed", {
-            userId: user.id,
-            success: true,
-          });
-        } catch (error) {
-          logger.error(error as Error, {
-            context: "TokenRefreshFailed",
-            userId: user.id,
-          });
-          // Return error so we can handle it on the client
-          session.error = "RefreshTokenError";
+      // Delegated to refresh-session-tokens.ts so the classifier branching is
+      // unit-testable in isolation (see __tests__/session-callback.test.ts).
+      // Returns a terminal-error outcome only for genuine Google revocation /
+      // missing refresh-token / undecryptable ciphertext — transient failures
+      // leave the session untouched so the next callback retries (#315).
+      const outcome = await refreshGoogleSessionTokensIfNeeded(
+        user.id,
+        googleAccount,
+        {
+          prisma,
+          refreshGoogleAccessToken,
+          encryptToken,
+          decryptToken,
+          logger,
+          googleClientId: process.env.GOOGLE_CLIENT_ID!,
+          googleClientSecret: process.env.GOOGLE_CLIENT_SECRET!,
         }
+      );
+
+      if (outcome.kind === "terminal-error") {
+        session.error = "RefreshTokenError";
       }
 
-      // Add user ID to session for easy access
       session.user.id = user.id;
 
       return session;
