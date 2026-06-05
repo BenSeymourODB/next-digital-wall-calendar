@@ -20,6 +20,7 @@ import { logger } from "@/lib/logger";
 import type {
   IEvent,
   IUser,
+  TCalendarAccessRole,
   TCalendarView,
   TEventColor,
   TWeekStartDay,
@@ -103,6 +104,15 @@ export interface ICalendarContext {
    * widen the default lazy-load window beyond -1 / +6 months.
    */
   loadEventsForYear: (year: number) => Promise<void>;
+  /**
+   * Look up the user's permission level for a given Google calendar id.
+   * Returns `undefined` when the calendar list hasn't been fetched yet or
+   * the id wasn't part of the most recent payload. Consumers (e.g.
+   * `EventDetailModal` via #266) treat `undefined` as "unknown — render
+   * mutating actions", since Google's server-side 403 still applies as
+   * the backstop.
+   */
+  getAccessRole: (calendarId: string) => TCalendarAccessRole | undefined;
   isLoading: boolean;
   isAuthenticated: boolean;
   maxEventsPerDay: number;
@@ -383,6 +393,12 @@ export function CalendarProvider({
     }
   );
   const [calendarIds, setCalendarIds] = useState<string[]>([]);
+  // Per-calendar accessRole map used by `getAccessRole` so consumers can
+  // gate mutating UI on read-only calendars (#266). Populated from the
+  // same `/api/calendar/calendars` payload as `calendarIds`.
+  const [accessRoles, setAccessRoles] = useState<
+    Record<string, TCalendarAccessRole>
+  >({});
   // Per-calendar metadata used by `transformGoogleEvent` to pick a
   // human-readable user attribution for shared-calendar events whose creator
   // / organizer have no `displayName` (#307 Bug B). Populated from the same
@@ -392,6 +408,12 @@ export function CalendarProvider({
   );
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
+
+  // Plain closure — React Compiler memoizes automatically (CLAUDE.md
+  // forbids manual useCallback). The role map only changes when the
+  // calendar list is fetched, so identity churn here is a non-issue.
+  const getAccessRole = (calendarId: string): TCalendarAccessRole | undefined =>
+    accessRoles[calendarId];
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
     setSettings((prev) => ({
@@ -730,6 +752,11 @@ export function CalendarProvider({
    * Fetch the user's calendar list and return both the IDs (for downstream
    * `/api/calendar/events` queries) and a metadata map keyed by id (for the
    * `transformGoogleEvent` user-attribution fallback ladder, #307 Bug B).
+   *
+   * Side-effect: also populates `accessRoles` from the same payload so
+   * `getAccessRole` can hand out per-calendar permission roles to the UI
+   * (#266) without an extra round-trip. The route falls `accessRole` back
+   * to `"reader"` when Google omits it, so every entry has a role.
    */
   const fetchCalendarList = async (): Promise<{
     ids: string[];
@@ -754,6 +781,11 @@ export function CalendarProvider({
             },
           ])
         );
+        const roles: Record<string, TCalendarAccessRole> = {};
+        for (const cal of data.calendars) {
+          roles[cal.id] = cal.accessRole;
+        }
+        setAccessRoles(roles);
         logger.log("Fetched calendar list", { count: ids.length });
         return { ids, metadata };
       }
@@ -788,14 +820,12 @@ export function CalendarProvider({
         return;
       }
 
-      // Always re-fetch the calendar list on every refresh — the same
-      // staleness reasoning that drives the unconditional color refresh
-      // below applies here. If a user adds (or renames, or has the owner
-      // change the override on) a shared calendar in Google, the next
-      // manual refresh has to pick up the new id and metadata; otherwise
-      // the colors update (Bug A fix) but the user-attribution map is
-      // stale and every event from the new calendar falls through to the
-      // humanized-email rung instead of the friendly summary (#307 Bug B).
+      // Always re-fetch the calendar list on every refresh. This keeps
+      // both the user-attribution metadata (#307 Bug B) and the per-
+      // calendar accessRoles map (#266) fresh, so a permission change in
+      // Google is reflected on the next refresh without restarting the
+      // session. The same staleness reasoning drives the unconditional
+      // color refresh below.
       const list = await fetchCalendarList();
       const calIds = list.ids;
       const currentMetadata = list.metadata;
@@ -1207,6 +1237,7 @@ export function CalendarProvider({
     clearFilter,
     refreshEvents,
     loadEventsForYear,
+    getAccessRole,
     isLoading,
     isAuthenticated,
     // Clamp defensively so a rogue DB write of 0 or a negative number never

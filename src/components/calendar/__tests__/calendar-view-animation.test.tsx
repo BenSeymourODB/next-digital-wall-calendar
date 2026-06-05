@@ -20,7 +20,8 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
-import type { IUser, TCalendarView, TEventColor } from "@/types/calendar";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
+import type { TCalendarView } from "@/types/calendar";
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -29,43 +30,10 @@ const VIEW_FADE_DURATION_MS = 250;
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
-  return {
-    selectedDate: new Date(),
-    view: "month" as TCalendarView,
-    setView: vi.fn(),
-    agendaMode: false,
-    setAgendaMode: vi.fn(),
-    agendaModeGroupBy: "date",
-    setAgendaModeGroupBy: vi.fn(),
-    use24HourFormat: true,
-    toggleTimeFormat: vi.fn(),
-    setSelectedDate: vi.fn(),
-    selectedUserId: "all",
-    setSelectedUserId: vi.fn(),
-    badgeVariant: "colored",
-    setBadgeVariant: vi.fn(),
-    selectedColors: [] as TEventColor[],
-    filterEventsBySelectedColors: vi.fn(),
-    filterEventsBySelectedUser: vi.fn(),
-    users: [] as IUser[],
-    events: [],
-    addEvent: vi.fn(),
-    updateEvent: vi.fn(),
-    removeEvent: vi.fn(),
-    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
-    deleteEvent: vi.fn().mockResolvedValue(undefined),
-    clearFilter: vi.fn(),
-    refreshEvents: vi.fn(),
-    loadEventsForYear: vi.fn(),
-    isLoading: false,
-    isAuthenticated: true,
-    maxEventsPerDay: 3,
-    workingHoursStart: 7,
-    transitionDurationMs: 300,
-    weekStartDay: 0,
-    setWeekStartDay: vi.fn(),
+  return makeCalendarContext({
+    view: "month",
     ...overrides,
-  };
+  });
 }
 
 function CalendarSurface({ view }: { view: TCalendarView }) {

@@ -5,19 +5,22 @@
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
+import type { TCalendarAccessRole } from "@/types/calendar";
 import { NextResponse } from "next/server";
 
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
 /**
  * Access role exposed by `calendarList.list`. Determines whether the calendar
- * accepts writes (used by the EventCreateDialog calendar picker — issue #268).
+ * accepts writes (used by the EventCreateDialog calendar picker — issue #268)
+ * and whether mutating actions render in `EventDetailModal` (#266).
+ *
+ * Re-exported from this module as an alias for the canonical
+ * {@link TCalendarAccessRole} so existing consumers (e.g.
+ * `useWritableCalendars`) keep working — but new code should import the
+ * canonical name from `@/types/calendar`.
  */
-export type CalendarAccessRole =
-  | "freeBusyReader"
-  | "reader"
-  | "writer"
-  | "owner";
+export type CalendarAccessRole = TCalendarAccessRole;
 
 /**
  * Calendar information returned by this endpoint
@@ -38,6 +41,12 @@ export interface CalendarInfo {
   foregroundColor: string;
   primary: boolean;
   selected: boolean;
+  /**
+   * The user's permission level on this calendar (#266, #268). Always
+   * present — when Google omits the field on a `CalendarListEntry`, the
+   * route fails closed to `"reader"` so the event-create picker never
+   * offers a calendar we can't write to.
+   */
   accessRole: CalendarAccessRole;
 }
 
@@ -122,7 +131,9 @@ export async function GET() {
       primary: item.primary || false,
       selected: item.selected || false,
       // Default to "reader" when Google omits accessRole — fail-closed so the
-      // event-create picker never offers a calendar we can't actually write to.
+      // event-create picker (#268) never offers a calendar we can't write to,
+      // and so the EventDetailModal delete gating (#266) hides the button on
+      // unknown-role calendars rather than allowing a doomed mutation.
       accessRole: item.accessRole ?? "reader",
     }));
 

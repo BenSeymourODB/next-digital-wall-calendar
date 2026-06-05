@@ -2,13 +2,9 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
-import type {
-  IEvent,
-  IUser,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
+import type { IEvent, TCalendarView } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -45,43 +41,14 @@ function createMockContext(
   events: IEvent[],
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
-  return {
-    selectedDate: new Date(),
+  return makeCalendarContext({
+    // "agenda" isn't a real TCalendarView (agenda mode is `agendaMode` + a
+    // day/week view); AgendaCalendar ignores `view`, so the original literal
+    // force-cast it. Preserved here to keep behaviour identical.
     view: "agenda" as TCalendarView,
-    setView: vi.fn(),
-    agendaMode: false,
-    setAgendaMode: vi.fn(),
-    agendaModeGroupBy: "date",
-    setAgendaModeGroupBy: vi.fn(),
-    weekStartDay: 0,
-    setWeekStartDay: vi.fn(),
-    use24HourFormat: true,
-    toggleTimeFormat: vi.fn(),
-    setSelectedDate: vi.fn(),
-    selectedUserId: "all",
-    setSelectedUserId: vi.fn(),
-    badgeVariant: "colored",
-    setBadgeVariant: vi.fn(),
-    selectedColors: [] as TEventColor[],
-    filterEventsBySelectedColors: vi.fn(),
-    filterEventsBySelectedUser: vi.fn(),
-    users: [] as IUser[],
     events,
-    addEvent: vi.fn(),
-    updateEvent: vi.fn(),
-    removeEvent: vi.fn(),
-    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
-    deleteEvent: vi.fn().mockResolvedValue(undefined),
-    clearFilter: vi.fn(),
-    refreshEvents: vi.fn(),
-    loadEventsForYear: vi.fn(),
-    isLoading: false,
-    isAuthenticated: true,
-    maxEventsPerDay: 3,
-    workingHoursStart: 7,
-    transitionDurationMs: 300,
     ...overrides,
-  };
+  });
 }
 
 // Wrapper to render AgendaCalendar with mock context
@@ -624,6 +591,54 @@ describe("AgendaCalendar", () => {
       await user.click(screen.getByRole("button", { name: /close/i }));
 
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("hides the delete button on read-only calendars (#266)", async () => {
+      const user = userEvent.setup();
+      const events = [
+        createMockEvent({
+          id: "shared-evt",
+          title: "School Pickup",
+          calendarId: "shared@group.calendar.google.com",
+          startDate: getFutureDate(1, 15, 0),
+          endDate: getFutureDate(1, 15, 30),
+        }),
+      ];
+
+      renderWithContext(events, {
+        getAccessRole: (id) =>
+          id === "shared@group.calendar.google.com" ? "reader" : undefined,
+      });
+
+      await user.click(screen.getByRole("button", { name: /School Pickup/i }));
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders the delete button on writable calendars (#266)", async () => {
+      const user = userEvent.setup();
+      const events = [
+        createMockEvent({
+          id: "owned-evt",
+          title: "Standup",
+          calendarId: "primary",
+          startDate: getFutureDate(1, 9, 0),
+          endDate: getFutureDate(1, 9, 15),
+        }),
+      ];
+
+      renderWithContext(events, {
+        getAccessRole: (id) => (id === "primary" ? "owner" : undefined),
+      });
+
+      await user.click(screen.getByRole("button", { name: /Standup/i }));
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
     });
   });
 });
