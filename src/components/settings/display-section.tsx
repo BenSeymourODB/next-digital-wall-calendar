@@ -50,7 +50,10 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
           >
             {THEME_OPTIONS.map((theme) => (
               <Label key={theme} className="flex items-center gap-2">
-                <RadioGroupItem value={theme} />
+                <RadioGroupItem
+                  value={theme}
+                  data-testid={`display-theme-${theme}`}
+                />
                 <span className="capitalize">{theme}</span>
               </Label>
             ))}
@@ -68,11 +71,17 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
             className="mt-2 flex gap-4"
           >
             <Label className="flex items-center gap-2">
-              <RadioGroupItem value="12h" />
+              <RadioGroupItem
+                value="12h"
+                data-testid="display-time-format-12h"
+              />
               12-hour
             </Label>
             <Label className="flex items-center gap-2">
-              <RadioGroupItem value="24h" />
+              <RadioGroupItem
+                value="24h"
+                data-testid="display-time-format-24h"
+              />
               24-hour
             </Label>
           </RadioGroup>
@@ -91,11 +100,17 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
             className="mt-2 flex gap-4"
           >
             <Label className="flex items-center gap-2">
-              <RadioGroupItem value="0" />
+              <RadioGroupItem
+                value="0"
+                data-testid="display-week-start-day-sunday"
+              />
               Sunday
             </Label>
             <Label className="flex items-center gap-2">
-              <RadioGroupItem value="1" />
+              <RadioGroupItem
+                value="1"
+                data-testid="display-week-start-day-monday"
+              />
               Monday
             </Label>
           </RadioGroup>
