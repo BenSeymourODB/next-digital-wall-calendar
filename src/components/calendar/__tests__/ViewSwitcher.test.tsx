@@ -20,55 +20,19 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
-import type {
-  IEvent,
-  IUser,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ViewSwitcher } from "../ViewSwitcher";
 
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
-  return {
-    selectedDate: new Date(),
-    view: "month" as TCalendarView,
-    setView: vi.fn(),
-    agendaMode: false,
-    setAgendaMode: vi.fn(),
-    agendaModeGroupBy: "date",
-    setAgendaModeGroupBy: vi.fn(),
-    use24HourFormat: true,
-    toggleTimeFormat: vi.fn(),
-    setSelectedDate: vi.fn(),
-    selectedUserId: "all",
-    setSelectedUserId: vi.fn(),
-    badgeVariant: "colored",
-    setBadgeVariant: vi.fn(),
-    selectedColors: [] as TEventColor[],
-    filterEventsBySelectedColors: vi.fn(),
-    filterEventsBySelectedUser: vi.fn(),
-    users: [] as IUser[],
-    events: [] as IEvent[],
-    addEvent: vi.fn(),
-    updateEvent: vi.fn(),
-    removeEvent: vi.fn(),
-    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
-    deleteEvent: vi.fn().mockResolvedValue(undefined),
-    clearFilter: vi.fn(),
-    refreshEvents: vi.fn(),
-    loadEventsForYear: vi.fn(),
-    isLoading: false,
-    isAuthenticated: true,
-    maxEventsPerDay: 3,
-    weekStartDay: 0,
-    setWeekStartDay: vi.fn(),
+  return makeCalendarContext({
+    view: "month",
     ...overrides,
-  };
+  });
 }
 
 function renderWithContext(overrides: Partial<ICalendarContext> = {}) {
@@ -195,6 +159,15 @@ describe("ViewSwitcher (#235 split-button affordance)", () => {
       renderWithContext();
       const caret = screen.getByTestId("view-switcher-day-mode");
       expect(caret).toHaveAccessibleName(/day display mode/i);
+    });
+
+    it("caret does not carry aria-pressed (its state is aria-expanded)", () => {
+      renderWithContext({ view: "day", agendaMode: true });
+      // aria-pressed would mis-announce a menu trigger as a toggle button;
+      // Radix injects aria-expanded on open, which is the correct signal.
+      expect(screen.getByTestId("view-switcher-day-mode")).not.toHaveAttribute(
+        "aria-pressed"
+      );
     });
 
     it("clicking the caret opens a menu with Grid and Agenda options", async () => {
@@ -344,6 +317,65 @@ describe("ViewSwitcher (#235 split-button affordance)", () => {
       ]) {
         expect(screen.getByTestId(id)).not.toHaveAttribute("aria-haspopup");
       }
+    });
+  });
+
+  describe("Keyboard interaction", () => {
+    it("Enter on the caret opens the menu", async () => {
+      const user = userEvent.setup();
+      renderWithContext({ view: "day" });
+
+      const caret = screen.getByTestId("view-switcher-day-mode");
+      caret.focus();
+      await user.keyboard("{Enter}");
+
+      expect(
+        screen.getByRole("menuitemradio", { name: /grid/i })
+      ).toBeInTheDocument();
+    });
+
+    it("Escape dismisses the open caret menu", async () => {
+      const user = userEvent.setup();
+      renderWithContext({ view: "day" });
+
+      await user.click(screen.getByTestId("view-switcher-day-mode"));
+      expect(
+        screen.getByRole("menuitemradio", { name: /agenda/i })
+      ).toBeInTheDocument();
+
+      await user.keyboard("{Escape}");
+
+      expect(
+        screen.queryByRole("menuitemradio", { name: /agenda/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("ArrowDown moves focus from Grid to Agenda inside the menu", async () => {
+      const user = userEvent.setup();
+      renderWithContext({ view: "day", agendaMode: false });
+
+      await user.click(screen.getByTestId("view-switcher-day-mode"));
+      const grid = screen.getByRole("menuitemradio", { name: /grid/i });
+      const agenda = screen.getByRole("menuitemradio", { name: /agenda/i });
+
+      // Radix doesn't auto-focus a specific item in jsdom on open; explicitly
+      // focus Grid (the checked item) and assert ArrowDown advances to Agenda.
+      grid.focus();
+      expect(grid).toHaveFocus();
+
+      await user.keyboard("{ArrowDown}");
+      expect(agenda).toHaveFocus();
+    });
+
+    it("Space on the primary button switches view", async () => {
+      const user = userEvent.setup();
+      const { contextValue } = renderWithContext({ view: "month" });
+
+      const primary = screen.getByTestId("view-switcher-week");
+      primary.focus();
+      await user.keyboard(" ");
+
+      expect(contextValue.setView).toHaveBeenCalledWith("week");
     });
   });
 });

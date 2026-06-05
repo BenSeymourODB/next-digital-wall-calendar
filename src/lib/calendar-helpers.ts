@@ -47,11 +47,16 @@ const FORMAT_STRING = "MMM d, yyyy";
 export const WEEK_STARTS_ON: Day = 0;
 
 /**
- * Hour of day the Day/Week time grids scroll to on mount so working-hours
- * events are immediately visible. (#214)
+ * Default hour of day the Day/Week time grids scroll to on mount when
+ * the user has not overridden it. (#214)
  *
  * 0 = midnight, 7 = 7am, etc. Plumbed through `getInitialScrollTop` so
  * each calendar can derive its scrollTop from its own row height.
+ *
+ * @deprecated Prefer `useCalendar().workingHoursStart` (#288). This
+ * constant is the default for `UserSettings.calendarWorkingHoursStart`
+ * and `DEFAULT_USER_CALENDAR_SETTINGS`; new components must read the
+ * per-user value from context rather than hard-coding 7.
  */
 export const WORKING_HOURS_START_HOUR = 7;
 
