@@ -432,7 +432,7 @@ describe("getEventsForWeek", () => {
     );
     expect(mondayFirst).toEqual([]);
   });
-  
+
   it("includes Saturday-afternoon events on the last day of the week (regression: #201)", () => {
     // Week of Sun Mar 10 – Sat Mar 16, 2024 (WEEK_STARTS_ON = 0).
     // Events at every hour of Saturday should be included; the previous
