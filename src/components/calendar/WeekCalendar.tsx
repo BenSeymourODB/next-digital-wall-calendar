@@ -4,7 +4,6 @@ import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import {
   WEEK_STARTS_ON,
-  WORKING_HOURS_START_HOUR,
   assignBarRows,
   computeEventColumns,
   formatTime,
@@ -38,10 +37,6 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 40;
 const TIME_GRID_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
 const BAR_ROW_HEIGHT_PX = 22;
-const INITIAL_SCROLL_TOP_PX = getInitialScrollTop(
-  WORKING_HOURS_START_HOUR,
-  HOUR_HEIGHT_PX
-);
 
 function getEventBlockClasses(color: TEventColor): string {
   const classes: Record<TEventColor, string> = {
@@ -122,6 +117,7 @@ export function WeekCalendar() {
     isLoading,
     use24HourFormat,
     agendaMode,
+    workingHoursStart,
   } = useCalendar();
 
   const today = useTodayStartOfDay();
@@ -216,6 +212,7 @@ export function WeekCalendar() {
           weekEvents={weekEvents}
           today={today}
           use24HourFormat={use24HourFormat}
+          workingHoursStart={workingHoursStart}
         />
       )}
     </div>
@@ -230,6 +227,7 @@ interface WeekGridViewProps {
   weekEvents: IEvent[];
   today: Date;
   use24HourFormat: boolean;
+  workingHoursStart: number;
 }
 
 function WeekGridView({
@@ -240,6 +238,7 @@ function WeekGridView({
   weekEvents,
   today,
   use24HourFormat,
+  workingHoursStart,
 }: WeekGridViewProps) {
   // Split into multi-day vs single-day timed events.
   const multiDayEvents = weekEvents.filter(isMultiDayEvent);
@@ -256,9 +255,18 @@ function WeekGridView({
   // i.e. when the user toggles agenda mode off — without disturbing
   // manual scroll between renders.
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Capture the start hour into a ref so the mount effect doesn't need
+  // to depend on `workingHoursStart` (which would re-run the effect
+  // every time the user moves the slider, yanking their scroll
+  // position). Subsequent setting changes apply on the next remount
+  // (e.g. agenda toggle off, navigation remount).
+  const workingHoursStartRef = useRef(workingHoursStart);
   useLayoutEffect(() => {
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = INITIAL_SCROLL_TOP_PX;
+      scrollContainerRef.current.scrollTop = getInitialScrollTop(
+        workingHoursStartRef.current,
+        HOUR_HEIGHT_PX
+      );
     }
   }, []);
 

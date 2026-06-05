@@ -3,43 +3,43 @@
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PinSettings } from "../pin-settings";
+import { PinSettings, type PinSettingsProfile } from "../pin-settings";
 
 // Mock fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 // Mock profiles
-const standardProfileWithoutPin = {
+const standardProfileWithoutPin: PinSettingsProfile = {
   id: "profile-standard-1",
   name: "Child User",
-  type: "standard" as const,
+  type: "standard",
   pinEnabled: false,
   color: "#22c55e",
-  avatar: { type: "emoji" as const, value: "👦" },
+  avatar: { type: "emoji", value: "👦" },
 };
 
-const standardProfileWithPin = {
+const standardProfileWithPin: PinSettingsProfile = {
   id: "profile-standard-2",
   name: "Teen User",
-  type: "standard" as const,
+  type: "standard",
   pinEnabled: true,
   color: "#a855f7",
   avatar: {
-    type: "initials" as const,
+    type: "initials",
     value: "TU",
     backgroundColor: "#a855f7",
   },
 };
 
-const adminProfile = {
+const adminProfile: PinSettingsProfile = {
   id: "profile-admin-1",
   name: "Admin User",
-  type: "admin" as const,
+  type: "admin",
   pinEnabled: true,
   color: "#3b82f6",
   avatar: {
-    type: "initials" as const,
+    type: "initials",
     value: "AU",
     backgroundColor: "#3b82f6",
   },

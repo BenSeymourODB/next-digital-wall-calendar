@@ -40,8 +40,6 @@ function toDateKey(date: Date): string {
   return format(date, "yyyy-MM-dd");
 }
 
-const MONTH_SLIDE_DURATION_MS = 300;
-
 /** Stable absolute month index used to derive slide direction across year
  * boundaries (e.g. Dec 2024 -> Jan 2025 should still slide "forward"). */
 function absoluteMonthIndex(date: Date): number {
@@ -58,6 +56,7 @@ export function SimpleCalendar() {
     use24HourFormat,
     weekStartDay,
     getAccessRole,
+    transitionDurationMs,
   } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
@@ -182,7 +181,13 @@ export function SimpleCalendar() {
     const action = keyboardEventToAction(event);
     if (!action) return;
     event.preventDefault();
-    const nextDate = applyCalendarKeyboardAction(selectedDate, action);
+    // Honour the user's weekStartDay preference for Home/End so a
+    // Monday-first user lands on Monday (not Sunday) at the week boundary.
+    const nextDate = applyCalendarKeyboardAction(
+      selectedDate,
+      action,
+      weekStartDay
+    );
     pendingFocusRef.current = true;
     setSelectedDate(nextDate);
   };
@@ -295,7 +300,7 @@ export function SimpleCalendar() {
           swapKey={format(monthStart, "yyyy-MM")}
           type="slide"
           direction={slideDirection}
-          durationMs={MONTH_SLIDE_DURATION_MS}
+          durationMs={transitionDurationMs}
         >
           <div role="rowgroup" data-testid="calendar-month-grid">
             {weekRows.map((row, rowIndex) => (
