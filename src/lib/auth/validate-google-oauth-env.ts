@@ -14,9 +14,11 @@ export function validateGoogleOAuthEnv(): void {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
+  // `.trim()` catches the `export GOOGLE_CLIENT_ID=" "` footgun (truthy at
+  // runtime but rejected by Google), alongside the unset / empty-string cases.
   const missing: string[] = [];
-  if (!clientId) missing.push("GOOGLE_CLIENT_ID");
-  if (!clientSecret) missing.push("GOOGLE_CLIENT_SECRET");
+  if (!clientId?.trim()) missing.push("GOOGLE_CLIENT_ID");
+  if (!clientSecret?.trim()) missing.push("GOOGLE_CLIENT_SECRET");
 
   if (missing.length > 0) {
     throw new Error(
