@@ -1,6 +1,7 @@
 "use client";
 
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Slider } from "@/components/ui/slider";
 import type { TWeekStartDay } from "@/types/calendar";
 import { useTheme } from "next-themes";
@@ -42,21 +43,18 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
         {/* Theme selection */}
         <fieldset>
           <legend className="text-foreground text-sm font-medium">Theme</legend>
-          <div className="mt-2 flex gap-4">
+          <RadioGroup
+            value={currentTheme}
+            onValueChange={handleThemeChange}
+            className="mt-2 flex gap-4"
+          >
             {THEME_OPTIONS.map((theme) => (
               <Label key={theme} className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="theme"
-                  value={theme}
-                  checked={currentTheme === theme}
-                  onChange={() => handleThemeChange(theme)}
-                  className="text-blue-600"
-                />
+                <RadioGroupItem value={theme} />
                 <span className="capitalize">{theme}</span>
               </Label>
             ))}
-          </div>
+          </RadioGroup>
         </fieldset>
 
         {/* Time format */}
@@ -64,30 +62,20 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
           <legend className="text-foreground text-sm font-medium">
             Time Format
           </legend>
-          <div className="mt-2 flex gap-4">
+          <RadioGroup
+            value={values.timeFormat}
+            onValueChange={(timeFormat) => onChange({ timeFormat })}
+            className="mt-2 flex gap-4"
+          >
             <Label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="timeFormat"
-                value="12h"
-                checked={values.timeFormat === "12h"}
-                onChange={() => onChange({ timeFormat: "12h" })}
-                className="text-blue-600"
-              />
+              <RadioGroupItem value="12h" />
               12-hour
             </Label>
             <Label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="timeFormat"
-                value="24h"
-                checked={values.timeFormat === "24h"}
-                onChange={() => onChange({ timeFormat: "24h" })}
-                className="text-blue-600"
-              />
+              <RadioGroupItem value="24h" />
               24-hour
             </Label>
-          </div>
+          </RadioGroup>
         </fieldset>
 
         {/* Week start day */}
@@ -95,30 +83,22 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
           <legend className="text-foreground text-sm font-medium">
             Week starts on
           </legend>
-          <div className="mt-2 flex gap-4">
+          <RadioGroup
+            value={String(values.weekStartDay)}
+            onValueChange={(value) =>
+              onChange({ weekStartDay: Number(value) as TWeekStartDay })
+            }
+            className="mt-2 flex gap-4"
+          >
             <Label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="weekStartDay"
-                value="0"
-                checked={values.weekStartDay === 0}
-                onChange={() => onChange({ weekStartDay: 0 })}
-                className="accent-blue-600"
-              />
+              <RadioGroupItem value="0" />
               Sunday
             </Label>
             <Label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="weekStartDay"
-                value="1"
-                checked={values.weekStartDay === 1}
-                onChange={() => onChange({ weekStartDay: 1 })}
-                className="accent-blue-600"
-              />
+              <RadioGroupItem value="1" />
               Monday
             </Label>
-          </div>
+          </RadioGroup>
         </fieldset>
 
         {/* Zoom level */}
