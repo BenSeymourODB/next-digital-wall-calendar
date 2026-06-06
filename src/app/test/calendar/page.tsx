@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type {
   IEvent,
+  TCalendarAccessRole,
   TCalendarView,
   TEventColor,
   TWeekStartDay,
@@ -179,6 +180,33 @@ function buildMockEventSets(anchor: Date): Record<string, IEvent[]> {
         startDate: getRelativeDate(6, 10, 0),
         endDate: getRelativeDate(6, 12, 0),
         color: "blue",
+      }),
+    ],
+
+    // Single event on a read-only calendar (accessRole="reader"). Paired with
+    // `?events=read-only` so the E2E suite can assert that EventDetailModal
+    // hides the delete button for reader-access calendars (#266).
+    "read-only": [
+      createMockEvent({
+        id: "ro-1",
+        title: "Read Only Event",
+        calendarId: "shared-readonly",
+        startDate: getRelativeDate(0, 10, 0),
+        endDate: getRelativeDate(0, 11, 0),
+        color: "purple",
+      }),
+    ],
+
+    // Single event on a freeBusyReader calendar. Covers the stricter
+    // accessRole branch of the delete-gating path in its own E2E lane (#266).
+    "free-busy": [
+      createMockEvent({
+        id: "fb-1",
+        title: "Free Busy Event",
+        calendarId: "freebusy-cal",
+        startDate: getRelativeDate(0, 10, 0),
+        endDate: getRelativeDate(0, 11, 0),
+        color: "purple",
       }),
     ],
 
@@ -503,6 +531,19 @@ function TestCalendarContent() {
   // Get events for the specified set
   const events = mockEventSets[eventSet] || mockEventSets.default;
 
+  // Seed accessRoles for the read-only test sets so EventDetailModal's
+  // delete-gating logic (#266) is exercisable without a real Google OAuth
+  // session. Other event sets get no access-role map and fall through to the
+  // permissive default.
+  const accessRolesByCalendarId:
+    | Record<string, TCalendarAccessRole>
+    | undefined =
+    eventSet === "read-only"
+      ? { "shared-readonly": "reader" }
+      : eventSet === "free-busy"
+        ? { "freebusy-cal": "freeBusyReader" }
+        : undefined;
+
   return (
     <MockCalendarProvider
       initialEvents={events}
@@ -514,6 +555,7 @@ function TestCalendarContent() {
       use24HourFormat={use24Hour}
       weekStartDay={weekStartDayParam}
       transitionDurationMs={transitionDurationMs}
+      accessRolesByCalendarId={accessRolesByCalendarId}
     >
       <div className="container mx-auto max-w-6xl p-4" data-testid="test-page">
         <h1 className="mb-4 text-2xl font-bold text-gray-900">
