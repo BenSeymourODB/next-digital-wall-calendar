@@ -325,11 +325,8 @@ export function AgendaCalendar() {
   const noMatches = searchActive && agendaEvents.length === 0;
   const resultCount = agendaEvents.length;
 
-  // Build color groups once per render (only used when grouping by color)
   const colorGroups =
     agendaModeGroupBy === "color" ? groupEventsByColor(agendaEvents) : null;
-  // Same lazy build for the category branch; React Compiler memoizes
-  // both per CLAUDE.md (no manual `useMemo`).
   const categoryGroups =
     agendaModeGroupBy === "category"
       ? groupEventsByCategory(agendaEvents)

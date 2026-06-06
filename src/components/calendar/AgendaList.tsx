@@ -4,6 +4,7 @@ import { useCalendar } from "@/components/providers/CalendarProvider";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useRef, useState } from "react";
 import { format, isAfter, isBefore } from "date-fns";
+import { groupEventsByCategory, sortCategoryEntries } from "./AgendaCalendar";
 import { EventDetailModal } from "./EventDetailModal";
 
 /**
@@ -76,33 +77,6 @@ function groupByColor(events: IEvent[]): Map<TEventColor, IEvent[]> {
     groups.set(k, sortByStart(list));
   }
   return groups;
-}
-
-const UNCATEGORISED_LABEL = "Uncategorised";
-
-function groupByCategory(events: IEvent[]): Map<string, IEvent[]> {
-  const groups = new Map<string, IEvent[]>();
-  for (const event of events) {
-    const trimmed = event.category?.trim();
-    const key = trimmed ? trimmed : UNCATEGORISED_LABEL;
-    const list = groups.get(key) ?? [];
-    list.push(event);
-    groups.set(key, list);
-  }
-  for (const [k, list] of groups.entries()) {
-    groups.set(k, sortByStart(list));
-  }
-  return groups;
-}
-
-function sortCategoryEntries(
-  entries: Array<[string, IEvent[]]>
-): Array<[string, IEvent[]]> {
-  return [...entries].sort(([a], [b]) => {
-    if (a === UNCATEGORISED_LABEL) return 1;
-    if (b === UNCATEGORISED_LABEL) return -1;
-    return a.localeCompare(b, undefined, { sensitivity: "base" });
-  });
 }
 
 /**
@@ -245,7 +219,7 @@ export function AgendaList({
   const colorGroups =
     agendaModeGroupBy === "color" ? groupByColor(windowed) : null;
   const categoryGroups =
-    agendaModeGroupBy === "category" ? groupByCategory(windowed) : null;
+    agendaModeGroupBy === "category" ? groupEventsByCategory(windowed) : null;
 
   return (
     <div

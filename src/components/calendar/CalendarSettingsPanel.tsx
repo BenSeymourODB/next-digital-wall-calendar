@@ -11,7 +11,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import type { TAgendaGroupBy, TWeekStartDay } from "@/types/calendar";
+import { type TWeekStartDay, isAgendaGroupBy } from "@/types/calendar";
 import { Settings } from "lucide-react";
 
 /**
@@ -115,9 +115,14 @@ export function CalendarSettingsPanel() {
             </legend>
             <RadioGroup
               value={agendaModeGroupBy}
-              onValueChange={(value) =>
-                setAgendaModeGroupBy(value as TAgendaGroupBy)
-              }
+              onValueChange={(value) => {
+                // Narrow the unchecked string from RadioGroup so a stale
+                // persisted value or a future option name can't silently
+                // flow into the provider's union.
+                if (isAgendaGroupBy(value)) {
+                  setAgendaModeGroupBy(value);
+                }
+              }}
               className="gap-2"
             >
               <Label className="flex items-center gap-2 text-sm">

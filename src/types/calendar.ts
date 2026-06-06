@@ -36,6 +36,17 @@ export type TEventColor =
  */
 export type TAgendaGroupBy = "date" | "color" | "category";
 
+const AGENDA_GROUP_BY_VALUES: readonly TAgendaGroupBy[] = [
+  "date",
+  "color",
+  "category",
+] as const;
+
+/** Narrow an unchecked string (e.g. from a `RadioGroup.onValueChange`) onto `TAgendaGroupBy`. */
+export function isAgendaGroupBy(value: string): value is TAgendaGroupBy {
+  return (AGENDA_GROUP_BY_VALUES as readonly string[]).includes(value);
+}
+
 /**
  * Per-calendar permission level reported by Google's `CalendarList.list`.
  * Mirrors `gapi.client.calendar.CalendarListEntry.accessRole`. Lives here

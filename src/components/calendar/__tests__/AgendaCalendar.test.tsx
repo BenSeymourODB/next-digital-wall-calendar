@@ -621,6 +621,24 @@ describe("AgendaCalendar", () => {
       expect(setAgendaModeGroupBy).toHaveBeenCalledWith("category");
     });
 
+    it("reflects active state via aria-pressed on the category toggle", () => {
+      renderWithContext(multiCategoryEvents(), {
+        agendaModeGroupBy: "category",
+      });
+
+      const dateToggle = screen.getByRole("button", { name: /group by date/i });
+      const colorToggle = screen.getByRole("button", {
+        name: /group by color/i,
+      });
+      const categoryToggle = screen.getByRole("button", {
+        name: /group by category/i,
+      });
+
+      expect(categoryToggle).toHaveAttribute("aria-pressed", "true");
+      expect(dateToggle).toHaveAttribute("aria-pressed", "false");
+      expect(colorToggle).toHaveAttribute("aria-pressed", "false");
+    });
+
     it("treats whitespace-only category strings as uncategorised", () => {
       const events = [
         createMockEvent({
