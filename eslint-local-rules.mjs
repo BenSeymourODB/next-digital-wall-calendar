@@ -227,11 +227,132 @@ const noDirectAppInsightsServerImport = {
   },
 };
 
+/**
+ * Rule: no-react-manual-memoization
+ * Forbid `useMemo`, `useCallback`, and `memo` from `react` regardless of
+ * how they're imported (named, named-with-alias, default-namespace, or
+ * `* as ns`). Companion to the `no-restricted-imports` entry on
+ * `eslint.config.mjs`, which only catches the unaliased named-import
+ * form.
+ *
+ * Implementation: track the import bindings of every `react` import in a
+ * file, then on Identifier/MemberExpression usage, look up whether the
+ * referenced binding was a banned react export.
+ *
+ * See #271 and docs/react-compiler.md.
+ */
+const noReactManualMemoization = {
+  meta: {
+    type: "problem",
+    docs: {
+      description:
+        "Forbid React.useMemo/useCallback/memo regardless of import form. The React Compiler memoizes automatically.",
+      category: "Best Practices",
+      recommended: true,
+    },
+    messages: {
+      banned:
+        "Manual memoization (`{{name}}`) is forbidden — the React Compiler memoizes automatically. See docs/react-compiler.md and CLAUDE.md.",
+    },
+    schema: [],
+  },
+
+  create(context) {
+    const BANNED = new Set(["useMemo", "useCallback", "memo"]);
+
+    // localName → bannedExportName for direct + aliased named imports.
+    // e.g. `import { memo as M } from "react"` → { M: "memo" }.
+    const directBindings = new Map();
+
+    // localName for namespace/default imports of react.
+    // e.g. `import * as Foo from "react"` or `import R from "react"` → ["Foo"], ["R"].
+    const namespaceLocals = new Set();
+
+    return {
+      ImportDeclaration(node) {
+        if (!node.source || node.source.value !== "react") return;
+        for (const spec of node.specifiers) {
+          if (spec.type === "ImportSpecifier") {
+            const importedName =
+              spec.imported && spec.imported.type === "Identifier"
+                ? spec.imported.name
+                : null;
+            if (importedName && BANNED.has(importedName)) {
+              directBindings.set(spec.local.name, importedName);
+            }
+          } else if (
+            spec.type === "ImportDefaultSpecifier" ||
+            spec.type === "ImportNamespaceSpecifier"
+          ) {
+            // `import React from "react"` (default — really CJS interop)
+            // or `import * as React from "react"`. Both expose the same
+            // member surface so we treat them identically for ban purposes.
+            namespaceLocals.add(spec.local.name);
+          }
+        }
+      },
+
+      // Catch direct identifier usage of an aliased named import:
+      // `import { memo as M } from "react"; M(fn)` — `no-restricted-imports`
+      // already flags this on the import line, but reporting at the call
+      // site too gives clearer error messages and survives if a future
+      // contributor disables the import-level rule.
+      Identifier(node) {
+        // Skip identifiers that are part of a MemberExpression's `property`
+        // (handled below) and the import declarations themselves.
+        const parent = node.parent;
+        if (!parent) return;
+        if (
+          parent.type === "MemberExpression" &&
+          parent.property === node &&
+          !parent.computed
+        ) {
+          return;
+        }
+        if (
+          parent.type === "ImportSpecifier" ||
+          parent.type === "ImportDefaultSpecifier" ||
+          parent.type === "ImportNamespaceSpecifier"
+        ) {
+          return;
+        }
+        const banned = directBindings.get(node.name);
+        if (banned) {
+          context.report({
+            node,
+            messageId: "banned",
+            data: { name: banned },
+          });
+        }
+      },
+
+      // Catch member access on namespace/default imports of react:
+      // `import * as Foo from "react"; Foo.memo(...)` and
+      // `import R from "react"; R.useMemo(...)`.
+      MemberExpression(node) {
+        if (node.computed) return;
+        if (!node.object || node.object.type !== "Identifier") return;
+        if (!node.property || node.property.type !== "Identifier") return;
+        if (!namespaceLocals.has(node.object.name)) return;
+        const propName = node.property.name;
+        if (BANNED.has(propName)) {
+          context.report({
+            node,
+            messageId: "banned",
+            data: { name: `${node.object.name}.${propName}` },
+          });
+        }
+      },
+    };
+  },
+};
+
 const plugin = {
   rules: {
     "prefer-logger-over-console": preferLoggerOverConsole,
     "no-direct-appinsights-client-import": noDirectAppInsightsClientImport,
     "no-direct-appinsights-server-import": noDirectAppInsightsServerImport,
+    "no-react-manual-memoization": noReactManualMemoization,
   },
 };
 

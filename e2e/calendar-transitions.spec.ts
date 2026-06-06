@@ -26,9 +26,9 @@ test.describe("Calendar transition animations", () => {
     // Initially we are in Month view — header reads "MMMM yyyy".
     await expect(page.locator("h2").first()).toBeVisible();
 
-    // Open the Day dropdown and pick Agenda — composite swap key
+    // Open the Day caret menu and pick Agenda — composite swap key
     // `day:agenda` triggers the same fade as a top-level view change.
-    await page.getByTestId("view-switcher-day").click();
+    await page.getByTestId("view-switcher-day-mode").click();
     await page.getByRole("menuitemradio", { name: /agenda/i }).click();
 
     // The Day-agenda renderer is now visible.
@@ -96,7 +96,7 @@ test.describe("Calendar transition animations", () => {
 
       // With reduced motion, AnimatedSwap renders a single wrapper with
       // its child directly — no outgoing/incoming/entering nodes.
-      await page.getByTestId("view-switcher-day").click();
+      await page.getByTestId("view-switcher-day-mode").click();
       await page.getByRole("menuitemradio", { name: /agenda/i }).click();
 
       // Outgoing should never appear when animations are disabled.

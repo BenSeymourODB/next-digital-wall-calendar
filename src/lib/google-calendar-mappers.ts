@@ -10,6 +10,7 @@
  * references browser-only globals — if you need that, put it in
  * `src/lib/google-calendar.ts` and import the mappers from here.
  */
+import type { TCalendarAccessRole } from "@/types/calendar";
 
 /**
  * Canonical shape of a Google Calendar event inside the app.
@@ -48,7 +49,7 @@ export interface UserCalendar {
   timeZone?: string;
   summaryOverride?: string;
   selected?: boolean;
-  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
+  accessRole?: TCalendarAccessRole;
 }
 
 /**

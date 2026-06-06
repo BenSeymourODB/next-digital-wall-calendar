@@ -165,12 +165,83 @@ describe("token-cipher", () => {
         "NEXTAUTH_SECRET",
         "dev-only-secret-for-testing-xxxxxxxxxxxxxxxxxx"
       );
+      vi.stubEnv("AUTH_SECRET", "");
       vi.stubEnv("NODE_ENV", "development");
 
       const { encryptToken, decryptToken } = await loadCipher();
       const envelope = encryptToken("derived-key-test");
       expect(envelope).not.toBeNull();
       expect(decryptToken(envelope)).toBe("derived-key-test");
+    });
+
+    it("derives a key from AUTH_SECRET (NextAuth v5 idiom) when TOKEN_ENCRYPTION_KEY and NEXTAUTH_SECRET are absent", async () => {
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv(
+        "AUTH_SECRET",
+        "v5-canonical-secret-for-testing-xxxxxxxxxxxxxxx"
+      );
+      vi.stubEnv("NODE_ENV", "development");
+
+      const { encryptToken, decryptToken } = await loadCipher();
+      const envelope = encryptToken("auth-secret-test");
+      expect(envelope).not.toBeNull();
+      expect(decryptToken(envelope)).toBe("auth-secret-test");
+    });
+
+    it("derives the same key whether AUTH_SECRET or NEXTAUTH_SECRET is set with the same value", async () => {
+      const sameValue = "shared-secret-value-xxxxxxxxxxxxxxxxxxxxxx";
+
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("NEXTAUTH_SECRET", sameValue);
+      vi.stubEnv("AUTH_SECRET", "");
+      vi.stubEnv("NODE_ENV", "development");
+      const { encryptToken: encryptViaNext } = await loadCipher();
+      const envelopeFromNext = encryptViaNext("portable")!;
+
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv("AUTH_SECRET", sameValue);
+      const { decryptToken: decryptViaAuth } = await loadCipher();
+      // Cross-decryption proves both env vars resolve to the same derived key.
+      expect(decryptViaAuth(envelopeFromNext)).toBe("portable");
+    });
+
+    it("prefers AUTH_SECRET over NEXTAUTH_SECRET when both are set with different values", async () => {
+      // Without this precedence, a project that has migrated v4 → v5 would
+      // keep deriving from a stale NEXTAUTH_SECRET value. Encrypt with
+      // AUTH_SECRET only as the source of truth, then verify NEXTAUTH_SECRET
+      // alone (with a different value) cannot decrypt — meaning the original
+      // encrypt used AUTH_SECRET, not NEXTAUTH_SECRET.
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("AUTH_SECRET", "auth-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxx");
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv("NODE_ENV", "development");
+      const { encryptToken } = await loadCipher();
+      const envelope = encryptToken("priority-test")!;
+
+      // Now flip: only NEXTAUTH_SECRET (different value) is available. If
+      // resolveKey() had been reading NEXTAUTH_SECRET, decrypt would have
+      // worked on the same value; here it must produce a different key and
+      // throw (GCM auth-tag mismatch) when used on the AUTH_SECRET envelope.
+      vi.stubEnv("AUTH_SECRET", "");
+      vi.stubEnv(
+        "NEXTAUTH_SECRET",
+        "nextauth-secret-yyyyyyyyyyyyyyyyyyyyyyyyy"
+      );
+      const { decryptToken } = await loadCipher();
+      expect(() => decryptToken(envelope)).toThrow();
+
+      // Sanity-check the inverse: when AUTH_SECRET wins, encrypt-then-decrypt
+      // round-trips even with NEXTAUTH_SECRET set to a divergent value.
+      vi.stubEnv("AUTH_SECRET", "auth-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxx");
+      vi.stubEnv(
+        "NEXTAUTH_SECRET",
+        "nextauth-secret-yyyyyyyyyyyyyyyyyyyyyyyyy"
+      );
+      const both = await loadCipher();
+      expect(both.decryptToken(both.encryptToken("round-trip")!)).toBe(
+        "round-trip"
+      );
     });
 
     it("throws in production when TOKEN_ENCRYPTION_KEY is missing", async () => {
@@ -182,14 +253,18 @@ describe("token-cipher", () => {
       expect(() => encryptToken("x")).toThrow(/TOKEN_ENCRYPTION_KEY/);
     });
 
-    it("throws a dev-appropriate error when neither key nor NEXTAUTH_SECRET is set in non-production", async () => {
+    it("throws a dev-appropriate error when no key, AUTH_SECRET, or NEXTAUTH_SECRET is set in non-production", async () => {
       vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
       vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv("AUTH_SECRET", "");
       vi.stubEnv("NODE_ENV", "development");
 
       const { encryptToken } = await loadCipher();
-      // Error should NOT say "required in production" — it misleads devs whose
-      // real problem is that NEXTAUTH_SECRET is also missing.
+      // Error should mention BOTH dev-fallback env vars so devs running on
+      // either NextAuth v4 or v5 idioms recognise their config gap. Must NOT
+      // say "required in production" — that misleads devs whose real problem
+      // is in development.
+      expect(() => encryptToken("x")).toThrow(/AUTH_SECRET/);
       expect(() => encryptToken("x")).toThrow(/NEXTAUTH_SECRET/);
       expect(() => encryptToken("x")).not.toThrow(/required in production/);
     });
@@ -227,12 +302,34 @@ describe("token-cipher", () => {
       expect(decryptToken(envelope)).toBe("base64url-keyed-secret");
     });
 
+    it("validateEncryptionKey() returns silently when a key is resolvable", async () => {
+      const { validateEncryptionKey } = await loadCipher();
+      expect(() => validateEncryptionKey()).not.toThrow();
+    });
+
+    it("validateEncryptionKey() throws when no key source is configured", async () => {
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv("AUTH_SECRET", "");
+      vi.stubEnv("NODE_ENV", "development");
+
+      const { validateEncryptionKey } = await loadCipher();
+      expect(() => validateEncryptionKey()).toThrow(/AUTH_SECRET/);
+    });
+
+    it("validateEncryptionKey() throws when TOKEN_ENCRYPTION_KEY decodes to the wrong length", async () => {
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", randomBytes(8).toString("base64"));
+      const { validateEncryptionKey } = await loadCipher();
+      expect(() => validateEncryptionKey()).toThrow(/32 bytes/);
+    });
+
     it("warns once when deriving a key from NEXTAUTH_SECRET", async () => {
       vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
       vi.stubEnv(
         "NEXTAUTH_SECRET",
         "dev-only-secret-for-testing-xxxxxxxxxxxxxxxxxx"
       );
+      vi.stubEnv("AUTH_SECRET", "");
       vi.stubEnv("NODE_ENV", "development");
 
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -249,6 +346,136 @@ describe("token-cipher", () => {
       );
       expect(derivationWarns.length).toBe(1);
 
+      warnSpy.mockRestore();
+    });
+
+    it("warns once when deriving a key from AUTH_SECRET (v5 idiom)", async () => {
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", "");
+      vi.stubEnv("NEXTAUTH_SECRET", "");
+      vi.stubEnv(
+        "AUTH_SECRET",
+        "v5-only-secret-for-testing-xxxxxxxxxxxxxxxxxxxxx"
+      );
+      vi.stubEnv("NODE_ENV", "development");
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { encryptToken } = await loadCipher();
+      encryptToken("a");
+      encryptToken("b");
+
+      const derivationWarns = warnSpy.mock.calls.filter(
+        (args) =>
+          typeof args[0] === "string" &&
+          args[0].includes("TOKEN_ENCRYPTION_KEY")
+      );
+      expect(derivationWarns.length).toBe(1);
+
+      warnSpy.mockRestore();
+    });
+  });
+
+  // Issue #215 — dual-read decryption keyed on the envelope contents lets us
+  // run a rolling key rotation: encrypt under the new (active) key, but still
+  // decrypt tokens that were written under the previous key until the CLI
+  // re-encrypts every row.
+  describe("dual-read with TOKEN_ENCRYPTION_KEY_PREVIOUS", () => {
+    it("decrypts an envelope written under the previous key after the active key rotates", async () => {
+      // Step 1: encrypt under what will become the "previous" key.
+      const oldKey = randomBytes(32).toString("base64");
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", oldKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", "");
+      const { encryptToken } = await loadCipher();
+      const envelope = encryptToken("rotation-secret");
+      expect(envelope).not.toBeNull();
+
+      // Step 2: simulate a rotation — flip env so the old key becomes
+      // PREVIOUS and a fresh key is ACTIVE. Reload the module so the
+      // resolver sees the new env.
+      const newKey = randomBytes(32).toString("base64");
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", newKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", oldKey);
+      const { decryptToken } = await loadCipher();
+
+      // The old envelope must still decrypt to the original plaintext.
+      expect(decryptToken(envelope)).toBe("rotation-secret");
+    });
+
+    it("encrypts under the active key only — re-encrypted envelopes do not decrypt with the previous key", async () => {
+      const oldKey = randomBytes(32).toString("base64");
+      const newKey = randomBytes(32).toString("base64");
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", newKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", oldKey);
+      const { encryptToken } = await loadCipher();
+      const envelope = encryptToken("written-after-rotation");
+      expect(envelope).not.toBeNull();
+
+      // If we re-load the module with only the old key as ACTIVE
+      // (and no previous), the envelope must NOT decrypt — proving
+      // it was encrypted under the new key.
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", oldKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", "");
+      const { decryptToken } = await loadCipher();
+      expect(() => decryptToken(envelope)).toThrow();
+    });
+
+    it("throws when neither the active nor the previous key matches the envelope", async () => {
+      const writeKey = randomBytes(32).toString("base64");
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", writeKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", "");
+      const { encryptToken } = await loadCipher();
+      const envelope = encryptToken("orphaned-secret");
+
+      // Reload with two unrelated keys — neither can decrypt the
+      // original envelope.
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
+      vi.stubEnv(
+        "TOKEN_ENCRYPTION_KEY_PREVIOUS",
+        randomBytes(32).toString("base64")
+      );
+      const { decryptToken } = await loadCipher();
+      expect(() => decryptToken(envelope)).toThrow();
+    });
+
+    it("ignores TOKEN_ENCRYPTION_KEY_PREVIOUS when empty (single-key behaviour preserved)", async () => {
+      // Regression guard: an absent / empty previous key must keep the
+      // pre-#215 behaviour exactly. No fallback, no surprise re-tries.
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", "");
+      const { encryptToken, decryptToken } = await loadCipher();
+      const envelope = encryptToken("simple-roundtrip");
+      expect(decryptToken(envelope)).toBe("simple-roundtrip");
+    });
+
+    it("throws when TOKEN_ENCRYPTION_KEY_PREVIOUS is set but malformed", async () => {
+      // The previous key follows the same parsing rules as the active
+      // key — fail fast at first use instead of silently dropping it.
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", "!!!not-base64!!!");
+      const { encryptToken } = await loadCipher();
+      expect(() => encryptToken("x")).toThrow(/TOKEN_ENCRYPTION_KEY_PREVIOUS/);
+    });
+
+    it("throws when TOKEN_ENCRYPTION_KEY_PREVIOUS decodes to the wrong length", async () => {
+      vi.stubEnv(
+        "TOKEN_ENCRYPTION_KEY_PREVIOUS",
+        randomBytes(16).toString("base64")
+      );
+      const { encryptToken } = await loadCipher();
+      expect(() => encryptToken("x")).toThrow(/TOKEN_ENCRYPTION_KEY_PREVIOUS/);
+    });
+
+    it("does not log the derivation warning when both keys are explicit", async () => {
+      // Sanity: setting the previous-key env shouldn't accidentally trip
+      // the dev-mode HKDF fallback branch.
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_PREVIOUS", TEST_KEY_B64);
+      const { encryptToken } = await loadCipher();
+      encryptToken("anything");
+      const derivationWarns = warnSpy.mock.calls.filter(
+        (args) =>
+          typeof args[0] === "string" &&
+          args[0].includes("TOKEN_ENCRYPTION_KEY")
+      );
+      expect(derivationWarns.length).toBe(0);
       warnSpy.mockRestore();
     });
   });
