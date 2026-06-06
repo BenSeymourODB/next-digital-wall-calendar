@@ -3,13 +3,9 @@ import {
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
-import type {
-  IEvent,
-  IUser,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
+import type { IEvent } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { format, isSameMonth } from "date-fns";
@@ -36,43 +32,10 @@ vi.mock("@/hooks/useWritableCalendars", () => ({
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
-  return {
-    selectedDate: new Date(),
-    view: "month" as TCalendarView,
-    setView: vi.fn(),
-    agendaMode: false,
-    setAgendaMode: vi.fn(),
-    agendaModeGroupBy: "date",
-    setAgendaModeGroupBy: vi.fn(),
-    weekStartDay: 0,
-    setWeekStartDay: vi.fn(),
-    use24HourFormat: true,
-    toggleTimeFormat: vi.fn(),
-    setSelectedDate: vi.fn(),
-    selectedUserId: "all",
-    setSelectedUserId: vi.fn(),
-    badgeVariant: "colored",
-    setBadgeVariant: vi.fn(),
-    selectedColors: [] as TEventColor[],
-    filterEventsBySelectedColors: vi.fn(),
-    filterEventsBySelectedUser: vi.fn(),
-    users: [] as IUser[],
-    events: [],
-    addEvent: vi.fn(),
-    updateEvent: vi.fn(),
-    removeEvent: vi.fn(),
-    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
-    deleteEvent: vi.fn().mockResolvedValue(undefined),
-    clearFilter: vi.fn(),
-    refreshEvents: vi.fn(),
-    loadEventsForYear: vi.fn(),
-    isLoading: false,
-    isAuthenticated: true,
-    maxEventsPerDay: 3,
-    workingHoursStart: 7,
-    transitionDurationMs: 300,
+  return makeCalendarContext({
+    view: "month",
     ...overrides,
-  };
+  });
 }
 
 function renderWithContext(contextOverrides: Partial<ICalendarContext> = {}) {
@@ -933,6 +896,80 @@ describe("SimpleCalendar", () => {
         screen.getByRole("heading", { name: "Piano Recital" })
       ).toBeInTheDocument();
       expect(screen.getByText("Emma's spring concert")).toBeInTheDocument();
+    });
+
+    it("hides the delete button on read-only calendars (#266)", async () => {
+      const user = userEvent.setup();
+      const now = new Date();
+      const readOnlyEvent = createMockEvent({
+        id: "shared-evt",
+        title: "Family Dinner",
+        calendarId: "shared@group.calendar.google.com",
+        startDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          18,
+          0
+        ).toISOString(),
+        endDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          19,
+          0
+        ).toISOString(),
+      });
+
+      renderWithContext({
+        events: [readOnlyEvent],
+        getAccessRole: (id) =>
+          id === "shared@group.calendar.google.com" ? "reader" : undefined,
+      });
+
+      await user.click(screen.getByText("Family Dinner"));
+
+      expect(
+        screen.getByRole("heading", { name: "Family Dinner" })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders the delete button on writable calendars (#266)", async () => {
+      const user = userEvent.setup();
+      const now = new Date();
+      const writableEvent = createMockEvent({
+        id: "owned-evt",
+        title: "Standup",
+        calendarId: "primary",
+        startDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          9,
+          0
+        ).toISOString(),
+        endDate: new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          9,
+          15
+        ).toISOString(),
+      });
+
+      renderWithContext({
+        events: [writableEvent],
+        getAccessRole: (id) => (id === "primary" ? "owner" : undefined),
+      });
+
+      await user.click(screen.getByText("Standup"));
+
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
     });
 
     it("closes the modal after opening when the close button is clicked", async () => {

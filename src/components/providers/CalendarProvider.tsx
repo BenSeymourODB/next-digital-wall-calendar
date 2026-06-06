@@ -2,7 +2,7 @@
 
 import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { useUserSettings } from "@/hooks/useUserSettings";
+import { type TTimeFormat, useUserSettings } from "@/hooks/useUserSettings";
 import {
   type CalendarColorMapping,
   eventCache,
@@ -20,19 +20,13 @@ import { logger } from "@/lib/logger";
 import type {
   IEvent,
   IUser,
+  TCalendarAccessRole,
   TCalendarView,
   TEventColor,
   TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { endOfMonth, isAfter, isBefore, startOfMonth } from "date-fns";
 
@@ -110,6 +104,15 @@ export interface ICalendarContext {
    * widen the default lazy-load window beyond -1 / +6 months.
    */
   loadEventsForYear: (year: number) => Promise<void>;
+  /**
+   * Look up the user's permission level for a given Google calendar id.
+   * Returns `undefined` when the calendar list hasn't been fetched yet or
+   * the id wasn't part of the most recent payload. Consumers (e.g.
+   * `EventDetailModal` via #266) treat `undefined` as "unknown — render
+   * mutating actions", since Google's server-side 403 still applies as
+   * the backstop.
+   */
+  getAccessRole: (calendarId: string) => TCalendarAccessRole | undefined;
   isLoading: boolean;
   isAuthenticated: boolean;
   maxEventsPerDay: number;
@@ -131,7 +134,6 @@ export interface ICalendarContext {
 interface CalendarSettings {
   badgeVariant: "dot" | "colored";
   view: TCalendarView;
-  use24HourFormat: boolean;
   agendaMode: boolean;
   agendaModeGroupBy: "date" | "color";
   weekStartDay: TWeekStartDay;
@@ -140,7 +142,6 @@ interface CalendarSettings {
 const DEFAULT_SETTINGS: CalendarSettings = {
   badgeVariant: "colored",
   view: "month",
-  use24HourFormat: true,
   agendaMode: false,
   agendaModeGroupBy: "date",
   weekStartDay: 0,
@@ -148,10 +149,18 @@ const DEFAULT_SETTINGS: CalendarSettings = {
 
 /**
  * Loose shape used during boot: localStorage may hold a pre-#150 payload
- * where `view` was the now-removed `"agenda"` literal.
+ * where `view` was the now-removed `"agenda"` literal, and/or a pre-#337
+ * payload that carried `use24HourFormat` alongside the calendar-only
+ * fields. Both are migrated on mount.
  */
 type LegacyCalendarSettings = Omit<Partial<CalendarSettings>, "view"> & {
   view?: TCalendarView | "agenda";
+  /**
+   * Pre-#337 dual-source field. Retired in favour of
+   * `UserSettings.timeFormat` flowing through `useUserSettings`. Stripped
+   * from the persisted payload on first mount.
+   */
+  use24HourFormat?: boolean;
 };
 
 /**
@@ -210,13 +219,19 @@ export function CalendarProvider({
   const isAuthenticated = status === "authenticated";
 
   // User-configurable data-loading settings (fetched from server when authed,
-  // falls back to defaults otherwise). Powers auto-refresh interval and
-  // fetch-window sizing for refreshEvents. `hasLoadedFromServer` flips to
-  // true only after the first successful `/api/settings` fetch — the
-  // `weekStartDay` migration shim below uses it to avoid acting on the
-  // in-memory default value during the first render after sign-in.
-  const { settings: userSettings, hasLoadedFromServer: userSettingsLoaded } =
-    useUserSettings();
+  // falls back to defaults otherwise). Powers auto-refresh interval, fetch-
+  // window sizing for refreshEvents, and the app-wide `timeFormat` (#337).
+  // `hasLoadedFromServer` flips to true only after the first successful
+  // `/api/settings` fetch — the `weekStartDay` migration shim below uses it
+  // to avoid acting on the in-memory default value during the first render
+  // after sign-in.
+  const {
+    settings: userSettings,
+    mutate: mutateUserSettings,
+    hasLoadedFromServer: userSettingsLoaded,
+  } = useUserSettings();
+  const userTimeFormat: TTimeFormat = userSettings.timeFormat;
+  const use24HourFormat = userTimeFormat === "24h";
 
   // Cast through unknown so the legacy `"agenda"` literal can flow through
   // the hook even though it's no longer part of TCalendarView (#150).
@@ -237,9 +252,6 @@ export function CalendarProvider({
   );
   const [currentView, setCurrentViewState] = useState<TCalendarView>(
     initialView ?? settings.view ?? DEFAULT_SETTINGS.view
-  );
-  const [use24HourFormat, setUse24HourFormatState] = useState<boolean>(
-    settings.use24HourFormat ?? DEFAULT_SETTINGS.use24HourFormat
   );
   const [agendaMode, setAgendaModeState] = useState<boolean>(
     initialAgendaMode ?? settings.agendaMode ?? DEFAULT_SETTINGS.agendaMode
@@ -300,6 +312,71 @@ export function CalendarProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // #337 — One-time migration of the legacy `use24HourFormat` field from
+  // the persisted `calendar-settings` payload to the DB-backed
+  // `UserSettings.timeFormat`. Two concerns merged into one effect so
+  // the strip happens at the same instant we know whether to push:
+  //
+  //   1. Unconditionally remove `use24HourFormat` from the persisted
+  //      payload so the dual-source bug can never resurface.
+  //   2. When the server's `timeFormat` is at the Prisma default ("12h")
+  //      and the localStorage value disagrees (`true`/24h), push the
+  //      localStorage value to the server. That's the only case where
+  //      we can confidently disambiguate "user has been viewing 24h on
+  //      the calendar but never opened the main Settings page" from
+  //      "user explicitly chose 12h elsewhere" — and it's the case that
+  //      preserves continuity for the largest cohort.
+  //
+  // Gated on `userSettingsLoaded` (`hasLoadedFromServer`) so the
+  // strip-and-maybe-push happens only after `useUserSettings`' initial GET
+  // has resolved at least once — not merely when `isLoading` is false,
+  // which is also the case on the very first render before the GET starts.
+  // Reading `userTimeFormat` in that pre-GET window would compare the
+  // in-memory default ("12h") instead of the real server value and could
+  // push a spurious PUT (the same race `hasLoadedFromServer` was added to
+  // close for the #338 weekStartDay migration below). The `migrationRanRef`
+  // guard makes the effect resilient to React Strict Mode's double-invoke
+  // and any future dependency change that would re-trigger the body.
+  const migrationRanRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isAuthenticated && !userSettingsLoaded) return;
+    if (migrationRanRef.current) return;
+
+    const raw = window.localStorage.getItem("calendar-settings");
+    if (!raw) {
+      migrationRanRef.current = true;
+      return;
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      migrationRanRef.current = true;
+      return;
+    }
+    if (typeof parsed.use24HourFormat !== "boolean") {
+      migrationRanRef.current = true;
+      return;
+    }
+    const lsTimeFormat: TTimeFormat = parsed.use24HourFormat ? "24h" : "12h";
+    delete parsed.use24HourFormat;
+    window.localStorage.setItem("calendar-settings", JSON.stringify(parsed));
+    migrationRanRef.current = true;
+
+    if (isAuthenticated && userTimeFormat === "12h" && lsTimeFormat === "24h") {
+      void mutateUserSettings({ timeFormat: lsTimeFormat }).catch((error) => {
+        logger.error(error as Error, {
+          context: "calendarProvider.timeFormatMigration",
+        });
+      });
+    }
+    // Re-runs are guarded by `migrationRanRef`; the effect intentionally
+    // observes auth + GET resolution to know when it's safe to read the
+    // server-side `userTimeFormat`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, userSettingsLoaded, userTimeFormat]);
+
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
     "all"
@@ -316,6 +393,12 @@ export function CalendarProvider({
     }
   );
   const [calendarIds, setCalendarIds] = useState<string[]>([]);
+  // Per-calendar accessRole map used by `getAccessRole` so consumers can
+  // gate mutating UI on read-only calendars (#266). Populated from the
+  // same `/api/calendar/calendars` payload as `calendarIds`.
+  const [accessRoles, setAccessRoles] = useState<
+    Record<string, TCalendarAccessRole>
+  >({});
   // Per-calendar metadata used by `transformGoogleEvent` to pick a
   // human-readable user attribution for shared-calendar events whose creator
   // / organizer have no `displayName` (#307 Bug B). Populated from the same
@@ -325,6 +408,12 @@ export function CalendarProvider({
   );
   const [loadedRange, setLoadedRange] = useState<LoadedRange | null>(null);
   const isLoadingRangeRef = useRef(false);
+
+  // Plain closure — React Compiler memoizes automatically (CLAUDE.md
+  // forbids manual useCallback). The role map only changes when the
+  // calendar list is fetched, so identity churn here is a non-issue.
+  const getAccessRole = (calendarId: string): TCalendarAccessRole | undefined =>
+    accessRoles[calendarId];
 
   const updateSettings = (newPartialSettings: Partial<CalendarSettings>) => {
     setSettings((prev) => ({
@@ -349,8 +438,17 @@ export function CalendarProvider({
   };
 
   const toggleTimeFormat = () => {
-    setUse24HourFormatState(!use24HourFormat);
-    updateSettings({ use24HourFormat: !use24HourFormat });
+    // #337 — `timeFormat` is owned by `UserSettings`; route the toggle
+    // through `mutateUserSettings` so the change persists DB-side and
+    // every other in-tab consumer (the main Settings page) re-renders
+    // immediately via the user-settings bus. Errors are swallowed: the
+    // optimistic local update has already happened, and a toast lives
+    // closer to the user's edit surface (the Settings form).
+    void mutateUserSettings({
+      timeFormat: use24HourFormat ? "12h" : "24h",
+    }).catch((error) => {
+      logger.error(error as Error, { context: "toggleTimeFormat" });
+    });
   };
 
   const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
@@ -618,47 +716,49 @@ export function CalendarProvider({
   /**
    * Fetch events for a specific date range and merge with existing events
    */
-  const fetchEventsForRange = useCallback(
-    async (
-      timeMin: Date,
-      timeMax: Date,
-      calIds: string[],
-      mappings: CalendarColorMapping[],
-      metadata: CalendarMetadataMap
-    ): Promise<IEvent[]> => {
-      const url = new URL("/api/calendar/events", window.location.origin);
-      url.searchParams.set("calendarIds", calIds.join(","));
-      url.searchParams.set("timeMin", timeMin.toISOString());
-      url.searchParams.set("timeMax", timeMax.toISOString());
+  const fetchEventsForRange = async (
+    timeMin: Date,
+    timeMax: Date,
+    calIds: string[],
+    mappings: CalendarColorMapping[],
+    metadata: CalendarMetadataMap
+  ): Promise<IEvent[]> => {
+    const url = new URL("/api/calendar/events", window.location.origin);
+    url.searchParams.set("calendarIds", calIds.join(","));
+    url.searchParams.set("timeMin", timeMin.toISOString());
+    url.searchParams.set("timeMax", timeMax.toISOString());
 
-      const response = await fetch(url.toString());
+    const response = await fetch(url.toString());
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (errorData.requiresReauth) {
-          logger.log("API requires re-authentication");
-        }
-        throw new Error(errorData.error || "Failed to fetch events");
+    if (!response.ok) {
+      const errorData = await response.json();
+      if (errorData.requiresReauth) {
+        logger.log("API requires re-authentication");
       }
+      throw new Error(errorData.error || "Failed to fetch events");
+    }
 
-      const data = await response.json();
-      const googleEvents: GoogleCalendarEvent[] = data.events || [];
+    const data = await response.json();
+    const googleEvents: GoogleCalendarEvent[] = data.events || [];
 
-      // Transform events using color mappings + per-calendar metadata so
-      // shared-calendar events get a recognisable user attribution (#307).
-      return googleEvents.map((event) =>
-        transformGoogleEvent(event, mappings, metadata)
-      );
-    },
-    []
-  );
+    // Transform events using color mappings + per-calendar metadata so
+    // shared-calendar events get a recognisable user attribution (#307).
+    return googleEvents.map((event) =>
+      transformGoogleEvent(event, mappings, metadata)
+    );
+  };
 
   /**
    * Fetch the user's calendar list and return both the IDs (for downstream
    * `/api/calendar/events` queries) and a metadata map keyed by id (for the
    * `transformGoogleEvent` user-attribution fallback ladder, #307 Bug B).
+   *
+   * Side-effect: also populates `accessRoles` from the same payload so
+   * `getAccessRole` can hand out per-calendar permission roles to the UI
+   * (#266) without an extra round-trip. The route falls `accessRole` back
+   * to `"reader"` when Google omits it, so every entry has a role.
    */
-  const fetchCalendarList = useCallback(async (): Promise<{
+  const fetchCalendarList = async (): Promise<{
     ids: string[];
     metadata: CalendarMetadataMap;
   }> => {
@@ -681,6 +781,11 @@ export function CalendarProvider({
             },
           ])
         );
+        const roles: Record<string, TCalendarAccessRole> = {};
+        for (const cal of data.calendars) {
+          roles[cal.id] = cal.accessRole;
+        }
+        setAccessRoles(roles);
         logger.log("Fetched calendar list", { count: ids.length });
         return { ids, metadata };
       }
@@ -688,10 +793,14 @@ export function CalendarProvider({
       logger.log("Could not fetch calendar list, using primary only");
     }
     return { ids: ["primary"], metadata: new Map() };
-  }, []);
+  };
 
-  // Refresh events from server-side API
-  const refreshEvents = useCallback(async () => {
+  // Refresh events from server-side API. React Compiler memoizes this and
+  // the effect at the bottom of the body uses it via a ref, so the
+  // `react-hooks/exhaustive-deps` warning that demands a banned
+  // `useCallback` is a false positive (#271).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const refreshEvents = async () => {
     try {
       setIsLoading(true);
 
@@ -711,14 +820,12 @@ export function CalendarProvider({
         return;
       }
 
-      // Always re-fetch the calendar list on every refresh — the same
-      // staleness reasoning that drives the unconditional color refresh
-      // below applies here. If a user adds (or renames, or has the owner
-      // change the override on) a shared calendar in Google, the next
-      // manual refresh has to pick up the new id and metadata; otherwise
-      // the colors update (Bug A fix) but the user-attribution map is
-      // stale and every event from the new calendar falls through to the
-      // humanized-email rung instead of the friendly summary (#307 Bug B).
+      // Always re-fetch the calendar list on every refresh. This keeps
+      // both the user-attribution metadata (#307 Bug B) and the per-
+      // calendar accessRoles map (#266) fresh, so a permission change in
+      // Google is reflected on the next refresh without restarting the
+      // session. The same staleness reasoning drives the unconditional
+      // color refresh below.
       const list = await fetchCalendarList();
       const calIds = list.ids;
       const currentMetadata = list.metadata;
@@ -817,124 +924,105 @@ export function CalendarProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [
-    status,
-    session,
-    calendarMetadata,
-    colorMappings,
-    fetchCalendarList,
-    fetchEventsForRange,
-    userSettings.calendarFetchMonthsAhead,
-    userSettings.calendarFetchMonthsBehind,
-  ]);
+  };
 
   /**
    * Load additional events when navigating outside loaded range
    */
-  const loadEventsForDate = useCallback(
-    async (date: Date) => {
-      // Skip if not authenticated or already loading
-      if (
-        status !== "authenticated" ||
-        !loadedRange ||
-        isLoadingRangeRef.current
-      ) {
-        return;
+  const loadEventsForDate = async (date: Date) => {
+    // Skip if not authenticated or already loading
+    if (
+      status !== "authenticated" ||
+      !loadedRange ||
+      isLoadingRangeRef.current
+    ) {
+      return;
+    }
+
+    const targetMonth = startOfMonth(date);
+    const targetMonthEnd = endOfMonth(date);
+
+    // Check if target month is within loaded range
+    if (
+      !isBefore(targetMonth, loadedRange.start) &&
+      !isAfter(targetMonthEnd, loadedRange.end)
+    ) {
+      return; // Already loaded
+    }
+
+    isLoadingRangeRef.current = true;
+    logger.log("Loading events for date outside loaded range", {
+      date: date.toISOString(),
+    });
+
+    try {
+      let newStart = loadedRange.start;
+      let newEnd = loadedRange.end;
+
+      // Fetch earlier events
+      if (isBefore(targetMonth, loadedRange.start)) {
+        const fetchEnd = loadedRange.start;
+        const fetchStart = new Date(
+          targetMonth.getFullYear(),
+          targetMonth.getMonth() - 1,
+          1
+        );
+
+        const newEvents = await fetchEventsForRange(
+          fetchStart,
+          fetchEnd,
+          calendarIds.length > 0 ? calendarIds : ["primary"],
+          colorMappings,
+          calendarMetadata
+        );
+
+        setAllEvents((prev) => {
+          // Merge and dedupe events
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...uniqueNewEvents, ...prev];
+        });
+
+        newStart = fetchStart;
       }
 
-      const targetMonth = startOfMonth(date);
-      const targetMonthEnd = endOfMonth(date);
+      // Fetch later events
+      if (isAfter(targetMonthEnd, loadedRange.end)) {
+        const fetchStart = loadedRange.end;
+        const fetchEnd = new Date(
+          targetMonthEnd.getFullYear(),
+          targetMonthEnd.getMonth() + 2,
+          0
+        );
 
-      // Check if target month is within loaded range
-      if (
-        !isBefore(targetMonth, loadedRange.start) &&
-        !isAfter(targetMonthEnd, loadedRange.end)
-      ) {
-        return; // Already loaded
+        const newEvents = await fetchEventsForRange(
+          fetchStart,
+          fetchEnd,
+          calendarIds.length > 0 ? calendarIds : ["primary"],
+          colorMappings,
+          calendarMetadata
+        );
+
+        setAllEvents((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...prev, ...uniqueNewEvents];
+        });
+
+        newEnd = fetchEnd;
       }
 
-      isLoadingRangeRef.current = true;
-      logger.log("Loading events for date outside loaded range", {
-        date: date.toISOString(),
-      });
-
-      try {
-        let newStart = loadedRange.start;
-        let newEnd = loadedRange.end;
-
-        // Fetch earlier events
-        if (isBefore(targetMonth, loadedRange.start)) {
-          const fetchEnd = loadedRange.start;
-          const fetchStart = new Date(
-            targetMonth.getFullYear(),
-            targetMonth.getMonth() - 1,
-            1
-          );
-
-          const newEvents = await fetchEventsForRange(
-            fetchStart,
-            fetchEnd,
-            calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            // Merge and dedupe events
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...uniqueNewEvents, ...prev];
-          });
-
-          newStart = fetchStart;
-        }
-
-        // Fetch later events
-        if (isAfter(targetMonthEnd, loadedRange.end)) {
-          const fetchStart = loadedRange.end;
-          const fetchEnd = new Date(
-            targetMonthEnd.getFullYear(),
-            targetMonthEnd.getMonth() + 2,
-            0
-          );
-
-          const newEvents = await fetchEventsForRange(
-            fetchStart,
-            fetchEnd,
-            calendarIds.length > 0 ? calendarIds : ["primary"],
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...prev, ...uniqueNewEvents];
-          });
-
-          newEnd = fetchEnd;
-        }
-
-        setLoadedRange({ start: newStart, end: newEnd });
-      } catch (error) {
-        logger.error(error as Error, { context: "loadEventsForDate" });
-      } finally {
-        isLoadingRangeRef.current = false;
-      }
-    },
-    [
-      status,
-      loadedRange,
-      calendarIds,
-      calendarMetadata,
-      colorMappings,
-      fetchEventsForRange,
-    ]
-  );
+      setLoadedRange({ start: newStart, end: newEnd });
+    } catch (error) {
+      logger.error(error as Error, { context: "loadEventsForDate" });
+    } finally {
+      isLoadingRangeRef.current = false;
+    }
+  };
 
   /**
    * Ensure events for an entire calendar year are loaded.
@@ -946,95 +1034,83 @@ export function CalendarProvider({
    * requested year by fetching only the missing edges and merging them
    * into `allEvents`.
    */
-  const loadEventsForYear = useCallback(
-    async (year: number) => {
-      if (
-        status !== "authenticated" ||
-        !loadedRange ||
-        isLoadingRangeRef.current
-      ) {
-        return;
+  const loadEventsForYear = async (year: number) => {
+    if (
+      status !== "authenticated" ||
+      !loadedRange ||
+      isLoadingRangeRef.current
+    ) {
+      return;
+    }
+
+    const yearStart = new Date(year, 0, 1, 0, 0, 0, 0);
+    const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+
+    // Year already fully covered by loadedRange — nothing to do.
+    if (
+      !isBefore(yearStart, loadedRange.start) &&
+      !isAfter(yearEnd, loadedRange.end)
+    ) {
+      return;
+    }
+
+    isLoadingRangeRef.current = true;
+    logger.log("Loading events for full year", { year });
+
+    try {
+      const calIds = calendarIds.length > 0 ? calendarIds : ["primary"];
+
+      // Advance `loadedRange` after each successful edge fetch rather
+      // than batching both updates at the end. If the Dec edge throws
+      // after the Jan edge has already merged its events into state,
+      // the range pointer must reflect what's actually stored — else
+      // a retry would needlessly re-fetch Jan and rely on the dedupe
+      // guard to discard the duplicates.
+      if (isBefore(yearStart, loadedRange.start)) {
+        const newEvents = await fetchEventsForRange(
+          yearStart,
+          loadedRange.start,
+          calIds,
+          colorMappings,
+          calendarMetadata
+        );
+
+        setAllEvents((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...uniqueNewEvents, ...prev];
+        });
+
+        setLoadedRange((prev) => (prev ? { ...prev, start: yearStart } : prev));
       }
 
-      const yearStart = new Date(year, 0, 1, 0, 0, 0, 0);
-      const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+      if (isAfter(yearEnd, loadedRange.end)) {
+        const newEvents = await fetchEventsForRange(
+          loadedRange.end,
+          yearEnd,
+          calIds,
+          colorMappings,
+          calendarMetadata
+        );
 
-      // Year already fully covered by loadedRange — nothing to do.
-      if (
-        !isBefore(yearStart, loadedRange.start) &&
-        !isAfter(yearEnd, loadedRange.end)
-      ) {
-        return;
+        setAllEvents((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEvents = newEvents.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...prev, ...uniqueNewEvents];
+        });
+
+        setLoadedRange((prev) => (prev ? { ...prev, end: yearEnd } : prev));
       }
-
-      isLoadingRangeRef.current = true;
-      logger.log("Loading events for full year", { year });
-
-      try {
-        const calIds = calendarIds.length > 0 ? calendarIds : ["primary"];
-
-        // Advance `loadedRange` after each successful edge fetch rather
-        // than batching both updates at the end. If the Dec edge throws
-        // after the Jan edge has already merged its events into state,
-        // the range pointer must reflect what's actually stored — else
-        // a retry would needlessly re-fetch Jan and rely on the dedupe
-        // guard to discard the duplicates.
-        if (isBefore(yearStart, loadedRange.start)) {
-          const newEvents = await fetchEventsForRange(
-            yearStart,
-            loadedRange.start,
-            calIds,
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...uniqueNewEvents, ...prev];
-          });
-
-          setLoadedRange((prev) =>
-            prev ? { ...prev, start: yearStart } : prev
-          );
-        }
-
-        if (isAfter(yearEnd, loadedRange.end)) {
-          const newEvents = await fetchEventsForRange(
-            loadedRange.end,
-            yearEnd,
-            calIds,
-            colorMappings,
-            calendarMetadata
-          );
-
-          setAllEvents((prev) => {
-            const existingIds = new Set(prev.map((e) => e.id));
-            const uniqueNewEvents = newEvents.filter(
-              (e) => !existingIds.has(e.id)
-            );
-            return [...prev, ...uniqueNewEvents];
-          });
-
-          setLoadedRange((prev) => (prev ? { ...prev, end: yearEnd } : prev));
-        }
-      } catch (error) {
-        logger.error(error as Error, { context: "loadEventsForYear" });
-      } finally {
-        isLoadingRangeRef.current = false;
-      }
-    },
-    [
-      status,
-      loadedRange,
-      calendarIds,
-      calendarMetadata,
-      colorMappings,
-      fetchEventsForRange,
-    ]
-  );
+    } catch (error) {
+      logger.error(error as Error, { context: "loadEventsForYear" });
+    } finally {
+      isLoadingRangeRef.current = false;
+    }
+  };
 
   // Color mappings are initialized synchronously from localStorage in useState.
   // They are also refreshed from the API as part of refreshEvents.
@@ -1075,6 +1151,8 @@ export function CalendarProvider({
 
   // Keep a ref to the latest refreshEvents so the interval always calls the
   // current closure (avoids stale state from earlier effect runs).
+  // React Compiler memoizes `refreshEvents` based on its captured deps so
+  // the effect only re-runs when those underlying inputs actually change.
   const refreshEventsRef = useRef(refreshEvents);
   useEffect(() => {
     refreshEventsRef.current = refreshEvents;
@@ -1159,6 +1237,7 @@ export function CalendarProvider({
     clearFilter,
     refreshEvents,
     loadEventsForYear,
+    getAccessRole,
     isLoading,
     isAuthenticated,
     // Clamp defensively so a rogue DB write of 0 or a negative number never
