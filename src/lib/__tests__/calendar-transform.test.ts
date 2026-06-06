@@ -306,6 +306,36 @@ describe("transformGoogleEvent", () => {
 
       expect(result.category).toBe("Errands");
     });
+
+    it("falls back to private.category when shared.category is whitespace-only", () => {
+      // Regression: `??` on the raw strings short-circuits when shared is
+      // a non-`undefined` whitespace string, dropping the valid private
+      // value. The trim must run per-source so an empty/whitespace shared
+      // category cannot shadow a real private category.
+      const googleEvent = createGoogleEvent({
+        extendedProperties: {
+          shared: { category: "   " },
+          private: { category: "Work" },
+        },
+      });
+
+      const result = transformGoogleEvent(googleEvent, []);
+
+      expect(result.category).toBe("Work");
+    });
+
+    it("falls back to private.category when shared.category is the empty string", () => {
+      const googleEvent = createGoogleEvent({
+        extendedProperties: {
+          shared: { category: "" },
+          private: { category: "Personal" },
+        },
+      });
+
+      const result = transformGoogleEvent(googleEvent, []);
+
+      expect(result.category).toBe("Personal");
+    });
   });
 
   describe("Basic field mapping", () => {

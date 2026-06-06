@@ -22,14 +22,21 @@ import type { IEvent, TEventColor } from "@/types/calendar";
  * (per-user). Returns `undefined` for missing or whitespace-only values
  * so the consumer can branch cleanly without a sentinel.
  *
+ * The fallback is evaluated per-source after trimming so a whitespace-only
+ * `shared.category` doesn't shadow a valid `private.category` — `??` on
+ * the raw strings would short-circuit on a non-`undefined` empty/whitespace
+ * shared value and drop the private value.
+ *
  * Issue #211.
  */
 function extractCategory(googleEvent: GoogleCalendarEvent): string | undefined {
-  const raw =
-    googleEvent.extendedProperties?.shared?.category ??
-    googleEvent.extendedProperties?.private?.category;
-  const trimmed = raw?.trim();
-  return trimmed ? trimmed : undefined;
+  const sharedTrimmed =
+    googleEvent.extendedProperties?.shared?.category?.trim();
+  if (sharedTrimmed) return sharedTrimmed;
+  const privateTrimmed =
+    googleEvent.extendedProperties?.private?.category?.trim();
+  if (privateTrimmed) return privateTrimmed;
+  return undefined;
 }
 
 /**
