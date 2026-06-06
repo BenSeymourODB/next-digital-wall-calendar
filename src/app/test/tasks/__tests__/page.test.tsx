@@ -8,13 +8,16 @@
  *                     `/api/tasks/lists`, auto-selects the first, and
  *                     exposes a picker so the user can switch between
  *                     them. Renders loading / error / empty states.
+ *
+ * The live-mode picker selection persists across reloads via
+ * localStorage (#289 — `LIVE_LIST_LS_KEY`).
  */
 import { TaskList } from "@/components/tasks/task-list";
 import type { TaskListConfig } from "@/components/tasks/types";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import TestTasksPage from "../page";
+import TestTasksPage, { LIVE_LIST_LS_KEY } from "../page";
 
 let mockSearch = new URLSearchParams();
 
@@ -58,11 +61,16 @@ describe("/test/tasks page", () => {
     mockFetch.mockReset();
     mockTaskList.mockClear();
     global.fetch = mockFetch as unknown as typeof fetch;
+    // jsdom's localStorage is shared across tests in the same worker —
+    // clear it so each test starts from a clean slate (the persisted
+    // picker selection is the only key we touch here, but be defensive).
+    window.localStorage.clear();
   });
 
   afterEach(() => {
     vi.useRealTimers();
     global.fetch = originalFetch;
+    window.localStorage.clear();
   });
 
   describe("mock harness mode", () => {
@@ -341,6 +349,95 @@ describe("/test/tasks page", () => {
         (screen.getByTestId("test-tasks-live-picker") as HTMLSelectElement)
           .value
       ).toBe("list-b");
+    });
+  });
+
+  describe("picker persistence (#289)", () => {
+    const SAMPLE_LISTS = [
+      { id: "list-a", title: "Personal", updated: "2026-05-01T00:00Z" },
+      { id: "list-b", title: "Work", updated: "2026-05-01T00:00Z" },
+    ];
+
+    it("persists the user's picker choice to localStorage", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ lists: SAMPLE_LISTS }));
+
+      const user = userEvent.setup();
+      render(<TestTasksPage />);
+
+      const picker = (await screen.findByTestId(
+        "test-tasks-live-picker"
+      )) as HTMLSelectElement;
+      await user.selectOptions(picker, "list-b");
+
+      // `useLocalStorage` JSON-stringifies its value — match the on-disk
+      // shape, not the bare id, so a future caller swapping the codec
+      // won't silently pass this assertion.
+      expect(window.localStorage.getItem(LIVE_LIST_LS_KEY)).toBe(
+        JSON.stringify("list-b")
+      );
+    });
+
+    it("restores a previously persisted selection on mount", async () => {
+      window.localStorage.setItem(LIVE_LIST_LS_KEY, JSON.stringify("list-b"));
+      mockFetch.mockResolvedValueOnce(jsonResponse({ lists: SAMPLE_LISTS }));
+
+      render(<TestTasksPage />);
+
+      const picker = (await screen.findByTestId(
+        "test-tasks-live-picker"
+      )) as HTMLSelectElement;
+      await waitFor(() => expect(picker.value).toBe("list-b"));
+
+      // TaskList should be rendered with the persisted list, not lists[0].
+      await waitFor(() => expect(mockTaskList).toHaveBeenCalled());
+      const config = getRenderedConfig();
+      expect(config.lists[0]).toMatchObject({
+        listId: "list-b",
+        listTitle: "Work",
+      });
+    });
+
+    it("falls back to the first list when the persisted id is stale", async () => {
+      window.localStorage.setItem(
+        LIVE_LIST_LS_KEY,
+        JSON.stringify("list-deleted")
+      );
+      mockFetch.mockResolvedValueOnce(jsonResponse({ lists: SAMPLE_LISTS }));
+
+      render(<TestTasksPage />);
+
+      const picker = (await screen.findByTestId(
+        "test-tasks-live-picker"
+      )) as HTMLSelectElement;
+      // The `selectedList = lists.find(...) ?? lists[0]` fallback resolves
+      // the stale id to lists[0]; the `<select value>` is driven by the
+      // resolved list's id so the picker can never display "list-deleted".
+      await waitFor(() => expect(picker.value).toBe("list-a"));
+      expect(picker.value).not.toBe("list-deleted");
+    });
+
+    it("preserves the persisted selection across a 'Try again' retry", async () => {
+      window.localStorage.setItem(LIVE_LIST_LS_KEY, JSON.stringify("list-b"));
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500))
+        .mockResolvedValueOnce(jsonResponse({ lists: SAMPLE_LISTS }));
+
+      const user = userEvent.setup();
+      render(<TestTasksPage />);
+
+      await screen.findByTestId("test-tasks-live-error");
+      // Storage should still hold list-b through the error state — the
+      // retry handler must not clobber the user's saved choice.
+      expect(window.localStorage.getItem(LIVE_LIST_LS_KEY)).toBe(
+        JSON.stringify("list-b")
+      );
+
+      await user.click(screen.getByRole("button", { name: /try again/i }));
+
+      const picker = (await screen.findByTestId(
+        "test-tasks-live-picker"
+      )) as HTMLSelectElement;
+      await waitFor(() => expect(picker.value).toBe("list-b"));
     });
   });
 });

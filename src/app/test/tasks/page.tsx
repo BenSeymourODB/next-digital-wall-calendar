@@ -11,21 +11,38 @@
  *                     `/api/tasks/lists`, auto-selects the first, and
  *                     exposes a picker so they can switch between lists.
  *                     Renders loading / error / empty states. (#236)
+ *
+ * The live-mode picker selection is persisted to localStorage under
+ * `LIVE_LIST_LS_KEY` so it survives reloads (#289). Stale ids that no
+ * longer match a fetched list fall back to `lists[0]` via the
+ * `selectedList = lists.find(...) ?? lists[0]` resolver below.
  */
 import { TaskList } from "@/components/tasks/task-list";
 import {
   DEFAULT_LIST_COLORS,
   type GoogleTaskList,
-  type TaskApiError,
   type TaskListConfig,
   type TaskListsApiResponse,
 } from "@/components/tasks/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+
+// The `/api/tasks*` 401/403 error envelope (defined in `task-api-error.ts`).
+// The class form (`TaskApiError`) is consumed by the production hooks via
+// `instanceof`; the parsed JSON body here just needs the `requiresReauth`
+// flag, so a tiny structural type keeps this page free of the class import.
+interface TaskApiErrorBody {
+  error?: string;
+  requiresReauth?: boolean;
+}
+
+/** localStorage key for the live-mode picker selection (introduced in #289). */
+export const LIVE_LIST_LS_KEY = "test-tasks.live-list";
 
 const SINGLE_LIST_CONFIG: TaskListConfig = {
   id: "test-single",
@@ -85,7 +102,14 @@ type LiveStatus = "loading" | "error" | "reauth" | "ready";
 function LiveTasksPanel() {
   const [status, setStatus] = useState<LiveStatus>("loading");
   const [lists, setLists] = useState<GoogleTaskList[]>([]);
-  const [selectedListId, setSelectedListId] = useState<string>("");
+  // Persist the picker selection across reloads (#289). The fallback when
+  // the persisted id is missing or stale is handled by `selectedList` below,
+  // which resolves to `lists[0]` whenever `selectedListId` doesn't match
+  // a fetched list — so the on-fetch path no longer needs to seed the id.
+  const [selectedListId, setSelectedListId] = useLocalStorage<string>(
+    LIVE_LIST_LS_KEY,
+    ""
+  );
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
@@ -99,9 +123,9 @@ function LiveTasksPanel() {
           // doesn't crash the panel. The `requiresReauth` flag from the
           // API tells us a retry is futile — the user has to re-grant
           // the Google Tasks scope before any future request can succeed.
-          let body: TaskApiError | null = null;
+          let body: TaskApiErrorBody | null = null;
           try {
-            body = (await response.json()) as TaskApiError;
+            body = (await response.json()) as TaskApiErrorBody;
           } catch {
             body = null;
           }
@@ -118,7 +142,6 @@ function LiveTasksPanel() {
         if (cancelled) return;
         const fetched = data.lists ?? [];
         setLists(fetched);
-        setSelectedListId(fetched[0]?.id ?? "");
         setStatus("ready");
       })
       .catch(() => {
@@ -181,10 +204,11 @@ function LiveTasksPanel() {
             variant="secondary"
             onClick={() => {
               setStatus("loading");
-              // Reset selection so the next successful fetch's
-              // `setSelectedListId(fetched[0]?.id)` is unambiguous and we
-              // never render the picker against a stale id.
-              setSelectedListId("");
+              // Don't clobber the persisted picker selection on retry —
+              // the stale-id fallback (`selectedList ?? lists[0]`) already
+              // protects against a missing list, and clearing here would
+              // surprise the user by forgetting their saved choice after
+              // a transient gateway error.
               setReloadToken((token) => token + 1);
             }}
           >
