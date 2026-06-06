@@ -6,10 +6,11 @@ import {
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import { TRANSITION_SPEED_TO_MS } from "@/lib/calendar/transition-speed";
-import type { TCalendarAccessRole } from "@/types/calendar";
 import type {
   IEvent,
   IUser,
+  TAgendaGroupBy,
+  TCalendarAccessRole,
   TCalendarView,
   TEventColor,
   TWeekStartDay,
@@ -37,7 +38,7 @@ interface MockCalendarProviderProps {
   /** Which day the visible calendar week starts on (0 = Sunday, 1 = Monday) */
   weekStartDay?: TWeekStartDay;
   /** Initial agenda-mode group-by */
-  agendaModeGroupBy?: "date" | "color";
+  agendaModeGroupBy?: TAgendaGroupBy;
   /** Initial agenda-mode toggle (only meaningful for day/week views). */
   agendaMode?: boolean;
   /** Simulate loading delay in ms */
@@ -96,9 +97,8 @@ export function MockCalendarProvider({
   const [currentView, setCurrentViewState] = useState<TCalendarView>(view);
   const [use24HourFormat, setUse24HourFormatState] =
     useState<boolean>(initial24Hour);
-  const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
-    "date" | "color"
-  >(initialAgendaGroupBy);
+  const [agendaModeGroupBy, setAgendaModeGroupByState] =
+    useState<TAgendaGroupBy>(initialAgendaGroupBy);
   const [agendaMode, setAgendaModeState] = useState<boolean>(initialAgendaMode);
   const [weekStartDay, setWeekStartDayState] =
     useState<TWeekStartDay>(initialWeekStartDay);
@@ -136,7 +136,7 @@ export function MockCalendarProvider({
     setUse24HourFormatState(!use24HourFormat);
   };
 
-  const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
+  const setAgendaModeGroupBy = (groupBy: TAgendaGroupBy) => {
     setAgendaModeGroupByState(groupBy);
   };
 

@@ -11,7 +11,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import type { TWeekStartDay } from "@/types/calendar";
+import type { TAgendaGroupBy, TWeekStartDay } from "@/types/calendar";
 import { Settings } from "lucide-react";
 
 /**
@@ -21,7 +21,7 @@ import { Settings } from "lucide-react";
  *
  * - badgeVariant      — dot vs colored event badges
  * - use24HourFormat   — 24-hour vs 12-hour time display
- * - agendaModeGroupBy — date vs color grouping in agenda mode
+ * - agendaModeGroupBy — date vs color vs category grouping in agenda mode
  * - weekStartDay      — Sunday vs Monday week start
  *
  * The panel is meant to live next to the calendar toolbar; it's pure
@@ -116,7 +116,7 @@ export function CalendarSettingsPanel() {
             <RadioGroup
               value={agendaModeGroupBy}
               onValueChange={(value) =>
-                setAgendaModeGroupBy(value as "date" | "color")
+                setAgendaModeGroupBy(value as TAgendaGroupBy)
               }
               className="gap-2"
             >
@@ -133,6 +133,13 @@ export function CalendarSettingsPanel() {
                   data-testid="setting-agenda-group-by-color"
                 />
                 By color
+              </Label>
+              <Label className="flex items-center gap-2 text-sm">
+                <RadioGroupItem
+                  value="category"
+                  data-testid="setting-agenda-group-by-category"
+                />
+                By category
               </Label>
             </RadioGroup>
           </fieldset>

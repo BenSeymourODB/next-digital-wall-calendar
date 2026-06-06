@@ -27,6 +27,16 @@ export type TEventColor =
   | "orange";
 
 /**
+ * How `AgendaCalendar` (and `AgendaList` when `agendaMode` is on) buckets
+ * the events inside the current window. `"category"` was added with #211
+ * to surface the user-supplied `IEvent.category` label as a third
+ * grouping. Persists to `calendar-settings` localStorage; pre-#211
+ * payloads holding only `"date"` or `"color"` still satisfy this union
+ * (type-only widening, no runtime decoder).
+ */
+export type TAgendaGroupBy = "date" | "color" | "category";
+
+/**
  * Per-calendar permission level reported by Google's `CalendarList.list`.
  * Mirrors `gapi.client.calendar.CalendarListEntry.accessRole`. Lives here
  * (rather than in `CalendarProvider`) so server-only modules — the

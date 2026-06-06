@@ -78,6 +78,33 @@ function groupByColor(events: IEvent[]): Map<TEventColor, IEvent[]> {
   return groups;
 }
 
+const UNCATEGORISED_LABEL = "Uncategorised";
+
+function groupByCategory(events: IEvent[]): Map<string, IEvent[]> {
+  const groups = new Map<string, IEvent[]>();
+  for (const event of events) {
+    const trimmed = event.category?.trim();
+    const key = trimmed ? trimmed : UNCATEGORISED_LABEL;
+    const list = groups.get(key) ?? [];
+    list.push(event);
+    groups.set(key, list);
+  }
+  for (const [k, list] of groups.entries()) {
+    groups.set(k, sortByStart(list));
+  }
+  return groups;
+}
+
+function sortCategoryEntries(
+  entries: Array<[string, IEvent[]]>
+): Array<[string, IEvent[]]> {
+  return [...entries].sort(([a], [b]) => {
+    if (a === UNCATEGORISED_LABEL) return 1;
+    if (b === UNCATEGORISED_LABEL) return -1;
+    return a.localeCompare(b, undefined, { sensitivity: "base" });
+  });
+}
+
 /**
  * Parse a yyyy-MM-dd key as a local date so we don't shift to the prior
  * day in negative-UTC timezones.
@@ -217,6 +244,8 @@ export function AgendaList({
 
   const colorGroups =
     agendaModeGroupBy === "color" ? groupByColor(windowed) : null;
+  const categoryGroups =
+    agendaModeGroupBy === "category" ? groupByCategory(windowed) : null;
 
   return (
     <div
@@ -245,6 +274,27 @@ export function AgendaList({
                 </AgendaGroup>
               );
             }
+          )}
+        </div>
+      ) : agendaModeGroupBy === "category" && categoryGroups ? (
+        <div className="space-y-6 p-4">
+          {sortCategoryEntries(Array.from(categoryGroups.entries())).map(
+            ([category, categoryEvents]) => (
+              <AgendaGroup
+                key={category}
+                headerText={category}
+                eventCount={categoryEvents.length}
+              >
+                {categoryEvents.map((event) => (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    use24HourFormat={use24HourFormat}
+                    onClick={openModal}
+                  />
+                ))}
+              </AgendaGroup>
+            )
           )}
         </div>
       ) : (

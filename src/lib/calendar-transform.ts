@@ -31,9 +31,9 @@ function extractCategory(googleEvent: GoogleCalendarEvent): string | undefined {
   const trimmed = raw?.trim();
   return trimmed ? trimmed : undefined;
 }
- 
+
 /**
-* Per-calendar metadata used by the user-attribution fallback ladder.
+ * Per-calendar metadata used by the user-attribution fallback ladder.
  * Keyed by `calendarId`. Values mirror the slice of `UserCalendar` we need
  * to produce a human-readable label when neither `creator.displayName` nor
  * `organizer.displayName` is populated (the common case for shared
