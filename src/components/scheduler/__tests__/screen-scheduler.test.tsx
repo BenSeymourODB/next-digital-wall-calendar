@@ -4,8 +4,8 @@
  * Tests rendering of children and navigation controls integration.
  */
 import type { ScheduleConfig } from "@/components/scheduler/types";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScreenScheduler } from "../screen-scheduler";
 
 // Mock next/navigation
@@ -112,6 +112,109 @@ describe("ScreenScheduler", () => {
 
     expect(screen.getByTestId("screen-transition")).toBeInTheDocument();
     expect(screen.getByTestId("child-content")).toBeInTheDocument();
+  });
+
+  // Regression test for issue #221, bug 2: clicking the scheduler's
+  // own pause/resume button used to immediately re-pause the scheduler
+  // because the window-level interaction listener treated the click as
+  // generic user activity. The fix exempts the navigation controls'
+  // container subtree from the interaction detector.
+  describe("manual unpause via toggle button (#221, bug 2)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("a click outside the controls subtree pauses the scheduler", () => {
+      render(
+        <ScreenScheduler config={defaultConfig} autoStart>
+          <div data-testid="content">Content</div>
+        </ScreenScheduler>
+      );
+
+      expect(screen.getByRole("status")).toHaveAttribute(
+        "aria-label",
+        expect.stringMatching(/next screen in/i)
+      );
+
+      // Click on page content (outside navigation controls subtree).
+      act(() => {
+        fireEvent.click(screen.getByTestId("content"));
+      });
+
+      expect(screen.getByRole("status")).toHaveAttribute(
+        "aria-label",
+        "Screen rotation paused"
+      );
+    });
+
+    it("a click on the pause/resume button does NOT re-pause the scheduler", () => {
+      render(
+        <ScreenScheduler config={defaultConfig} autoStart>
+          <div data-testid="content">Content</div>
+        </ScreenScheduler>
+      );
+
+      // First, pause via a click outside the controls.
+      act(() => {
+        fireEvent.click(screen.getByTestId("content"));
+      });
+      expect(screen.getByRole("status")).toHaveAttribute(
+        "aria-label",
+        "Screen rotation paused"
+      );
+
+      // Now click the toggle button to resume. The click happens inside
+      // the controls subtree, so the interaction detector must ignore
+      // it; the scheduler should be unpaused and STAY unpaused.
+      const toggleButton = screen.getByRole("button", {
+        name: /resume rotation/i,
+      });
+      act(() => {
+        fireEvent.click(toggleButton);
+      });
+
+      // Without the fix, the click would have re-set the
+      // interaction-pause and the status would still read paused.
+      expect(screen.getByRole("status")).toHaveAttribute(
+        "aria-label",
+        expect.stringMatching(/next screen in/i)
+      );
+    });
+
+    it("pressing ArrowRight while interaction-paused resumes rotation", () => {
+      render(
+        <ScreenScheduler config={defaultConfig} autoStart>
+          <div data-testid="content">Content</div>
+        </ScreenScheduler>
+      );
+
+      // Trigger an interaction-pause via a click outside the controls.
+      act(() => {
+        fireEvent.click(screen.getByTestId("content"));
+      });
+      expect(screen.getByRole("status")).toHaveAttribute(
+        "aria-label",
+        "Screen rotation paused"
+      );
+
+      // Press ArrowRight to manually navigate. The keydown event fires
+      // on window — outside the controls container — and so without the
+      // explicit reset would extend the interaction-pause. The fix
+      // calls `resetInteractionPause()` in the arrow-key handlers, so
+      // navigation should resume rotation.
+      act(() => {
+        fireEvent.keyDown(window, { key: "ArrowRight" });
+      });
+
+      expect(screen.getByRole("status")).toHaveAttribute(
+        "aria-label",
+        expect.stringMatching(/next screen in/i)
+      );
+    });
   });
 
   it("applies transition config from schedule config", () => {

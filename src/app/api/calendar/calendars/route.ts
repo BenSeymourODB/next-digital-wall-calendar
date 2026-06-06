@@ -12,9 +12,22 @@ import {
 } from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
+import { narrowAccessRole, type TCalendarAccessRole } from "@/types/calendar";
 import { NextResponse } from "next/server";
 
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
+
+/**
+ * Access role exposed by `calendarList.list`. Determines whether the calendar
+ * accepts writes (used by the EventCreateDialog calendar picker — issue #268)
+ * and whether mutating actions render in `EventDetailModal` (#266).
+ *
+ * Re-exported from this module as an alias for the canonical
+ * {@link TCalendarAccessRole} so existing consumers (e.g.
+ * `useWritableCalendars`) keep working — but new code should import the
+ * canonical name from `@/types/calendar`.
+ */
+export type CalendarAccessRole = TCalendarAccessRole;
 
 /**
  * Calendar information returned by this endpoint
@@ -22,11 +35,26 @@ const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 export interface CalendarInfo {
   id: string;
   summary: string;
+  /**
+   * The user's per-calendar override of `summary` (set in the Google
+   * Calendar UI for shared calendars they don't own). When present it's the
+   * label the user expects to see for that calendar, so downstream code
+   * (e.g. the user-attribution fallback ladder in `transformGoogleEvent`)
+   * should prefer it over `summary`.
+   */
+  summaryOverride?: string;
   description?: string;
   backgroundColor: string;
   foregroundColor: string;
   primary: boolean;
   selected: boolean;
+  /**
+   * The user's permission level on this calendar (#266, #268). Always
+   * present — when Google omits the field on a `CalendarListEntry`, the
+   * route fails closed to `"reader"` so the event-create picker never
+   * offers a calendar we can't write to.
+   */
+  accessRole: CalendarAccessRole;
 }
 
 /**
@@ -125,11 +153,22 @@ export async function GET() {
       (item: GoogleCalendarListEntry): CalendarInfo => ({
         id: item.id,
         summary: item.summary ?? "",
+        summaryOverride: item.summaryOverride,
         description: item.description,
         backgroundColor: item.backgroundColor || "#4285f4", // Default Google blue
         foregroundColor: item.foregroundColor || "#ffffff",
         primary: item.primary || false,
         selected: item.selected || false,
+        // Default to "reader" when Google omits accessRole or sends an
+        // unknown value — fail-closed so the event-create picker (#268)
+        // never offers a calendar we can't write to, and so the
+        // EventDetailModal delete gating (#266) hides the button on
+        // unknown-role calendars rather than allowing a doomed mutation.
+        // The Zod schema keeps `accessRole` as a loose `string` (#277) to
+        // forward future Google additions unchanged; this narrow is the
+        // closing trust boundary that picks a safe default for anything
+        // we don't recognise.
+        accessRole: narrowAccessRole(item.accessRole),
       })
     );
 

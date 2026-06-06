@@ -13,8 +13,10 @@
 
 "use client";
 
-import { DistributedTracingModes } from "@microsoft/applicationinsights-common";
-import { ApplicationInsights } from "@microsoft/applicationinsights-web";
+import {
+  ApplicationInsights,
+  DistributedTracingModes,
+} from "@microsoft/applicationinsights-web";
 
 let appInsightsInstance: ApplicationInsights | null = null;
 let isInitialized = false;

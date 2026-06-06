@@ -26,6 +26,45 @@ export type TEventColor =
   | "purple"
   | "orange";
 
+/**
+ * Per-calendar permission level reported by Google's `CalendarList.list`.
+ * Mirrors `gapi.client.calendar.CalendarListEntry.accessRole`. Lives here
+ * (rather than in `CalendarProvider`) so server-only modules — the
+ * `/api/calendar/calendars` route and `lib/google-calendar-mappers` —
+ * can import it without pulling in client-side React. Used by the
+ * read-only delete-button gating (#266).
+ */
+export type TCalendarAccessRole =
+  | "freeBusyReader"
+  | "reader"
+  | "writer"
+  | "owner";
+
+const VALID_ACCESS_ROLES: ReadonlySet<TCalendarAccessRole> = new Set([
+  "freeBusyReader",
+  "reader",
+  "writer",
+  "owner",
+]);
+
+/**
+ * Narrow Google's `accessRole` string (or `undefined`) into the canonical
+ * {@link TCalendarAccessRole} union, failing closed to `"reader"` for
+ * missing or unrecognised values. The Zod schema in
+ * `lib/google-calendar-schemas.ts` keeps `accessRole` as a loose `string`
+ * (#277) so future Google additions pass validation; this helper is the
+ * route's trust boundary that picks a safe default for anything we don't
+ * recognise.
+ */
+export function narrowAccessRole(
+  value: string | undefined
+): TCalendarAccessRole {
+  return value !== undefined &&
+    VALID_ACCESS_ROLES.has(value as TCalendarAccessRole)
+    ? (value as TCalendarAccessRole)
+    : "reader";
+}
+
 export interface IUser {
   id: string;
   name: string;

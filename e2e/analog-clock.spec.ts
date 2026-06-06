@@ -190,6 +190,36 @@ test.describe("Analog Clock - Radial Display", () => {
     });
   });
 
+  test.describe("Title rendering (#310 — 2-line wrap)", () => {
+    test("renders titles via <textPath> on each event arc (no single-line ellipsis)", async ({
+      page,
+    }) => {
+      await page.goto("/test/analog-clock?scenario=default&hour=10&min=10");
+      await expect(page.getByTestId("analog-clock")).toBeVisible();
+
+      // Every event arc with arcSpan ≥ 20° renders a title text node.
+      // Default scenario seeds 5 arcs, the smallest of which (d2 Deadline,
+      // 30 min = 15°) is below the gate; the other 4 should have titles.
+      const titles = page.locator('[data-testid^="event-title-"]');
+      await expect(titles).not.toHaveCount(0);
+
+      // The longest-title arc ("Family Game Night") is rendered in full —
+      // either on a single curved line if the arc is wide enough, or split
+      // across two textPaths if not. In neither case does it end with the
+      // old hard-coded "..." truncation marker.
+      const familyGameTitle = page.getByTestId("event-title-d1");
+      await expect(familyGameTitle).toBeVisible();
+      const text = await familyGameTitle.textContent();
+      expect(text).toContain("Family Game");
+      expect(text).toContain("Night");
+
+      await page.screenshot({
+        path: "test-results/screenshots/clock-default-titles.png",
+        fullPage: true,
+      });
+    });
+  });
+
   test.describe("Clock Face Accuracy", () => {
     test("shows correct hand positions at 3:00", async ({ page }) => {
       await page.goto("/test/analog-clock?scenario=empty&hour=3&min=0");

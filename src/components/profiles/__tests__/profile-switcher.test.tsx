@@ -4,7 +4,7 @@
 import { type ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ProfileProvider } from "../profile-context";
+import { type Profile, ProfileProvider } from "../profile-context";
 import { ProfileSwitcher } from "../profile-switcher";
 
 // Mock fetch
@@ -29,7 +29,7 @@ vi.stubGlobal("localStorage", {
 });
 
 // Mock profiles data
-const mockProfiles = [
+const mockProfiles: Profile[] = [
   {
     id: "profile-admin-1",
     userId: "user-1",
