@@ -2,8 +2,8 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
-import type { IUser, TCalendarView, TEventColor } from "@/types/calendar";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { addDays, format, isSameDay, startOfDay, subDays } from "date-fns";
@@ -26,41 +26,10 @@ import { DayCalendar } from "../DayCalendar";
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
-  return {
-    selectedDate: new Date(),
-    view: "day" as TCalendarView,
-    setView: vi.fn(),
-    agendaMode: false,
-    setAgendaMode: vi.fn(),
-    agendaModeGroupBy: "date",
-    setAgendaModeGroupBy: vi.fn(),
-    use24HourFormat: true,
-    toggleTimeFormat: vi.fn(),
-    setSelectedDate: vi.fn(),
-    selectedUserId: "all",
-    setSelectedUserId: vi.fn(),
-    badgeVariant: "colored",
-    setBadgeVariant: vi.fn(),
-    selectedColors: [] as TEventColor[],
-    filterEventsBySelectedColors: vi.fn(),
-    filterEventsBySelectedUser: vi.fn(),
-    users: [] as IUser[],
-    events: [],
-    addEvent: vi.fn(),
-    updateEvent: vi.fn(),
-    removeEvent: vi.fn(),
-    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
-    deleteEvent: vi.fn().mockResolvedValue(undefined),
-    clearFilter: vi.fn(),
-    refreshEvents: vi.fn(),
-    loadEventsForYear: vi.fn(),
-    isLoading: false,
-    isAuthenticated: true,
-    maxEventsPerDay: 3,
-    weekStartDay: 0,
-    setWeekStartDay: vi.fn(),
+  return makeCalendarContext({
+    view: "day",
     ...overrides,
-  };
+  });
 }
 
 function renderWithContext(overrides: Partial<ICalendarContext> = {}) {
@@ -373,8 +342,8 @@ describe("DayCalendar", () => {
     });
   });
 
-  describe("Initial scroll position (#214)", () => {
-    // HOUR_HEIGHT_PX = 48; working hours start at 07:00
+  describe("Initial scroll position (#214, #288)", () => {
+    // HOUR_HEIGHT_PX = 48; working hours start at 07:00 by default.
     // Expected scrollTop: 7 * 48 = 336
     it("auto-scrolls the time grid to ~7am on mount", () => {
       renderWithContext({ selectedDate: new Date() });
@@ -385,6 +354,70 @@ describe("DayCalendar", () => {
     it("does not render the grid (and thus does not scroll) in agenda mode", () => {
       renderWithContext({ selectedDate: new Date(), agendaMode: true });
       expect(screen.queryByTestId("day-calendar-grid")).not.toBeInTheDocument();
+    });
+
+    // Issue #288: the start hour is now a per-user setting threaded
+    // through `workingHoursStart` on `ICalendarContext`. A user who
+    // sets 05:00 should land on row 5 instead of row 7.
+    it("honours a non-default workingHoursStart from context (early shift)", () => {
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 5,
+      });
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(5 * 48);
+    });
+
+    it("honours a non-default workingHoursStart from context (night owl)", () => {
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 14,
+      });
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(14 * 48);
+    });
+
+    it("accepts workingHoursStart at the 0 and 23 boundaries", () => {
+      const { unmount } = renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 0,
+      });
+      expect(screen.getByTestId("day-calendar-grid").scrollTop).toBe(0);
+      unmount();
+
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 23,
+      });
+      expect(screen.getByTestId("day-calendar-grid").scrollTop).toBe(23 * 48);
+    });
+
+    // Mount-only effect by design: a user mid-scroll shouldn't have
+    // their position yanked when they change the setting. The new
+    // value picks up on the next remount (agenda toggle, navigation,
+    // etc.). If a future refactor adds `workingHoursStart` to the
+    // effect dep array, this test will fail.
+    it("does not re-scroll when workingHoursStart changes between renders", () => {
+      const selectedDate = new Date();
+      const { rerender } = render(
+        <CalendarContext.Provider
+          value={createMockContext({ selectedDate, workingHoursStart: 7 })}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(7 * 48);
+
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({ selectedDate, workingHoursStart: 14 })}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+      // Same grid instance, no remount — scrollTop must be unchanged.
+      expect(screen.getByTestId("day-calendar-grid").scrollTop).toBe(7 * 48);
     });
   });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 import type { Page, PaginationState, Recipe, ZoomLevel } from "./types";
 
 /**
@@ -153,32 +153,28 @@ export function useRecipePagination({
 }: UseRecipePaginationProps): UseRecipePaginationReturn {
   const [rawCurrentPage, setRawCurrentPage] = useState(0);
 
-  // Calculate pagination based on zoom and container height
-  const pagination = useMemo(() => {
-    return calculatePagination(recipe, zoomLevel, containerHeight);
-  }, [recipe, zoomLevel, containerHeight]);
+  // React Compiler memoizes the recomputation when inputs are stable.
+  const pagination = calculatePagination(recipe, zoomLevel, containerHeight);
 
-  // Compute bounded current page - ensures page is always valid even when
-  // totalPages decreases due to zooming out. This avoids needing to call
-  // setState in an effect which causes cascading renders.
-  const currentPage = useMemo(() => {
-    return Math.max(0, Math.min(rawCurrentPage, pagination.totalPages - 1));
-  }, [rawCurrentPage, pagination.totalPages]);
-
-  const nextPage = useCallback(() => {
-    setRawCurrentPage((prev) => Math.min(prev + 1, pagination.totalPages - 1));
-  }, [pagination.totalPages]);
-
-  const previousPage = useCallback(() => {
-    setRawCurrentPage((prev) => Math.max(prev - 1, 0));
-  }, []);
-
-  const goToPage = useCallback(
-    (page: number) => {
-      setRawCurrentPage(Math.max(0, Math.min(page, pagination.totalPages - 1)));
-    },
-    [pagination.totalPages]
+  // Bounded current page — stays valid even when totalPages shrinks because
+  // the user zoomed out. Computed inline to avoid the setState-in-effect
+  // pattern that would cascade renders.
+  const currentPage = Math.max(
+    0,
+    Math.min(rawCurrentPage, pagination.totalPages - 1)
   );
+
+  const nextPage = () => {
+    setRawCurrentPage((prev) => Math.min(prev + 1, pagination.totalPages - 1));
+  };
+
+  const previousPage = () => {
+    setRawCurrentPage((prev) => Math.max(prev - 1, 0));
+  };
+
+  const goToPage = (page: number) => {
+    setRawCurrentPage(Math.max(0, Math.min(page, pagination.totalPages - 1)));
+  };
 
   return {
     currentPage,

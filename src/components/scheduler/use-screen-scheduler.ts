@@ -276,14 +276,41 @@ export function useScreenScheduler(
     transitionDirection,
   };
 
-  const controls: SchedulerControls = {
+  // Stable `controls` object identity is required so that consumers
+  // listing `controls` in a `useEffect` dependency array do not re-run
+  // their effects on every internal state change (e.g. the 1s countdown
+  // tick). The live implementations close over current state and are
+  // refreshed in a commit-phase effect; the exposed wrappers are
+  // created once via `useState`'s initializer and dispatch through the
+  // ref. This pattern is compatible with React Compiler — no
+  // `useMemo`/`useCallback` involved.
+  const liveControlsRef = useRef<SchedulerControls>({
     start,
     stop,
     pause,
     resume,
     navigateToNext,
     navigateToPrevious,
-  };
+  });
+  useEffect(() => {
+    liveControlsRef.current = {
+      start,
+      stop,
+      pause,
+      resume,
+      navigateToNext,
+      navigateToPrevious,
+    };
+  });
+
+  const [controls] = useState<SchedulerControls>(() => ({
+    start: () => liveControlsRef.current.start(),
+    stop: () => liveControlsRef.current.stop(),
+    pause: () => liveControlsRef.current.pause(),
+    resume: () => liveControlsRef.current.resume(),
+    navigateToNext: () => liveControlsRef.current.navigateToNext(),
+    navigateToPrevious: () => liveControlsRef.current.navigateToPrevious(),
+  }));
 
   return { state, controls };
 }

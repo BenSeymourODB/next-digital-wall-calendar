@@ -249,6 +249,7 @@ export function AgendaCalendar() {
     isLoading,
     agendaModeGroupBy,
     setAgendaModeGroupBy,
+    getAccessRole,
   } = useCalendar();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
@@ -435,6 +436,9 @@ export function AgendaCalendar() {
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
+        accessRole={
+          selectedEvent ? getAccessRole(selectedEvent.calendarId) : undefined
+        }
       />
     </div>
   );

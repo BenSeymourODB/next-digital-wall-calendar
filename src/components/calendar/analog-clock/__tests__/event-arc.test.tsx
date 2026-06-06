@@ -170,6 +170,28 @@ describe("EventArc", () => {
     expect(group.getAttribute("aria-label")).toBe("Event: Family Game Night");
   });
 
+  describe("forceHideTitle", () => {
+    it("does not render the title <g> when true (overflow path delegates to FloatingLabel)", () => {
+      renderArc({ forceHideTitle: true });
+      expect(screen.queryByTestId("event-title-evt-1")).not.toBeInTheDocument();
+    });
+
+    it("still renders the leading event emoji on the arc when true", () => {
+      renderArc({ forceHideTitle: true });
+      expect(screen.getByTestId("event-emoji-evt-1")).toBeInTheDocument();
+    });
+
+    it("still renders the colored arc background when true", () => {
+      renderArc({ forceHideTitle: true });
+      expect(screen.getByTestId("event-arc-evt-1")).toBeInTheDocument();
+    });
+
+    it("renders the title normally when false (default)", () => {
+      renderArc({ forceHideTitle: false });
+      expect(screen.getByTestId("event-title-evt-1")).toBeInTheDocument();
+    });
+  });
+
   it("renders different colored arcs for different events", () => {
     const redEvent: ClockEvent = {
       ...baseEvent,

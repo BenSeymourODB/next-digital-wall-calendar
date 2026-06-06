@@ -96,4 +96,20 @@ export interface EventArcProps {
    * after a modal closes.
    */
   onEventClick?: (eventId: string, trigger: SVGGElement) => void;
+  /**
+   * When true, suppresses in-arc title rendering even if the title would
+   * have fit. Used by AnalogClock for overflowing events whose titles are
+   * promoted to a sibling FloatingLabel (#311). The leading event emoji
+   * still renders so the arc remains visually identifiable.
+   */
+  forceHideTitle?: boolean;
+  /**
+   * Optional precomputed title layout. When provided, EventArc skips the
+   * internal `computeArcTitleLayout` call and uses this value — keeps the
+   * arc's `fit.lines` decision strictly identical to the one AnalogClock
+   * used to derive `forceHideTitle`, so the two surfaces cannot silently
+   * disagree if the underlying inputs ever drift apart. When omitted,
+   * EventArc still works standalone (e.g. tests, ad-hoc usage).
+   */
+  precomputedLayout?: import("./arc-title-layout").ArcTitleLayout;
 }
