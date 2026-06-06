@@ -12,7 +12,7 @@ import {
 } from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
-import { narrowAccessRole, type TCalendarAccessRole } from "@/types/calendar";
+import { type TCalendarAccessRole, narrowAccessRole } from "@/types/calendar";
 import { NextResponse } from "next/server";
 
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
