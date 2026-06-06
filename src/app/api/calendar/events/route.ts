@@ -42,18 +42,36 @@ const SUPPORTED_COLORS = Object.keys(
   TAILWIND_TO_GOOGLE_COLOR_ID
 ) as TEventColor[];
 
+/**
+ * Wire shape for per-calendar errors surfaced in the partial-failure response.
+ * Mirrors {@link InternalCalendarFetchError} minus the internal `logged` flag,
+ * which is a server-side dedupe guard and must not leak to clients.
+ */
 interface CalendarFetchError {
   calendarId: string;
   error: string;
   status?: number;
+}
+
+interface InternalCalendarFetchError extends CalendarFetchError {
   /**
    * `true` when the producer has already logged a structured `logger.error`
    * for this failure (e.g. validation errors from `parseGoogleResponse`).
    * The outer aggregation loop honours this to avoid double-logging the same
    * failure with a generic "Calendar fetch error" envelope on top of the
-   * rich validation entry.
+   * rich validation entry. Internal-only — stripped before serialisation.
    */
   logged?: boolean;
+}
+
+/**
+ * Project an internal per-calendar error onto its public wire shape, dropping
+ * the server-only `logged` dedupe flag.
+ */
+function toWireFetchError(e: InternalCalendarFetchError): CalendarFetchError {
+  const wire: CalendarFetchError = { calendarId: e.calendarId, error: e.error };
+  if (e.status !== undefined) wire.status = e.status;
+  return wire;
 }
 
 /**
@@ -68,7 +86,7 @@ async function fetchEventsFromCalendar(
   singleEvents: boolean
 ): Promise<{
   events: GoogleCalendarEvent[];
-  error?: CalendarFetchError;
+  error?: InternalCalendarFetchError;
   summary?: string;
   timeZone?: string;
 }> {
@@ -198,7 +216,7 @@ export async function GET(request: NextRequest) {
 
     // Collect events and errors
     const allEvents: GoogleCalendarEvent[] = [];
-    const errors: CalendarFetchError[] = [];
+    const errors: InternalCalendarFetchError[] = [];
     let summary: string | undefined;
     let timeZone: string | undefined;
 
@@ -268,9 +286,11 @@ export async function GET(request: NextRequest) {
       timeZone,
     };
 
-    // Include errors array if there were partial failures
+    // Include errors array if there were partial failures. Strip the
+    // server-only `logged` flag so the internal dedupe guard does not leak
+    // onto the wire — clients should see only the public error shape.
     if (errors.length > 0) {
-      response.errors = errors;
+      response.errors = errors.map(toWireFetchError);
     }
 
     return NextResponse.json(response);

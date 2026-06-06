@@ -733,6 +733,59 @@ describe("/api/calendar/events", () => {
           expect.objectContaining({ message: "Calendar fetch error" }),
           expect.anything()
         );
+
+        // The internal `logged` dedupe flag must not leak onto the wire.
+        // Public callers should see only the documented error shape.
+        expect(data.errors![0]).not.toHaveProperty("logged");
+      });
+
+      it("strips the internal logged flag from partial-failure errors[]", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        // Two calendars: one succeeds, the other returns a validation failure
+        // (no `id`) so its CalendarFetchError carries `logged: true` server-side.
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "evt-good",
+                    summary: "Good event",
+                    start: { dateTime: "2026-05-01T14:00:00Z" },
+                    end: { dateTime: "2026-05-01T15:00:00Z" },
+                  },
+                ],
+              }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: [{ summary: "no id" }],
+              }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=primary,family%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: Array<{ id: string }>;
+          errors?: Array<Record<string, unknown>>;
+        }>(response);
+
+        expect(status).toBe(200);
+        expect(data.errors).toHaveLength(1);
+        const wireError = data.errors![0];
+        expect(wireError).not.toHaveProperty("logged");
+        expect(Object.keys(wireError).sort()).toEqual(
+          ["calendarId", "error", "status"].sort()
+        );
       });
     });
 
