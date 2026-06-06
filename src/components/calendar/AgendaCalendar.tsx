@@ -34,7 +34,10 @@ function filterEventsForNextNDays(events: IEvent[], days: number): IEvent[] {
  * query (case-insensitive). An empty/whitespace-only query returns the
  * list unchanged.
  */
-function filterEventsBySearch(events: IEvent[], query: string): IEvent[] {
+export function filterEventsBySearch(
+  events: IEvent[],
+  query: string
+): IEvent[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return events;
   return events.filter((event) => {
@@ -47,7 +50,7 @@ function filterEventsBySearch(events: IEvent[], query: string): IEvent[] {
 /**
  * Sort events by start time
  */
-function sortEventsByStartTime(events: IEvent[]): IEvent[] {
+export function sortEventsByStartTime(events: IEvent[]): IEvent[] {
   return [...events].sort((a, b) => {
     const aStart = new Date(a.startDate);
     const bStart = new Date(b.startDate);
@@ -103,7 +106,9 @@ const COLOR_ORDER: TEventColor[] = [
 /**
  * Group events by color
  */
-function groupEventsByColor(events: IEvent[]): Map<TEventColor, IEvent[]> {
+export function groupEventsByColor(
+  events: IEvent[]
+): Map<TEventColor, IEvent[]> {
   const groups = new Map<TEventColor, IEvent[]>();
 
   events.forEach((event) => {
@@ -244,10 +249,11 @@ export function AgendaCalendar() {
     isLoading,
     agendaModeGroupBy,
     setAgendaModeGroupBy,
+    getAccessRole,
   } = useCalendar();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
 
   const openModal = (event: IEvent, trigger: HTMLElement) => {
@@ -307,32 +313,43 @@ export function AgendaCalendar() {
         </div>
       </div>
 
-      <div className="relative">
-        <Search
-          className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
-          aria-hidden="true"
-        />
-        <Input
-          type="search"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search events by title, description, or attendee…"
-          aria-label="Search events"
-          data-testid="agenda-search-input"
-          className="pr-9 pl-9"
-        />
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search
+            className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+            aria-hidden="true"
+          />
+          <Input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search events by title, description, or attendee…"
+            aria-label="Search events"
+            data-testid="agenda-search-input"
+            className="pr-9 pl-9"
+          />
+          {searchActive && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
+              data-testid="agenda-search-clear"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
         {searchActive && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => setSearchQuery("")}
-            aria-label="Clear search"
-            data-testid="agenda-search-clear"
-            className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
+          <span
+            className="text-muted-foreground shrink-0 text-xs tabular-nums"
+            data-testid="agenda-search-match-count"
+            aria-hidden="true"
           >
-            <X className="h-4 w-4" />
-          </Button>
+            {resultCount} {resultCount === 1 ? "match" : "matches"}
+          </span>
         )}
       </div>
 
@@ -419,6 +436,9 @@ export function AgendaCalendar() {
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
+        accessRole={
+          selectedEvent ? getAccessRole(selectedEvent.calendarId) : undefined
+        }
       />
     </div>
   );

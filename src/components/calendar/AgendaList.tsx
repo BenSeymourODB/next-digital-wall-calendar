@@ -191,9 +191,9 @@ export function AgendaList({
   rangeEnd,
   emptyLabel = "No events in this range",
 }: AgendaListProps) {
-  const { use24HourFormat, agendaModeGroupBy } = useCalendar();
+  const { use24HourFormat, agendaModeGroupBy, getAccessRole } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
 
   const openModal = (event: IEvent, trigger: HTMLElement) => {
     triggerRef.current = trigger;
@@ -278,6 +278,9 @@ export function AgendaList({
         onClose={() => setSelectedEvent(null)}
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
+        accessRole={
+          selectedEvent ? getAccessRole(selectedEvent.calendarId) : undefined
+        }
       />
     </div>
   );

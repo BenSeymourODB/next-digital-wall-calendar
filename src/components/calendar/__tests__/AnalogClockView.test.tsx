@@ -2,73 +2,20 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
-import type {
-  IEvent,
-  IUser,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
-import { render, screen } from "@testing-library/react";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
+import type { IEvent } from "@/types/calendar";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalogClockView } from "../AnalogClockView";
-
-function createMockEvent(overrides: Partial<IEvent> = {}): IEvent {
-  return {
-    id: "evt",
-    title: "Test Event",
-    startDate: new Date().toISOString(),
-    endDate: new Date().toISOString(),
-    color: "blue",
-    description: "",
-    isAllDay: false,
-    calendarId: "primary",
-    user: {
-      id: "user-1",
-      name: "Test User",
-      picturePath: null,
-    },
-    ...overrides,
-  };
-}
 
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
 ): ICalendarContext {
-  return {
-    selectedDate: new Date(),
-    view: "clock" as TCalendarView,
-    setView: vi.fn(),
-    agendaMode: false,
-    setAgendaMode: vi.fn(),
-    agendaModeGroupBy: "date",
-    setAgendaModeGroupBy: vi.fn(),
-    use24HourFormat: true,
-    toggleTimeFormat: vi.fn(),
-    setSelectedDate: vi.fn(),
-    selectedUserId: "all",
-    setSelectedUserId: vi.fn(),
-    badgeVariant: "colored",
-    setBadgeVariant: vi.fn(),
-    selectedColors: [] as TEventColor[],
-    filterEventsBySelectedColors: vi.fn(),
-    filterEventsBySelectedUser: vi.fn(),
-    users: [] as IUser[],
-    events: [] as IEvent[],
-    addEvent: vi.fn(),
-    updateEvent: vi.fn(),
-    removeEvent: vi.fn(),
-    createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
-    deleteEvent: vi.fn().mockResolvedValue(undefined),
-    clearFilter: vi.fn(),
-    refreshEvents: vi.fn(),
-    loadEventsForYear: vi.fn(),
-    isLoading: false,
-    isAuthenticated: true,
-    maxEventsPerDay: 3,
-    weekStartDay: 0,
-    setWeekStartDay: vi.fn(),
+  return makeCalendarContext({
+    view: "clock",
     ...overrides,
-  };
+  });
 }
 
 function renderView(overrides: Partial<ICalendarContext> = {}) {
@@ -185,5 +132,95 @@ describe("AnalogClockView", () => {
     expect(
       screen.queryByTestId("event-arc-all-day-only")
     ).not.toBeInTheDocument();
+  });
+
+  describe("event click opens EventDetailModal", () => {
+    function makeTimedEvent(): IEvent {
+      // Choose a time guaranteed to fall in the current 12-hour AM/PM period
+      const start = new Date();
+      start.setMinutes(start.getMinutes() + 5);
+      const end = new Date(start);
+      end.setMinutes(end.getMinutes() + 30);
+
+      return createMockEvent({
+        id: "timed",
+        title: "Project Demo",
+        description: "Show the new dashboard",
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        isAllDay: false,
+      });
+    }
+
+    function makeAllDayEvent(): IEvent {
+      const today = new Date();
+      const start = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      return createMockEvent({
+        id: "school-holiday",
+        title: "School Holiday",
+        description: "No school today",
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        isAllDay: true,
+      });
+    }
+
+    it("opens the modal with event details when an arc is clicked", () => {
+      renderView({ events: [makeTimedEvent()] });
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("event-arc-group-timed"));
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toHaveTextContent("Project Demo");
+      expect(screen.getByTestId("event-detail-description")).toHaveTextContent(
+        "Show the new dashboard"
+      );
+    });
+
+    it("opens the modal when Enter is pressed on a focused arc", () => {
+      renderView({ events: [makeTimedEvent()] });
+      const arc = screen.getByTestId("event-arc-group-timed");
+      fireEvent.keyDown(arc, { key: "Enter" });
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("renders all-day items as buttons (a11y)", () => {
+      renderView({ events: [makeAllDayEvent()] });
+      const item = screen.getByTestId(
+        "analog-clock-all-day-school-holiday-button"
+      );
+      expect(item.tagName).toBe("BUTTON");
+    });
+
+    it("opens the modal when an all-day item is clicked", () => {
+      renderView({ events: [makeAllDayEvent()] });
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      fireEvent.click(
+        screen.getByTestId("analog-clock-all-day-school-holiday-button")
+      );
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toHaveTextContent("School Holiday");
+    });
+
+    it("closes the modal via the dialog's close button", () => {
+      renderView({ events: [makeTimedEvent()] });
+
+      fireEvent.click(screen.getByTestId("event-arc-group-timed"));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /close/i }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 });

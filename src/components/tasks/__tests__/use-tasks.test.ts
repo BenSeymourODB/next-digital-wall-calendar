@@ -3,6 +3,7 @@
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TaskApiError } from "../task-api-error";
 import type { GoogleTask, TaskListConfig } from "../types";
 import { useTasks } from "../use-tasks";
 
@@ -403,6 +404,93 @@ describe("useTasks", () => {
       expect(result.current.tasks).toEqual([]);
     });
 
+    it("rejects with TaskApiError carrying status + requiresReauth on 401 session expiry (#261)", async () => {
+      // 401 + requiresReauth: true is the most common real-world trigger —
+      // see /api/tasks routes when the session is expired or
+      // RefreshTokenError fires.
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: () =>
+          Promise.resolve({
+            error: "Session expired. Please sign in again.",
+            requiresReauth: true,
+          }),
+      });
+
+      const config = createMockConfig();
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      const captured = result.current.error;
+      expect(captured).toBeInstanceOf(TaskApiError);
+      expect((captured as TaskApiError).status).toBe(401);
+      expect((captured as TaskApiError).requiresReauth).toBe(true);
+      expect(captured?.message).toMatch(/sign in again/i);
+    });
+
+    it("rejects with TaskApiError carrying status + requiresReauth on 403 (#261)", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 403,
+        json: () =>
+          Promise.resolve({
+            error: "Re-authentication required: Google Tasks scope missing.",
+            requiresReauth: true,
+          }),
+      });
+
+      const config = createMockConfig();
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      const captured = result.current.error;
+      expect(captured).toBeInstanceOf(TaskApiError);
+      expect((captured as TaskApiError).status).toBe(403);
+      expect((captured as TaskApiError).requiresReauth).toBe(true);
+      expect(captured?.message).toMatch(/google tasks/i);
+    });
+
+    it("rejects with TaskApiError on generic 500 (no requiresReauth flag)", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ error: "Server error" }),
+      });
+
+      const config = createMockConfig();
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      const captured = result.current.error;
+      expect(captured).toBeInstanceOf(TaskApiError);
+      expect((captured as TaskApiError).status).toBe(500);
+      expect((captured as TaskApiError).requiresReauth).toBe(false);
+    });
+
+    it("keeps network errors as plain Error (not TaskApiError)", async () => {
+      mockFetch.mockRejectedValue(new TypeError("Network error"));
+
+      const config = createMockConfig();
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      expect(result.current.error).toBeInstanceOf(Error);
+      expect(result.current.error).not.toBeInstanceOf(TaskApiError);
+    });
+
     it("fails all tasks when one list fetch fails (partial failure)", async () => {
       mockFetch
         .mockResolvedValueOnce({
@@ -522,6 +610,86 @@ describe("useTasks", () => {
           });
         })
       ).rejects.toThrow();
+    });
+
+    it("rejects updateTask with TaskApiError on 403 + requiresReauth (#261)", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              tasks: [createMockTask({ id: "task-1" })],
+            }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          json: () =>
+            Promise.resolve({
+              error: "Re-authentication required: Google Tasks scope missing.",
+              requiresReauth: true,
+            }),
+        });
+
+      const config = createMockConfig();
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.tasks).toHaveLength(1);
+      });
+
+      let thrown: unknown;
+      await act(async () => {
+        try {
+          await result.current.updateTask("task-1", "list-1", {
+            status: "completed",
+          });
+        } catch (err) {
+          thrown = err;
+        }
+      });
+
+      expect(thrown).toBeInstanceOf(TaskApiError);
+      expect((thrown as TaskApiError).status).toBe(403);
+      expect((thrown as TaskApiError).requiresReauth).toBe(true);
+    });
+
+    it("rejects updateTask with TaskApiError on generic 500", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              tasks: [createMockTask({ id: "task-1" })],
+            }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: "Server error" }),
+        });
+
+      const config = createMockConfig();
+      const { result } = renderHook(() => useTasks(config));
+
+      await waitFor(() => {
+        expect(result.current.tasks).toHaveLength(1);
+      });
+
+      let thrown: unknown;
+      await act(async () => {
+        try {
+          await result.current.updateTask("task-1", "list-1", {
+            status: "completed",
+          });
+        } catch (err) {
+          thrown = err;
+        }
+      });
+
+      expect(thrown).toBeInstanceOf(TaskApiError);
+      expect((thrown as TaskApiError).status).toBe(500);
+      expect((thrown as TaskApiError).requiresReauth).toBe(false);
     });
   });
 

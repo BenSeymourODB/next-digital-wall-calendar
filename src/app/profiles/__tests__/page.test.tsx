@@ -1,6 +1,7 @@
 /**
  * Tests for /profiles page
  */
+import type { Profile } from "@/components/profiles/profile-context";
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ProfilesPage from "../page";
@@ -27,15 +28,15 @@ vi.mock("next/navigation", () => ({
 }));
 
 // Mock profile data
-const mockAdminProfile = {
+const mockAdminProfile: Profile = {
   id: "profile-admin",
   userId: "user-1",
   name: "Admin User",
-  type: "admin" as const,
-  ageGroup: "adult" as const,
+  type: "admin",
+  ageGroup: "adult",
   color: "#3b82f6",
   avatar: {
-    type: "initials" as const,
+    type: "initials",
     value: "AU",
     backgroundColor: "#3b82f6",
   },
@@ -43,15 +44,15 @@ const mockAdminProfile = {
   isActive: true,
 };
 
-const mockStandardProfile = {
+const mockStandardProfile: Profile = {
   id: "profile-standard",
   userId: "user-1",
   name: "Child User",
-  type: "standard" as const,
-  ageGroup: "child" as const,
+  type: "standard",
+  ageGroup: "child",
   color: "#22c55e",
   avatar: {
-    type: "emoji" as const,
+    type: "emoji",
     value: "👦",
   },
   pinEnabled: false,
