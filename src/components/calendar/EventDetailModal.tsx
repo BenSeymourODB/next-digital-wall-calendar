@@ -20,7 +20,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { IEvent, TEventColor } from "@/types/calendar";
+import type {
+  IEvent,
+  TCalendarAccessRole,
+  TEventColor,
+} from "@/types/calendar";
 import { type RefObject, useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { Trash2 } from "lucide-react";
@@ -42,8 +46,9 @@ interface EventDetailModalProps {
    * Ref to the element that opened the modal. On close, focus is explicitly
    * restored to this element so keyboard users land back where they were
    * (WCAG 2.4.3), since the triggers are not wrapped in a Radix DialogTrigger.
+   * Accepts SVG elements too (clock arc <g> with tabIndex=0 is a valid trigger).
    */
-  returnFocusTo?: RefObject<HTMLElement | null>;
+  returnFocusTo?: RefObject<HTMLElement | SVGElement | null>;
   /**
    * Optional delete handler. When provided, a "Delete event" button renders
    * in the footer behind a confirmation dialog. When the handler resolves,
@@ -51,6 +56,19 @@ interface EventDetailModalProps {
    * stays open (the caller is expected to surface a toast).
    */
   onDelete?: (event: IEvent) => Promise<void>;
+  /**
+   * The user's permission level on the event's source calendar (#266).
+   * When `reader` or `freeBusyReader`, mutating actions (currently the
+   * delete button) are hidden — Google's server-side 403 stays as the
+   * backstop for races where the role changes mid-session. Treat
+   * `undefined` as "unknown / writable" so a not-yet-loaded calendar
+   * list doesn't accidentally hide the button on owned calendars.
+   */
+  accessRole?: TCalendarAccessRole;
+}
+
+function isReadOnlyRole(role: TCalendarAccessRole | undefined): boolean {
+  return role === "reader" || role === "freeBusyReader";
 }
 
 function getInitials(name: string): string {
@@ -87,6 +105,7 @@ export function EventDetailModal({
   use24HourFormat,
   returnFocusTo,
   onDelete,
+  accessRole,
 }: EventDetailModalProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -96,6 +115,10 @@ export function EventDetailModal({
   const timeRange = formatTimeRange(event, use24HourFormat);
   const dateLabel = formatDateLabel(event);
   const hasDescription = Boolean(event.description?.trim());
+  // Single chokepoint for "this calendar disallows mutation". When #265
+  // adds the edit (PATCH) button it should reuse this same flag rather
+  // than re-deriving the rule.
+  const canDelete = Boolean(onDelete) && !isReadOnlyRole(accessRole);
 
   const handleConfirmDelete = async () => {
     if (!onDelete) return;
@@ -180,7 +203,7 @@ export function EventDetailModal({
           </div>
         </div>
 
-        {onDelete && (
+        {canDelete && (
           <DialogFooter>
             <Button
               type="button"
@@ -195,7 +218,7 @@ export function EventDetailModal({
         )}
       </DialogContent>
 
-      {onDelete && (
+      {canDelete && (
         <AlertDialog
           open={confirmingDelete}
           onOpenChange={(open) => {

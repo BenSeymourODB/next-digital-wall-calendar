@@ -1,5 +1,6 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
+  type Day,
   addDays,
   addMonths,
   addYears,
@@ -58,9 +59,18 @@ export function keyboardEventToAction(
   }
 }
 
+/**
+ * Apply a keyboard action to the currently-focused date.
+ *
+ * `weekStartsOn` controls the `WEEK_START`/`WEEK_END` actions only and
+ * defaults to `WEEK_STARTS_ON` so callers that don't yet thread the
+ * user's `weekStartDay` preference keep the previous Sunday-start
+ * behaviour. All other actions are independent of the week boundary.
+ */
 export function applyCalendarKeyboardAction(
   date: Date,
-  action: CalendarKeyboardAction
+  action: CalendarKeyboardAction,
+  weekStartsOn: Day = WEEK_STARTS_ON
 ): Date {
   switch (action.type) {
     case "PREVIOUS_DAY":
@@ -72,9 +82,9 @@ export function applyCalendarKeyboardAction(
     case "NEXT_WEEK":
       return addDays(date, 7);
     case "WEEK_START":
-      return startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
+      return startOfWeek(date, { weekStartsOn });
     case "WEEK_END":
-      return endOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
+      return endOfWeek(date, { weekStartsOn });
     case "PREVIOUS_MONTH":
       return subMonths(date, 1);
     case "NEXT_MONTH":

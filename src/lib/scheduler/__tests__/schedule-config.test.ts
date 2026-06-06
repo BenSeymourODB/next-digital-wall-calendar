@@ -46,6 +46,10 @@ describe("DEFAULT_SCHEDULE_CONFIG", () => {
   });
 });
 
+// UUID v4 with the `seq-` / `ts-` prefix used by the factories.
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 describe("createDefaultSequence", () => {
   it("returns a valid ScreenSequence", () => {
     const seq = createDefaultSequence();
@@ -63,6 +67,16 @@ describe("createDefaultSequence", () => {
     const seq1 = createDefaultSequence();
     const seq2 = createDefaultSequence();
     expect(seq1.id).not.toBe(seq2.id);
+  });
+
+  // Regression test for issue #221, bug 5: a module-level mutable
+  // `idCounter` was replaced with `crypto.randomUUID()` to avoid
+  // unbounded growth and SSR/test-leakage across reloads.
+  it("returns a UUID-shaped id (not a sequential counter)", () => {
+    const seq = createDefaultSequence();
+    expect(seq.id.startsWith("seq-")).toBe(true);
+    const uuid = seq.id.slice("seq-".length);
+    expect(uuid).toMatch(UUID_V4_REGEX);
   });
 
   it("uses SCHEDULER_DEFAULTS when no overrides provided", () => {
@@ -129,6 +143,14 @@ describe("createDefaultTimeSpecific", () => {
     const nav1 = createDefaultTimeSpecific();
     const nav2 = createDefaultTimeSpecific();
     expect(nav1.id).not.toBe(nav2.id);
+  });
+
+  // Regression test for issue #221, bug 5: see createDefaultSequence above.
+  it("returns a UUID-shaped id (not a sequential counter)", () => {
+    const nav = createDefaultTimeSpecific();
+    expect(nav.id.startsWith("ts-")).toBe(true);
+    const uuid = nav.id.slice("ts-".length);
+    expect(uuid).toMatch(UUID_V4_REGEX);
   });
 
   it("is enabled by default", () => {

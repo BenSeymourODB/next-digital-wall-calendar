@@ -4,20 +4,49 @@
  * Tests the transaction logic in isolation with a single mock (prisma).
  * No auth, no NextRequest, no fetch.
  */
+import type { ProfileRewardPoints } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { mockTransaction } from "@/lib/test-utils/prisma-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { awardPoints } from "../reward-points";
+import { awardPoints, recordPointAward } from "../reward-points";
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     $transaction: vi.fn(),
+    profileRewardPoints: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
-const mockPrisma = prisma as unknown as {
-  $transaction: ReturnType<typeof vi.fn>;
-};
+// Typed deep mock: every property/method on `prisma` is widened to a
+// MockedFunctionDeep so `mockResolvedValue`, `mockRejectedValue`, etc.
+// are type-checked against the real Prisma return types instead of
+// being silently widened by an `as unknown as { ... }` cast.
+const mockPrisma = vi.mocked(prisma, true);
+
+function makeProfileRewardPoints(
+  overrides: Partial<ProfileRewardPoints> = {}
+): ProfileRewardPoints {
+  return {
+    id: "rp-fixture",
+    profileId: "profile-1",
+    totalPoints: 0,
+    currentStreak: 0,
+    longestStreak: 0,
+    lastActivityDate: new Date("2024-01-01"),
+    updatedAt: new Date("2024-01-01"),
+    ...overrides,
+  };
+}
+
+function makeUniqueConstraintError() {
+  const error = new Error(
+    "Unique constraint failed on the fields: (`profileId`,`taskId`,`reason`)"
+  ) as Error & { code: string };
+  error.code = "P2002";
+  return error;
+}
 
 describe("awardPoints", () => {
   beforeEach(() => {
@@ -125,5 +154,124 @@ describe("awardPoints", () => {
     await expect(awardPoints("profile-1", 10, "admin-1")).rejects.toThrow(
       "db down"
     );
+  });
+});
+
+describe("recordPointAward", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("records a task_completed award with taskId and taskTitle", async () => {
+    const upsert = vi.fn().mockResolvedValue({ totalPoints: 60 });
+    const create = vi.fn().mockResolvedValue({});
+    mockTransaction(mockPrisma, {
+      profileRewardPoints: { upsert },
+      pointTransaction: { create },
+    });
+
+    const result = await recordPointAward({
+      profileId: "profile-1",
+      points: 10,
+      reason: "task_completed",
+      taskId: "task-abc",
+      taskTitle: "Buy milk",
+    });
+
+    expect(result).toEqual({ totalPoints: 60, alreadyAwarded: false });
+    expect(upsert).toHaveBeenCalledWith({
+      where: { profileId: "profile-1" },
+      update: { totalPoints: { increment: 10 } },
+      create: { profileId: "profile-1", totalPoints: 10 },
+    });
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        profileId: "profile-1",
+        points: 10,
+        reason: "task_completed",
+        taskId: "task-abc",
+        taskTitle: "Buy milk",
+        awardedBy: undefined,
+        note: undefined,
+      },
+    });
+  });
+
+  it("records a manual award with awardedBy and note", async () => {
+    const upsert = vi.fn().mockResolvedValue({ totalPoints: 20 });
+    const create = vi.fn().mockResolvedValue({});
+    mockTransaction(mockPrisma, {
+      profileRewardPoints: { upsert },
+      pointTransaction: { create },
+    });
+
+    const result = await recordPointAward({
+      profileId: "profile-1",
+      points: 20,
+      reason: "manual",
+      awardedBy: "admin-1",
+      note: "Great job!",
+    });
+
+    expect(result).toEqual({ totalPoints: 20, alreadyAwarded: false });
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        profileId: "profile-1",
+        points: 20,
+        reason: "manual",
+        taskId: undefined,
+        taskTitle: undefined,
+        awardedBy: "admin-1",
+        note: "Great job!",
+      },
+    });
+  });
+
+  it("returns alreadyAwarded with current total when the unique index rejects a duplicate task award", async () => {
+    mockPrisma.$transaction.mockRejectedValue(makeUniqueConstraintError());
+    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue(
+      makeProfileRewardPoints({ totalPoints: 75 })
+    );
+
+    const result = await recordPointAward({
+      profileId: "profile-1",
+      points: 10,
+      reason: "task_completed",
+      taskId: "task-abc",
+      taskTitle: "Buy milk",
+    });
+
+    expect(result).toEqual({ totalPoints: 75, alreadyAwarded: true });
+    expect(mockPrisma.profileRewardPoints.findUnique).toHaveBeenCalledWith({
+      where: { profileId: "profile-1" },
+      select: { totalPoints: true },
+    });
+  });
+
+  it("returns zero total when duplicate is caught and no reward-points row exists", async () => {
+    mockPrisma.$transaction.mockRejectedValue(makeUniqueConstraintError());
+    mockPrisma.profileRewardPoints.findUnique.mockResolvedValue(null);
+
+    const result = await recordPointAward({
+      profileId: "profile-1",
+      points: 10,
+      reason: "task_completed",
+      taskId: "task-abc",
+    });
+
+    expect(result).toEqual({ totalPoints: 0, alreadyAwarded: true });
+  });
+
+  it("propagates non-P2002 errors", async () => {
+    mockPrisma.$transaction.mockRejectedValue(new Error("connection lost"));
+
+    await expect(
+      recordPointAward({
+        profileId: "profile-1",
+        points: 10,
+        reason: "task_completed",
+        taskId: "task-abc",
+      })
+    ).rejects.toThrow("connection lost");
   });
 });

@@ -17,6 +17,9 @@ import {
 import { auth } from "../auth";
 import {
   AuthError,
+  GOOGLE_TASKS_SCOPE,
+  accountHasScope,
+  assertGoogleTasksScope,
   getAccessToken,
   getCurrentUser,
   getGoogleAccount,
@@ -24,6 +27,7 @@ import {
   isAuthenticated,
   needsReauthentication,
   requireAuth,
+  requireGoogleTasksAccessToken,
   withAuth,
 } from "../helpers";
 import {
@@ -41,6 +45,7 @@ vi.mock("@/lib/auth/auth", () => ({
 vi.mock("@/lib/db", () => ({
   prisma: {
     account: {
+      findFirst: vi.fn(),
       findMany: vi.fn(),
     },
   },
@@ -423,6 +428,226 @@ describe("auth helpers", () => {
         "No Google account linked"
       );
       expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("accountHasScope", () => {
+    it("returns true when the scope is present (space separator)", () => {
+      expect(accountHasScope(mockGoogleAccount, GOOGLE_TASKS_SCOPE)).toBe(true);
+    });
+
+    it("returns true when the scope is present with `+` separators", () => {
+      const account = {
+        ...mockGoogleAccount,
+        scope:
+          "openid+email+profile+https://www.googleapis.com/auth/tasks+https://www.googleapis.com/auth/calendar.readonly",
+      };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(true);
+    });
+
+    it("returns true when the scope is present with comma separators", () => {
+      // Defensive: Google's spec uses spaces, but a manual DB seed or a
+      // legacy Prisma adapter version may have stored comma-delimited
+      // grants. Accept the broader form so those rows still resolve.
+      const account = {
+        ...mockGoogleAccount,
+        scope:
+          "openid,email,profile,https://www.googleapis.com/auth/tasks,https://www.googleapis.com/auth/calendar.readonly",
+      };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(true);
+    });
+
+    it("returns false when the scope is missing", () => {
+      const account = {
+        ...mockGoogleAccount,
+        scope:
+          "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+      };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(false);
+    });
+
+    it("returns false when the stored scope is null", () => {
+      const account = { ...mockGoogleAccount, scope: null };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(false);
+    });
+
+    it("returns false when the stored scope is an empty string", () => {
+      const account = { ...mockGoogleAccount, scope: "" };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(false);
+    });
+
+    it("returns false when the account is null", () => {
+      expect(accountHasScope(null, GOOGLE_TASKS_SCOPE)).toBe(false);
+    });
+
+    it("does not match a substring of a different scope", () => {
+      const account = {
+        ...mockGoogleAccount,
+        scope:
+          "openid email profile https://www.googleapis.com/auth/tasks.readonly",
+      };
+      expect(accountHasScope(account, GOOGLE_TASKS_SCOPE)).toBe(false);
+    });
+  });
+
+  describe("assertGoogleTasksScope", () => {
+    it("resolves silently when the tasks scope is present", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findMany).mockResolvedValue([mockGoogleAccount]);
+
+      await expect(assertGoogleTasksScope()).resolves.toBeUndefined();
+    });
+
+    it("throws AuthError(403) with requiresReauth message when the tasks scope is missing", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findMany).mockResolvedValue([
+        {
+          ...mockGoogleAccount,
+          scope:
+            "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+        },
+      ]);
+
+      await expect(assertGoogleTasksScope()).rejects.toBeInstanceOf(AuthError);
+      await expect(assertGoogleTasksScope()).rejects.toMatchObject({
+        status: 403,
+        message: expect.stringContaining("Google Tasks"),
+      });
+    });
+
+    it("throws AuthError(401) when no session", async () => {
+      mockAuth.mockResolvedValue(null);
+
+      await expect(assertGoogleTasksScope()).rejects.toMatchObject({
+        status: 401,
+      });
+    });
+
+    it("throws AuthError(401) when session has RefreshTokenError", async () => {
+      mockAuth.mockResolvedValue(mockSessionWithError);
+
+      await expect(assertGoogleTasksScope()).rejects.toMatchObject({
+        status: 401,
+      });
+    });
+
+    it("throws AuthError(401) when no Google account is linked", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findMany).mockResolvedValue([]);
+
+      await expect(assertGoogleTasksScope()).rejects.toMatchObject({
+        status: 401,
+      });
+    });
+  });
+
+  describe("requireGoogleTasksAccessToken", () => {
+    // Combined helper introduced for #260: takes a Session (so the caller
+    // can reuse the auth() result they already have) and returns a
+    // decrypted access token in a single Prisma query, replacing the
+    // assertGoogleTasksScope() + getAccessToken() pair that previously hit
+    // the DB twice per request.
+
+    it("returns the decrypted access token when scope is granted", async () => {
+      vi.mocked(prisma.account.findFirst).mockResolvedValue(mockGoogleAccount);
+
+      const token = await requireGoogleTasksAccessToken(mockSession);
+
+      expect(token).toBe(mockGoogleAccount.access_token);
+    });
+
+    it("makes exactly one prisma.account.findFirst call and never calls auth() itself", async () => {
+      // The helper takes a Session so the caller can reuse the auth() it
+      // already resolved. The savings are wasted if either contract leaks:
+      // this test pins both.
+      vi.mocked(prisma.account.findFirst).mockResolvedValue(mockGoogleAccount);
+
+      await requireGoogleTasksAccessToken(mockSession);
+
+      expect(prisma.account.findFirst).toHaveBeenCalledTimes(1);
+      expect(prisma.account.findFirst).toHaveBeenCalledWith({
+        where: { userId: mockSession.user.id, provider: "google" },
+      });
+      expect(mockAuth).not.toHaveBeenCalled();
+    });
+
+    it("decrypts a v1-enveloped access_token before returning it", async () => {
+      const { encryptToken } = await import("@/lib/crypto/token-cipher");
+      const plainAccessToken = "ya29.fresh-access-token";
+      vi.mocked(prisma.account.findFirst).mockResolvedValue({
+        ...mockGoogleAccount,
+        access_token: encryptToken(plainAccessToken)!,
+      });
+
+      const token = await requireGoogleTasksAccessToken(mockSession);
+
+      expect(token).toBe(plainAccessToken);
+      expect(token).not.toContain("v1:");
+    });
+
+    it("throws AuthError(401) when the session is in RefreshTokenError without touching the DB", async () => {
+      // Future callers that don't pre-check the session must not silently
+      // burn a Prisma query when we already know the user has to re-auth.
+      const promise = requireGoogleTasksAccessToken(mockSessionWithError);
+
+      await expect(promise).rejects.toBeInstanceOf(AuthError);
+      await expect(promise).rejects.toMatchObject({
+        status: 401,
+        message: expect.stringContaining("Session expired"),
+      });
+      expect(prisma.account.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("throws AuthError(401) when no Google account is linked", async () => {
+      vi.mocked(prisma.account.findFirst).mockResolvedValue(null);
+
+      const promise = requireGoogleTasksAccessToken(mockSession);
+
+      await expect(promise).rejects.toBeInstanceOf(AuthError);
+      await expect(promise).rejects.toMatchObject({ status: 401 });
+    });
+
+    it("throws AuthError(403) when the Tasks scope is missing", async () => {
+      vi.mocked(prisma.account.findFirst).mockResolvedValue({
+        ...mockGoogleAccount,
+        scope:
+          "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+      });
+
+      await expect(
+        requireGoogleTasksAccessToken(mockSession)
+      ).rejects.toMatchObject({
+        status: 403,
+        message: expect.stringContaining("Google Tasks"),
+      });
+    });
+
+    it("throws AuthError(401) when the account row has no access_token", async () => {
+      vi.mocked(prisma.account.findFirst).mockResolvedValue(
+        mockGoogleAccountNoToken
+      );
+
+      await expect(
+        requireGoogleTasksAccessToken(mockSession)
+      ).rejects.toMatchObject({
+        status: 401,
+        message: expect.stringContaining("token unavailable"),
+      });
+    });
+
+    it("checks scope before decrypting — a missing scope on a nulled token still surfaces as 403", async () => {
+      // Scope is the user-recoverable failure (re-grant). Token-null is a
+      // server-side data integrity issue. When both are wrong, callers should
+      // see the scope error first so they get the right re-auth CTA.
+      vi.mocked(prisma.account.findFirst).mockResolvedValue({
+        ...mockGoogleAccount,
+        access_token: null,
+        scope: "openid email profile",
+      });
+
+      await expect(
+        requireGoogleTasksAccessToken(mockSession)
+      ).rejects.toMatchObject({ status: 403 });
     });
   });
 

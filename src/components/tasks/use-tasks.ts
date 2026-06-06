@@ -6,11 +6,13 @@
  * Features:
  * - Fetches tasks from all enabled task lists
  * - Filters completed tasks based on config
+ * - Optional per-profile filter (assigned + optional unassigned)
  * - Sorts tasks by due date, created date, or manual order
  * - Provides updateTask function for toggling completion
  * - Auto-refreshes on config change
  */
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { parseTaskApiError } from "./task-api-error";
 import {
   type GoogleTask,
   type TaskListConfig,
@@ -45,7 +47,7 @@ export function useTasks(config: TaskListConfig | null): UseTasksReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = async () => {
     if (!config) {
       setTasks([]);
       setLoading(false);
@@ -62,13 +64,27 @@ export function useTasks(config: TaskListConfig | null): UseTasksReturn {
     setLoading(true);
     setError(null);
 
+    const profileFilter = config.profileFilter ?? null;
+    const showUnassigned = config.showUnassigned ?? false;
+    // Only ask the server for assignments when we'll actually use them
+    // for filtering or rendering. Avoids a needless DB query in the
+    // simple "no profile filter" path.
+    const includeAssignments = profileFilter !== null;
+
     try {
       // Fetch tasks from all enabled lists in parallel
       const taskPromises = enabledLists.map(async (list) => {
-        const response = await fetch(`/api/tasks?listId=${list.listId}`);
+        const params = new URLSearchParams({ listId: list.listId });
+        if (includeAssignments) {
+          params.set("includeAssignments", "true");
+        }
+        const response = await fetch(`/api/tasks?${params.toString()}`);
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch tasks from list ${list.listTitle}`);
+          throw await parseTaskApiError(
+            response,
+            `Failed to fetch tasks from list ${list.listTitle}`
+          );
         }
 
         const data = (await response.json()) as TasksApiResponse;
@@ -85,16 +101,29 @@ export function useTasks(config: TaskListConfig | null): UseTasksReturn {
           listTitle: list.listTitle,
           listColor: list.color,
           isOverdue: isTaskOverdue(task),
+          assignments: task.assignments ?? [],
         }))
       );
 
       // Filter completed tasks if needed
-      const filtered = config.showCompleted
+      const completionFiltered = config.showCompleted
         ? allTasks
         : allTasks.filter((t) => t.status !== "completed");
 
+      // Apply profile filter when configured
+      const profileFiltered =
+        profileFilter === null
+          ? completionFiltered
+          : completionFiltered.filter((task) => {
+              const isAssignedToActive = task.assignments.some(
+                (a) => a.profileId === profileFilter
+              );
+              if (isAssignedToActive) return true;
+              return showUnassigned && task.assignments.length === 0;
+            });
+
       // Sort tasks
-      const sorted = sortTasks(filtered, config.sortBy);
+      const sorted = sortTasks(profileFiltered, config.sortBy);
 
       setTasks(sorted);
     } catch (err) {
@@ -103,36 +132,37 @@ export function useTasks(config: TaskListConfig | null): UseTasksReturn {
     } finally {
       setLoading(false);
     }
-  }, [config]);
+  };
 
-  const updateTask = useCallback(
-    async (
-      taskId: string,
-      listId: string,
-      updates: Partial<GoogleTask>
-    ): Promise<void> => {
-      const response = await fetch(`/api/tasks/${taskId}?listId=${listId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updates),
-      });
+  const updateTask = async (
+    taskId: string,
+    listId: string,
+    updates: Partial<GoogleTask>
+  ): Promise<void> => {
+    const response = await fetch(`/api/tasks/${taskId}?listId=${listId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updates),
+    });
 
-      if (!response.ok) {
-        throw new Error("Failed to update task");
-      }
+    if (!response.ok) {
+      throw await parseTaskApiError(response, "Failed to update task");
+    }
 
-      // Refresh tasks after update
-      await fetchTasks();
-    },
-    [fetchTasks]
-  );
+    // Refresh tasks after update
+    await fetchTasks();
+  };
 
-  // Fetch tasks when config changes
+  // Fetch tasks when config changes. `fetchTasks` captures `config` and is
+  // memoized by the React Compiler, so depending on `config` directly is
+  // equivalent and avoids a false-positive `exhaustive-deps` warning that
+  // would otherwise demand a banned `useCallback` wrapper (#271).
   useEffect(() => {
     fetchTasks();
-  }, [fetchTasks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
 
   return {
     tasks,

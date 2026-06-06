@@ -26,6 +26,20 @@ export type TEventColor =
   | "purple"
   | "orange";
 
+/**
+ * Per-calendar permission level reported by Google's `CalendarList.list`.
+ * Mirrors `gapi.client.calendar.CalendarListEntry.accessRole`. Lives here
+ * (rather than in `CalendarProvider`) so server-only modules — the
+ * `/api/calendar/calendars` route and `lib/google-calendar-mappers` —
+ * can import it without pulling in client-side React. Used by the
+ * read-only delete-button gating (#266).
+ */
+export type TCalendarAccessRole =
+  | "freeBusyReader"
+  | "reader"
+  | "writer"
+  | "owner";
+
 export interface IUser {
   id: string;
   name: string;

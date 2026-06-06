@@ -2,9 +2,12 @@
 
 import {
   CalendarContext,
+  type CreateEventInput,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import { computeHiddenEventCounts } from "@/lib/calendar-filter-counts";
+import { TRANSITION_SPEED_TO_MS } from "@/lib/calendar/transition-speed";
+import type { TCalendarAccessRole } from "@/types/calendar";
 import type {
   ICalendarInfo,
   IEvent,
@@ -53,6 +56,17 @@ interface MockCalendarProviderProps {
   calendars?: ICalendarInfo[];
   /** Initial per-calendar filter selection. Empty = no calendar filter. */
   initialSelectedCalendarIds?: string[];
+  /**
+   * Optional per-calendar access roles, used by the read-only delete-button
+   * gating (#266). Keys are calendar IDs (matching `IEvent.calendarId`),
+   * values are Google `accessRole` literals. Calendars not in this map
+   * resolve to `undefined`, which the modal treats as "writable" by default.
+   */
+  accessRolesByCalendarId?: Record<string, TCalendarAccessRole>;
+  /** Hour (0–23) the Day/Week grids auto-scroll to on first render. */
+  workingHoursStart?: number;
+  /** View-transition duration in ms; mirrors `userSettings.calendarTransitionSpeed`. */
+  transitionDurationMs?: number;
 }
 
 /**
@@ -86,6 +100,9 @@ export function MockCalendarProvider({
     { id: "primary", summary: "Primary", backgroundColor: "" },
   ],
   initialSelectedCalendarIds = [],
+  accessRolesByCalendarId = {},
+  workingHoursStart = 7,
+  transitionDurationMs = TRANSITION_SPEED_TO_MS.normal,
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -185,6 +202,18 @@ export function MockCalendarProvider({
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
+  // Mock createEvent: hermetic local insert that resolves with the
+  // optimistic event so AddEventButton's happy path works in E2E without
+  // mocking fetch. Tests that need failure behaviour should override this
+  // in their own provider wrapper.
+  const createEvent = async (
+    optimistic: IEvent,
+    _input: CreateEventInput
+  ): Promise<IEvent> => {
+    setAllEvents((prev) => [...prev, optimistic]);
+    return optimistic;
+  };
+
   // Mock deleteEvent matches the real provider's optimistic-remove signature
   // but skips the network call so tests can drive UI flows without mocking
   // fetch. Tests that care about failure behavior should override this in
@@ -201,6 +230,13 @@ export function MockCalendarProvider({
       setIsLoading(false);
     }
   };
+
+  // No-op: the mock provider holds a static fixture, so widening the
+  // year window doesn't need to fetch anything.
+  const loadEventsForYear = async () => {};
+
+  const getAccessRole = (calendarId: string) =>
+    accessRolesByCalendarId[calendarId];
 
   // Plain render-time derivation of filtered events + hidden counts. Manual
   // memoization is banned (CLAUDE.md / React Compiler), but a state+effect
@@ -268,12 +304,17 @@ export function MockCalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    createEvent,
     deleteEvent,
     clearFilter,
     refreshEvents,
+    loadEventsForYear,
+    getAccessRole,
     isLoading,
     isAuthenticated,
     maxEventsPerDay,
+    workingHoursStart,
+    transitionDurationMs,
   };
 
   return (
