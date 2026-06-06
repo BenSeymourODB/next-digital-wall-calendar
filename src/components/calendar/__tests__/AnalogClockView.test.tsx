@@ -1,0 +1,226 @@
+import {
+  CalendarContext,
+  type ICalendarContext,
+} from "@/components/providers/CalendarProvider";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
+import type { IEvent } from "@/types/calendar";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AnalogClockView } from "../AnalogClockView";
+
+function createMockContext(
+  overrides: Partial<ICalendarContext> = {}
+): ICalendarContext {
+  return makeCalendarContext({
+    view: "clock",
+    ...overrides,
+  });
+}
+
+function renderView(overrides: Partial<ICalendarContext> = {}) {
+  const contextValue = createMockContext(overrides);
+  return render(
+    <CalendarContext.Provider value={contextValue}>
+      <AnalogClockView />
+    </CalendarContext.Provider>
+  );
+}
+
+describe("AnalogClockView", () => {
+  // Lock the system clock so the `new Date()` inside the component and the
+  // dates synthesised in each test share a single reference instant. Without
+  // this, a test running across midnight would compute `today` on one calendar
+  // day and the all-day window on the next, breaking the [start, end) check.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-21T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders the analog clock SVG", () => {
+    renderView();
+    expect(screen.getByTestId("analog-clock-view")).toBeInTheDocument();
+    expect(screen.getByTestId("analog-clock")).toBeInTheDocument();
+  });
+
+  it("passes events from CalendarProvider through to the clock as raw events", () => {
+    // Use a fixed reference time the clock will pick up; we control the
+    // current 12-hour period bounds by patching Date via a fixed event.
+    const now = new Date();
+    const inPeriod = new Date(now);
+    // Choose a time guaranteed to fall in the current 12-hour AM/PM period
+    inPeriod.setMinutes(inPeriod.getMinutes() + 5);
+    const inPeriodEnd = new Date(inPeriod);
+    inPeriodEnd.setMinutes(inPeriodEnd.getMinutes() + 30);
+
+    renderView({
+      events: [
+        createMockEvent({
+          id: "timed",
+          title: "🟢 Meeting",
+          startDate: inPeriod.toISOString(),
+          endDate: inPeriodEnd.toISOString(),
+          isAllDay: false,
+        }),
+      ],
+    });
+
+    expect(screen.getByTestId("event-arc-timed")).toBeInTheDocument();
+  });
+
+  it("lists today's all-day events separately from the clock arcs", () => {
+    const today = new Date();
+    const start = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+
+    renderView({
+      selectedDate: today,
+      events: [
+        createMockEvent({
+          id: "all-day-1",
+          title: "School Holiday",
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          isAllDay: true,
+        }),
+      ],
+    });
+
+    const allDayList = screen.getByTestId("analog-clock-all-day-list");
+    expect(allDayList).toBeInTheDocument();
+    expect(allDayList).toHaveTextContent("School Holiday");
+  });
+
+  it("renders an empty-state message when there are no all-day events for today", () => {
+    renderView({ events: [] });
+    expect(
+      screen.getByTestId("analog-clock-all-day-empty")
+    ).toBeInTheDocument();
+  });
+
+  it("does not include all-day events as event arcs", () => {
+    const today = new Date();
+    const start = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+
+    renderView({
+      events: [
+        createMockEvent({
+          id: "all-day-only",
+          title: "Holiday",
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          isAllDay: true,
+        }),
+      ],
+    });
+
+    expect(
+      screen.queryByTestId("event-arc-all-day-only")
+    ).not.toBeInTheDocument();
+  });
+
+  describe("event click opens EventDetailModal", () => {
+    function makeTimedEvent(): IEvent {
+      // Choose a time guaranteed to fall in the current 12-hour AM/PM period
+      const start = new Date();
+      start.setMinutes(start.getMinutes() + 5);
+      const end = new Date(start);
+      end.setMinutes(end.getMinutes() + 30);
+
+      return createMockEvent({
+        id: "timed",
+        title: "Project Demo",
+        description: "Show the new dashboard",
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        isAllDay: false,
+      });
+    }
+
+    function makeAllDayEvent(): IEvent {
+      const today = new Date();
+      const start = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      return createMockEvent({
+        id: "school-holiday",
+        title: "School Holiday",
+        description: "No school today",
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        isAllDay: true,
+      });
+    }
+
+    it("opens the modal with event details when an arc is clicked", () => {
+      renderView({ events: [makeTimedEvent()] });
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("event-arc-group-timed"));
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toHaveTextContent("Project Demo");
+      expect(screen.getByTestId("event-detail-description")).toHaveTextContent(
+        "Show the new dashboard"
+      );
+    });
+
+    it("opens the modal when Enter is pressed on a focused arc", () => {
+      renderView({ events: [makeTimedEvent()] });
+      const arc = screen.getByTestId("event-arc-group-timed");
+      fireEvent.keyDown(arc, { key: "Enter" });
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("renders all-day items as buttons (a11y)", () => {
+      renderView({ events: [makeAllDayEvent()] });
+      const item = screen.getByTestId(
+        "analog-clock-all-day-school-holiday-button"
+      );
+      expect(item.tagName).toBe("BUTTON");
+    });
+
+    it("opens the modal when an all-day item is clicked", () => {
+      renderView({ events: [makeAllDayEvent()] });
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      fireEvent.click(
+        screen.getByTestId("analog-clock-all-day-school-holiday-button")
+      );
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toHaveTextContent("School Holiday");
+    });
+
+    it("closes the modal via the dialog's close button", () => {
+      renderView({ events: [makeTimedEvent()] });
+
+      fireEvent.click(screen.getByTestId("event-arc-group-timed"));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /close/i }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+});

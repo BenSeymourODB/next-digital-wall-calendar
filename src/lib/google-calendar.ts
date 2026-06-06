@@ -2,10 +2,29 @@
  * Google Calendar API integration for client-side calendar fetching
  * This module handles OAuth authentication and event fetching from multiple Google Calendars
  * Uses Google Identity Services (GIS) for modern OAuth authentication
+ *
+ * The canonical `GoogleCalendarEvent` / `UserCalendar` types and the pure
+ * mappers that translate Google API responses live in
+ * `src/lib/google-calendar-mappers.ts` — a universal module that server code
+ * can import without dragging in the browser-only logic below. They are
+ * re-exported here for convenience.
  */
 import { logger } from "@/lib/logger";
 import { type CalendarColorMapping } from "./calendar-storage";
 import { mapHexToTailwindColor } from "./color-utils";
+import {
+  type GoogleCalendarEvent,
+  type UserCalendar,
+  normalizeCalendarListEntry,
+  normalizeFetchedEvent,
+} from "./google-calendar-mappers";
+
+export {
+  type GoogleCalendarEvent,
+  normalizeCalendarListEntry,
+  normalizeFetchedEvent,
+  type UserCalendar,
+} from "./google-calendar-mappers";
 
 // Google API configuration types
 export interface GoogleCalendarConfig {
@@ -23,28 +42,6 @@ export interface GoogleCalendarAccount {
   refreshToken?: string;
   expiresAt: number;
   calendarIds: string[]; // List of calendar IDs to fetch from this account
-}
-
-export interface GoogleCalendarEvent {
-  id: string;
-  summary: string;
-  description?: string;
-  start: {
-    dateTime?: string;
-    date?: string;
-    timeZone?: string;
-  };
-  end: {
-    dateTime?: string;
-    date?: string;
-    timeZone?: string;
-  };
-  colorId?: string;
-  creator?: {
-    email?: string;
-    displayName?: string;
-  };
-  calendarId: string;
 }
 
 const GOOGLE_CALENDAR_CONFIG: GoogleCalendarConfig = {
@@ -446,12 +443,7 @@ export async function fetchCalendarEvents(
       timeMax: timeMax.toISOString(),
     });
 
-    return events.map(
-      (event): GoogleCalendarEvent => ({
-        ...event,
-        calendarId,
-      })
-    );
+    return events.map((event) => normalizeFetchedEvent(event, calendarId));
   } catch (error: unknown) {
     const err = error as {
       result?: { error?: { code?: number; message?: string } };
@@ -510,7 +502,7 @@ export async function fetchEventsFromMultipleCalendars(
 /**
  * Fetch all calendars for the signed-in user
  */
-export async function fetchUserCalendars() {
+export async function fetchUserCalendars(): Promise<UserCalendar[]> {
   await initGoogleAPI();
 
   try {
@@ -519,23 +511,7 @@ export async function fetchUserCalendars() {
 
     logger.log("Fetched user calendars", { count: calendars.length });
 
-    return calendars.map(
-      (calendar: {
-        id: string;
-        summary: string;
-        description?: string;
-        backgroundColor?: string;
-        foregroundColor?: string;
-        primary?: boolean;
-      }) => ({
-        id: calendar.id,
-        summary: calendar.summary,
-        description: calendar.description,
-        backgroundColor: calendar.backgroundColor,
-        foregroundColor: calendar.foregroundColor,
-        primary: calendar.primary,
-      })
-    );
+    return calendars.map(normalizeCalendarListEntry);
   } catch (error) {
     logger.error(error as Error, { context: "fetchUserCalendars" });
     throw error;
@@ -558,7 +534,11 @@ export async function fetchCalendarColorMappings(): Promise<
 
       return {
         calendarId: calendar.id,
-        colorId: "", // Google Calendar API doesn't provide colorId in calendarList
+        // Intentionally empty: `CalendarColorMapping.colorId` models the
+        // event-level colorId (from `calendar#colors.event`). CalendarList
+        // entries only carry a calendar-level colorId, which we do not need
+        // because we map colors via the richer `backgroundColor` field above.
+        colorId: "",
         hexColor,
         tailwindColor,
       };

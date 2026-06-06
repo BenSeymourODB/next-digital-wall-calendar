@@ -1,0 +1,556 @@
+import {
+  CalendarContext,
+  type ICalendarContext,
+} from "@/components/providers/CalendarProvider";
+import { makeCalendarContext } from "@/test/fixtures/calendar-context";
+import { createMockEvent } from "@/test/fixtures/calendar-event";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { addDays, format, isSameDay, startOfDay, subDays } from "date-fns";
+import { describe, expect, it, vi } from "vitest";
+import { DayCalendar } from "../DayCalendar";
+
+/**
+ * Tests for DayCalendar component.
+ *
+ * Covers:
+ * - Header with full date + event count
+ * - Today button (disabled on current day)
+ * - Previous/next day navigation
+ * - Empty state and loading state
+ * - All-day section + timed section ordering
+ * - Chronological sorting of timed events
+ * - 12-hour and 24-hour time formatting
+ */
+
+function createMockContext(
+  overrides: Partial<ICalendarContext> = {}
+): ICalendarContext {
+  return makeCalendarContext({
+    view: "day",
+    ...overrides,
+  });
+}
+
+function renderWithContext(overrides: Partial<ICalendarContext> = {}) {
+  const contextValue = createMockContext(overrides);
+  return {
+    ...render(
+      <CalendarContext.Provider value={contextValue}>
+        <DayCalendar />
+      </CalendarContext.Provider>
+    ),
+    contextValue,
+  };
+}
+
+function at(date: Date, hours: number, minutes = 0): string {
+  const d = new Date(date);
+  d.setHours(hours, minutes, 0, 0);
+  return d.toISOString();
+}
+
+describe("DayCalendar", () => {
+  describe("Header", () => {
+    it("renders the full date of the selected day", () => {
+      const selectedDate = new Date(2026, 3, 15); // Apr 15 2026
+      renderWithContext({ selectedDate });
+
+      expect(screen.getByTestId("day-calendar-heading")).toHaveTextContent(
+        format(selectedDate, "EEEE, MMMM d, yyyy")
+      );
+    });
+
+    it("shows singular 'event' for one event", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "e1",
+            startDate: at(selectedDate, 10),
+            endDate: at(selectedDate, 11),
+          }),
+        ],
+      });
+      expect(screen.getByTestId("day-calendar-event-count")).toHaveTextContent(
+        "1 event"
+      );
+    });
+
+    it("shows plural 'events' with the correct count for the day", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "e1",
+            startDate: at(selectedDate, 9),
+            endDate: at(selectedDate, 10),
+          }),
+          createMockEvent({
+            id: "e2",
+            startDate: at(selectedDate, 14),
+            endDate: at(selectedDate, 15),
+          }),
+          createMockEvent({
+            id: "off",
+            startDate: at(addDays(selectedDate, 2), 10),
+            endDate: at(addDays(selectedDate, 2), 11),
+          }),
+        ],
+      });
+      expect(screen.getByTestId("day-calendar-event-count")).toHaveTextContent(
+        "2 events"
+      );
+    });
+  });
+
+  describe("Today button", () => {
+    it("is disabled when the selected date is today", () => {
+      renderWithContext({ selectedDate: new Date() });
+      expect(screen.getByTestId("day-calendar-today-btn")).toBeDisabled();
+    });
+
+    it("is enabled and jumps back to today for a past date", async () => {
+      const pastDate = subDays(new Date(), 3);
+      const { contextValue } = renderWithContext({ selectedDate: pastDate });
+
+      const btn = screen.getByTestId("day-calendar-today-btn");
+      expect(btn).toBeEnabled();
+
+      await userEvent.setup().click(btn);
+
+      const called = (contextValue.setSelectedDate as ReturnType<typeof vi.fn>)
+        .mock.calls[0][0] as Date;
+      expect(isSameDay(called, new Date())).toBe(true);
+    });
+  });
+
+  describe("Navigation", () => {
+    it("navigates to previous day", async () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      await userEvent.setup().click(screen.getByTestId("day-calendar-prev"));
+
+      const called = (contextValue.setSelectedDate as ReturnType<typeof vi.fn>)
+        .mock.calls[0][0] as Date;
+      expect(isSameDay(called, subDays(selectedDate, 1))).toBe(true);
+    });
+
+    it("navigates to next day", async () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      const { contextValue } = renderWithContext({ selectedDate });
+
+      await userEvent.setup().click(screen.getByTestId("day-calendar-next"));
+
+      const called = (contextValue.setSelectedDate as ReturnType<typeof vi.fn>)
+        .mock.calls[0][0] as Date;
+      expect(isSameDay(called, addDays(selectedDate, 1))).toBe(true);
+    });
+  });
+
+  describe("Event rendering", () => {
+    it("renders timed events in chronological order", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "late",
+            title: "Late Meeting",
+            startDate: at(selectedDate, 16),
+            endDate: at(selectedDate, 17),
+          }),
+          createMockEvent({
+            id: "early",
+            title: "Early Standup",
+            startDate: at(selectedDate, 9),
+            endDate: at(selectedDate, 9, 30),
+          }),
+          createMockEvent({
+            id: "mid",
+            title: "Lunch",
+            startDate: at(selectedDate, 12),
+            endDate: at(selectedDate, 13),
+          }),
+        ],
+      });
+
+      const titles = screen
+        .getAllByTestId("day-calendar-event-title")
+        .map((el) => el.textContent);
+
+      expect(titles).toEqual(["Early Standup", "Lunch", "Late Meeting"]);
+    });
+
+    it("renders all-day events under the 'All day' section", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "allday-1",
+            title: "Holiday",
+            startDate: at(selectedDate, 0),
+            endDate: at(selectedDate, 0),
+            isAllDay: true,
+          }),
+          createMockEvent({
+            id: "timed-1",
+            title: "Standup",
+            startDate: at(selectedDate, 9),
+            endDate: at(selectedDate, 9, 30),
+          }),
+        ],
+      });
+
+      // Section label (uppercase styled) and the event-card "All day" text
+      // may both appear; assert at least one instance of each piece.
+      expect(screen.getAllByText("All day").length).toBeGreaterThan(0);
+      expect(screen.getByText("Holiday")).toBeInTheDocument();
+      expect(screen.getByText("Standup")).toBeInTheDocument();
+      // The all-day section wrapper should be present.
+      expect(
+        screen.getByRole("region", { name: /all day/i })
+      ).toBeInTheDocument();
+    });
+
+    it("formats times in 24-hour when use24HourFormat is true", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        use24HourFormat: true,
+        events: [
+          createMockEvent({
+            id: "e1",
+            title: "Meeting",
+            startDate: at(selectedDate, 14, 30),
+            endDate: at(selectedDate, 15, 30),
+          }),
+        ],
+      });
+
+      expect(screen.getByText("14:30 – 15:30")).toBeInTheDocument();
+    });
+
+    it("formats times in 12-hour when use24HourFormat is false", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        use24HourFormat: false,
+        events: [
+          createMockEvent({
+            id: "e1",
+            title: "Meeting",
+            startDate: at(selectedDate, 14, 30),
+            endDate: at(selectedDate, 15, 30),
+          }),
+        ],
+      });
+
+      // date-fns uses 'h:mm a' which produces "2:30 PM" in English locale.
+      expect(screen.getByText(/2:30 PM\s*[–-]\s*3:30 PM/)).toBeInTheDocument();
+    });
+  });
+
+  describe("Empty and loading states", () => {
+    it("shows empty state when the day has no events", () => {
+      renderWithContext();
+      expect(
+        screen.getByText("No events scheduled for this day")
+      ).toBeInTheDocument();
+    });
+
+    it("shows loading indicator when isLoading is true", () => {
+      renderWithContext({ isLoading: true });
+      expect(screen.getByText("Loading events...")).toBeInTheDocument();
+    });
+
+    it("does not show empty state while loading", () => {
+      renderWithContext({ isLoading: true, events: [] });
+      expect(
+        screen.queryByText("No events scheduled for this day")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Time grid", () => {
+    it("renders timed events as positioned blocks with top/height", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "morning",
+            title: "Morning Meeting",
+            startDate: at(selectedDate, 9),
+            endDate: at(selectedDate, 10),
+          }),
+        ],
+      });
+
+      const eventBlock = screen.getByTestId("day-calendar-event");
+      const style = eventBlock.getAttribute("style") || "";
+      // 9:00 / 24h = 37.5%
+      expect(style).toMatch(/top:\s*37\.5%/);
+      // 1h / 24h ≈ 4.166%
+      expect(style).toMatch(/height:\s*4\.16/);
+    });
+
+    it("places adjacent overlapping events into separate sub-columns", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "a",
+            title: "A",
+            startDate: at(selectedDate, 10),
+            endDate: at(selectedDate, 11),
+          }),
+          createMockEvent({
+            id: "b",
+            title: "B",
+            startDate: at(selectedDate, 10, 30),
+            endDate: at(selectedDate, 11, 30),
+          }),
+        ],
+      });
+
+      const blocks = screen.getAllByTestId("day-calendar-event");
+      expect(blocks).toHaveLength(2);
+      const lefts = blocks.map((b) => {
+        const m = (b.getAttribute("style") || "").match(/left:\s*([0-9.]+)%/);
+        return m ? Number(m[1]) : Number.NaN;
+      });
+      // Two distinct column origins (0% and 50%)
+      expect(new Set(lefts).size).toBe(2);
+    });
+
+    it("renders the now line on today's view", () => {
+      renderWithContext({ selectedDate: new Date() });
+      expect(screen.getByTestId("day-calendar-now-line")).toBeInTheDocument();
+    });
+
+    it("does not render the now line on a non-today day", () => {
+      renderWithContext({ selectedDate: subDays(new Date(), 3) });
+      expect(
+        screen.queryByTestId("day-calendar-now-line")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Initial scroll position (#214, #288)", () => {
+    // HOUR_HEIGHT_PX = 48; working hours start at 07:00 by default.
+    // Expected scrollTop: 7 * 48 = 336
+    it("auto-scrolls the time grid to ~7am on mount", () => {
+      renderWithContext({ selectedDate: new Date() });
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(336);
+    });
+
+    it("does not render the grid (and thus does not scroll) in agenda mode", () => {
+      renderWithContext({ selectedDate: new Date(), agendaMode: true });
+      expect(screen.queryByTestId("day-calendar-grid")).not.toBeInTheDocument();
+    });
+
+    // Issue #288: the start hour is now a per-user setting threaded
+    // through `workingHoursStart` on `ICalendarContext`. A user who
+    // sets 05:00 should land on row 5 instead of row 7.
+    it("honours a non-default workingHoursStart from context (early shift)", () => {
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 5,
+      });
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(5 * 48);
+    });
+
+    it("honours a non-default workingHoursStart from context (night owl)", () => {
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 14,
+      });
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(14 * 48);
+    });
+
+    it("accepts workingHoursStart at the 0 and 23 boundaries", () => {
+      const { unmount } = renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 0,
+      });
+      expect(screen.getByTestId("day-calendar-grid").scrollTop).toBe(0);
+      unmount();
+
+      renderWithContext({
+        selectedDate: new Date(),
+        workingHoursStart: 23,
+      });
+      expect(screen.getByTestId("day-calendar-grid").scrollTop).toBe(23 * 48);
+    });
+
+    // Mount-only effect by design: a user mid-scroll shouldn't have
+    // their position yanked when they change the setting. The new
+    // value picks up on the next remount (agenda toggle, navigation,
+    // etc.). If a future refactor adds `workingHoursStart` to the
+    // effect dep array, this test will fail.
+    it("does not re-scroll when workingHoursStart changes between renders", () => {
+      const selectedDate = new Date();
+      const { rerender } = render(
+        <CalendarContext.Provider
+          value={createMockContext({ selectedDate, workingHoursStart: 7 })}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+      const grid = screen.getByTestId("day-calendar-grid");
+      expect(grid.scrollTop).toBe(7 * 48);
+
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({ selectedDate, workingHoursStart: 14 })}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+      // Same grid instance, no remount — scrollTop must be unchanged.
+      expect(screen.getByTestId("day-calendar-grid").scrollTop).toBe(7 * 48);
+    });
+  });
+
+  describe("Multi-day events", () => {
+    it("shows a multi-day all-day event in the all-day section even when the user is mid-span", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15)); // Wed
+      const start = subDays(selectedDate, 2); // Mon
+      const end = addDays(selectedDate, 2); // Fri
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "trip",
+            title: "Family Trip",
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+            isAllDay: true,
+          }),
+        ],
+      });
+      expect(screen.getByText("Family Trip")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("day-calendar-event-span-hint")
+      ).toHaveTextContent(`(through ${format(end, "MMM d")})`);
+    });
+
+    it("omits the span hint when the multi-day event ends on the viewed day", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      const start = subDays(selectedDate, 1);
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "ending",
+            title: "Wraps Today",
+            startDate: start.toISOString(),
+            endDate: selectedDate.toISOString(),
+            isAllDay: true,
+          }),
+        ],
+      });
+      expect(
+        screen.queryByTestId("day-calendar-event-span-hint")
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not render multi-day events as full-height blocks on the time grid", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      const start = subDays(selectedDate, 1);
+      const end = addDays(selectedDate, 1);
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "trip",
+            title: "Trip",
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+            isAllDay: false,
+          }),
+        ],
+      });
+      // The multi-day event must appear once (in the all-day section)
+      // and not also on the time grid as a positioned block.
+      expect(
+        screen.queryByTestId("day-calendar-event")
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("Trip")).toBeInTheDocument();
+    });
+  });
+
+  describe("Filters", () => {
+    it("renders only events the provider has not filtered out", () => {
+      // Provider's `events` is already post-filter — DayCalendar must just
+      // render what it receives.
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "kept",
+            title: "Visible",
+            startDate: at(selectedDate, 10),
+            endDate: at(selectedDate, 11),
+          }),
+        ],
+      });
+      expect(screen.getByText("Visible")).toBeInTheDocument();
+      expect(screen.queryByText("Hidden")).not.toBeInTheDocument();
+    });
+  });
+
+  // Issue #150 — agendaMode replaces the time-grid with a chronological
+  // list of the selected day's events.
+  describe("Agenda mode", () => {
+    it("renders the time grid when agendaMode is false", () => {
+      renderWithContext({ agendaMode: false });
+      expect(screen.getByTestId("day-calendar-grid")).toBeInTheDocument();
+      expect(screen.queryByTestId("agenda-list")).not.toBeInTheDocument();
+    });
+
+    it("renders the agenda list when agendaMode is true", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({
+        agendaMode: true,
+        selectedDate,
+        events: [
+          createMockEvent({
+            id: "morning",
+            title: "MorningStandup",
+            startDate: at(selectedDate, 9),
+            endDate: at(selectedDate, 10),
+          }),
+        ],
+      });
+      // Time-grid is gone, agenda list is in.
+      expect(screen.queryByTestId("day-calendar-grid")).not.toBeInTheDocument();
+      expect(screen.getByTestId("agenda-list")).toBeInTheDocument();
+      expect(screen.getByText("MorningStandup")).toBeInTheDocument();
+    });
+
+    it("shows a Day-scoped empty state when agendaMode is on with no events", () => {
+      renderWithContext({ agendaMode: true, events: [] });
+      expect(screen.getByTestId("agenda-list-empty")).toBeInTheDocument();
+    });
+
+    it("keeps the Day header + prev/next navigation visible in agenda mode", async () => {
+      const user = userEvent.setup();
+      const { contextValue } = renderWithContext({ agendaMode: true });
+      expect(screen.getByTestId("day-calendar-heading")).toBeInTheDocument();
+
+      await user.click(screen.getByTestId("day-calendar-next"));
+      expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
+    });
+  });
+});

@@ -12,7 +12,7 @@ test.use({ video: "on" });
 
 test.describe("MiniCalendarSidebar", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/test/calendar?events=default&view=month&sidebar=true");
+    await page.goto("/test/calendar?events=default&view=agenda&sidebar=true");
   });
 
   test("renders the sidebar with a month header and day grid", async ({
@@ -100,10 +100,50 @@ test.describe("MiniCalendarSidebar", () => {
   test("shows an empty state when the selected day has no events", async ({
     page,
   }) => {
-    await page.goto("/test/calendar?events=empty&view=month&sidebar=true");
+    await page.goto("/test/calendar?events=empty&view=agenda&sidebar=true");
 
     const list = page.getByTestId("mini-calendar-events-list");
     await expect(list).toBeVisible();
     await expect(list).toContainText(/no events/i);
+  });
+
+  test("renders multiple distinct color dots on busy days (max 3)", async ({
+    page,
+  }) => {
+    // The `overflow` mock set puts 10 events on today, cycling through
+    // blue/green/red/yellow/purple/orange — at least 6 distinct colors.
+    await page.goto("/test/calendar?events=overflow&view=month&sidebar=true");
+
+    const todayCell = page
+      .getByTestId("mini-calendar-sidebar")
+      .locator("[data-today='true']")
+      .first();
+    await expect(todayCell).toBeVisible();
+
+    // Multi-color cluster appears under the day number; cap is 3.
+    const dots = todayCell.getByTestId("mini-calendar-event-dot");
+    await expect(dots).toHaveCount(3);
+  });
+
+  test("auto-advances the mini-calendar when external navigation jumps months", async ({
+    page,
+  }) => {
+    // The test page exposes a "Next Month" button that calls
+    // setSelectedDate(nextMonth) on CalendarProvider — i.e. external
+    // navigation. The sidebar should follow so the highlight stays visible.
+    const miniHeader = page.getByTestId("mini-calendar-header");
+    const initialMiniHeader = await miniHeader.textContent();
+
+    await page.getByTestId("go-next-month").click();
+
+    // Sidebar header advances along with the external selectedDate change.
+    await expect(miniHeader).not.toHaveText(initialMiniHeader ?? "");
+    // The newly selected day should now be in-month and selected.
+    const selectedCell = page
+      .getByTestId("mini-calendar-sidebar")
+      .locator("[data-selected='true']")
+      .first();
+    await expect(selectedCell).toBeVisible();
+    await expect(selectedCell).toHaveAttribute("data-in-month", "true");
   });
 });

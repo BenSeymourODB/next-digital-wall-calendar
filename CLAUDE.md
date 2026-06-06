@@ -22,10 +22,11 @@ pnpm lint:fix && pnpm format:fix && pnpm check-types
 pnpm test                # Run all tests
 
 # Database
-pnpm db:migrate          # Create migration (dev)
-pnpm db:migrate:deploy   # Apply migrations (prod)
-pnpm db:migrate:reset    # Reset + reapply all
-pnpm db:migrate:status   # Check status
+pnpm db:migrate              # Create migration (dev)
+pnpm db:migrate:deploy       # Apply migrations (prod)
+pnpm db:migrate:reset        # Reset + reapply all
+pnpm db:migrate:status       # Check status
+pnpm db:migrate:check-names  # Validate YYYYMMDDHHMMSS_snake_case naming
 
 # Dependencies
 pnpm bump-deps           # Update to @latest
@@ -43,9 +44,14 @@ pnpm bump-ui             # Update shadcn components
 
 ### Starting a Task
 
-Work is tracked in **GitHub Issues**. At the start of every session:
+Work is tracked in **GitHub Issues** and the
+[project board](https://github.com/users/BenSeymourODB/projects/1)
+("Features Before Claude Subscription Close"). The project's `Day`,
+`Phase`, `Cluster`, and `Priority` fields plus GitHub's native
+`Blocked by` links are the source of truth for sequencing. At the start
+of every session:
 
-1. **Identify the issue** — read the linked GitHub issue (if provided) to understand requirements and acceptance criteria
+1. **Identify the issue** — read the linked GitHub issue (if provided) to understand requirements and acceptance criteria, and check its `Blocked by` list on github.com
 2. **Check for an existing plan** — look in `.claude/plans/` for a file matching the feature/issue
 3. **If a plan exists** — read it before writing any code; it contains specs, schemas, and testing strategies
 4. **If no plan exists** — enter planning mode first. Produce a plan based on the GitHub issue (or the session prompt if no issue is linked) and save it to `.claude/plans/` before implementing
@@ -63,6 +69,8 @@ Application Insights is **not yet implemented**. The logger abstraction exists f
 ### React Compiler
 
 Enabled by default. **DO NOT** use manual memoization (`useMemo`, `useCallback`, `React.memo`). Write clean, simple React code. See [docs/react-compiler.md](./docs/react-compiler.md).
+
+This is enforced by ESLint: `no-restricted-imports` bans `useMemo`/`useCallback`/`memo` named imports from `react`, and `no-restricted-syntax` bans `React.memo`/`React.useMemo`/`React.useCallback` member access. Vendored `src/components/ui/**` is exempt because `pnpm bump-ui` overwrites it from upstream shadcn.
 
 ### shadcn/ui
 
@@ -88,6 +96,7 @@ All new features follow TDD (red-green-refactor):
 4. **Verify** — `pnpm test && pnpm lint:fix && pnpm format:fix && pnpm check-types`
 
 **Critical rules:**
+
 - NEVER remove or weaken tests without explicit user authorization
 - ALWAYS write tests before implementation
 - No feature is complete until all tests pass
@@ -101,6 +110,7 @@ When making UI changes, start the dev server and verify the feature in a browser
 ### Client-Side Storage
 
 **Backend (PostgreSQL) is the source of truth.** Client-side storage is for performance optimization only:
+
 - **IndexedDB** — cache API responses (calendar events, tasks, profiles)
 - **LocalStorage** — user preferences (theme, UI settings)
 - **Session Storage** — temporary UI state (form drafts, modals)
@@ -159,8 +169,9 @@ Automatically loaded: **Next.js DevTools** (runtime state, docs) | **Context7** 
 ## Checklist — Task Completion
 
 A task is **not complete** until:
+
 1. All tests pass (`pnpm test`)
 2. All code quality checks pass (`pnpm lint:fix && pnpm format:fix && pnpm check-types`)
 3. Feature matches the plan spec (if implementing from `.claude/plans/`)
 4. Never commit test output artifacts (`test-results/`, `playwright-report/`, `blob-report/`)
-5. Use `pnpm db:migrate` for schema changes (never `prisma db push`). See [docs/database.md](./docs/database.md)
+5. Use `pnpm db:migrate` for schema changes (never `prisma db push`). Migrations follow Prisma's default `YYYYMMDDHHMMSS_snake_case` naming convention (e.g. `20260507135533_pointtransaction_unique_task_award`); CI runs `pnpm db:migrate:check-names` to enforce it. See [docs/database.md](./docs/database.md)

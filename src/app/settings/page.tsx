@@ -1,5 +1,9 @@
 import { SettingsForm } from "@/components/settings/settings-form";
 import { getSession } from "@/lib/auth";
+import {
+  DEFAULT_CALENDAR_TRANSITION_SPEED,
+  isCalendarTransitionSpeed,
+} from "@/lib/calendar/transition-speed";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 
@@ -46,12 +50,26 @@ export default async function SettingsPage() {
           timeFormat: settings.timeFormat,
           dateFormat: settings.dateFormat,
           defaultZoomLevel: settings.defaultZoomLevel,
+          // Clamp defensively so a manually-edited DB row of e.g. 5 doesn't
+          // poison every `weekStartsOn` parameter; only 0/1 are valid here.
+          weekStartDay: settings.weekStartDay === 1 ? 1 : 0,
           rewardSystemEnabled: settings.rewardSystemEnabled,
           defaultTaskPoints: settings.defaultTaskPoints,
           showPointsOnCompletion: settings.showPointsOnCompletion,
           schedulerIntervalSeconds: settings.schedulerIntervalSeconds,
           schedulerPauseOnInteractionSeconds:
             settings.schedulerPauseOnInteractionSeconds,
+          calendarRefreshIntervalMinutes:
+            settings.calendarRefreshIntervalMinutes,
+          calendarFetchMonthsAhead: settings.calendarFetchMonthsAhead,
+          calendarFetchMonthsBehind: settings.calendarFetchMonthsBehind,
+          calendarMaxEventsPerDay: settings.calendarMaxEventsPerDay,
+          calendarWorkingHoursStart: settings.calendarWorkingHoursStart,
+          calendarTransitionSpeed: isCalendarTransitionSpeed(
+            settings.calendarTransitionSpeed
+          )
+            ? settings.calendarTransitionSpeed
+            : DEFAULT_CALENDAR_TRANSITION_SPEED,
         }}
       />
     </div>

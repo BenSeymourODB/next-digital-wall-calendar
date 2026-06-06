@@ -4,7 +4,7 @@
 import { type ReactNode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ProfileProvider, useProfile } from "../profile-context";
+import { type Profile, ProfileProvider, useProfile } from "../profile-context";
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -28,7 +28,7 @@ vi.stubGlobal("localStorage", {
 });
 
 // Mock profiles data
-const mockProfiles = [
+const mockProfiles: Profile[] = [
   {
     id: "profile-admin-1",
     userId: "user-1",
@@ -274,8 +274,10 @@ describe("ProfileContext", () => {
         expect(result.current.allProfiles).toHaveLength(2);
       });
 
-      // Add a new profile to the response
-      const updatedProfiles = [
+      // Add a new profile to the response. The appended fragment is a
+      // deliberately partial Profile — the test only checks `allProfiles`
+      // length after refresh, so a minimal shape exercises the path.
+      const updatedProfiles: Array<Profile | Partial<Profile>> = [
         ...mockProfiles,
         {
           id: "profile-new",

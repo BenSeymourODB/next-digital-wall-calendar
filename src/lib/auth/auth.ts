@@ -1,23 +1,30 @@
+import {
+  decryptToken,
+  encryptToken,
+  validateEncryptionKey,
+} from "@/lib/crypto/token-cipher";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import {
-  type TokenRefreshDeps,
-  createDefaultTokenRefreshDeps,
-  getOrStartTokenRefresh,
-} from "./token-refresh";
+import { encryptLinkedAccount } from "./link-account";
+import { refreshGoogleAccessToken } from "./refresh-google-token";
+import { refreshGoogleSessionTokensIfNeeded } from "./refresh-session-tokens";
+import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
 
-// Lazy-cached so a missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET surfaces as
-// a real server error on the first refresh attempt rather than getting
-// silently caught and turned into a per-user RefreshTokenError.
-let cachedRefreshDeps: TokenRefreshDeps | undefined;
-function getRefreshDeps(): TokenRefreshDeps {
-  if (!cachedRefreshDeps) {
-    cachedRefreshDeps = createDefaultTokenRefreshDeps();
-  }
-  return cachedRefreshDeps;
+// Fail fast on a missing / misconfigured encryption key. Without this, the
+// per-request `encryptToken` call in the session callback throws, gets caught,
+// and silently degrades to `session.error = "RefreshTokenError"` — which the
+// user sees as "Session expired. Please sign in again." every hour even
+// though the underlying problem is a server-side env-var gap (#315).
+//
+// Skipped during `next build`: page-data collection evaluates this module
+// without runtime env vars and a throw here aborts the build. Production
+// runtime still validates eagerly on server start (NEXT_PHASE is unset or
+// "phase-production-server").
+if (process.env.NEXT_PHASE !== "phase-production-build") {
+  validateEncryptionKey();
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -42,8 +49,55 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      // Guard against issue #61: reject attempts to link a second
+      // Google identity to a user that already has a different Google
+      // account. Without this, the Prisma adapter creates a duplicate
+      // row that the DB constraint will now reject, but we want a
+      // cleaner user-facing failure than a raw Postgres error.
+      //
+      // user.id is only populated after the Prisma adapter has written
+      // the User row. If it is absent this callback is running for a
+      // fresh sign-up, so there are no existing accounts to check and
+      // we short-circuit — do NOT remove this guard, or every new
+      // sign-up will hit a prisma.account query against an undefined
+      // userId.
+      if (!account || !user.id) return true;
+
+      const existingAccounts = await prisma.account.findMany({
+        where: { userId: user.id, provider: account.provider },
+        select: { provider: true, providerAccountId: true },
+      });
+
+      const decision = shouldAllowSignIn({
+        account: {
+          provider: account.provider,
+          providerAccountId: account.providerAccountId,
+          type: account.type,
+        },
+        existingAccounts,
+      });
+
+      if (!decision.allow) {
+        // userId alone is enough to trace the incident in the DB;
+        // providerAccountIds are Google's opaque user identifiers and
+        // qualify as PII once telemetry ships, so only emit a suffix
+        // that's useful for distinguishing which of two similar IDs
+        // was involved without leaking the full value.
+        logger.event("GoogleAccountLinkRejected", {
+          userId: user.id,
+          provider: account.provider,
+          existingProviderAccountIdSuffix: lastSix(
+            decision.existingProviderAccountId
+          ),
+          incomingProviderAccountIdSuffix: lastSix(account.providerAccountId),
+        });
+        return false;
+      }
+
+      return true;
+    },
     async session({ session, user }) {
-      // Get the Google account for this user
       const [googleAccount] = await prisma.account.findMany({
         where: { userId: user.id, provider: "google" },
         orderBy: { expires_at: "desc" },
@@ -54,32 +108,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return session;
       }
 
-      // Access token expired? Refresh via the singleflight queue so
-      // concurrent sessions don't all hit the Google OAuth endpoint.
-      if (
-        googleAccount.expires_at &&
-        googleAccount.expires_at * 1000 < Date.now()
-      ) {
-        // Resolve deps outside the try so a misconfigured
-        // GOOGLE_CLIENT_ID/_SECRET surfaces as a server error instead of
-        // a per-user RefreshTokenError.
-        const deps = getRefreshDeps();
-        try {
-          await getOrStartTokenRefresh(googleAccount, deps);
-          logger.event("TokenRefreshed", {
-            userId: user.id,
-            success: true,
-          });
-        } catch (error) {
-          logger.error(error as Error, {
-            context: "TokenRefreshFailed",
-            userId: user.id,
-          });
-          session.error = "RefreshTokenError";
+      // Delegated to refresh-session-tokens.ts so the classifier branching is
+      // unit-testable in isolation (see __tests__/session-callback.test.ts).
+      // Returns a terminal-error outcome only for genuine Google revocation /
+      // missing refresh-token / undecryptable ciphertext — transient failures
+      // leave the session untouched so the next callback retries (#315).
+      const outcome = await refreshGoogleSessionTokensIfNeeded(
+        user.id,
+        googleAccount,
+        {
+          prisma,
+          refreshGoogleAccessToken,
+          encryptToken,
+          decryptToken,
+          logger,
+          googleClientId: process.env.GOOGLE_CLIENT_ID!,
+          googleClientSecret: process.env.GOOGLE_CLIENT_SECRET!,
         }
+      );
+
+      if (outcome.kind === "terminal-error") {
+        session.error = "RefreshTokenError";
       }
 
-      // Add user ID to session for easy access
       session.user.id = user.id;
 
       return session;
@@ -101,6 +152,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         provider: account?.provider ?? "unknown",
         isNewUser: isNewUser ?? false,
       });
+    },
+    // When @auth/prisma-adapter writes a newly linked OAuth account it stores
+    // tokens in plaintext. `encryptLinkedAccount` re-encrypts them in place.
+    // Extracted into its own module so it's unit-testable without booting
+    // NextAuth (see src/lib/auth/__tests__/link-account.test.ts).
+    async linkAccount({ account }) {
+      await encryptLinkedAccount(account);
     },
     async signOut(message) {
       // Handle both session and token based signOut

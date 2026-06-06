@@ -1,10 +1,16 @@
 "use client";
 
 import { AccountManager } from "@/components/calendar/AccountManager";
-import { AgendaCalendar } from "@/components/calendar/AgendaCalendar";
+import { AnalogClockView } from "@/components/calendar/AnalogClockView";
+import { CalendarFilterPanel } from "@/components/calendar/CalendarFilterPanel";
+import { CalendarSettingsPanel } from "@/components/calendar/CalendarSettingsPanel";
+import { DayCalendar } from "@/components/calendar/DayCalendar";
 import { MiniCalendarSidebar } from "@/components/calendar/MiniCalendarSidebar";
 import { SimpleCalendar } from "@/components/calendar/SimpleCalendar";
 import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
+import { WeekCalendar } from "@/components/calendar/WeekCalendar";
+import { YearCalendar } from "@/components/calendar/YearCalendar";
+import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import {
   CalendarProvider,
   useCalendar,
@@ -12,16 +18,71 @@ import {
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
-import { useState } from "react";
+import type { TCalendarView } from "@/types/calendar";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Settings } from "lucide-react";
+
+// Canonical view values that `CalendarProvider` understands directly. Keep
+// in lockstep with TCalendarView — adding a new view requires extending
+// both this array and the type. The runtime check derives narrowing from
+// this array so the `as TCalendarView` cast below is provably sound.
+const CANONICAL_VIEW_PARAMS = [
+  "day",
+  "week",
+  "month",
+  "year",
+  "clock",
+] as const satisfies readonly TCalendarView[];
+
+// Aliases that the URL accepts but the provider does not. Each is mapped
+// to a canonical view (+ optional flag) before reaching the provider; see
+// `resolveInitialView` below.
+const LEGACY_VIEW_ALIASES = ["agenda"] as const;
+type TLegacyViewAlias = (typeof LEGACY_VIEW_ALIASES)[number];
+
+function isCanonicalViewParam(value: string | null): value is TCalendarView {
+  return (
+    value !== null &&
+    (CANONICAL_VIEW_PARAMS as readonly string[]).includes(value)
+  );
+}
+
+function isLegacyViewAlias(value: string | null): value is TLegacyViewAlias {
+  return (
+    value !== null && (LEGACY_VIEW_ALIASES as readonly string[]).includes(value)
+  );
+}
+
+function CalendarView({ view }: { view: TCalendarView }) {
+  switch (view) {
+    case "day":
+      return <DayCalendar />;
+    case "week":
+      return <WeekCalendar />;
+    case "year":
+      return <YearCalendar />;
+    case "clock":
+      return <AnalogClockView />;
+    case "month":
+    default:
+      return <SimpleCalendar />;
+  }
+}
 
 /**
  * Calendar content component
  * Extracted to access useCalendar hook
  */
 function CalendarContent() {
-  const { view } = useCalendar();
+  const { view, agendaMode, transitionDurationMs } = useCalendar();
   const [showSettings, setShowSettings] = useState(false);
+
+  // Sidebar belongs to the day/week time-grid views only. Month, Year,
+  // and Clock have their own primary surface (issue #146 / #152), and
+  // when the user is in agenda mode (#150) the sidebar would compete
+  // with the chronological list. (#214)
+  const showSidebar = (view === "day" || view === "week") && !agendaMode;
 
   return (
     <div className="bg-background min-h-screen p-4 sm:p-8">
@@ -38,9 +99,11 @@ function CalendarContent() {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
+            <CalendarSettingsPanel />
             <Button
               variant="outline"
               size="icon"
+              aria-label="Account manager"
               onClick={() => setShowSettings(!showSettings)}
             >
               <Settings className="h-5 w-5" />
@@ -55,26 +118,80 @@ function CalendarContent() {
           </div>
         )}
 
-        {/* View Switcher */}
-        <ViewSwitcher />
+        {/* View Switcher + Filter Panel */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <ViewSwitcher />
+          <CalendarFilterPanel />
+        </div>
 
-        {/* Calendar + mini-calendar sidebar */}
-        <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+        {/* Calendar + optional mini-calendar sidebar. */}
+        <div
+          className={
+            showSidebar ? "grid gap-6 lg:grid-cols-[1fr_280px]" : "grid gap-6"
+          }
+        >
           <div className="border-border bg-card rounded-lg border p-6">
-            {view === "month" ? <SimpleCalendar /> : <AgendaCalendar />}
+            <AnimatedSwap
+              swapKey={view}
+              type="fade"
+              direction="forward"
+              durationMs={transitionDurationMs}
+            >
+              <CalendarView view={view} />
+            </AnimatedSwap>
           </div>
-          <MiniCalendarSidebar />
+          {showSidebar && <MiniCalendarSidebar />}
         </div>
       </div>
     </div>
   );
 }
 
-export default function CalendarPage() {
+function CalendarPageBody() {
+  // Issue #238 — honour ?view=year (and other view= URL params) so deep
+  // links and bookmarks land on the requested view even when the user's
+  // persisted localStorage points elsewhere. Mirrors the test page
+  // pattern. Legacy ?view=agenda maps to day + agendaMode=true to match
+  // the provider's pre-#150 → post-#150 migration.
+  const searchParams = useSearchParams();
+  const rawView = searchParams.get("view");
+  const initialView: TCalendarView | undefined = isCanonicalViewParam(rawView)
+    ? rawView
+    : isLegacyViewAlias(rawView)
+      ? // The only current alias is "agenda"; widen here when more land.
+        "day"
+      : undefined;
+
+  // Only forward `agendaMode` when we are also driving the view from the
+  // URL. Without an explicit view, `agendaMode=true` would seed `true`
+  // into provider state (and the mount-effect would persist it to
+  // localStorage) on top of whatever view localStorage already held —
+  // a meaningless combination on month/year/clock that would silently
+  // corrupt the persisted setting forever. Bundling the toggle with an
+  // explicit view keeps the deep link self-contained.
+  const isLegacyAgendaParam = isLegacyViewAlias(rawView);
+  const wantsAgendaMode =
+    isLegacyAgendaParam || searchParams.get("agendaMode") === "true";
+  const initialAgendaMode =
+    wantsAgendaMode && initialView !== undefined ? true : undefined;
+
   return (
-    <CalendarProvider>
+    <CalendarProvider
+      initialView={initialView}
+      initialAgendaMode={initialAgendaMode}
+    >
       <CalendarContent />
       <Toaster />
     </CalendarProvider>
+  );
+}
+
+export default function CalendarPage() {
+  return (
+    <Suspense
+      fallback={<div className="bg-background min-h-screen p-4 sm:p-8" />}
+    >
+      <CalendarPageBody />
+    </Suspense>
   );
 }

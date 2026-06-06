@@ -2,16 +2,20 @@
 
 import {
   CalendarContext,
+  type CreateEventInput,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { TRANSITION_SPEED_TO_MS } from "@/lib/calendar/transition-speed";
+import type { TCalendarAccessRole } from "@/types/calendar";
 import type {
   IEvent,
   IUser,
   TCalendarView,
   TEventColor,
+  TWeekStartDay,
 } from "@/types/calendar";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 // Re-export useCalendar from CalendarProvider for backward compatibility
 export { useCalendar } from "@/components/providers/CalendarProvider";
@@ -30,10 +34,29 @@ interface MockCalendarProviderProps {
   isLoading?: boolean;
   /** Use 24-hour time format */
   use24HourFormat?: boolean;
+  /** Which day the visible calendar week starts on (0 = Sunday, 1 = Monday) */
+  weekStartDay?: TWeekStartDay;
+  /** Initial agenda-mode group-by */
+  agendaModeGroupBy?: "date" | "color";
+  /** Initial agenda-mode toggle (only meaningful for day/week views). */
+  agendaMode?: boolean;
   /** Simulate loading delay in ms */
   loadingDelay?: number;
   /** Whether user is authenticated (for testing) */
   isAuthenticated?: boolean;
+  /** Max events rendered per day cell before the "+N more" overflow */
+  maxEventsPerDay?: number;
+  /**
+   * Optional per-calendar access roles, used by the read-only delete-button
+   * gating (#266). Keys are calendar IDs (matching `IEvent.calendarId`),
+   * values are Google `accessRole` literals. Calendars not in this map
+   * resolve to `undefined`, which the modal treats as "writable" by default.
+   */
+  accessRolesByCalendarId?: Record<string, TCalendarAccessRole>;
+  /** Hour (0–23) the Day/Week grids auto-scroll to on first render. */
+  workingHoursStart?: number;
+  /** View-transition duration in ms; mirrors `userSettings.calendarTransitionSpeed`. */
+  transitionDurationMs?: number;
 }
 
 /**
@@ -57,8 +80,15 @@ export function MockCalendarProvider({
   initialDate,
   isLoading: initialLoading = false,
   use24HourFormat: initial24Hour = true,
+  weekStartDay: initialWeekStartDay = 0,
+  agendaModeGroupBy: initialAgendaGroupBy = "date",
+  agendaMode: initialAgendaMode = false,
   loadingDelay = 0,
   isAuthenticated = true,
+  maxEventsPerDay = 3,
+  accessRolesByCalendarId = {},
+  workingHoursStart = 7,
+  transitionDurationMs = TRANSITION_SPEED_TO_MS.normal,
 }: MockCalendarProviderProps) {
   const [badgeVariant, setBadgeVariantState] = useState<"dot" | "colored">(
     badge
@@ -68,7 +98,10 @@ export function MockCalendarProvider({
     useState<boolean>(initial24Hour);
   const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
     "date" | "color"
-  >("date");
+  >(initialAgendaGroupBy);
+  const [agendaMode, setAgendaModeState] = useState<boolean>(initialAgendaMode);
+  const [weekStartDay, setWeekStartDayState] =
+    useState<TWeekStartDay>(initialWeekStartDay);
 
   const [selectedDate, setSelectedDate] = useState(initialDate || new Date());
   const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
@@ -107,6 +140,14 @@ export function MockCalendarProvider({
     setAgendaModeGroupByState(groupBy);
   };
 
+  const setAgendaMode = (enabled: boolean) => {
+    setAgendaModeState(enabled);
+  };
+
+  const setWeekStartDay = (day: TWeekStartDay) => {
+    setWeekStartDayState(day);
+  };
+
   const filterEventsBySelectedColors = (color: TEventColor) => {
     setSelectedColors((prev) =>
       prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color]
@@ -134,6 +175,26 @@ export function MockCalendarProvider({
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
+  // Mock createEvent: hermetic local insert that resolves with the
+  // optimistic event so AddEventButton's happy path works in E2E without
+  // mocking fetch. Tests that need failure behaviour should override this
+  // in their own provider wrapper.
+  const createEvent = async (
+    optimistic: IEvent,
+    _input: CreateEventInput
+  ): Promise<IEvent> => {
+    setAllEvents((prev) => [...prev, optimistic]);
+    return optimistic;
+  };
+
+  // Mock deleteEvent matches the real provider's optimistic-remove signature
+  // but skips the network call so tests can drive UI flows without mocking
+  // fetch. Tests that care about failure behavior should override this in
+  // their own provider wrapper.
+  const deleteEvent = async (eventId: string, _calendarId: string) => {
+    setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
+  };
+
   // Mock refresh - just returns current events
   const refreshEvents = async () => {
     if (loadingDelay > 0) {
@@ -143,22 +204,26 @@ export function MockCalendarProvider({
     }
   };
 
-  // Filter events using useMemo to avoid effect-based setState
-  const filteredEvents = useMemo(() => {
-    let filtered = allEvents;
+  // No-op: the mock provider holds a static fixture, so widening the
+  // year window doesn't need to fetch anything.
+  const loadEventsForYear = async () => {};
 
-    if (selectedUserId !== "all") {
-      filtered = filtered.filter((event) => event.user.id === selectedUserId);
-    }
+  const getAccessRole = (calendarId: string) =>
+    accessRolesByCalendarId[calendarId];
 
-    if (selectedColors.length > 0) {
-      filtered = filtered.filter((event) =>
-        selectedColors.includes(event.color)
-      );
-    }
-
-    return filtered;
-  }, [allEvents, selectedUserId, selectedColors]);
+  // Derive filtered events at render time. React Compiler memoizes the
+  // result automatically; manual `useMemo` is forbidden by CLAUDE.md.
+  let filteredEvents = allEvents;
+  if (selectedUserId !== "all") {
+    filteredEvents = filteredEvents.filter(
+      (event) => event.user.id === selectedUserId
+    );
+  }
+  if (selectedColors.length > 0) {
+    filteredEvents = filteredEvents.filter((event) =>
+      selectedColors.includes(event.color)
+    );
+  }
 
   // Get unique users from events
   const users = allEvents.reduce((acc, event) => {
@@ -178,10 +243,14 @@ export function MockCalendarProvider({
     selectedDate,
     view: currentView,
     setView,
+    agendaMode,
+    setAgendaMode,
     agendaModeGroupBy,
     setAgendaModeGroupBy,
     use24HourFormat,
     toggleTimeFormat,
+    weekStartDay,
+    setWeekStartDay,
     setSelectedDate: handleSetSelectedDate,
     selectedUserId,
     setSelectedUserId,
@@ -195,10 +264,17 @@ export function MockCalendarProvider({
     addEvent,
     updateEvent,
     removeEvent,
+    createEvent,
+    deleteEvent,
     clearFilter,
     refreshEvents,
+    loadEventsForYear,
+    getAccessRole,
     isLoading,
     isAuthenticated,
+    maxEventsPerDay,
+    workingHoursStart,
+    transitionDurationMs,
   };
 
   return (

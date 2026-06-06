@@ -2,21 +2,19 @@
  * API endpoint for updating a Google Task
  * Uses server-side authentication with NextAuth.js
  */
-import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  getSession,
+  requireGoogleTasksAccessToken,
+} from "@/lib/auth";
+import { patchTask } from "@/lib/google/tasks-api";
+import {
+  GoogleTasksApiError,
+  type PatchTaskInput,
+  TASK_STATUSES,
+} from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
-
-const GOOGLE_TASKS_API = "https://tasks.googleapis.com/tasks/v1";
-
-const VALID_STATUSES = ["needsAction", "completed"] as const;
-type TaskStatus = (typeof VALID_STATUSES)[number];
-
-interface TaskUpdateBody {
-  status?: TaskStatus;
-  title?: string;
-  notes?: string;
-  due?: string;
-}
 
 /**
  * PATCH /api/tasks/[taskId] - Update a task
@@ -48,6 +46,9 @@ export async function PATCH(
       );
     }
 
+    // Combined scope check + token decryption in a single DB call (#260).
+    const accessToken = await requireGoogleTasksAccessToken(session);
+
     const { taskId } = await params;
     const { searchParams } = new URL(request.url);
     const listId = searchParams.get("listId");
@@ -59,57 +60,16 @@ export async function PATCH(
       );
     }
 
-    const body = (await request.json()) as TaskUpdateBody;
+    const body = (await request.json()) as PatchTaskInput;
 
-    // Validate status if provided
-    if (body.status && !VALID_STATUSES.includes(body.status)) {
+    if (body.status && !TASK_STATUSES.includes(body.status)) {
       return NextResponse.json(
         { error: "Invalid status. Must be 'needsAction' or 'completed'" },
         { status: 400 }
       );
     }
 
-    const accessToken = await getAccessToken();
-
-    const response = await fetch(
-      `${GOOGLE_TASKS_API}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      }
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      logger.error(new Error("Failed to update task"), {
-        status: response.status,
-        errorData,
-        taskId,
-        listId,
-        userId: session.user.id,
-      });
-
-      if (response.status === 401) {
-        return NextResponse.json(
-          {
-            error: "Google authentication failed. Please sign in again.",
-            requiresReauth: true,
-          },
-          { status: 401 }
-        );
-      }
-
-      return NextResponse.json(
-        { error: "Failed to update task" },
-        { status: response.status }
-      );
-    }
-
-    const updatedTask = await response.json();
+    const updatedTask = await patchTask(accessToken, listId, taskId, body);
 
     logger.event("TaskUpdated", {
       taskId,
@@ -121,8 +81,34 @@ export async function PATCH(
     return NextResponse.json({ task: updatedTask });
   } catch (error) {
     if (error instanceof AuthError) {
+      const requiresReauth = error.status === 401 || error.status === 403;
       return NextResponse.json(
-        { error: error.message, requiresReauth: error.status === 401 },
+        { error: error.message, requiresReauth },
+        { status: error.status }
+      );
+    }
+
+    if (error instanceof GoogleTasksApiError) {
+      logger.error(error, {
+        endpoint: "/api/tasks/[taskId]",
+        status: error.status,
+      });
+
+      if (error.status === 401 || error.status === 403) {
+        return NextResponse.json(
+          {
+            error:
+              error.status === 403
+                ? "Missing Google Tasks scope. Please sign in again to grant access."
+                : "Google authentication failed. Please sign in again.",
+            requiresReauth: true,
+          },
+          { status: error.status }
+        );
+      }
+
+      return NextResponse.json(
+        { error: "Failed to update task" },
         { status: error.status }
       );
     }

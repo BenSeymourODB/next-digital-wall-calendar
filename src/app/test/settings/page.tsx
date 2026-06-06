@@ -32,11 +32,18 @@ export default function TestSettingsPage() {
             timeFormat: "12h",
             dateFormat: "MM/DD/YYYY",
             defaultZoomLevel: 1.0,
+            weekStartDay: 0,
             rewardSystemEnabled: true,
             defaultTaskPoints: 10,
             showPointsOnCompletion: true,
             schedulerIntervalSeconds: 10,
             schedulerPauseOnInteractionSeconds: 30,
+            calendarRefreshIntervalMinutes: 15,
+            calendarFetchMonthsAhead: 6,
+            calendarFetchMonthsBehind: 1,
+            calendarMaxEventsPerDay: 3,
+            calendarWorkingHoursStart: 7,
+            calendarTransitionSpeed: "normal",
           }}
         />
       </div>

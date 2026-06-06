@@ -2,7 +2,11 @@
  * Integration tests for /api/tasks/lists route
  */
 // Import after mocks
-import { getAccessToken, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  getSession,
+  requireGoogleTasksAccessToken,
+} from "@/lib/auth";
 import {
   mockGoogleAccount,
   mockSession,
@@ -18,7 +22,7 @@ import { GET } from "../route";
 // Mock modules BEFORE imports
 vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
-  getAccessToken: vi.fn(),
+  requireGoogleTasksAccessToken: vi.fn(),
   AuthError: class AuthError extends Error {
     status: number;
     constructor(message: string, status: number = 401) {
@@ -37,6 +41,27 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
+// Replace the real `sleep` inside fetchWithRetry with a no-op so transient-
+// status tests (5xx, 429) don't wait for real backoff delays.
+vi.mock("@/lib/http/retry", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/http/retry")>(
+      "@/lib/http/retry"
+    );
+  return {
+    ...actual,
+    fetchWithRetry: (
+      input: Parameters<typeof actual.fetchWithRetry>[0],
+      init?: Parameters<typeof actual.fetchWithRetry>[1],
+      options: Parameters<typeof actual.fetchWithRetry>[2] = {}
+    ) =>
+      actual.fetchWithRetry(input, init, {
+        ...options,
+        sleep: () => Promise.resolve(),
+      }),
+  };
+});
+
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -44,6 +69,11 @@ global.fetch = mockFetch;
 describe("/api/tasks/lists", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: combined helper resolves with the mock token. Specific tests
+    // override to throw for the no-account / missing-scope / no-token paths.
+    vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
+      mockGoogleAccount.access_token!
+    );
   });
 
   describe("GET /api/tasks/lists", () => {
@@ -68,9 +98,27 @@ describe("/api/tasks/lists", () => {
       expect(data.requiresReauth).toBe(true);
     });
 
+    it("returns 403 with requiresReauth when stored grant is missing the Tasks scope (#237)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(requireGoogleTasksAccessToken).mockRejectedValue(
+        new AuthError(
+          "Re-authentication required: Google Tasks scope missing.",
+          403
+        )
+      );
+
+      const response = await GET();
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(403);
+      expect(data.requiresReauth).toBe(true);
+      expect(data.error).toMatch(/Google Tasks/);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it("returns task lists on success", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
@@ -105,7 +153,7 @@ describe("/api/tasks/lists", () => {
 
     it("returns empty array when no lists exist", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
@@ -125,7 +173,7 @@ describe("/api/tasks/lists", () => {
 
     it("returns 401 with requiresReauth when Google API returns 401", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
@@ -147,13 +195,17 @@ describe("/api/tasks/lists", () => {
 
     it("returns error status from Google API for other errors", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockResolvedValue(
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
         mockGoogleAccount.access_token!
       );
 
+      // 500 is transient — retries exhaust, the final response still bubbles
+      // up through the route's !ok branch unchanged. Headers must be a real
+      // Headers instance so fetchWithRetry can read Retry-After on each pass.
       mockFetch.mockResolvedValue({
         ok: false,
         status: 500,
+        headers: new Headers(),
         json: () => Promise.resolve({ error: "Internal error" }),
       });
 
@@ -166,13 +218,80 @@ describe("/api/tasks/lists", () => {
 
     it("returns 500 on unexpected error", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);
-      vi.mocked(getAccessToken).mockRejectedValue(new Error("Unexpected"));
+      vi.mocked(requireGoogleTasksAccessToken).mockRejectedValue(
+        new Error("Unexpected")
+      );
 
       const response = await GET();
       const { status, data } = await parseResponse<ApiErrorResponse>(response);
 
       expect(status).toBe(500);
       expect(data.error).toBe("An unexpected error occurred");
+    });
+
+    it("retries a transient 503 and returns the eventual 200 (issue #68)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          headers: new Headers(),
+          json: () => Promise.resolve({ error: "Service Unavailable" }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ items: [{ id: "l1", title: "List" }] }),
+        });
+
+      const response = await GET();
+      const { status, data } = await parseResponse<{
+        lists: { id: string; title: string }[];
+      }>(response);
+
+      expect(status).toBe(200);
+      expect(data.lists).toHaveLength(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("calls getSession and the combined helper exactly once each per request (#260)", async () => {
+      // Pins the perf contract: one auth() resolution, one DB lookup
+      // (from inside the helper) on the happy path. Regressions here mean
+      // duplicate Prisma queries are creeping back in.
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [] }),
+      });
+
+      await GET();
+
+      expect(getSession).toHaveBeenCalledTimes(1);
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledTimes(1);
+      expect(requireGoogleTasksAccessToken).toHaveBeenCalledWith(mockSession);
+    });
+
+    it("does NOT retry a 401 from upstream (non-transient, issue #68)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(requireGoogleTasksAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        json: () => Promise.resolve({ error: "Unauthorized" }),
+      });
+
+      const response = await GET();
+      await parseResponse<ApiErrorResponse>(response);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 });

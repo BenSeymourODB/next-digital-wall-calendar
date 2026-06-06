@@ -245,6 +245,53 @@ describe("useScreenScheduler", () => {
       expect(result.current.state.activeTimeSpecific).not.toBeNull();
       expect(result.current.state.activeTimeSpecific?.id).toBe("ts-1");
     });
+
+    // Regression test for issue #221, bug 4: time-specific check skipped the
+    // initial run, leaving detection delayed up to 60s if the scheduler booted
+    // inside an active time window.
+    it("runs the time-specific check immediately on activation, not after a 60s wait", () => {
+      const configWithTimeSpecific: ScheduleConfig = {
+        sequences: [
+          {
+            id: "seq-1",
+            name: "Main",
+            enabled: true,
+            screens: ["/calendar", "/tasks"],
+            intervalSeconds: 60,
+            pauseOnInteractionSeconds: 120,
+          },
+        ],
+        timeSpecific: [
+          {
+            id: "ts-1",
+            enabled: true,
+            screen: "/recipe",
+            time: "17:30",
+            durationMinutes: 30,
+          },
+        ],
+      };
+
+      vi.setSystemTime(new Date(2024, 2, 15, 17, 30, 0));
+
+      const { result } = renderHook(() =>
+        useScreenScheduler(configWithTimeSpecific)
+      );
+
+      act(() => {
+        result.current.controls.start();
+      });
+
+      // Run only the microtask + setTimeout(0) that schedules the immediate
+      // check. Critically, do NOT advance the 60s interval.
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+
+      expect(result.current.state.activeTimeSpecific).not.toBeNull();
+      expect(result.current.state.activeTimeSpecific?.id).toBe("ts-1");
+      expect(mockPush).toHaveBeenCalledWith("/recipe");
+    });
   });
 
   describe("auto-rotation", () => {
@@ -280,6 +327,51 @@ describe("useScreenScheduler", () => {
       });
 
       expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    // Regression test for issue #221, bug 6: the countdown previously had
+    // its own setInterval that drifted from the navigation interval. The
+    // fix unifies them into a single 1s tick — the countdown is derived
+    // from the same timer that triggers navigation, eliminating drift by
+    // construction. This test pins that invariant via both the
+    // structural shape (one 1s interval) and the behavioural one (the
+    // navigation fires after `intervalSeconds` ticks).
+    it("uses a single 1s interval as the shared source of truth for countdown and navigation", () => {
+      mockPathname.mockReturnValue("/calendar");
+      const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+
+      try {
+        const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+        act(() => {
+          result.current.controls.start();
+        });
+
+        // Drain the immediate time-specific check.
+        act(() => {
+          vi.advanceTimersByTime(0);
+        });
+
+        const intervalDelays = setIntervalSpy.mock.calls.map((call) => call[1]);
+        const oneSecondIntervals = intervalDelays.filter((d) => d === 1000);
+        const sixtySecondIntervals = intervalDelays.filter((d) => d === 60_000);
+
+        // Exactly one 1s tick (drives countdown AND navigation).
+        expect(oneSecondIntervals).toHaveLength(1);
+        // Plus the unrelated 60s time-specific check interval.
+        expect(sixtySecondIntervals).toHaveLength(1);
+
+        // Behavioural pin: that single 1s interval drives navigation at
+        // exactly `intervalSeconds * 1000`ms — no separate timer fires
+        // navigation early, none fires late.
+        act(() => {
+          vi.advanceTimersByTime(60_000);
+        });
+        expect(mockPush).toHaveBeenCalledTimes(1);
+        expect(mockPush).toHaveBeenCalledWith("/recipe");
+      } finally {
+        setIntervalSpy.mockRestore();
+      }
     });
 
     it("does not auto-navigate when externalPaused is true", () => {
@@ -379,6 +471,99 @@ describe("useScreenScheduler", () => {
       });
 
       expect(result.current.state.transitionDirection).toBe("forward");
+    });
+  });
+
+  // Regression tests for issue #221, bug 1: the `controls` object was
+  // recreated as a fresh literal on every render, so consumers that
+  // listed `controls` in their `useEffect` dependency array re-ran their
+  // effects on every internal state change — including the 1-second
+  // countdown tick.
+  describe("stable controls reference (#221, bug 1)", () => {
+    it("returns the same controls reference across renders triggered by state changes", () => {
+      mockPathname.mockReturnValue("/calendar");
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      const initialControls = result.current.controls;
+
+      // Trigger an internal state change: start the scheduler.
+      act(() => {
+        result.current.controls.start();
+      });
+
+      expect(result.current.controls).toBe(initialControls);
+
+      // Trigger another internal state change: advance one countdown tick.
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      expect(result.current.controls).toBe(initialControls);
+
+      // Pause / resume cycles must not break identity either.
+      act(() => {
+        result.current.controls.pause();
+      });
+      expect(result.current.controls).toBe(initialControls);
+
+      act(() => {
+        result.current.controls.resume();
+      });
+      expect(result.current.controls).toBe(initialControls);
+    });
+
+    it("preserves individual control function identities across renders", () => {
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      const initial = {
+        start: result.current.controls.start,
+        stop: result.current.controls.stop,
+        pause: result.current.controls.pause,
+        resume: result.current.controls.resume,
+        navigateToNext: result.current.controls.navigateToNext,
+        navigateToPrevious: result.current.controls.navigateToPrevious,
+      };
+
+      act(() => {
+        result.current.controls.start();
+      });
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      expect(result.current.controls.start).toBe(initial.start);
+      expect(result.current.controls.stop).toBe(initial.stop);
+      expect(result.current.controls.pause).toBe(initial.pause);
+      expect(result.current.controls.resume).toBe(initial.resume);
+      expect(result.current.controls.navigateToNext).toBe(
+        initial.navigateToNext
+      );
+      expect(result.current.controls.navigateToPrevious).toBe(
+        initial.navigateToPrevious
+      );
+    });
+
+    it("stable wrappers still observe the latest state when invoked later", () => {
+      mockPathname.mockReturnValue("/calendar");
+      const { result } = renderHook(() => useScreenScheduler(defaultConfig));
+
+      // Capture controls before starting.
+      const captured = result.current.controls;
+
+      act(() => {
+        captured.start();
+      });
+
+      // The captured `navigateToNext` was created when the hook had not
+      // yet started. After start, calling it via the same captured ref
+      // must still dispatch correctly because the wrapper reads through
+      // a live ref, not a stale closure.
+      act(() => {
+        captured.navigateToNext();
+      });
+
+      expect(mockPush).toHaveBeenCalledWith("/recipe");
+      expect(result.current.state.currentIndex).toBe(1);
     });
   });
 

@@ -4,23 +4,21 @@
  * PATCH /api/profiles/[id] - Update a profile
  * DELETE /api/profiles/[id] - Soft delete a profile
  */
-import { getSession } from "@/lib/auth";
+import {
+  ApiError,
+  requireUserSession,
+  withApiHandler,
+} from "@/lib/api/handler";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
-/**
- * Profile avatar type
- */
 interface ProfileAvatar {
   type: "initials" | "photo" | "emoji";
   value: string;
   backgroundColor?: string;
 }
 
-/**
- * Update profile request body
- */
 interface UpdateProfileBody {
   name?: string;
   type?: "admin" | "standard";
@@ -29,9 +27,6 @@ interface UpdateProfileBody {
   avatar?: ProfileAvatar;
 }
 
-/**
- * Route parameters
- */
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -39,14 +34,14 @@ interface RouteParams {
 /**
  * GET /api/profiles/[id] - Get a specific profile
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
-  try {
-    const session = await getSession();
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
+export const GET = withApiHandler(
+  {
+    endpoint: "/api/profiles/[id]",
+    method: "GET",
+    errorMessage: "Failed to fetch profile",
+  },
+  async (_request: NextRequest, { params }: RouteParams) => {
+    const session = await requireUserSession();
     const { id } = await params;
 
     const profile = await prisma.profile.findFirst({
@@ -62,40 +57,28 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!profile) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+      throw new ApiError("Profile not found", 404);
     }
 
     return NextResponse.json(profile);
-  } catch (error) {
-    const { id } = await params;
-    logger.error(error as Error, {
-      endpoint: `/api/profiles/${id}`,
-      method: "GET",
-    });
-
-    return NextResponse.json(
-      { error: "Failed to fetch profile" },
-      { status: 500 }
-    );
   }
-}
+);
 
 /**
  * PATCH /api/profiles/[id] - Update a profile
  */
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
-  try {
-    const session = await getSession();
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
+export const PATCH = withApiHandler(
+  {
+    endpoint: "/api/profiles/[id]",
+    method: "PATCH",
+    errorMessage: "Failed to update profile",
+  },
+  async (request: NextRequest, { params }: RouteParams) => {
+    const session = await requireUserSession();
     const { id } = await params;
     const body = (await request.json()) as UpdateProfileBody;
     const { name, color, avatar, type, ageGroup } = body;
 
-    // Verify ownership
     const existingProfile = await prisma.profile.findFirst({
       where: {
         id,
@@ -104,10 +87,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!existingProfile) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+      throw new ApiError("Profile not found", 404);
     }
 
-    // Build update data (only include provided fields)
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name.trim();
     if (color !== undefined) updateData.color = color;
@@ -115,7 +97,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (type !== undefined) updateData.type = type;
     if (ageGroup !== undefined) updateData.ageGroup = ageGroup;
 
-    // Update profile
     const profile = await prisma.profile.update({
       where: { id },
       data: updateData,
@@ -131,34 +112,22 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     });
 
     return NextResponse.json(profile);
-  } catch (error) {
-    const { id } = await params;
-    logger.error(error as Error, {
-      endpoint: `/api/profiles/${id}`,
-      method: "PATCH",
-    });
-
-    return NextResponse.json(
-      { error: "Failed to update profile" },
-      { status: 500 }
-    );
   }
-}
+);
 
 /**
  * DELETE /api/profiles/[id] - Soft delete a profile
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  try {
-    const session = await getSession();
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
+export const DELETE = withApiHandler(
+  {
+    endpoint: "/api/profiles/[id]",
+    method: "DELETE",
+    errorMessage: "Failed to delete profile",
+  },
+  async (_request: NextRequest, { params }: RouteParams) => {
+    const session = await requireUserSession();
     const { id } = await params;
 
-    // Soft delete (set isActive = false)
     const result = await prisma.profile.updateMany({
       where: {
         id,
@@ -170,7 +139,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     });
 
     if (result.count === 0) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+      throw new ApiError("Profile not found", 404);
     }
 
     logger.event("ProfileDeleted", {
@@ -179,16 +148,5 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     });
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    const { id } = await params;
-    logger.error(error as Error, {
-      endpoint: `/api/profiles/${id}`,
-      method: "DELETE",
-    });
-
-    return NextResponse.json(
-      { error: "Failed to delete profile" },
-      { status: 500 }
-    );
   }
-}
+);
