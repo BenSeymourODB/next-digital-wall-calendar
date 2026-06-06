@@ -36,7 +36,7 @@ vi.mock("next-auth/react", async () => {
   };
 });
 
-const { colorMappingsToLoad } = vi.hoisted(() => ({
+const { colorMappingsToLoad, profileMock } = vi.hoisted(() => ({
   colorMappingsToLoad: {
     current: [] as Array<{
       calendarId: string;
@@ -45,7 +45,24 @@ const { colorMappingsToLoad } = vi.hoisted(() => ({
       tailwindColor: string;
     }>,
   },
+  // Mutable handle so tests can simulate same-tab profile switches by
+  // flipping `profileMock.current` and re-rendering. `null` keeps every
+  // existing test behaving as if `ProfileProvider` were absent (the
+  // pre-fix fallback path through localStorage / storage events).
+  profileMock: {
+    current: null as { activeProfile: { id: string } | null } | null,
+  },
 }));
+
+vi.mock("@/components/profiles/profile-context", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/components/profiles/profile-context")
+  >("@/components/profiles/profile-context");
+  return {
+    ...actual,
+    useProfileOptional: () => profileMock.current,
+  };
+});
 
 vi.mock("@/lib/calendar-storage", () => ({
   loadColorMappings: () => colorMappingsToLoad.current,
@@ -2251,6 +2268,7 @@ describe("CalendarProvider — filter persistence (#208 Phase 1)", () => {
   beforeEach(() => {
     mockSessionState.current = { data: null, status: "unauthenticated" };
     window.localStorage.clear();
+    profileMock.current = null;
   });
 
   it("starts with empty filters when nothing is persisted", async () => {
@@ -2406,6 +2424,53 @@ describe("CalendarProvider — filter persistence (#208 Phase 1)", () => {
         key: "activeProfileId",
         newValue: "profile-b",
       })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("green");
+    });
+  });
+
+  it("re-hydrates when the active profile changes in the SAME tab via useProfile (no storage event fires)", async () => {
+    // Same-tab regression: `localStorage.setItem` does NOT fire a
+    // `storage` event in the originating tab (MDN spec), so the
+    // cross-tab listener never sees `ProfileSwitcher` dropdown clicks.
+    // The fix subscribes to `useProfileOptional()` directly so React
+    // re-renders propagate the new active profile id.
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+    window.localStorage.setItem(
+      "calendar-filters:profile-b",
+      JSON.stringify({
+        selectedColors: ["green"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+    profileMock.current = { activeProfile: { id: "profile-a" } };
+
+    const { rerender } = renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red");
+    });
+
+    // Same-tab switch: `ProfileProvider` re-renders with a new
+    // `activeProfile` but does NOT fire a `storage` event. The new
+    // profile id must still flow through.
+    profileMock.current = { activeProfile: { id: "profile-b" } };
+    rerender(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <FilterProbe />
+        </CalendarProvider>
+      </SessionProvider>
     );
 
     await waitFor(() => {

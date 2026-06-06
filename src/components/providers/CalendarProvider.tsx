@@ -1,6 +1,7 @@
 "use client";
 
 import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
+import { useProfileOptional } from "@/components/profiles/profile-context";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { type TTimeFormat, useUserSettings } from "@/hooks/useUserSettings";
 import {
@@ -416,14 +417,31 @@ export function CalendarProvider({
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   // Issue #208 — filter state is persisted per-profile. The active profile
-  // id is read from the same `activeProfileId` localStorage key that
-  // ProfileProvider writes, so the two providers stay decoupled (neither
-  // imports the other). We listen for `storage` events to react to
-  // cross-tab profile switches.
+  // id has two channels:
+  //  • Same-tab switches (the common `ProfileSwitcher` dropdown case): the
+  //    `useProfileOptional()` hook gives us the live id from React state, so
+  //    `<ProfileProvider>` → `<CalendarProvider>` re-renders propagate
+  //    immediately. `Optional` because some tests mount `CalendarProvider`
+  //    without `ProfileProvider`; in that case we fall back to localStorage.
+  //  • Cross-tab switches: same-tab `localStorage.setItem` calls do NOT
+  //    fire `storage` events in the same tab (MDN spec), so we still need
+  //    the `storage` listener as the cross-tab signal.
+  const profileContext = useProfileOptional();
   const [activeProfileId, setActiveProfileId] = useState<string | null>(() => {
-    const initialProfileId = getActiveProfileId();
-    return initialProfileId;
+    if (profileContext?.activeProfile) return profileContext.activeProfile.id;
+    return getActiveProfileId();
   });
+
+  // Same-tab signal: `ProfileProvider` re-renders with the new
+  // `activeProfile`, mirror it into our local state so the re-hydration
+  // effect below kicks in.
+  useEffect(() => {
+    if (!profileContext) return;
+    const id = profileContext.activeProfile?.id ?? null;
+    if (id !== activeProfileId) {
+      setActiveProfileId(id);
+    }
+  }, [profileContext, profileContext?.activeProfile?.id, activeProfileId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -438,7 +456,10 @@ export function CalendarProvider({
 
   // Read once at construction so the three filter-state initialisers below
   // share a single localStorage round-trip with the activeProfileId hook.
-  const initialFilterState = loadFilterState(activeProfileId);
+  // Wrapped in a lazy `useState` initialiser so `loadFilterState` (which
+  // hits localStorage) doesn't run on every re-render; the seed is only
+  // used by the three `useState` calls below.
+  const [initialFilterState] = useState(() => loadFilterState(activeProfileId));
   const [selectedUserId, setSelectedUserIdState] = useState<
     IUser["id"] | "all"
   >(initialFilterState.selectedUserId);
@@ -906,6 +927,11 @@ export function CalendarProvider({
       const response = await fetch("/api/calendar/calendars");
       if (!response.ok) {
         logger.log("Failed to fetch calendar list, using primary only");
+        // Clear `accessRoles` alongside `calendars` so consumers don't see
+        // a stale role map after the list itself goes empty (otherwise
+        // `getAccessRole` would still hand out roles for calendars the
+        // provider no longer considers current).
+        setAccessRoles({});
         setCalendars([]);
         return { ids: ["primary"], metadata: new Map(), calendars: [] };
       }
@@ -939,6 +965,7 @@ export function CalendarProvider({
     } catch {
       logger.log("Could not fetch calendar list, using primary only");
     }
+    setAccessRoles({});
     setCalendars([]);
     return { ids: ["primary"], metadata: new Map(), calendars: [] };
   };
