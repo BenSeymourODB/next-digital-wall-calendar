@@ -14,6 +14,11 @@ vi.mock("@/hooks/useUserSettings", async () => {
   };
 });
 
+const mockUseSession = vi.hoisted(() => vi.fn());
+vi.mock("next-auth/react", () => ({
+  useSession: mockUseSession,
+}));
+
 const recipeDisplaySpy = vi.hoisted(() => vi.fn());
 vi.mock("@/components/recipe", () => ({
   RecipeDisplay: (props: { initialZoom?: number }) => {
@@ -26,16 +31,25 @@ vi.mock("next/link", () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-function setSettings(defaultZoomLevel: number, isLoading = false) {
+type Status = "loading" | "authenticated" | "unauthenticated";
+
+function setEnv({
+  defaultZoomLevel = 1.0,
+  hasLoadedFromServer = true,
+  status = "authenticated",
+}: {
+  defaultZoomLevel?: number;
+  hasLoadedFromServer?: boolean;
+  status?: Status;
+} = {}) {
+  mockUseSession.mockReturnValue({ data: null, status });
   mockUseUserSettings.mockReturnValue({
     settings: {
-      calendarRefreshIntervalMinutes: 15,
-      calendarFetchMonthsAhead: 6,
-      calendarFetchMonthsBehind: 1,
-      calendarMaxEventsPerDay: 3,
+      ...DEFAULT_USER_CALENDAR_SETTINGS,
       defaultZoomLevel,
     },
-    isLoading,
+    isLoading: false,
+    hasLoadedFromServer,
   });
 }
 
@@ -43,10 +57,32 @@ describe("RecipePage", () => {
   beforeEach(() => {
     recipeDisplaySpy.mockClear();
     mockUseUserSettings.mockReset();
+    mockUseSession.mockReset();
   });
 
-  it("does not render RecipeDisplay until settings have loaded", () => {
-    setSettings(1.5, true);
+  it("defers RecipeDisplay until the authenticated user's settings load", () => {
+    // Reproduces the first-render race: status flips to "authenticated"
+    // synchronously but the GET hasn't resolved yet, so hasLoadedFromServer
+    // is still false. Mounting RecipeDisplay here would lock in the default
+    // zoom (via `useZoom`'s lazy initializer) before the real value arrives.
+    setEnv({
+      defaultZoomLevel: 1.5,
+      hasLoadedFromServer: false,
+      status: "authenticated",
+    });
+
+    const { queryByTestId } = render(<RecipePage />);
+
+    expect(queryByTestId("recipe-display-mock")).toBeNull();
+    expect(recipeDisplaySpy).not.toHaveBeenCalled();
+  });
+
+  it("defers RecipeDisplay while NextAuth's session status is still resolving", () => {
+    // status === "loading" can resolve to either "authenticated" or
+    // "unauthenticated"; deferring during the transient state avoids a
+    // flash if the user turns out to be authenticated with a non-default
+    // zoom.
+    setEnv({ hasLoadedFromServer: false, status: "loading" });
 
     const { queryByTestId } = render(<RecipePage />);
 
@@ -55,7 +91,11 @@ describe("RecipePage", () => {
   });
 
   it("forwards UserSettings.defaultZoomLevel as RecipeDisplay initialZoom", () => {
-    setSettings(1.5);
+    setEnv({
+      defaultZoomLevel: 1.5,
+      hasLoadedFromServer: true,
+      status: "authenticated",
+    });
 
     const { getByTestId } = render(<RecipePage />);
 
@@ -65,7 +105,11 @@ describe("RecipePage", () => {
   });
 
   it("clamps a defaultZoomLevel below the slider minimum to 0.5", () => {
-    setSettings(0.1);
+    setEnv({
+      defaultZoomLevel: 0.1,
+      hasLoadedFromServer: true,
+      status: "authenticated",
+    });
 
     render(<RecipePage />);
 
@@ -73,7 +117,11 @@ describe("RecipePage", () => {
   });
 
   it("clamps a defaultZoomLevel above the slider maximum to 2.0", () => {
-    setSettings(5);
+    setEnv({
+      defaultZoomLevel: 5,
+      hasLoadedFromServer: true,
+      status: "authenticated",
+    });
 
     render(<RecipePage />);
 
@@ -81,20 +129,26 @@ describe("RecipePage", () => {
   });
 
   it("falls back to 1.0 when defaultZoomLevel is not finite", () => {
-    setSettings(Number.NaN);
+    setEnv({
+      defaultZoomLevel: Number.NaN,
+      hasLoadedFromServer: true,
+      status: "authenticated",
+    });
 
     render(<RecipePage />);
 
     expect(recipeDisplaySpy.mock.calls[0][0].initialZoom).toBe(1.0);
   });
 
-  it("renders RecipeDisplay at default zoom for unauthenticated users", () => {
-    // Unauthenticated path: useUserSettings returns the default constant
-    // (defaultZoomLevel = 1.0) with isLoading=false. This is the most common
-    // production case for a guest visitor.
-    mockUseUserSettings.mockReturnValue({
-      settings: { ...DEFAULT_USER_CALENDAR_SETTINGS },
-      isLoading: false,
+  it("renders RecipeDisplay at default zoom for unauthenticated users without waiting for a load", () => {
+    // Unauthenticated path: no GET is in flight and none ever will be, so
+    // hasLoadedFromServer stays false. The page must mount immediately
+    // using the in-memory default rather than block on a never-arriving
+    // settings response.
+    setEnv({
+      defaultZoomLevel: 1.0,
+      hasLoadedFromServer: false,
+      status: "unauthenticated",
     });
 
     const { getByTestId } = render(<RecipePage />);
