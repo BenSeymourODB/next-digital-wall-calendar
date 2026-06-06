@@ -3,6 +3,7 @@ import {
   requireUserSession,
   withApiHandler,
 } from "@/lib/api/handler";
+import { isCalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
@@ -183,6 +184,42 @@ export const PUT = withApiHandler(
       ) {
         throw new ApiError(
           "calendarMaxEventsPerDay must be an integer between 1 and 10",
+          400
+        );
+      }
+    }
+
+    if (body.weekStartDay !== undefined) {
+      if (
+        typeof body.weekStartDay !== "number" ||
+        !Number.isInteger(body.weekStartDay) ||
+        (body.weekStartDay !== 0 && body.weekStartDay !== 1)
+      ) {
+        throw new ApiError(
+          "weekStartDay must be 0 (Sunday) or 1 (Monday)",
+          400
+        );
+      }
+    }
+
+    if (body.calendarWorkingHoursStart !== undefined) {
+      if (
+        typeof body.calendarWorkingHoursStart !== "number" ||
+        !Number.isInteger(body.calendarWorkingHoursStart) ||
+        body.calendarWorkingHoursStart < 0 ||
+        body.calendarWorkingHoursStart > 23
+      ) {
+        throw new ApiError(
+          "calendarWorkingHoursStart must be an integer between 0 and 23",
+          400
+        );
+      }
+    }
+
+    if (body.calendarTransitionSpeed !== undefined) {
+      if (!isCalendarTransitionSpeed(body.calendarTransitionSpeed)) {
+        throw new ApiError(
+          "calendarTransitionSpeed must be one of: off, fast, normal, slow",
           400
         );
       }

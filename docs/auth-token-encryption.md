@@ -116,17 +116,75 @@ between dev and staging) you should set `TOKEN_ENCRYPTION_KEY` explicitly.
 
 ### Rotating the key
 
-Rotating `TOKEN_ENCRYPTION_KEY` invalidates every currently stored token
-envelope. The next time each user's session refreshes, decryption of their
-refresh token fails, the session callback hits the `RefreshTokenError`
-branch, and the user is prompted to sign in again.
+The cipher supports a **rolling rotation window** so a key change does
+not force every user to re-login. During the window the active key
+(used for writes) and the previous key (read-only fallback) are both
+configured; a CLI walks the `Account` table and re-encrypts every
+stored envelope under the active key; once the table is clean the
+previous key is dropped.
 
-In-place rotation with re-encryption would need a migration script that
-decrypts with the old key and re-encrypts with the new one. That tooling is
-**not** in place yet — open a follow-up issue if you need it.
+#### Env-var contract
 
-For now, rotation is a forced re-login for all users. Budget that when
-planning a rotation.
+- `TOKEN_ENCRYPTION_KEY` — always the **active** key. All new writes
+  go through this one.
+- `TOKEN_ENCRYPTION_KEY_PREVIOUS` — optional. When set,
+  `decryptToken` will fall back to it if the active key fails to
+  decrypt an envelope (typical immediately after a rotation: the row
+  was written under the old key, but the new key is now active).
+
+Both follow the same parsing rules (base64 or base64url, 32 bytes,
+fatal on malformed input). Leave `TOKEN_ENCRYPTION_KEY_PREVIOUS` unset
+in steady state — keeping a retired key plumbed in means anyone who
+later compromises the retired key can still read your current
+envelopes.
+
+#### Runbook
+
+1. **Generate the new key.**
+
+   ```bash
+   openssl rand -base64 32
+   ```
+
+2. **Deploy both keys.** Set `TOKEN_ENCRYPTION_KEY` to the new value
+   and `TOKEN_ENCRYPTION_KEY_PREVIOUS` to the existing one. Redeploy.
+   The app continues to serve traffic — writes go out under the new
+   key; reads of existing rows transparently fall back to the
+   previous one. There is no forced re-login.
+
+3. **Run the rotation CLI** from a host with `DATABASE_URL` and both
+   key env vars set:
+
+   ```bash
+   pnpm tsx scripts/rotate-token-encryption-key.mjs --dry-run
+   pnpm tsx scripts/rotate-token-encryption-key.mjs
+   ```
+
+   The CLI walks `Account` in batches (default 100) and re-encrypts
+   every encrypted token column. Legacy plaintext rows are skipped
+   (the next session refresh writes them as v1 envelopes naturally).
+   On any per-row decryption failure the row is logged with its
+   `Account.id` and counted in the final summary; the CLI exits
+   non-zero so an automation can detect partial completion.
+
+   Re-running the CLI is safe — rows already encrypted under the
+   active key get a fresh IV but the same plaintext. Note that a
+   rerun **always restarts from the beginning of the table** — the
+   page cursor lives only in process memory, so a crashed run is not
+   resumable from where it left off.
+
+4. **Verify and retire the previous key.** Confirm the CLI summary
+   shows `failed=0`. Unset `TOKEN_ENCRYPTION_KEY_PREVIOUS` and
+   redeploy. The cipher is back to single-key mode.
+
+#### What if a row fails to decrypt?
+
+A row whose tokens decrypt under neither key is either tampered or
+was written under a third key that was never in
+`TOKEN_ENCRYPTION_KEY_PREVIOUS`. The CLI surfaces the failure in its
+summary and continues with the rest of the table. The affected user
+will be prompted to sign in again on their next token refresh — the
+same `RefreshTokenError` path that has always handled this case.
 
 ### Suspected key compromise
 
@@ -146,7 +204,9 @@ the key, which lives on the application server.
 
 ## Code references
 
-- `src/lib/crypto/token-cipher.ts` — cipher implementation
+- `src/lib/crypto/token-cipher.ts` — cipher implementation (dual-read)
 - `src/lib/crypto/__tests__/token-cipher.test.ts` — cipher tests
+- `scripts/rotate-token-encryption-key.mjs` — rotation CLI
+- `scripts/__tests__/rotate-token-encryption-key.test.ts` — CLI helper tests
 - `src/lib/auth/auth.ts` — `events.linkAccount` + session refresh
 - `src/lib/auth/helpers.ts` — `getAccessToken` / `getGoogleAccount`

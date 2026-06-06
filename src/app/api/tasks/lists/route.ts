@@ -4,9 +4,8 @@
  */
 import {
   AuthError,
-  assertGoogleTasksScope,
-  getAccessToken,
   getSession,
+  requireGoogleTasksAccessToken,
 } from "@/lib/auth";
 import { listTaskLists } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
@@ -33,11 +32,10 @@ export async function GET() {
       );
     }
 
-    // Short-circuit users whose stored grant is missing the Tasks scope so we
-    // never burn an upstream call we already know will 403 (#237).
-    await assertGoogleTasksScope();
-
-    const accessToken = await getAccessToken();
+    // Combined scope check + token decryption in a single DB call (#260).
+    // Short-circuits users missing the Tasks scope (#237) without burning a
+    // separate prisma.account.findMany.
+    const accessToken = await requireGoogleTasksAccessToken(session);
     const lists = await listTaskLists(accessToken);
 
     logger.event("TaskListsFetched", {

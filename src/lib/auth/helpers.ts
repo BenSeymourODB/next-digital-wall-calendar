@@ -1,6 +1,7 @@
 import { decryptToken } from "@/lib/crypto/token-cipher";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import type { Session } from "next-auth";
 import { auth } from "./auth";
 
 type AccountRow = Awaited<ReturnType<typeof prisma.account.findFirst>>;
@@ -213,6 +214,59 @@ export async function assertGoogleTasksScope(): Promise<void> {
       403
     );
   }
+}
+
+/**
+ * Combined access-token + scope check for Google Tasks routes. Takes an
+ * already-resolved `Session` so the caller can call `auth()` exactly once
+ * per request — replaces the `assertGoogleTasksScope() + getAccessToken()`
+ * pair that hit the database twice (#260).
+ *
+ * Performs all the same guards as the helpers it replaces, so the helper
+ * is safe for any caller (not just callers that pre-check the session):
+ * - `AuthError(401)` if `session.error === "RefreshTokenError"` —
+ *   propagating an expired-refresh session further would silently hit the
+ *   DB even though we already know the user must re-auth.
+ * - `AuthError(401)` for missing account or missing/undecryptable token.
+ * - `AuthError(403)` for missing Tasks scope.
+ *
+ * Callers that catch `AuthError` will surface the same `requiresReauth`
+ * flag they did before.
+ */
+export async function requireGoogleTasksAccessToken(
+  session: Session
+): Promise<string> {
+  if (session.error === "RefreshTokenError") {
+    throw new AuthError("Session expired. Please sign in again.", 401);
+  }
+
+  // findFirst (rather than `findMany().[0]`) makes the single-row intent
+  // explicit and lets Prisma optimise the query; if a user somehow has two
+  // Google Account rows the result is still deterministic at the SQL level.
+  const account = await prisma.account.findFirst({
+    where: { userId: session.user.id, provider: "google" },
+  });
+
+  if (!account) {
+    throw new AuthError("No Google account linked.", 401);
+  }
+
+  if (!accountHasScope(account, GOOGLE_TASKS_SCOPE)) {
+    throw new AuthError(
+      "Re-authentication required: Google Tasks scope missing.",
+      403
+    );
+  }
+
+  const accessToken = decryptToken(account.access_token);
+  if (!accessToken) {
+    throw new AuthError(
+      "Google account token unavailable. Please sign in again.",
+      401
+    );
+  }
+
+  return accessToken;
 }
 
 /**

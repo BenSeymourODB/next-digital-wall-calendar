@@ -182,10 +182,9 @@ function SplitViewControl({
             type="button"
             variant={variant}
             size="sm"
-            aria-pressed={active}
             aria-label={`Choose ${label.toLowerCase()} display mode`}
             data-testid={`view-switcher-${view}-mode`}
-            className="rounded-l-none border-l border-l-black/10 px-1.5 dark:border-l-white/15"
+            className="border-border rounded-l-none border-l px-1.5"
           >
             <ChevronDown className="h-3 w-3 opacity-70" aria-hidden="true" />
           </Button>
