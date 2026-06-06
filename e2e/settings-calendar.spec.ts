@@ -48,7 +48,7 @@ test.describe("Settings → Calendar section (/test/settings)", () => {
     ).toBeVisible();
   });
 
-  test("renders all four sliders with their default values", async ({
+  test("renders all five sliders with their default values", async ({
     page,
   }) => {
     await expect(page.getByText("Refresh Interval")).toBeVisible();
@@ -62,6 +62,9 @@ test.describe("Settings → Calendar section (/test/settings)", () => {
 
     await expect(page.getByText("Max Events Per Day")).toBeVisible();
     await expect(page.getByText("3 events", { exact: true })).toBeVisible();
+
+    await expect(page.getByText("Working Hours Start")).toBeVisible();
+    await expect(page.getByText("07:00", { exact: true })).toBeVisible();
   });
 
   test("each slider exposes the documented min/max range via aria attributes", async ({
@@ -71,6 +74,9 @@ test.describe("Settings → Calendar section (/test/settings)", () => {
     const ahead = page.locator("#calendar-fetch-ahead [role=slider]");
     const behind = page.locator("#calendar-fetch-behind [role=slider]");
     const maxEvents = page.locator("#calendar-max-events [role=slider]");
+    const workingHours = page.locator(
+      "#calendar-working-hours-start [role=slider]"
+    );
 
     await expect(refresh).toHaveAttribute("aria-valuemin", "5");
     await expect(refresh).toHaveAttribute("aria-valuemax", "120");
@@ -87,6 +93,41 @@ test.describe("Settings → Calendar section (/test/settings)", () => {
     await expect(maxEvents).toHaveAttribute("aria-valuemin", "1");
     await expect(maxEvents).toHaveAttribute("aria-valuemax", "10");
     await expect(maxEvents).toHaveAttribute("aria-valuenow", "3");
+
+    await expect(workingHours).toHaveAttribute("aria-valuemin", "0");
+    await expect(workingHours).toHaveAttribute("aria-valuemax", "23");
+    await expect(workingHours).toHaveAttribute("aria-valuenow", "7");
+  });
+
+  test("Working Hours Start slider updates value, label, and PUTs the new field", async ({
+    page,
+  }) => {
+    const settingsRequests: Array<Record<string, unknown>> = [];
+    await page.route("**/api/settings", async (route, request) => {
+      if (request.method() === "PUT") {
+        try {
+          settingsRequests.push(
+            request.postDataJSON() as Record<string, unknown>
+          );
+        } catch {
+          // ignore parse errors
+        }
+      }
+      await route.fulfill({ status: 200, body: "{}" });
+    });
+
+    const workingHours = page.locator(
+      "#calendar-working-hours-start [role=slider]"
+    );
+    await pressArrowOnSlider(page, workingHours, "ArrowRight"); // 7 → 8
+
+    await expect(workingHours).toHaveAttribute("aria-valuenow", "8");
+    await expect(page.getByText("08:00", { exact: true })).toBeVisible();
+
+    await expect
+      .poll(() => settingsRequests.length, { timeout: 5000 })
+      .toBeGreaterThan(0);
+    expect(settingsRequests.at(-1)).toEqual({ calendarWorkingHoursStart: 8 });
   });
 
   test("Refresh Interval slider updates value and label on ArrowRight", async ({

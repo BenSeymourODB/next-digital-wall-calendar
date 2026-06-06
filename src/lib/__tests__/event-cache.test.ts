@@ -7,7 +7,29 @@ import {
   selectEventStore,
 } from "@/lib/event-cache";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
+import { logger } from "@/lib/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    error: vi.fn(),
+    log: vi.fn(),
+    event: vi.fn(),
+    dependency: vi.fn(),
+  },
+}));
+
+/**
+ * Mimic the `DOMException` shape that IndexedDB throws when a write exceeds
+ * the storage quota. `name === "QuotaExceededError"` is the contract; in
+ * Chromium-family browsers this is a `DOMException` instance, but tests
+ * just need an `Error`-shaped object with the right `name`.
+ */
+function quotaExceededError(message = "Quota exceeded"): Error {
+  const err = new Error(message);
+  err.name = "QuotaExceededError";
+  return err;
+}
 
 function makeEvent(
   id: string,
@@ -91,6 +113,46 @@ describe("InMemoryEventStore", () => {
   it("returns an empty array when nothing has been written", async () => {
     expect(await store.getAll(1_000)).toEqual([]);
   });
+
+  describe("evictOldest (#290 — LRU support)", () => {
+    it("removes the N rows with the smallest cachedAt", async () => {
+      await store.put([makeEvent("old1")], 1_000);
+      await store.put([makeEvent("old2")], 2_000);
+      await store.put([makeEvent("recent1")], 3_000);
+      await store.put([makeEvent("recent2")], 4_000);
+
+      const evicted = await store.evictOldest(2);
+
+      expect(evicted).toBe(2);
+      // Use a `now` close to the most recent write so the TTL filter does
+      // not also remove rows; this isolates the LRU eviction effect.
+      const remaining = await store.getAll(4_000);
+      expect(remaining.map((e) => e.id).sort()).toEqual(["recent1", "recent2"]);
+    });
+
+    it("returns the actual evicted count when fewer than N rows exist", async () => {
+      await store.put([makeEvent("a"), makeEvent("b")], 1_000);
+
+      const evicted = await store.evictOldest(10);
+
+      expect(evicted).toBe(2);
+      expect(await store.getAll(1_000)).toEqual([]);
+    });
+
+    it("is a no-op when asked to evict zero rows", async () => {
+      await store.put([makeEvent("a"), makeEvent("b")], 1_000);
+
+      const evicted = await store.evictOldest(0);
+
+      expect(evicted).toBe(0);
+      const all = await store.getAll(1_000);
+      expect(all.map((e) => e.id).sort()).toEqual(["a", "b"]);
+    });
+
+    it("returns 0 when the store is already empty", async () => {
+      expect(await store.evictOldest(5)).toBe(0);
+    });
+  });
 });
 
 describe("EventCache facade", () => {
@@ -146,6 +208,7 @@ describe("EventCache facade", () => {
       }),
       getAll: vi.fn(async () => []),
       clear: vi.fn(async () => {}),
+      evictOldest: vi.fn(async () => 0),
     };
     const flakyCache = new EventCache(flaky);
 
@@ -159,6 +222,175 @@ describe("EventCache facade", () => {
     expect(flaky.getAll).not.toHaveBeenCalled();
   });
 
+  describe("LRU eviction on QuotaExceededError (#290)", () => {
+    beforeEach(() => {
+      vi.mocked(logger.event).mockClear();
+    });
+
+    it("retries the put after evicting LRU rows on QuotaExceededError", async () => {
+      let putCalls = 0;
+      const evictedRows = new Set<string>();
+      const store: EventStore = {
+        put: vi.fn(async () => {
+          putCalls += 1;
+          // First attempt fails with quota; second succeeds (after eviction).
+          if (putCalls === 1) throw quotaExceededError();
+        }),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async (count: number) => {
+          for (let i = 0; i < count; i++) {
+            evictedRows.add(`evicted-${evictedRows.size}`);
+          }
+          return count;
+        }),
+      };
+
+      const c = new EventCache(store);
+      await c.saveEvents([makeEvent("new")]);
+
+      // Two put calls: original + one retry.
+      expect(store.put).toHaveBeenCalledTimes(2);
+      expect(store.evictOldest).toHaveBeenCalledTimes(1);
+      // The retry must NOT trigger the in-memory fallback path — the IDB
+      // store stays in use after a successful eviction-then-retry.
+      expect((c as unknown as { hasFallenBack: boolean }).hasFallenBack).toBe(
+        false
+      );
+    });
+
+    it("emits a structured logger.event after a successful eviction retry", async () => {
+      let putCalls = 0;
+      const store: EventStore = {
+        put: vi.fn(async () => {
+          putCalls += 1;
+          if (putCalls === 1) throw quotaExceededError();
+        }),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async (count: number) => count),
+      };
+
+      const c = new EventCache(store);
+      await c.saveEvents([makeEvent("a")]);
+
+      // Exact positional match — pins `evicted`/`attempts` to the third
+      // argument (measurements bucket) rather than the second (properties).
+      // A future refactor that swaps them around will fail this test.
+      expect(logger.event).toHaveBeenCalledWith(
+        "event-cache.lru-evicted",
+        { context: "EventCache.saveEvents" },
+        {
+          evicted: expect.any(Number) as number,
+          attempts: expect.any(Number) as number,
+        }
+      );
+    });
+
+    it("bounds the eviction retry loop and falls back when quota is unrecoverable", async () => {
+      const store: EventStore = {
+        put: vi.fn(async () => {
+          throw quotaExceededError();
+        }),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async (count: number) => count),
+      };
+
+      const c = new EventCache(store);
+      // Should not throw — falls back to in-memory after the bounded loop.
+      await c.saveEvents([makeEvent("a")]);
+
+      // The retry loop attempted at most a fixed bound (the constant is
+      // intentionally not pinned to a specific number in this assertion —
+      // we only care that it terminated and fell back).
+      expect(
+        (store.put as ReturnType<typeof vi.fn>).mock.calls.length
+      ).toBeGreaterThan(1);
+      expect(
+        (store.put as ReturnType<typeof vi.fn>).mock.calls.length
+      ).toBeLessThan(20);
+      expect((c as unknown as { hasFallenBack: boolean }).hasFallenBack).toBe(
+        true
+      );
+    });
+
+    it("breaks out of the loop as soon as evictOldest reports nothing left to evict", async () => {
+      const store: EventStore = {
+        put: vi.fn(async () => {
+          throw quotaExceededError();
+        }),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async () => 0),
+      };
+
+      const c = new EventCache(store);
+      await c.saveEvents([makeEvent("a")]);
+
+      // One initial put, then one evict-attempt that returns 0, then the
+      // loop bails out. No further put calls beyond the original attempt.
+      expect(store.put).toHaveBeenCalledTimes(1);
+      expect(store.evictOldest).toHaveBeenCalledTimes(1);
+      // Falls back to in-memory because the quota error was never resolved.
+      expect((c as unknown as { hasFallenBack: boolean }).hasFallenBack).toBe(
+        true
+      );
+    });
+
+    it("propagates a non-quota error thrown on the retry put (after eviction)", async () => {
+      // First put: quota error. Eviction runs. Second put: non-quota error
+      // (e.g. AbortError, disk corruption). The retry loop must NOT swallow
+      // the non-quota error — it should propagate so `withFallback` can
+      // engage the in-memory store. Catches a future refactor that
+      // accidentally widens the inner `catch` to non-quota errors.
+      let putCalls = 0;
+      const nonQuotaError = new Error("AbortError");
+      nonQuotaError.name = "AbortError";
+      const store: EventStore = {
+        put: vi.fn(async () => {
+          putCalls += 1;
+          if (putCalls === 1) throw quotaExceededError();
+          throw nonQuotaError;
+        }),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async (count: number) => count),
+      };
+
+      const c = new EventCache(store);
+      // `withFallback` catches the re-thrown AbortError → engages fallback.
+      await c.saveEvents([makeEvent("a")]);
+      expect((c as unknown as { hasFallenBack: boolean }).hasFallenBack).toBe(
+        true
+      );
+      // Eviction was attempted exactly once before the non-quota error
+      // terminated the retry loop.
+      expect(store.evictOldest).toHaveBeenCalledTimes(1);
+      expect(store.put).toHaveBeenCalledTimes(2);
+    });
+
+    it("does NOT invoke the eviction path for non-quota errors", async () => {
+      const store: EventStore = {
+        put: vi.fn(async () => {
+          throw new Error("not a quota error");
+        }),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async () => 0),
+      };
+
+      const c = new EventCache(store);
+      await c.saveEvents([makeEvent("a")]);
+
+      // Goes straight to the in-memory fallback path; no eviction attempted.
+      expect(store.evictOldest).not.toHaveBeenCalled();
+      expect((c as unknown as { hasFallenBack: boolean }).hasFallenBack).toBe(
+        true
+      );
+    });
+  });
+
   it("re-throws when even the in-memory fallback rejects", async () => {
     const dead: EventStore = {
       put: vi.fn(async () => {
@@ -166,6 +398,7 @@ describe("EventCache facade", () => {
       }),
       getAll: vi.fn(),
       clear: vi.fn(),
+      evictOldest: vi.fn(async () => 0),
     };
     const deadCache = new EventCache(new InMemoryEventStore());
     // Force the cache into a state where the active store is the failing one.

@@ -2,7 +2,8 @@
  * Tests for useUserSettings hook
  * Following TDD - tests written before implementation
  */
-import { renderHook, waitFor } from "@testing-library/react";
+import { emitUserSettingsChange } from "@/lib/user-settings-bus";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_USER_CALENDAR_SETTINGS,
@@ -55,6 +56,9 @@ describe("useUserSettings", () => {
       calendarFetchMonthsAhead: 4,
       calendarFetchMonthsBehind: 2,
       calendarMaxEventsPerDay: 5,
+      timeFormat: "24h" as const,
+      weekStartDay: 1,
+      calendarWorkingHoursStart: 9,
     };
     vi.mocked(global.fetch).mockResolvedValue({
       ok: true,
@@ -69,7 +73,12 @@ describe("useUserSettings", () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith("/api/settings");
-    expect(result.current.settings).toEqual(mockSettings);
+    // Server payload merges over defaults, so fields the server omitted
+    // (here: calendarTransitionSpeed) come from DEFAULT_USER_CALENDAR_SETTINGS.
+    expect(result.current.settings).toEqual({
+      ...DEFAULT_USER_CALENDAR_SETTINGS,
+      ...mockSettings,
+    });
   });
 
   it("falls back to defaults when the API returns an error", async () => {
@@ -142,6 +151,68 @@ describe("useUserSettings", () => {
     consoleError.mockRestore();
   });
 
+  it("surfaces calendarTransitionSpeed when the server provides it", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarTransitionSpeed: "fast" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.calendarTransitionSpeed).toBe("fast");
+  });
+
+  it("falls back to the default speed when the server omits it", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarMaxEventsPerDay: 7 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.calendarTransitionSpeed).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.calendarTransitionSpeed
+    );
+  });
+
+  it("rejects garbage calendarTransitionSpeed values from the server", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarTransitionSpeed: "ludicrous" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    // Unknown value should not propagate; default stands.
+    expect(result.current.settings.calendarTransitionSpeed).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.calendarTransitionSpeed
+    );
+  });
+
   it("merges partial server values over defaults", async () => {
     mockUseSession.mockReturnValue({
       data: { user: { id: "u1" } },
@@ -161,6 +232,389 @@ describe("useUserSettings", () => {
     expect(result.current.settings).toEqual({
       ...DEFAULT_USER_CALENDAR_SETTINGS,
       calendarMaxEventsPerDay: 7,
+    });
+  });
+
+  it("exposes weekStartDay with default 0 when unauthenticated", () => {
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+
+    const { result } = renderHook(() => useUserSettings());
+
+    expect(result.current.settings.weekStartDay).toBe(0);
+  });
+
+  it("returns server-side weekStartDay when authenticated", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ weekStartDay: 1 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.weekStartDay).toBe(1);
+  });
+
+  it("ignores out-of-range weekStartDay from the server (defensive)", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      // A rogue value (e.g. from a manually-edited DB row) should not
+      // poison the helper's `weekStartsOn` parameter.
+      json: async () => ({ weekStartDay: 5 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.weekStartDay).toBe(0);
+  });
+
+  it("picks calendarWorkingHoursStart from server response", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ calendarWorkingHoursStart: 5 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.calendarWorkingHoursStart).toBe(5);
+  });
+
+  it.each([
+    ["string", "9"],
+    ["float", 7.5],
+    ["negative", -1],
+    ["above range", 24],
+    ["null", null],
+  ])(
+    "ignores invalid calendarWorkingHoursStart (%s) from a malformed response",
+    async (_label, value) => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ calendarWorkingHoursStart: value }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.settings.calendarWorkingHoursStart).toBe(
+        DEFAULT_USER_CALENDAR_SETTINGS.calendarWorkingHoursStart
+      );
+    }
+  );
+
+  // #337 — `timeFormat` is the single source of truth replacing the
+  // standalone `CalendarProvider.use24HourFormat` localStorage key.
+  describe("timeFormat (#337)", () => {
+    it("defaults timeFormat to 12h when nothing has been fetched", () => {
+      mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+
+      const { result } = renderHook(() => useUserSettings());
+
+      expect(result.current.settings.timeFormat).toBe("12h");
+    });
+
+    it("returns the server timeFormat when authenticated", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ timeFormat: "24h" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+
+      await waitFor(() => {
+        expect(result.current.settings.timeFormat).toBe("24h");
+      });
+    });
+
+    it("ignores invalid timeFormat values from the server", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ timeFormat: "garbage" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+      expect(result.current.settings.timeFormat).toBe("12h");
+    });
+  });
+
+  describe("mutate (#337)", () => {
+    it("PUTs the partial to /api/settings and updates state on success", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      // Initial GET — server returns 12h
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "12h" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+
+      await waitFor(() => {
+        expect(result.current.settings.timeFormat).toBe("12h");
+      });
+
+      // PUT response
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "24h" }),
+      } as Response);
+
+      await act(async () => {
+        await result.current.mutate({ timeFormat: "24h" });
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timeFormat: "24h" }),
+      });
+      expect(result.current.settings.timeFormat).toBe("24h");
+    });
+
+    it("rejects when the server PUT fails and does not update state", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "12h" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+
+      await waitFor(() => {
+        expect(result.current.settings.timeFormat).toBe("12h");
+      });
+
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: "boom" }),
+      } as Response);
+
+      await expect(
+        act(async () => {
+          await result.current.mutate({ timeFormat: "24h" });
+        })
+      ).rejects.toThrow();
+
+      expect(result.current.settings.timeFormat).toBe("12h");
+    });
+
+    it("skips the network PUT when unauthenticated but still updates local state and emits to the bus", async () => {
+      mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+
+      const { result: writer } = renderHook(() => useUserSettings());
+      const { result: reader } = renderHook(() => useUserSettings());
+
+      await act(async () => {
+        await writer.current.mutate({ timeFormat: "24h" });
+      });
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(writer.current.settings.timeFormat).toBe("24h");
+      // Bus delivery still propagates to other in-tab consumers.
+      expect(reader.current.settings.timeFormat).toBe("24h");
+    });
+
+    it("emits a bus event so other in-tab consumers see the change", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "12h" }),
+      } as Response);
+
+      const { result: writer } = renderHook(() => useUserSettings());
+      const { result: reader } = renderHook(() => useUserSettings());
+
+      await waitFor(() => {
+        expect(writer.current.settings.timeFormat).toBe("12h");
+      });
+
+      // PUT response for writer
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "24h" }),
+      } as Response);
+
+      await act(async () => {
+        await writer.current.mutate({ timeFormat: "24h" });
+      });
+
+      // Reader's local state must reflect the writer's mutation without
+      // having issued its own GET.
+      expect(reader.current.settings.timeFormat).toBe("24h");
+    });
+  });
+
+  describe("GET-vs-mutate race (#337)", () => {
+    it("ignores a GET response that resolves AFTER a mutate to avoid clobbering the optimistic write", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      // Initial GET response is held until the test releases it.
+      let resolveGet: (value: Response) => void = () => {};
+      vi.mocked(global.fetch).mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveGet = resolve;
+          })
+      );
+
+      const { result } = renderHook(() => useUserSettings());
+
+      // Mutate to "24h" while the initial GET is still in-flight.
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "24h" }),
+      } as Response);
+      await act(async () => {
+        await result.current.mutate({ timeFormat: "24h" });
+      });
+      expect(result.current.settings.timeFormat).toBe("24h");
+
+      // Now release the original GET — its (stale) "12h" response must
+      // NOT overwrite the optimistic write.
+      await act(async () => {
+        resolveGet({
+          ok: true,
+          json: async () => ({ timeFormat: "12h" }),
+        } as Response);
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(result.current.settings.timeFormat).toBe("24h");
+    });
+
+    it("rolls back optimistic state when the PUT fails", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      // Initial GET — server says 12h.
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "12h" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+      await waitFor(() => {
+        expect(result.current.settings.timeFormat).toBe("12h");
+      });
+
+      // PUT fails after we've optimistically applied "24h".
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: "boom" }),
+      } as Response);
+
+      await expect(
+        act(async () => {
+          await result.current.mutate({ timeFormat: "24h" });
+        })
+      ).rejects.toThrow();
+
+      // Local state is rolled back to the pre-mutate value.
+      expect(result.current.settings.timeFormat).toBe("12h");
+    });
+  });
+
+  describe("bus subscription (#337)", () => {
+    it("updates state when a bus event arrives from another consumer", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ timeFormat: "12h" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+
+      await waitFor(() => {
+        expect(result.current.settings.timeFormat).toBe("12h");
+      });
+
+      act(() => {
+        emitUserSettingsChange({ timeFormat: "24h" });
+      });
+
+      expect(result.current.settings.timeFormat).toBe("24h");
+    });
+
+    it("ignores irrelevant fields on bus events without crashing", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ timeFormat: "12h" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+
+      await waitFor(() => {
+        expect(result.current.settings.timeFormat).toBe("12h");
+      });
+
+      // theme isn't picked up by useUserSettings; the event must still be
+      // safely handled (no crash, no unrelated state churn).
+      expect(() =>
+        act(() => emitUserSettingsChange({ theme: "dark" }))
+      ).not.toThrow();
+      expect(result.current.settings.timeFormat).toBe("12h");
     });
   });
 });

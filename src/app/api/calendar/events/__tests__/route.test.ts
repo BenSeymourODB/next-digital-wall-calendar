@@ -11,6 +11,7 @@ import {
 import {
   type ApiErrorResponse,
   createMockRequest,
+  jsonResponse,
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -611,28 +612,25 @@ describe("/api/calendar/events", () => {
           );
 
           mockFetch
-            .mockResolvedValueOnce({
-              ok: false,
-              status: 503,
-              headers: new Headers(),
-              json: () =>
-                Promise.resolve({ error: { message: "Service Unavailable" } }),
-            })
-            .mockResolvedValueOnce({
-              ok: true,
-              json: () =>
-                Promise.resolve({
-                  items: [
-                    {
-                      id: "event-1",
-                      summary: "Recovered",
-                      start: { dateTime: "2024-03-15T10:00:00Z" },
-                      end: { dateTime: "2024-03-15T11:00:00Z" },
-                    },
-                  ],
-                  summary: "Primary Calendar",
-                }),
-            });
+            .mockResolvedValueOnce(
+              jsonResponse(
+                { error: { message: "Service Unavailable" } },
+                { status: 503 }
+              )
+            )
+            .mockResolvedValueOnce(
+              jsonResponse({
+                items: [
+                  {
+                    id: "event-1",
+                    summary: "Recovered",
+                    start: { dateTime: "2024-03-15T10:00:00Z" },
+                    end: { dateTime: "2024-03-15T11:00:00Z" },
+                  },
+                ],
+                summary: "Primary Calendar",
+              })
+            );
 
           const request = createMockRequest("/api/calendar/events");
           const promise = GET(request);
@@ -644,6 +642,10 @@ describe("/api/calendar/events", () => {
           }>(response);
 
           expect(mockFetch).toHaveBeenCalledTimes(2);
+          // Pin that the second call is a retry of the *same* URL — without
+          // this, the test would also pass if retry were disabled and an
+          // unrelated second fetch happened to succeed (#276).
+          expect(mockFetch.mock.calls[0][0]).toBe(mockFetch.mock.calls[1][0]);
           expect(status).toBe(200);
           expect(data.events).toHaveLength(1);
           expect(data.events[0].summary).toBe("Recovered");
