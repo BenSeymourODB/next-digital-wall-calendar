@@ -12,7 +12,6 @@ import { PointsBadge } from "../points-badge";
 import { PointsProvider } from "../points-context";
 
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
 
 vi.mock("@/lib/logger", () => ({
   logger: {
@@ -35,10 +34,12 @@ function Wrapper({
 describe("PointsBadge", () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    vi.stubGlobal("fetch", mockFetch);
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("renders nothing when no PointsProvider is mounted (defensive)", () => {
