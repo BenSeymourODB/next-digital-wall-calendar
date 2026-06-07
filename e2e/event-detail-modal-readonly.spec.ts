@@ -41,12 +41,18 @@ test.describe("EventDetailModal — read-only access (#266)", () => {
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
+    // Guard that the dialog actually opened for the right event before
+    // asserting the button is absent — prevents a silent false-pass if
+    // the trigger selector misses and the dialog never opens.
+    await expect(
+      dialog.getByRole("heading", { name: "Free Busy Event" })
+    ).toBeVisible();
     await expect(
       dialog.getByRole("button", { name: /^delete event$/i })
     ).toHaveCount(0);
   });
 
-  test("still shows the delete button for writable events (control case)", async ({
+  test("shows the delete button when accessRole is absent (permissive default)", async ({
     page,
   }) => {
     await page.goto("/test/calendar?events=single&view=month");
