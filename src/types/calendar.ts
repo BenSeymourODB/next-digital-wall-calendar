@@ -40,12 +40,16 @@ export type TCalendarAccessRole =
   | "writer"
   | "owner";
 
-const VALID_ACCESS_ROLES: ReadonlySet<TCalendarAccessRole> = new Set([
-  "freeBusyReader",
-  "reader",
-  "writer",
-  "owner",
-]);
+// Typed as `Record<TCalendarAccessRole, true>` so adding a new role to the
+// union above forces a compile error here until the lookup is updated. A
+// plain Set would silently miss the new value and downgrade legitimate
+// access to "reader" — unacceptable for a fail-closed trust boundary.
+const VALID_ACCESS_ROLES: Record<TCalendarAccessRole, true> = {
+  freeBusyReader: true,
+  reader: true,
+  writer: true,
+  owner: true,
+};
 
 /**
  * Narrow Google's `accessRole` string (or `undefined`) into the canonical
@@ -60,7 +64,7 @@ export function narrowAccessRole(
   value: string | undefined
 ): TCalendarAccessRole {
   return value !== undefined &&
-    VALID_ACCESS_ROLES.has(value as TCalendarAccessRole)
+    Object.prototype.hasOwnProperty.call(VALID_ACCESS_ROLES, value)
     ? (value as TCalendarAccessRole)
     : "reader";
 }
