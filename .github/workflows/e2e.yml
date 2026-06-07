@@ -17,6 +17,11 @@ jobs:
     timeout-minutes: 20
 
     services:
+      # postgres:17 (full) — matches the version we run locally and the version
+      # prisma migrate deploy is exercised against in dev. The main CI workflow
+      # uses postgres:16-alpine for shadow-only `migrate diff` checks, which is
+      # an independent code path; running E2E against the same major version as
+      # dev avoids surprises from pg17-only catalog/collation differences.
       postgres:
         image: postgres:17
         env:
