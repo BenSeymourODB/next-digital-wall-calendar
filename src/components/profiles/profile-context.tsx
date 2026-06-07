@@ -12,7 +12,6 @@
 import {
   ReactNode,
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useState,
@@ -85,7 +84,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch profiles from API
-  const fetchProfiles = useCallback(async () => {
+  const fetchProfiles = async () => {
     try {
       const response = await fetch("/api/profiles");
       if (!response.ok) {
@@ -99,7 +98,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       setProfiles([]);
       return [];
     }
-  }, []);
+  };
 
   // Initialize profiles and restore active profile
   useEffect(() => {
@@ -127,7 +126,11 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     };
 
     init();
-  }, [fetchProfiles]);
+    // Mount-only: `fetchProfiles` captures no per-render deps and React
+    // Compiler keeps its identity stable across renders, so an empty
+    // dep array preserves the original "fetch once" behavior without
+    // the banned `useCallback` wrapper (#271).
+  }, []);
 
   // Get active profile object
   const activeProfile = profiles.find((p) => p.id === activeProfileId) || null;
@@ -136,21 +139,18 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const isAdmin = activeProfile?.type === "admin";
 
   // Set active profile
-  const handleSetActiveProfile = useCallback(
-    async (profileId: string) => {
-      const profile = profiles.find((p) => p.id === profileId);
-      if (profile) {
-        setActiveProfileId(profileId);
-        localStorage.setItem(STORAGE_KEY, profileId);
-      }
-    },
-    [profiles]
-  );
+  const handleSetActiveProfile = async (profileId: string) => {
+    const profile = profiles.find((p) => p.id === profileId);
+    if (profile) {
+      setActiveProfileId(profileId);
+      localStorage.setItem(STORAGE_KEY, profileId);
+    }
+  };
 
   // Refresh profiles
-  const refreshProfiles = useCallback(async () => {
+  const refreshProfiles = async () => {
     await fetchProfiles();
-  }, [fetchProfiles]);
+  };
 
   const value: ProfileContextValue = {
     activeProfile,

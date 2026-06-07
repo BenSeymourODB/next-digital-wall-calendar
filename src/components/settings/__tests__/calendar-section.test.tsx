@@ -16,6 +16,7 @@ const defaultValues = {
   calendarFetchMonthsAhead: 6,
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
+  calendarWorkingHoursStart: 7,
 };
 
 describe("CalendarSection", () => {
@@ -160,6 +161,54 @@ describe("CalendarSection", () => {
 
     expect(mockOnChange).toHaveBeenCalledWith({
       calendarMaxEventsPerDay: 5,
+    });
+  });
+
+  it("renders working-hours-start control with current value (default 7)", () => {
+    render(<CalendarSection values={defaultValues} onChange={mockOnChange} />);
+
+    expect(screen.getByText("Working Hours Start")).toBeInTheDocument();
+    expect(screen.getByText("07:00")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("calendar-working-hours-start")
+    ).toBeInTheDocument();
+  });
+
+  it("formats midnight as 00:00 for working-hours-start", () => {
+    render(
+      <CalendarSection
+        values={{ ...defaultValues, calendarWorkingHoursStart: 0 }}
+        onChange={mockOnChange}
+      />
+    );
+
+    expect(screen.getByText("00:00")).toBeInTheDocument();
+  });
+
+  it("formats 11pm as 23:00 for working-hours-start (end of range)", () => {
+    render(
+      <CalendarSection
+        values={{ ...defaultValues, calendarWorkingHoursStart: 23 }}
+        onChange={mockOnChange}
+      />
+    );
+
+    expect(screen.getByText("23:00")).toBeInTheDocument();
+  });
+
+  it("fires onChange when working-hours-start slider changes", () => {
+    render(<CalendarSection values={defaultValues} onChange={mockOnChange} />);
+
+    const slider = screen.getByTestId("calendar-working-hours-start");
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value"
+    )!.set!;
+    setter.call(slider, "5");
+    slider.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(mockOnChange).toHaveBeenCalledWith({
+      calendarWorkingHoursStart: 5,
     });
   });
 });

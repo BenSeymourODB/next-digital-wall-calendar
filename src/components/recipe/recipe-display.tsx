@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RecipeContent } from "./recipe-content";
 import { RecipeNavigation } from "./recipe-navigation";
 import type { Recipe } from "./types";
@@ -150,47 +150,49 @@ export function RecipeDisplay({
     };
   }, [zoomIn, zoomOut]);
 
-  // Handle keyboard navigation
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      // Only handle if this component is focused or no specific element is focused
-      const activeElement = document.activeElement;
-      const isInputFocused =
-        activeElement instanceof HTMLInputElement ||
-        activeElement instanceof HTMLTextAreaElement ||
-        activeElement instanceof HTMLSelectElement;
+  // Handle keyboard navigation. React Compiler memoizes the inline handler
+  // when its captured deps (nextPage/previousPage/zoomIn/zoomOut) are stable,
+  // so the effect's add/remove pair stays balanced.
+  const handleKeyDown = (e: KeyboardEvent) => {
+    // Only handle if this component is focused or no specific element is focused
+    const activeElement = document.activeElement;
+    const isInputFocused =
+      activeElement instanceof HTMLInputElement ||
+      activeElement instanceof HTMLTextAreaElement ||
+      activeElement instanceof HTMLSelectElement;
 
-      if (isInputFocused) return;
+    if (isInputFocused) return;
 
-      switch (e.key) {
-        case "ArrowLeft":
-          e.preventDefault();
-          previousPage();
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          nextPage();
-          break;
-        case "ArrowUp":
-        case "+":
-        case "=":
-          e.preventDefault();
-          zoomIn();
-          break;
-        case "ArrowDown":
-        case "-":
-          e.preventDefault();
-          zoomOut();
-          break;
-      }
-    },
-    [nextPage, previousPage, zoomIn, zoomOut]
-  );
+    switch (e.key) {
+      case "ArrowLeft":
+        e.preventDefault();
+        previousPage();
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        nextPage();
+        break;
+      case "ArrowUp":
+      case "+":
+      case "=":
+        e.preventDefault();
+        zoomIn();
+        break;
+      case "ArrowDown":
+      case "-":
+        e.preventDefault();
+        zoomOut();
+        break;
+    }
+  };
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeyDown]);
+    // React Compiler memoizes `handleKeyDown` so the add/remove pair stays
+    // balanced — see docs/react-compiler.md and #271.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nextPage, previousPage, zoomIn, zoomOut]);
 
   return (
     <div

@@ -128,7 +128,11 @@ describe("CalendarProvider — settings state", () => {
       expect(screen.getByTestId("badge")).toHaveTextContent("colored");
     });
 
-    expect(screen.getByTestId("hour")).toHaveTextContent("true");
+    // #337 — `use24HourFormat` is now derived from `userSettings.timeFormat`,
+    // whose default ("12h") matches the Prisma schema. Pre-#337 the
+    // CalendarProvider had its own conflicting default (`true`/24h); that
+    // dual-source bug is what this issue resolves.
+    expect(screen.getByTestId("hour")).toHaveTextContent("false");
     expect(screen.getByTestId("group")).toHaveTextContent("date");
     // 0 = Sunday per product requirement
     expect(screen.getByTestId("week-start")).toHaveTextContent("0");
@@ -164,10 +168,11 @@ describe("CalendarProvider — settings state", () => {
 
     await user.click(screen.getByText("badge-dot"));
     await user.click(screen.getByText("group-color"));
+    // Default after #337 is "12h" (false); toggling flips to "24h" (true).
     await user.click(screen.getByText("toggle-hour"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("hour")).toHaveTextContent("false");
+      expect(screen.getByTestId("hour")).toHaveTextContent("true");
     });
 
     const parsed = JSON.parse(
@@ -175,10 +180,38 @@ describe("CalendarProvider — settings state", () => {
     );
     expect(parsed.badgeVariant).toBe("dot");
     expect(parsed.agendaModeGroupBy).toBe("color");
-    expect(parsed.use24HourFormat).toBe(false);
+    // #337 — `use24HourFormat` is no longer persisted to localStorage; it
+    // flows through `useUserSettings.timeFormat` instead.
+    expect(parsed.use24HourFormat).toBeUndefined();
   });
 
   it("rehydrates weekStartDay from localStorage on mount", async () => {
+    // No `use24HourFormat` in this fixture — that field has been retired
+    // from the localStorage payload (#337). The migration test below
+    // covers the legacy upgrade path.
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "dot",
+        view: "month",
+        agendaModeGroupBy: "color",
+        weekStartDay: 1,
+      })
+    );
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("1");
+    });
+    expect(screen.getByTestId("group")).toHaveTextContent("color");
+    expect(screen.getByTestId("badge")).toHaveTextContent("dot");
+  });
+
+  // #337 — legacy localStorage payloads (pre-#337) carried `use24HourFormat`
+  // alongside the other fields. On first mount we strip the field so it
+  // can never drift away from `UserSettings.timeFormat` again.
+  it("strips legacy `use24HourFormat` from localStorage on mount (#337 migration)", async () => {
     window.localStorage.setItem(
       "calendar-settings",
       JSON.stringify({
@@ -195,13 +228,49 @@ describe("CalendarProvider — settings state", () => {
     await waitFor(() => {
       expect(screen.getByTestId("week-start")).toHaveTextContent("1");
     });
-    expect(screen.getByTestId("group")).toHaveTextContent("color");
-    expect(screen.getByTestId("hour")).toHaveTextContent("false");
-    expect(screen.getByTestId("badge")).toHaveTextContent("dot");
+
+    const parsed = JSON.parse(
+      window.localStorage.getItem("calendar-settings") ?? "{}"
+    );
+    expect(parsed.use24HourFormat).toBeUndefined();
+    // Other fields remain intact through the migration.
+    expect(parsed.badgeVariant).toBe("dot");
+    expect(parsed.weekStartDay).toBe(1);
+    expect(parsed.agendaModeGroupBy).toBe("color");
+  });
+
+  it("does not modify localStorage when there is no legacy `use24HourFormat` field", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        agendaModeGroupBy: "date",
+        weekStartDay: 0,
+      })
+    );
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("badge")).toHaveTextContent("colored");
+    });
+
+    const parsed = JSON.parse(
+      window.localStorage.getItem("calendar-settings") ?? "{}"
+    );
+    expect(parsed).toEqual({
+      badgeVariant: "colored",
+      view: "month",
+      agendaModeGroupBy: "date",
+      weekStartDay: 0,
+    });
   });
 
   it("falls back to defaults when the stored payload is missing the new field", async () => {
-    // Legacy payload (pre-#86) — no weekStartDay key
+    // Legacy payload (pre-#86) — no weekStartDay key. `use24HourFormat`
+    // included here is the pre-#337 dual-source field; the migration
+    // strips it on mount.
     window.localStorage.setItem(
       "calendar-settings",
       JSON.stringify({
@@ -218,7 +287,10 @@ describe("CalendarProvider — settings state", () => {
       expect(screen.getByTestId("week-start")).toHaveTextContent("0");
     });
     expect(screen.getByTestId("group")).toHaveTextContent("date");
-    expect(screen.getByTestId("hour")).toHaveTextContent("true");
+    // After #337 migration, the legacy `use24HourFormat: true` is
+    // stripped from localStorage; the value flows from
+    // `useUserSettings.timeFormat` (default "12h" → false).
+    expect(screen.getByTestId("hour")).toHaveTextContent("false");
     expect(screen.getByTestId("badge")).toHaveTextContent("colored");
   });
 
@@ -1637,6 +1709,493 @@ describe("CalendarProvider", () => {
       });
       expect(screen.getByText("fresh-evt")).toBeInTheDocument();
       expect(screen.getByText("evt-2")).toBeInTheDocument();
+    });
+  });
+
+  describe("getAccessRole (#266)", () => {
+    it("exposes the per-calendar accessRole returned by /api/calendar/calendars", async () => {
+      fetchMock.mockImplementation((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/calendar/calendars")) {
+          return Promise.resolve(
+            fetchOk({
+              calendars: [
+                { id: "primary", accessRole: "owner" },
+                {
+                  id: "shared@group.calendar.google.com",
+                  accessRole: "reader",
+                },
+                {
+                  id: "team@group.calendar.google.com",
+                  accessRole: "writer",
+                },
+              ],
+            })
+          );
+        }
+        if (url.includes("/api/calendar/colors")) {
+          return Promise.resolve(fetchOk({ colorMappings: [] }));
+        }
+        if (url.includes("/api/calendar/events")) {
+          return Promise.resolve(fetchOk({ events: [] }));
+        }
+        return Promise.resolve(fetchOk({}));
+      });
+
+      function RoleProbe() {
+        const { getAccessRole } = useCalendar();
+        return (
+          <div>
+            <span data-testid="role-primary">
+              {getAccessRole("primary") ?? "none"}
+            </span>
+            <span data-testid="role-shared">
+              {getAccessRole("shared@group.calendar.google.com") ?? "none"}
+            </span>
+            <span data-testid="role-team">
+              {getAccessRole("team@group.calendar.google.com") ?? "none"}
+            </span>
+            <span data-testid="role-unknown">
+              {getAccessRole("never-seen-this-id") ?? "none"}
+            </span>
+          </div>
+        );
+      }
+
+      render(
+        <CalendarProvider>
+          <RoleProbe />
+        </CalendarProvider>
+      );
+
+      // The provider populates the role map as a side-effect of the
+      // initial fetchCalendarList; wait for any role to appear before
+      // asserting on the rest.
+      await waitFor(() => {
+        expect(screen.getByTestId("role-primary")).toHaveTextContent("owner");
+      });
+
+      expect(screen.getByTestId("role-shared")).toHaveTextContent("reader");
+      expect(screen.getByTestId("role-team")).toHaveTextContent("writer");
+      expect(screen.getByTestId("role-unknown")).toHaveTextContent("none");
+    });
+
+    it("returns undefined for every id before the calendar list has loaded", () => {
+      mockSessionState.current = { data: null, status: "unauthenticated" };
+
+      function RoleProbe() {
+        const { getAccessRole } = useCalendar();
+        return (
+          <span data-testid="role-primary">
+            {getAccessRole("primary") ?? "none"}
+          </span>
+        );
+      }
+
+      render(
+        <CalendarProvider>
+          <RoleProbe />
+        </CalendarProvider>
+      );
+
+      expect(screen.getByTestId("role-primary")).toHaveTextContent("none");
+    });
+  });
+});
+
+// Issue #338 — `weekStartDay` is now sourced from `UserSettings` on the
+// server. The provider must (a) migrate the existing per-browser localStorage
+// value to the server exactly once on first authenticated mount, and
+// (b) write through to `/api/settings` when the user toggles the value via
+// the calendar settings panel.
+describe("CalendarProvider — weekStartDay server migration (#338)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const FLAG_KEY = "calendar-week-start-day-migrated";
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    mockSessionState.current = {
+      data: {
+        user: { name: "Test", email: "test@test.test" },
+        expires: new Date(Date.now() + 86_400_000).toISOString(),
+      },
+      status: "authenticated",
+    };
+    fetchMock = vi.fn().mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url === "/api/settings") {
+        // Fresh server with default Sunday-start; nothing to migrate down.
+        return Promise.resolve(fetchOk({ weekStartDay: 0 }));
+      }
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(fetchOk({ events: [] }));
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  // A legacy localStorage payload can also trigger the #337 `timeFormat`
+  // migration, which PUTs `{ timeFormat }` to the same endpoint. Scope this
+  // helper to the weekStartDay migration so the two coexisting migrations
+  // don't cross-contaminate these assertions.
+  function findSettingsPut(): RequestInit | undefined {
+    for (const [url, init] of fetchMock.mock.calls) {
+      if (
+        url === "/api/settings" &&
+        typeof init === "object" &&
+        init !== null &&
+        (init as RequestInit).method === "PUT"
+      ) {
+        const body = (init as RequestInit).body;
+        if (
+          typeof body === "string" &&
+          Object.prototype.hasOwnProperty.call(JSON.parse(body), "weekStartDay")
+        ) {
+          return init as RequestInit;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  it("migrates a non-default localStorage weekStartDay to /api/settings exactly once", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 1, // user previously chose Monday on this browser
+      })
+    );
+
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    await waitFor(() => {
+      // The shim has fired and tagged the flag.
+      expect(window.localStorage.getItem(FLAG_KEY)).toBe("1");
+    });
+
+    const settingsPuts = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        url === "/api/settings" &&
+        typeof init === "object" &&
+        init !== null &&
+        (init as RequestInit).method === "PUT" &&
+        typeof (init as RequestInit).body === "string" &&
+        Object.prototype.hasOwnProperty.call(
+          JSON.parse(String((init as RequestInit).body)),
+          "weekStartDay"
+        )
+    );
+    expect(settingsPuts).toHaveLength(1);
+    const body = JSON.parse(String(settingsPuts[0][1].body));
+    expect(body).toEqual({ weekStartDay: 1 });
+  });
+
+  it("does not migrate when local matches server (both default Sunday)", async () => {
+    // No localStorage set up — the user has no prior local preference.
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem(FLAG_KEY)).toBe("1");
+    });
+
+    expect(findSettingsPut()).toBeUndefined();
+  });
+
+  it("does not migrate twice if the flag is already set", async () => {
+    window.localStorage.setItem(FLAG_KEY, "1");
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 1,
+      })
+    );
+
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    // Give the effect a tick to potentially fire (it shouldn't).
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(findSettingsPut()).toBeUndefined();
+  });
+
+  it("PUTs to /api/settings when the user toggles weekStartDay", async () => {
+    window.localStorage.setItem(FLAG_KEY, "1");
+    const user = userEvent.setup();
+
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    // Wait for initial mount + effects to settle.
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("0");
+    });
+
+    await user.click(screen.getByText("week-monday"));
+
+    await waitFor(() => {
+      const put = findSettingsPut();
+      expect(put).toBeDefined();
+      expect(JSON.parse(String(put!.body))).toEqual({ weekStartDay: 1 });
+    });
+  });
+
+  // Regression for the race-condition review note: the migration must not
+  // PUT when local already matches the server's non-default value. Without
+  // the `userSettingsLoaded` gate this would emit a redundant PUT in the
+  // first authenticated render where `useUserSettings` is still loading.
+  it("does not migrate when local matches server (both Monday)", async () => {
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url === "/api/settings") {
+        return Promise.resolve(fetchOk({ weekStartDay: 1 }));
+      }
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(fetchOk({ events: [] }));
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 1,
+      })
+    );
+
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem(FLAG_KEY)).toBe("1");
+    });
+
+    expect(findSettingsPut()).toBeUndefined();
+  });
+
+  // Regression for the "still loading" race window: while the
+  // `/api/settings` GET is in flight, `useUserSettings.weekStartDay` is the
+  // in-memory default. The migration shim must NOT compare against that
+  // value — it would falsely flag a divergence and PUT prematurely.
+  it("does not migrate while useUserSettings is still loading", async () => {
+    fetchMock.mockReset();
+    let resolveSettings: ((value: Response) => void) | undefined;
+    const settingsPromise = new Promise<Response>((resolve) => {
+      resolveSettings = resolve;
+    });
+    fetchMock.mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url === "/api/settings") {
+        // Hold the GET open so `hasLoadedFromServer` stays false.
+        return settingsPromise;
+      }
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(fetchOk({ events: [] }));
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 1, // would race against in-memory default 0
+      })
+    );
+
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    // Give effects a tick. The migration must NOT have fired yet.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(findSettingsPut()).toBeUndefined();
+    expect(window.localStorage.getItem(FLAG_KEY)).toBeNull();
+
+    // Now resolve the GET with the matching server value (post-migration).
+    resolveSettings?.(fetchOk({ weekStartDay: 1 }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem(FLAG_KEY)).toBe("1");
+    });
+
+    // Local matches server → still no PUT.
+    expect(findSettingsPut()).toBeUndefined();
+  });
+
+  // Companion: while loading, if local diverges from the eventual server
+  // value, the migration runs *after* the GET resolves and PUTs the local
+  // value up exactly once.
+  it("defers migration until the server value is known, then PUTs", async () => {
+    fetchMock.mockReset();
+    let resolveSettings: ((value: Response) => void) | undefined;
+    const settingsPromise = new Promise<Response>((resolve) => {
+      resolveSettings = resolve;
+    });
+    fetchMock.mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url === "/api/settings") return settingsPromise;
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(fetchOk({ events: [] }));
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        use24HourFormat: true,
+        agendaModeGroupBy: "date",
+        weekStartDay: 1,
+      })
+    );
+
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    // Migration deferred while the GET is held open.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(findSettingsPut()).toBeUndefined();
+
+    // Server returns default (0). Local is 1 → migration fires.
+    resolveSettings?.(fetchOk({ weekStartDay: 0 }));
+
+    await waitFor(() => {
+      const put = findSettingsPut();
+      expect(put).toBeDefined();
+      expect(JSON.parse(String(put!.body))).toEqual({ weekStartDay: 1 });
+    });
+    expect(window.localStorage.getItem(FLAG_KEY)).toBe("1");
+  });
+
+  // Regression for the rollback review note: a network failure on the
+  // setter must restore the previous value so the UI doesn't drift from
+  // the persisted state.
+  it("rolls back the optimistic state when the PUT fails", async () => {
+    window.localStorage.setItem(FLAG_KEY, "1");
+
+    // Hold the PUT open long enough for the optimistic flip to be
+    // observable; resolving it via reject mid-test exercises the rollback
+    // path under a realistic async window rather than a synchronous one.
+    let rejectPut: ((error: Error) => void) | undefined;
+    const putPromise = new Promise<Response>((_, reject) => {
+      rejectPut = reject;
+    });
+
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/settings" && init?.method === "PUT") {
+        return putPromise;
+      }
+      if (url === "/api/settings") {
+        return Promise.resolve(fetchOk({ weekStartDay: 0 }));
+      }
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(fetchOk({ events: [] }));
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+
+    const user = userEvent.setup();
+    render(
+      <CalendarProvider>
+        <SettingsProbe />
+      </CalendarProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("0");
+    });
+
+    await user.click(screen.getByText("week-monday"));
+
+    // Optimistic flip happens before the PUT resolves.
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("1");
+    });
+
+    // Now fail the PUT — the catch handler reverts the optimistic update.
+    rejectPut?.(new Error("network down"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("week-start")).toHaveTextContent("0");
     });
   });
 });

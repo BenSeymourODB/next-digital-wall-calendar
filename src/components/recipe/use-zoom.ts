@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import type { ZoomLevel } from "./types";
 
 /**
@@ -83,18 +83,18 @@ export function useZoom(initialScale: number = 1.0): UseZoomReturn {
     findZoomIndex(initialScale)
   );
 
-  const zoomIn = useCallback(() => {
+  const zoomIn = () => {
     setCurrentIndex((prev) => Math.min(prev + 1, ZOOM_LEVELS.length - 1));
-  }, []);
+  };
 
-  const zoomOut = useCallback(() => {
+  const zoomOut = () => {
     setCurrentIndex((prev) => Math.max(prev - 1, 0));
-  }, []);
+  };
 
-  const setZoom = useCallback((scale: number) => {
+  const setZoom = (scale: number) => {
     const index = findZoomIndex(scale);
     setCurrentIndex(index);
-  }, []);
+  };
 
   return {
     zoomLevel: ZOOM_LEVELS[currentIndex],
