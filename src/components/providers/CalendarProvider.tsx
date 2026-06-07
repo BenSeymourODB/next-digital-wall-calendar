@@ -473,11 +473,17 @@ export function CalendarProvider({
   // Track the profile id whose filter state currently lives in
   // `selectedColors` / `selectedUserId` / `selectedCalendarIds`. Used both
   // to detect mid-session profile changes (so we can re-hydrate) AND to
-  // gate `persistFilters`: if a user-driven filter change races with a
-  // cross-tab profile switch, the in-memory state still reflects the
-  // OLD profile, so we must skip the write rather than corrupt the new
-  // profile's stored state.
+  // gate the persistence effect below: any user-driven write that lands
+  // before the re-hydration effect has finished is dropped — the new
+  // profile's hydrated state will overwrite it anyway.
   const hydratedProfileRef = useRef(activeProfileId);
+
+  // Set by filter-setter handlers; consumed by the persistence effect.
+  // Tracks "the most recent change came from a user action, not from
+  // re-hydration". The re-hydration effect resets this so a profile
+  // switch can't inadvertently persist the previous profile's state
+  // under the new profile's key.
+  const pendingUserUpdateRef = useRef(false);
 
   useEffect(() => {
     if (hydratedProfileRef.current === activeProfileId) return;
@@ -486,7 +492,28 @@ export function CalendarProvider({
     setSelectedUserIdState(next.selectedUserId);
     setSelectedCalendarIdsState(next.selectedCalendarIds);
     hydratedProfileRef.current = activeProfileId;
+    // Discard any in-flight user-driven update — the user clicked during
+    // the profile switch, and the new profile's hydrated values are now
+    // the source of truth.
+    pendingUserUpdateRef.current = false;
   }, [activeProfileId]);
+
+  // Persistence effect: fires after user-driven state changes commit, with
+  // the LATEST values (never closure-stale). Gated by
+  // `pendingUserUpdateRef` so the re-hydration effect's state changes
+  // don't trigger a redundant write-back, and by `hydratedProfileRef ===
+  // activeProfileId` so a write that lands in the gap between the profile
+  // changing and re-hydration completing is dropped.
+  useEffect(() => {
+    if (!pendingUserUpdateRef.current) return;
+    if (hydratedProfileRef.current !== activeProfileId) return;
+    pendingUserUpdateRef.current = false;
+    saveFilterState(activeProfileId, {
+      selectedColors,
+      selectedUserId,
+      selectedCalendarIds,
+    });
+  }, [selectedColors, selectedUserId, selectedCalendarIds, activeProfileId]);
 
   const [allEvents, setAllEvents] = useState<IEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<IEvent[]>([]);
@@ -604,26 +631,6 @@ export function CalendarProvider({
     }
   };
 
-  const persistFilters = (updates: {
-    selectedColors?: TEventColor[];
-    selectedUserId?: IUser["id"] | "all";
-    selectedCalendarIds?: string[];
-  }) => {
-    // Skip writes during the brief window between an active-profile change
-    // and the re-hydration effect catching up: in-memory `selected*` still
-    // holds the OLD profile's values, so persisting them under the NEW
-    // profile's key would corrupt that profile's stored state. The
-    // user-driven action that triggered this call is intentionally
-    // dropped — the new profile's hydrated state will overwrite anyway
-    // on the next render.
-    if (hydratedProfileRef.current !== activeProfileId) return;
-    saveFilterState(activeProfileId, {
-      selectedColors: updates.selectedColors ?? selectedColors,
-      selectedUserId: updates.selectedUserId ?? selectedUserId,
-      selectedCalendarIds: updates.selectedCalendarIds ?? selectedCalendarIds,
-    });
-  };
-
   // localStorage → server migration for `weekStartDay` (#338).
   //
   // Pre-#338, `weekStartDay` lived only in the per-browser `calendar-settings`
@@ -695,17 +702,23 @@ export function CalendarProvider({
     setWeekStartDayState(safe);
   }, [status, userSettings.weekStartDay]);
 
+  // The four filter setters share a common shape: use the functional
+  // form of `setState` so the new value is computed from the LATEST
+  // committed state (not the closure-captured value, which can be stale
+  // when a click handler from an earlier render fires after a profile
+  // switch). Mark `pendingUserUpdateRef` so the persistence effect knows
+  // to write — the actual `saveFilterState` call happens in the effect
+  // above, with the latest values and matching `activeProfileId`.
   const filterEventsBySelectedColors = (color: TEventColor) => {
-    const next = selectedColors.includes(color)
-      ? selectedColors.filter((c) => c !== color)
-      : [...selectedColors, color];
-    setSelectedColors(next);
-    persistFilters({ selectedColors: next });
+    setSelectedColors((prev) =>
+      prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color]
+    );
+    pendingUserUpdateRef.current = true;
   };
 
   const setSelectedUserId = (userId: IUser["id"] | "all") => {
     setSelectedUserIdState(userId);
-    persistFilters({ selectedUserId: userId });
+    pendingUserUpdateRef.current = true;
   };
 
   const filterEventsBySelectedUser = (userId: IUser["id"] | "all") => {
@@ -713,22 +726,19 @@ export function CalendarProvider({
   };
 
   const filterEventsBySelectedCalendars = (calendarId: string) => {
-    const next = selectedCalendarIds.includes(calendarId)
-      ? selectedCalendarIds.filter((id) => id !== calendarId)
-      : [...selectedCalendarIds, calendarId];
-    setSelectedCalendarIdsState(next);
-    persistFilters({ selectedCalendarIds: next });
+    setSelectedCalendarIdsState((prev) =>
+      prev.includes(calendarId)
+        ? prev.filter((id) => id !== calendarId)
+        : [...prev, calendarId]
+    );
+    pendingUserUpdateRef.current = true;
   };
 
   const clearFilter = () => {
     setSelectedColors([]);
     setSelectedUserIdState("all");
     setSelectedCalendarIdsState([]);
-    persistFilters({
-      selectedColors: [],
-      selectedUserId: "all",
-      selectedCalendarIds: [],
-    });
+    pendingUserUpdateRef.current = true;
   };
 
   const addEvent = (event: IEvent) => {

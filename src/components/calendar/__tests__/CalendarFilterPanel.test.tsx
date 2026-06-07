@@ -9,17 +9,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { CalendarFilterPanel } from "../CalendarFilterPanel";
 
-function createMockContext(
-  overrides: Partial<ICalendarContext> = {}
-): ICalendarContext {
-  return makeCalendarContext({
-    view: "month",
-    ...overrides,
-  });
-}
-
 function renderPanel(overrides: Partial<ICalendarContext> = {}) {
-  const contextValue = createMockContext(overrides);
+  // Single-source-of-truth pattern from #371: every test in this file
+  // delegates context construction to the shared `makeCalendarContext`
+  // factory in `src/test/fixtures/calendar-context.ts`. Adding a new
+  // context field becomes one edit in the factory — every test picks up
+  // the sensible default automatically. The factory's `view: "month"`
+  // default already matches what this panel needs.
+  const contextValue = makeCalendarContext(overrides);
   return {
     ...render(
       <CalendarContext.Provider value={contextValue}>
