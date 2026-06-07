@@ -8,6 +8,26 @@
  * `src/lib/google-calendar-mappers.ts` — a universal module that server code
  * can import without dragging in the browser-only logic below. They are
  * re-exported here for convenience.
+ *
+ * **Trust boundary (issue #277).** Production reads Google Calendar through
+ * the server routes under `src/app/api/calendar/**`, each of which now
+ * validates Google's wire payload at the route boundary via
+ * {@link parseGoogleResponse} (`src/lib/google-calendar-schemas.ts`).
+ *
+ * The browser-side `fetchCalendarEvents` / `fetchEventsFromMultipleCalendars` /
+ * `fetchUserCalendars` helpers below are **not used by production code paths**
+ * — they remain as part of the legacy GIS integration so manual debugging
+ * pages can hit `gapi.client.calendar.*` directly. No callers exist in
+ * `src/components/**` or `src/app/**` outside of this module's own re-exports.
+ *
+ * If a future caller brings them back into a production path, wire them to
+ * the same Zod schemas before doing so:
+ * - `fetchCalendarEvents` → `parseGoogleResponse(response.result, GoogleEventsListResponseSchema, { endpoint: "events.list", calendarId })`
+ * - `fetchUserCalendars`  → `parseGoogleResponse(response.result, GoogleCalendarListResponseSchema, { endpoint: "calendarList.list" })`
+ *
+ * Until then, the trust boundary for these helpers is the gapi SDK's own
+ * `gapi.client.calendar.*` typings — same posture as before #277, scoped
+ * to a path no live UI depends on.
  */
 import { logger } from "@/lib/logger";
 import { type CalendarColorMapping } from "./calendar-storage";

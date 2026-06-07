@@ -40,6 +40,35 @@ export type TCalendarAccessRole =
   | "writer"
   | "owner";
 
+// Typed as `Record<TCalendarAccessRole, true>` so adding a new role to the
+// union above forces a compile error here until the lookup is updated. A
+// plain Set would silently miss the new value and downgrade legitimate
+// access to "reader" — unacceptable for a fail-closed trust boundary.
+const VALID_ACCESS_ROLES: Record<TCalendarAccessRole, true> = {
+  freeBusyReader: true,
+  reader: true,
+  writer: true,
+  owner: true,
+};
+
+/**
+ * Narrow Google's `accessRole` string (or `undefined`) into the canonical
+ * {@link TCalendarAccessRole} union, failing closed to `"reader"` for
+ * missing or unrecognised values. The Zod schema in
+ * `lib/google-calendar-schemas.ts` keeps `accessRole` as a loose `string`
+ * (#277) so future Google additions pass validation; this helper is the
+ * route's trust boundary that picks a safe default for anything we don't
+ * recognise.
+ */
+export function narrowAccessRole(
+  value: string | undefined
+): TCalendarAccessRole {
+  return value !== undefined &&
+    Object.prototype.hasOwnProperty.call(VALID_ACCESS_ROLES, value)
+    ? (value as TCalendarAccessRole)
+    : "reader";
+}
+
 export interface IUser {
   id: string;
   name: string;
