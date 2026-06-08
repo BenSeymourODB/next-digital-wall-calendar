@@ -40,6 +40,21 @@ export interface AuthenticatedUser {
 }
 
 /**
+ * Email used by the shared E2E user created in `e2e/auth.setup.ts` and torn
+ * down by `e2e/auth.teardown.ts`. Specs under `e2e/authenticated/**` reuse
+ * this user's session via the `storageState` saved at
+ * `playwright/.auth/user.json` — issue #278.
+ */
+export const SHARED_TEST_USER_EMAIL = "e2e-shared@example.com";
+
+/**
+ * Path (relative to the repo root) where the shared user's
+ * `storageState` JSON is persisted. The setup project writes it; the
+ * `authenticated-chromium` project reads it via `use.storageState`.
+ */
+export const SHARED_STORAGE_STATE_PATH = "playwright/.auth/user.json";
+
+/**
  * Generate a unique test ID to avoid collisions between parallel tests
  */
 function generateTestId(): string {
@@ -261,6 +276,48 @@ export async function withAuthenticatedPage<T>(
  */
 export async function disconnectDatabase(): Promise<void> {
   await pool.end();
+}
+
+/**
+ * Idempotent setup for the shared E2E user. Deletes any stale rows under
+ * `SHARED_TEST_USER_EMAIL` first so a crashed prior `auth.setup.ts` run
+ * doesn't leave half-state in the DB, then creates a fresh user + session
+ * via the same path real OAuth signs-in take. Used by `e2e/auth.setup.ts`
+ * — the resulting session token is the one persisted in
+ * `playwright/.auth/user.json` for the `authenticated-chromium` project to
+ * reuse.
+ */
+export async function getOrCreateSharedTestUser(): Promise<AuthenticatedUser> {
+  // Wipe any stale rows under this email first. We can't reuse them —
+  // sessionToken / accessToken values aren't recoverable here once the
+  // storageState file is gone, and on a re-run we always want a fresh
+  // pair so the prior pair becomes garbage. cleanupTestUser swallows
+  // missing-row errors, so this is safe even on a clean DB.
+  const existing = await pool.query(`SELECT id FROM "User" WHERE email = $1`, [
+    SHARED_TEST_USER_EMAIL,
+  ]);
+  for (const row of existing.rows) {
+    await cleanupTestUser(row.id);
+  }
+
+  return createTestUser({
+    email: SHARED_TEST_USER_EMAIL,
+    name: "E2E Shared User",
+  });
+}
+
+/**
+ * Teardown counterpart to `getOrCreateSharedTestUser`. Removes the shared
+ * user (and cascaded Session/Account rows) so the DB doesn't accumulate
+ * orphaned rows between Playwright runs.
+ */
+export async function cleanupSharedTestUser(): Promise<void> {
+  const result = await pool.query(`SELECT id FROM "User" WHERE email = $1`, [
+    SHARED_TEST_USER_EMAIL,
+  ]);
+  for (const row of result.rows) {
+    await cleanupTestUser(row.id);
+  }
 }
 
 /**
