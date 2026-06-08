@@ -769,11 +769,15 @@ export function CalendarProvider({
 
       return reconciled;
     } catch (error) {
-      // Rollback: restore the original row in place. Use a functional update
-      // so any concurrent edits to *other* rows are preserved.
-      setAllEvents((current) =>
-        current.map((e) => (e.id === eventId ? original : e))
-      );
+      // Rollback: restore the original row in place. Skip the restore when
+      // a concurrent `refreshEvents` has already removed the row (e.g. the
+      // event was deleted on another device) — otherwise we'd resurrect a
+      // ghost. Mirrors the `removed !== undefined` guard in `deleteEvent`.
+      setAllEvents((current) => {
+        const stillPresent = current.some((e) => e.id === eventId);
+        if (!stillPresent) return current;
+        return current.map((e) => (e.id === eventId ? original : e));
+      });
       logger.error(error as Error, {
         context: "editEvent",
         eventId,

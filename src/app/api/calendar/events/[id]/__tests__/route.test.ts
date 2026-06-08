@@ -520,8 +520,17 @@ describe("PATCH /api/calendar/events/[id]", () => {
     const sentBody = JSON.parse(calledOptions.body as string);
     expect(sentBody.summary).toBe("Renamed offsite");
     expect(sentBody.description).toBe("Now in the afternoon");
-    expect(sentBody.start).toEqual({ dateTime: "2026-05-01T15:00:00.000Z" });
-    expect(sentBody.end).toEqual({ dateTime: "2026-05-01T16:00:00.000Z" });
+    // Explicit `date: null` clears the previously-stored all-day value on
+    // a PATCH type-switch (all-day → timed). See the type-switch test
+    // below for the inverse direction.
+    expect(sentBody.start).toEqual({
+      dateTime: "2026-05-01T15:00:00.000Z",
+      date: null,
+    });
+    expect(sentBody.end).toEqual({
+      dateTime: "2026-05-01T16:00:00.000Z",
+      date: null,
+    });
     expect(sentBody.colorId).toBe("2"); // green
 
     expect(data.event.id).toBe("evt-1");
@@ -565,15 +574,103 @@ describe("PATCH /api/calendar/events/[id]", () => {
 
     expect(status).toBe(200);
     const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string) as {
-      start: { date?: string; dateTime?: string };
-      end: { date?: string; dateTime?: string };
+      start: { date?: string | null; dateTime?: string | null };
+      end: { date?: string | null; dateTime?: string | null };
     };
 
     // Google's all-day convention: end.date is EXCLUSIVE.
     expect(sentBody.start.date).toBe("2026-07-04");
     expect(sentBody.end.date).toBe("2026-07-08");
-    expect(sentBody.start.dateTime).toBeUndefined();
-    expect(sentBody.end.dateTime).toBeUndefined();
+    // Explicit `dateTime: null` so a PATCH on a previously-timed event
+    // clears the stored time; otherwise Google would reject the body for
+    // having both `date` and `dateTime` populated on the same time object.
+    expect(sentBody.start.dateTime).toBeNull();
+    expect(sentBody.end.dateTime).toBeNull();
+  });
+
+  it("clears the previously-stored time fields when patching a timed event to all-day", async () => {
+    // Regression: Google's `events.patch` merges the body over the stored
+    // event, so an all-day PATCH on a previously-timed event must
+    // explicitly null out `start.dateTime` / `end.dateTime`. Without
+    // this, Google rejects the body for having both `date` and `dateTime`
+    // populated on the same time object.
+    vi.mocked(getSession).mockResolvedValue(mockSession);
+    vi.mocked(getAccessToken).mockResolvedValue(
+      mockGoogleAccount.access_token!
+    );
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          id: "evt-was-timed",
+          summary: "Now all-day",
+          start: { date: "2026-08-01" },
+          end: { date: "2026-08-02" },
+        }),
+    });
+
+    const request = createMockRequest(
+      "/api/calendar/events/evt-was-timed?calendarId=primary",
+      {
+        method: "PATCH",
+        body: makeBody({
+          isAllDay: true,
+          startDate: "2026-08-01",
+          endDate: "2026-08-01",
+          title: "Now all-day",
+        }),
+      }
+    );
+    await PATCH(request, { params: createParams("evt-was-timed") });
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody.start.date).toBe("2026-08-01");
+    expect(sentBody.end.date).toBe("2026-08-02");
+    expect(sentBody.start.dateTime).toBeNull();
+    expect(sentBody.end.dateTime).toBeNull();
+  });
+
+  it("clears the previously-stored date fields when patching an all-day event to timed", async () => {
+    // Inverse of the test above: timed PATCH on a previously-all-day
+    // event must null out `start.date` / `end.date`.
+    vi.mocked(getSession).mockResolvedValue(mockSession);
+    vi.mocked(getAccessToken).mockResolvedValue(
+      mockGoogleAccount.access_token!
+    );
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          id: "evt-was-allday",
+          summary: "Now timed",
+          start: { dateTime: "2026-08-01T09:00:00.000Z" },
+          end: { dateTime: "2026-08-01T10:00:00.000Z" },
+        }),
+    });
+
+    const request = createMockRequest(
+      "/api/calendar/events/evt-was-allday?calendarId=primary",
+      {
+        method: "PATCH",
+        body: makeBody({
+          isAllDay: false,
+          startDate: "2026-08-01T09:00:00.000Z",
+          endDate: "2026-08-01T10:00:00.000Z",
+          title: "Now timed",
+        }),
+      }
+    );
+    await PATCH(request, { params: createParams("evt-was-allday") });
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody.start.dateTime).toBe("2026-08-01T09:00:00.000Z");
+    expect(sentBody.end.dateTime).toBe("2026-08-01T10:00:00.000Z");
+    expect(sentBody.start.date).toBeNull();
+    expect(sentBody.end.date).toBeNull();
   });
 
   it("rejects an all-day patch where startDate is an ISO datetime string", async () => {
