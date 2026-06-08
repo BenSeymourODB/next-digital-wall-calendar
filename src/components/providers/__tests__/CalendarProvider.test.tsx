@@ -1770,6 +1770,271 @@ describe("CalendarProvider", () => {
     });
   });
 
+  describe("editEvent (#265)", () => {
+    /**
+     * Probe that exposes `editEvent` and the current event list. The probe
+     * patches the seeded event (id `evt-1`) with a new title/colour so each
+     * test can drive an end-to-end edit and assert the optimistic write +
+     * reconciliation or rollback behaviour.
+     */
+    function EditEventProbe({
+      eventId,
+      onResolve,
+      onError,
+    }: {
+      eventId: string;
+      onResolve?: (event: { id: string; title: string }) => void;
+      onError?: (err: Error) => void;
+    }) {
+      const { editEvent, events } = useCalendar();
+      return (
+        <div>
+          <ul data-testid="edit-probe-events">
+            {events.map((e) => (
+              <li key={e.id} data-testid={`edit-evt-${e.id}`}>
+                {e.id}:{e.title}:{e.color}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => {
+              editEvent(eventId, "primary", {
+                title: "Renamed offsite",
+                description: "Now in the afternoon",
+                color: "green",
+                isAllDay: false,
+                startDate: "2026-05-01T15:00:00.000Z",
+                endDate: "2026-05-01T16:00:00.000Z",
+                calendarId: "primary",
+              })
+                .then((updated) =>
+                  onResolve?.({ id: updated.id, title: updated.title })
+                )
+                .catch((err: Error) => onError?.(err));
+            }}
+          >
+            edit
+          </button>
+        </div>
+      );
+    }
+
+    function seedEditFetch(
+      patchResponse: Response | (() => Promise<Response>)
+    ) {
+      fetchMock.mockImplementation(
+        (input: string | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (
+            init?.method === "PATCH" &&
+            url.includes("/api/calendar/events/")
+          ) {
+            return typeof patchResponse === "function"
+              ? patchResponse()
+              : Promise.resolve(patchResponse);
+          }
+          if (url.includes("/api/calendar/calendars")) {
+            return Promise.resolve(fetchOk({ calendars: [{ id: "primary" }] }));
+          }
+          if (url.includes("/api/calendar/colors")) {
+            return Promise.resolve(fetchOk({ colorMappings: [] }));
+          }
+          if (url.includes("/api/calendar/events")) {
+            return Promise.resolve(
+              fetchOk({
+                events: [
+                  baseEvent("evt-1", "2026-05-01T14:00:00.000Z"),
+                  baseEvent("evt-2", "2026-05-02T14:00:00.000Z"),
+                ],
+              })
+            );
+          }
+          return Promise.resolve(fetchOk({}));
+        }
+      );
+    }
+
+    it("PATCHes the event and replaces the local row with the reconciled response", async () => {
+      seedEditFetch(
+        fetchOk({
+          event: {
+            id: "evt-1",
+            summary: "Renamed offsite",
+            description: "Now in the afternoon",
+            start: { dateTime: "2026-05-01T15:00:00.000Z" },
+            end: { dateTime: "2026-05-01T16:00:00.000Z" },
+            // `transformGoogleEvent` is mocked at the top of this file to
+            // honour `colorOverride` rather than the raw `colorId`, so the
+            // reconciled row picks up the colour we want to assert below.
+            colorOverride: "green",
+            calendarId: "primary",
+          },
+        })
+      );
+
+      const onResolve = vi.fn();
+
+      render(
+        <CalendarProvider>
+          <EditEventProbe eventId="evt-1" onResolve={onResolve} />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("edit-evt-evt-1")).toBeInTheDocument();
+      });
+
+      await userEvent.setup().click(screen.getByText("edit"));
+
+      await waitFor(() => {
+        // The row's id is unchanged but title + color reflect the canonical
+        // Google response.
+        expect(screen.getByTestId("edit-evt-evt-1").textContent).toContain(
+          "Renamed offsite"
+        );
+      });
+
+      expect(screen.getByTestId("edit-evt-evt-1").textContent).toContain(
+        "green"
+      );
+
+      await waitFor(() => {
+        expect(onResolve).toHaveBeenCalledWith({
+          id: "evt-1",
+          title: "Renamed offsite",
+        });
+      });
+
+      // The PATCH was issued to the right URL with the body shape the route
+      // expects.
+      const patchCall = fetchMock.mock.calls.find(
+        ([, init]) => init?.method === "PATCH"
+      );
+      expect(patchCall).toBeDefined();
+      expect(String(patchCall![0])).toContain(
+        "/api/calendar/events/evt-1?calendarId=primary"
+      );
+      const sentBody = JSON.parse(patchCall![1].body as string);
+      expect(sentBody).toMatchObject({
+        title: "Renamed offsite",
+        color: "green",
+        isAllDay: false,
+        calendarId: "primary",
+      });
+    });
+
+    it("rolls back the optimistic update and rethrows when the API rejects with 403", async () => {
+      seedEditFetch({
+        ok: false,
+        status: 403,
+        json: async () => ({
+          error: "You do not have permission to edit events on this calendar.",
+        }),
+      } as unknown as Response);
+
+      const onError = vi.fn();
+
+      render(
+        <CalendarProvider>
+          <EditEventProbe eventId="evt-1" onError={onError} />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("edit-evt-evt-1")).toBeInTheDocument();
+      });
+
+      // Capture the original title so we can assert it's restored on rollback.
+      const originalText = screen.getByTestId("edit-evt-evt-1").textContent;
+
+      await userEvent.setup().click(screen.getByText("edit"));
+
+      await waitFor(() => {
+        expect(onError).toHaveBeenCalledTimes(1);
+      });
+
+      expect(onError.mock.calls[0][0].message).toMatch(/permission/i);
+
+      // The row is still present and back to its original title — the
+      // optimistic flip to "Renamed offsite" rolled back.
+      expect(screen.getByTestId("edit-evt-evt-1").textContent).toBe(
+        originalText
+      );
+    });
+
+    it("rolls back the optimistic update when the API returns 502", async () => {
+      seedEditFetch({
+        ok: false,
+        status: 502,
+        json: async () => ({ error: "Failed to update calendar event" }),
+      } as unknown as Response);
+
+      const onError = vi.fn();
+
+      render(
+        <CalendarProvider>
+          <EditEventProbe eventId="evt-1" onError={onError} />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("edit-evt-evt-1")).toBeInTheDocument();
+      });
+
+      const originalText = screen.getByTestId("edit-evt-evt-1").textContent;
+
+      await userEvent.setup().click(screen.getByText("edit"));
+
+      await waitFor(() => {
+        expect(onError).toHaveBeenCalled();
+      });
+
+      expect(screen.getByTestId("edit-evt-evt-1").textContent).toBe(
+        originalText
+      );
+    });
+
+    it("rejects with a no-op when the target event isn't in the local list", async () => {
+      seedEditFetch(
+        fetchOk({
+          event: {
+            id: "evt-ghost",
+            summary: "Renamed offsite",
+            start: { dateTime: "2026-05-01T15:00:00.000Z" },
+            end: { dateTime: "2026-05-01T16:00:00.000Z" },
+            calendarId: "primary",
+          },
+        })
+      );
+
+      const onError = vi.fn();
+
+      render(
+        <CalendarProvider>
+          <EditEventProbe eventId="evt-ghost" onError={onError} />
+        </CalendarProvider>
+      );
+
+      await waitFor(() => {
+        // Seeded events have rendered.
+        expect(screen.getByTestId("edit-evt-evt-1")).toBeInTheDocument();
+      });
+
+      await userEvent.setup().click(screen.getByText("edit"));
+
+      await waitFor(() => {
+        expect(onError).toHaveBeenCalledTimes(1);
+      });
+
+      expect(onError.mock.calls[0][0].message).toMatch(/not found|missing/i);
+      // No PATCH should have been attempted since the event wasn't in state.
+      expect(
+        fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH")
+      ).toBeUndefined();
+    });
+  });
+
   describe("getAccessRole (#266)", () => {
     it("exposes the per-calendar accessRole returned by /api/calendar/calendars", async () => {
       fetchMock.mockImplementation((input: string | URL) => {

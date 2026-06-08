@@ -4,6 +4,7 @@ import { AnalogClock } from "@/components/calendar/analog-clock";
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { ThemeScope } from "@/components/theme/theme-scope";
 import { useEventDelete } from "@/hooks/useEventDelete";
+import { useEventEdit } from "@/hooks/useEventEdit";
 import { getColorClass } from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
@@ -64,6 +65,7 @@ export function AnalogClockView() {
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
+  const handleEdit = useEventEdit();
   const { resolvedTheme } = useTheme();
 
   // Emphasize the clock face with a light scope (issue #319). Only meaningful
@@ -193,6 +195,7 @@ export function AnalogClockView() {
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
+        onEdit={handleEdit}
       />
     </div>
   );
