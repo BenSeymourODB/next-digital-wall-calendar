@@ -1,60 +1,47 @@
 /**
- * Test fixtures for Profile API tests
+ * Test fixtures for Profile API tests.
+ *
+ * Delegates the row defaults to the shared `makePrismaProfile` /
+ * `makeProfileSettings` factories under `src/test/fixtures/profile.ts` (#371)
+ * so a new column on `Profile` / `ProfileSettings` only needs to be added in
+ * one place. The named exports are preserved for backwards compatibility
+ * with existing route-test imports.
  */
-import type {
-  Profile,
-  ProfileRewardPoints,
-  ProfileSettings,
-} from "@/generated/prisma/client";
+import type { ProfileRewardPoints } from "@/generated/prisma/client";
+import {
+  makePrismaProfile,
+  makeProfileSettings,
+} from "@/test/fixtures/profile";
 
 export const mockUserId = "test-user-123";
 
 /**
  * Mock profile with admin type
  */
-export const mockAdminProfile: Profile = {
+export const mockAdminProfile = makePrismaProfile({
   id: "profile-admin-1",
   userId: mockUserId,
   name: "Admin User",
-  type: "admin",
-  ageGroup: "adult",
   color: "#3b82f6",
-  avatar: {
-    type: "initials",
-    value: "AU",
-    backgroundColor: "#3b82f6",
-  },
+  avatar: { type: "initials", value: "AU", backgroundColor: "#3b82f6" },
   pinHash: "$2b$10$mockHashedPin", // Mock bcrypt hash
   pinEnabled: true,
-  failedPinAttempts: 0,
-  pinLockedUntil: null,
-  isActive: true,
-  createdAt: new Date("2024-01-01T00:00:00Z"),
-  updatedAt: new Date("2024-01-01T00:00:00Z"),
-};
+});
 
 /**
  * Mock profile with standard type
  */
-export const mockStandardProfile: Profile = {
+export const mockStandardProfile = makePrismaProfile({
   id: "profile-standard-1",
   userId: mockUserId,
   name: "Child User",
   type: "standard",
   ageGroup: "child",
   color: "#22c55e",
-  avatar: {
-    type: "emoji",
-    value: "👦",
-  },
-  pinHash: null,
-  pinEnabled: false,
-  failedPinAttempts: 0,
-  pinLockedUntil: null,
-  isActive: true,
+  avatar: { type: "emoji", value: "👦" },
   createdAt: new Date("2024-01-02T00:00:00Z"),
   updatedAt: new Date("2024-01-02T00:00:00Z"),
-};
+});
 
 /**
  * Mock profile reward points
@@ -72,27 +59,30 @@ export const mockProfileRewardPoints: ProfileRewardPoints = {
 /**
  * Mock profile settings
  */
-export const mockProfileSettings: ProfileSettings = {
+export const mockProfileSettings = makeProfileSettings({
   id: "settings-1",
   profileId: mockAdminProfile.id,
-  defaultTaskListId: null,
-  showCompletedTasks: false,
-  taskSortOrder: "dueDate",
-  theme: "light",
-  language: "en",
-  enableNotifications: false,
-  notificationTime: null,
-};
+});
 
 /**
- * Factory function to create custom mock profiles
+ * Factory function to create custom mock profiles.
+ *
+ * Delegates to `makePrismaProfile` but injects a sequential `id` based on the
+ * current timestamp by default so multi-profile renders in a single test
+ * don't collide on identical ids.
  */
-export function createMockProfile(overrides: Partial<Profile> = {}): Profile {
-  return {
-    ...mockStandardProfile,
+export function createMockProfile(
+  overrides: Parameters<typeof makePrismaProfile>[0] = {}
+): ReturnType<typeof makePrismaProfile> {
+  return makePrismaProfile({
+    name: "Child User",
+    type: "standard",
+    ageGroup: "child",
+    color: "#22c55e",
+    avatar: { type: "emoji", value: "👦" },
     id: `profile-${Date.now()}`,
     ...overrides,
-  };
+  });
 }
 
 /**
@@ -125,7 +115,7 @@ export const mockCreateProfileInput: CreateProfileInput = {
 /**
  * Array of mock profiles for list testing
  */
-export const mockProfileList: Profile[] = [
+export const mockProfileList = [
   mockAdminProfile,
   mockStandardProfile,
   createMockProfile({
@@ -134,9 +124,6 @@ export const mockProfileList: Profile[] = [
     type: "standard",
     ageGroup: "teen",
     color: "#a855f7",
-    avatar: {
-      type: "emoji",
-      value: "👧",
-    },
+    avatar: { type: "emoji", value: "👧" },
   }),
 ];
