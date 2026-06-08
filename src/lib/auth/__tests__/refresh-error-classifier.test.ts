@@ -27,15 +27,6 @@ describe("classifyTokenRefreshError", () => {
       });
       expect(classifyTokenRefreshError(err)).toBe("terminal");
     });
-
-    it("classifies unsupported_grant_type as terminal", () => {
-      // Misconfiguration on our side — sending the wrong grant_type can
-      // never succeed on retry, so force re-auth.
-      const err = new GoogleTokenRefreshError(400, {
-        error: "unsupported_grant_type",
-      });
-      expect(classifyTokenRefreshError(err)).toBe("terminal");
-    });
   });
 
   describe("internal sentinel errors (locally-permanent state)", () => {
@@ -62,6 +53,17 @@ describe("classifyTokenRefreshError", () => {
     it("classifies rate_limit_exceeded as transient", () => {
       const err = new GoogleTokenRefreshError(429, {
         error: "rate_limit_exceeded",
+      });
+      expect(classifyTokenRefreshError(err)).toBe("transient");
+    });
+
+    it("classifies unsupported_grant_type as transient (#378)", () => {
+      // Server-side code/config bug — we control the grant_type we send, so
+      // re-auth can never fix it (the next refresh sends the same wrong
+      // grant_type). Treating it as transient keeps the cached UI working
+      // while the failure is loud in server logs for the operator to fix.
+      const err = new GoogleTokenRefreshError(400, {
+        error: "unsupported_grant_type",
       });
       expect(classifyTokenRefreshError(err)).toBe("transient");
     });
