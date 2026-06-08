@@ -88,7 +88,12 @@ jobs:
         run: pnpm db:migrate:deploy
 
       - name: Run Playwright tests (chromium)
-        run: pnpm test:e2e -- --project=chromium
+        # Playwright treats `--` as a positional test-filter (no Unix-style
+        # end-of-options convention), so `pnpm test:e2e -- --project=chromium`
+        # expands to `playwright test -- --project=chromium` and matches zero
+        # tests ("No tests found."). pnpm 10 forwards trailing args to script
+        # commands without an explicit separator — just append the flag.
+        run: pnpm test:e2e --project=chromium
 
       - name: Upload Playwright report
         if: failure()
