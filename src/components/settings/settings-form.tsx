@@ -3,6 +3,7 @@
 import { useProfile } from "@/components/profiles/profile-context";
 import type { TransitionConfig } from "@/components/scheduler/types";
 import type { CalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
+import { isDateFormat } from "@/lib/format-date";
 import { DEFAULT_TRANSITION_CONFIG } from "@/lib/scheduler/schedule-config";
 import {
   loadScheduleConfig,
@@ -203,6 +204,9 @@ export function SettingsForm({
         createdAt={createdAt}
         providers={providers}
         onDeleteAccount={handleDeleteAccount}
+        dateFormat={
+          isDateFormat(settings.dateFormat) ? settings.dateFormat : undefined
+        }
       />
 
       <DisplaySection

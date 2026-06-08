@@ -213,6 +213,59 @@ describe("useUserSettings", () => {
     );
   });
 
+  it("surfaces dateFormat when the server provides a documented value", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ dateFormat: "DD/MM/YYYY" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.dateFormat).toBe("DD/MM/YYYY");
+  });
+
+  it("rejects unknown dateFormat values and keeps the default", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ dateFormat: "YYYY/MM/DD" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.dateFormat).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.dateFormat
+    );
+  });
+
+  it("propagates a dateFormat bus event to a second hook instance", async () => {
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+    const { result } = renderHook(() => useUserSettings());
+
+    act(() => {
+      emitUserSettingsChange({ dateFormat: "YYYY-MM-DD" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.settings.dateFormat).toBe("YYYY-MM-DD");
+    });
+  });
+
   it("merges partial server values over defaults", async () => {
     mockUseSession.mockReturnValue({
       data: { user: { id: "u1" } },
