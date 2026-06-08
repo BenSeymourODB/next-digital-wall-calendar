@@ -179,3 +179,14 @@ export function useProfile(): ProfileContextValue {
   }
   return context;
 }
+
+/**
+ * useProfileOptional - Variant of `useProfile` that returns `null` instead
+ * of throwing when no `ProfileProvider` ancestor is mounted. Use this in
+ * components that work standalone in tests (with the provider absent) but
+ * want to subscribe to same-tab profile switches in production. Mirrors
+ * the `usePointsOptional` pattern used by `PointsBadge` / `TaskItem`.
+ */
+export function useProfileOptional(): ProfileContextValue | null {
+  return useContext(ProfileContext);
+}

@@ -93,4 +93,45 @@ describe("ClockFace", () => {
     const indicator = screen.getByTestId("period-indicator");
     expect(indicator.textContent).toBe("PM");
   });
+
+  it("draws the face background and minute ticks with semantic-token strokes", () => {
+    // Issue #319: hard-coded greys/whites were replaced with semantic tokens
+    // so the ThemeScope primitive can flip the face independently of the
+    // surrounding chrome. Lock the migration in place: assert the fills/strokes
+    // are CSS custom-property references rather than literal hex/keyword values.
+    const { container } = renderClockFace();
+
+    const face = screen.getByTestId("clock-face-bg");
+    expect(face.getAttribute("fill")).toBe("var(--card)");
+    expect(face.getAttribute("stroke")).toBe("var(--border)");
+
+    const minuteTick = container.querySelector("line");
+    expect(minuteTick?.getAttribute("stroke")).toBe("var(--border)");
+  });
+
+  it("draws hour markers, numbers, and hands using --card-foreground", () => {
+    renderClockFace({ showSeconds: true });
+
+    expect(screen.getByTestId("hour-marker-3").getAttribute("stroke")).toBe(
+      "var(--card-foreground)"
+    );
+    expect(screen.getByTestId("hour-number-3").getAttribute("fill")).toBe(
+      "var(--card-foreground)"
+    );
+    expect(screen.getByTestId("hour-hand").getAttribute("stroke")).toBe(
+      "var(--card-foreground)"
+    );
+    expect(screen.getByTestId("minute-hand").getAttribute("stroke")).toBe(
+      "var(--card-foreground)"
+    );
+    expect(screen.getByTestId("clock-center-dot").getAttribute("fill")).toBe(
+      "var(--card-foreground)"
+    );
+    expect(screen.getByTestId("second-hand").getAttribute("stroke")).toBe(
+      "var(--destructive)"
+    );
+    expect(screen.getByTestId("period-indicator").getAttribute("fill")).toBe(
+      "var(--muted-foreground)"
+    );
+  });
 });

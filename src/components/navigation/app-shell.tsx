@@ -12,6 +12,7 @@
  * `NAV_ITEMS` relative to the previous route — moving down the list slides
  * forward, moving up slides backward.
  */
+import { PointsBadge } from "@/components/rewards/points-badge";
 import { ScreenTransition } from "@/components/scheduler/screen-transition";
 import type { TransitionDirection } from "@/components/scheduler/types";
 import { DEFAULT_TRANSITION_CONFIG } from "@/lib/scheduler/schedule-config";
@@ -74,6 +75,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
       <SideNavigation />
+      <div className="fixed top-3 right-3 z-40 flex items-center gap-2">
+        <PointsBadge />
+      </div>
       <div className="pl-16">
         <ScreenTransition
           pathname={pathname}

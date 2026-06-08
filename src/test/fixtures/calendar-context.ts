@@ -16,6 +16,7 @@
  * default `view` to the surface under test).
  */
 import type { ICalendarContext } from "@/components/providers/CalendarProvider";
+import { ZERO_HIDDEN_COUNTS } from "@/lib/calendar-filter-counts";
 import type { IUser, TCalendarView, TEventColor } from "@/types/calendar";
 import { vi } from "vitest";
 
@@ -49,6 +50,10 @@ export function makeCalendarContext(
     selectedColors: [] as TEventColor[],
     filterEventsBySelectedColors: vi.fn(),
     filterEventsBySelectedUser: vi.fn(),
+    calendars: [],
+    selectedCalendarIds: [],
+    filterEventsBySelectedCalendars: vi.fn(),
+    hiddenEventCounts: ZERO_HIDDEN_COUNTS,
     users: [] as IUser[],
     events: [],
     addEvent: vi.fn(),

@@ -4,6 +4,13 @@
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
 import { mapHexToTailwindColor } from "@/lib/color-utils";
+import {
+  GoogleApiValidationError,
+  type GoogleCalendarListEntry,
+  type GoogleCalendarListResponse,
+  GoogleCalendarListResponseSchema,
+  parseGoogleResponse,
+} from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import type { TEventColor } from "@/types/calendar";
@@ -85,18 +92,41 @@ export async function GET() {
       );
     }
 
-    const data = await response.json();
-    const items: gapi.client.calendar.CalendarListEntry[] = data.items || [];
+    const rawData: unknown = await response.json();
+    let parsed: GoogleCalendarListResponse;
+    try {
+      parsed = parseGoogleResponse(rawData, GoogleCalendarListResponseSchema, {
+        endpoint: "calendarList.list",
+      });
+    } catch (validationError) {
+      if (validationError instanceof GoogleApiValidationError) {
+        logger.error(validationError, {
+          endpoint: validationError.endpoint,
+          userId: session.user.id,
+          validationIssues: validationError.issues
+            .slice(0, 5)
+            .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+            .join("; "),
+        });
+        return NextResponse.json(
+          { error: "Failed to fetch calendar colors" },
+          { status: 502 }
+        );
+      }
+      throw validationError;
+    }
 
     // Map each calendar to its color
-    const colorMappings: CalendarColorMapping[] = items.map((item) => {
-      const hexColor = item.backgroundColor || "#3b82f6"; // Default to blue-500
-      return {
-        calendarId: item.id,
-        hexColor,
-        tailwindColor: mapHexToTailwindColor(hexColor),
-      };
-    });
+    const colorMappings: CalendarColorMapping[] = (parsed.items ?? []).map(
+      (item: GoogleCalendarListEntry): CalendarColorMapping => {
+        const hexColor = item.backgroundColor || "#3b82f6"; // Default to blue-500
+        return {
+          calendarId: item.id,
+          hexColor,
+          tailwindColor: mapHexToTailwindColor(hexColor),
+        };
+      }
+    );
 
     logger.log("Calendar color mappings fetched", {
       mappingCount: colorMappings.length,
