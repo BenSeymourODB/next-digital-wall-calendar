@@ -109,12 +109,21 @@ export function useTodayStartOfDay(): Date {
 /**
  * Test-only: drop all subscribers and clear the shared timer. Without
  * this, fake-timer tests bleed module state between cases.
+ *
+ * Gated behind `NODE_ENV !== "production"` so the bundler statically
+ * resolves the conditional and dead-code-eliminates the
+ * subscriber/timer-clearing closure body from production bundles. The
+ * exported symbol survives as a no-op so unconditional test imports
+ * still resolve.
  */
-export function __resetUseDateNowForTests(): void {
-  if (timeoutId !== null) {
-    clearTimeout(timeoutId);
-    timeoutId = null;
-  }
-  subscribers.clear();
-  refreshDates();
-}
+export const __resetUseDateNowForTests: () => void =
+  process.env.NODE_ENV !== "production"
+    ? (): void => {
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        subscribers.clear();
+        refreshDates();
+      }
+    : (): void => {};
