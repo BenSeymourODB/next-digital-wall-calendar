@@ -17,6 +17,10 @@ import { toast } from "sonner";
 export function useEventEdit() {
   const { editEvent } = useCalendar();
 
+  // Returned closure has fresh identity every render. That's fine: the
+  // React Compiler memoises us automatically based on captured deps,
+  // and `CLAUDE.md` forbids manual `useCallback`. Same shape as
+  // `useEventDelete`.
   return async (event: IEvent, patch: EventEditPatch) => {
     try {
       await editEvent(event.id, event.calendarId, {
