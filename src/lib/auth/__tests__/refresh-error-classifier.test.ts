@@ -129,6 +129,9 @@ describe("classifyTokenRefreshError", () => {
         "temporarily_unavailable",
         "rate_limit_exceeded",
         "slow_down",
+        // Recognised but intentionally transient — guards against a
+        // regression that re-promotes it to the terminal allow-list (#378).
+        "unsupported_grant_type",
         "",
       ];
       for (const code of codes) {
