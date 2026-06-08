@@ -398,6 +398,12 @@ export class EventCache {
    */
   async sweepExpired(): Promise<number> {
     return this.withFallback(async (store) => {
+      // `Date.now()` is sampled inside the callback so a `withFallback` retry
+      // on the in-memory store uses a fresh `now`. Unlike `putWithLruRetry`'s
+      // re-sample (where the new timestamp ends up persisted as the row's
+      // recency stamp), this one only affects which rows are considered
+      // expired — and a slightly later `now` can only ever sweep at least
+      // as many rows, never fewer, so the asymmetry is harmless.
       const evicted = await store.sweepExpired(Date.now());
       if (evicted > 0) {
         logger.event(

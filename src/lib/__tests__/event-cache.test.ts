@@ -213,6 +213,25 @@ describe("InMemoryEventStore", () => {
       expect(sweptCount).toBe(1);
       expect(visible.map((e) => e.id)).toEqual(["fresh"]);
     });
+
+    it("co-exists with evictOldest — sweep first leaves fewer rows for evictOldest", async () => {
+      // Spec'd in `.claude/plans/event-cache-visibility-sweep-290.md` (Phase 1
+      // Tests): a row swept for expiry should not also be counted by a later
+      // `evictOldest(N)` call. Catches a future regression that re-adds rows
+      // to the recency index after sweep, or vice versa.
+      const now = 10_000_000;
+      await store.put([makeEvent("stale")], now - EVENT_CACHE_TTL_MS - 1);
+      await store.put([makeEvent("fresh1")], now - 2_000);
+      await store.put([makeEvent("fresh2")], now - 1_000);
+
+      const swept = await store.sweepExpired(now);
+      const evicted = await store.evictOldest(5);
+
+      expect(swept).toBe(1);
+      // Only the two fresh rows remain, so evictOldest can only take 2,
+      // not 3 (which it would if the swept row were still in the store).
+      expect(evicted).toBe(2);
+    });
   });
 });
 
