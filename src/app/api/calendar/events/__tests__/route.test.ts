@@ -1044,10 +1044,18 @@ describe("/api/calendar/events", () => {
       const sentBody = JSON.parse(calledOptions.body as string);
       expect(sentBody.summary).toBe("Team offsite");
       expect(sentBody.description).toBe("Quarterly planning");
-      expect(sentBody.start).toEqual({ dateTime: "2026-05-01T14:00:00.000Z" });
-      expect(sentBody.end).toEqual({ dateTime: "2026-05-01T15:00:00.000Z" });
+      // Explicit `date: null` clears any previously-stored all-day value
+      // on PATCH type-switch; null is a no-op on INSERT.
+      expect(sentBody.start).toEqual({
+        dateTime: "2026-05-01T14:00:00.000Z",
+        date: null,
+      });
+      expect(sentBody.end).toEqual({
+        dateTime: "2026-05-01T15:00:00.000Z",
+        date: null,
+      });
       expect(sentBody.colorId).toBe("1"); // blue
-      expect(sentBody.start.date).toBeUndefined();
+      expect(sentBody.start.date).toBeNull();
 
       expect(data.event.id).toBe("google-event-id-1");
       expect(data.event.calendarId).toBe("work@example.com");
@@ -1133,8 +1141,10 @@ describe("/api/calendar/events", () => {
       // the last included day). Jul 4–7 inclusive => end.date = "2026-07-08".
       expect(sentBody.start.date).toBe("2026-07-04");
       expect(sentBody.end.date).toBe("2026-07-08");
-      expect(sentBody.start.dateTime).toBeUndefined();
-      expect(sentBody.end.dateTime).toBeUndefined();
+      // Explicit `dateTime: null` so a PATCH from a timed event to all-day
+      // clears the previously-stored time; harmless on INSERT.
+      expect(sentBody.start.dateTime).toBeNull();
+      expect(sentBody.end.dateTime).toBeNull();
     });
 
     it("formats a single all-day event with end exclusive of the next day", async () => {

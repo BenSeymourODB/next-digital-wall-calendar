@@ -461,18 +461,23 @@ export function EventDetailModal({
   };
 
   const handleSaveEdit = async (patch: EventEditPatch) => {
-    if (!onEdit) return;
-    try {
-      await onEdit(event, patch);
-      // Success → dismiss the modal so the user sees the updated row in
-      // the calendar grid.
-      setIsEditing(false);
-      onClose();
-    } catch (error) {
-      // Re-throw so the form knows to keep itself open. Parent surfaces
-      // the toast.
-      throw error;
+    if (!onEdit) {
+      // Invariant: `canEdit` gates the Edit button on `onEdit`, so this
+      // should be unreachable in practice. If the parent strips `onEdit`
+      // mid-edit (e.g. `accessRole` flips to `reader`), throwing makes
+      // the form surface the failure instead of silently swallowing the
+      // save — without the throw, `EventEditForm`'s try-block resolves
+      // cleanly and `isSaving` stays true forever.
+      throw new Error(
+        "Editing is no longer available — please close and retry."
+      );
     }
+    await onEdit(event, patch);
+    // Success → dismiss the modal so the user sees the updated row in
+    // the calendar grid. Errors propagate to the form so it can keep
+    // itself open; the parent's hook surfaces the toast.
+    setIsEditing(false);
+    onClose();
   };
 
   return (
@@ -512,7 +517,14 @@ export function EventDetailModal({
         </DialogHeader>
 
         {isEditing ? (
+          // `key={event.id}` forces a fresh mount (and re-seeded state)
+          // whenever the parent swaps to a different event while the
+          // modal is open — without it the form would keep showing the
+          // previous event's title/dates after navigation. `useState`'s
+          // lazy initialiser only runs once per mount, so re-seeding has
+          // to come from React identity rather than an effect.
           <EventEditForm
+            key={event.id}
             event={event}
             onSave={handleSaveEdit}
             onCancel={() => setIsEditing(false)}

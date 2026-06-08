@@ -155,7 +155,11 @@ export function validateEventBody(body: unknown): ValidationResult {
       };
     }
     if (raw.endDate < raw.startDate) {
-      return { ok: false, error: "endDate must be after startDate" };
+      // "on or after" — same-day all-day events are valid (start === end),
+      // and this message stays in sync with the modal edit form ("End must
+      // be on or after start") so a client that surfaces the server error
+      // verbatim says the same thing the UI does.
+      return { ok: false, error: "endDate must be on or after startDate" };
     }
     return {
       ok: true,
@@ -200,12 +204,25 @@ export function validateEventBody(body: unknown): ValidationResult {
   };
 }
 
+interface GoogleEventTime {
+  /**
+   * Wall-clock datetime in ISO-8601. Mutually exclusive with `date`. We
+   * emit `null` (not `undefined`) for the unused sibling on PATCH so
+   * Google explicitly clears the previously-stored value when switching
+   * an event between timed and all-day; `undefined` would leave the old
+   * value in place and Google would reject the resulting both-set body.
+   */
+  dateTime?: string | null;
+  /** YYYY-MM-DD calendar date. Mutually exclusive with `dateTime`. */
+  date?: string | null;
+}
+
 interface GoogleEventBody {
   summary: string;
   description?: string;
   colorId?: string;
-  start: { dateTime?: string; date?: string };
-  end: { dateTime?: string; date?: string };
+  start: GoogleEventTime;
+  end: GoogleEventTime;
 }
 
 /**
@@ -222,6 +239,16 @@ interface GoogleEventBody {
  * derived from a UTC-adjusted `Date`. The exclusive end is simply
  * `addOneDay(endDateStr)`, which adds one calendar day without touching
  * UTC at all.
+ *
+ * **PATCH type-switch:** `events.patch` *merges* the supplied body over
+ * the stored event, so converting an all-day event to timed (or vice
+ * versa) requires explicitly clearing the unused sibling on each side
+ * (`start.date` ↔ `start.dateTime`). We set the unused field to
+ * `undefined`; `JSON.stringify` then drops it from the wire and Google
+ * leaves the existing value… which is wrong for a type-switch. Google
+ * accepts `null` to clear a field, so we send `null` for the unused
+ * sibling. `null` is a no-op for insert (the field never existed) but a
+ * clear for patch, so this is safe for both routes.
  */
 export function buildGoogleEventBody(event: ValidatedEvent): GoogleEventBody {
   const body: GoogleEventBody = {
@@ -236,11 +263,14 @@ export function buildGoogleEventBody(event: ValidatedEvent): GoogleEventBody {
   }
 
   if (event.isAllDay) {
-    body.start.date = event.startDateStr;
-    body.end.date = addOneDay(event.endDateStr);
+    // `dateTime: null` clears the previously-stored timed value on
+    // PATCH type-switch (timed → all-day). For INSERT the field was
+    // never set, so the explicit clear is a no-op.
+    body.start = { date: event.startDateStr, dateTime: null };
+    body.end = { date: addOneDay(event.endDateStr), dateTime: null };
   } else {
-    body.start.dateTime = event.start.toISOString();
-    body.end.dateTime = event.end.toISOString();
+    body.start = { dateTime: event.start.toISOString(), date: null };
+    body.end = { dateTime: event.end.toISOString(), date: null };
   }
 
   return body;

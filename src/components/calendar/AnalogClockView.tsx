@@ -60,7 +60,7 @@ function isAllDayToday(event: IEvent, today: Date): boolean {
  * events in a sibling list so they remain visible in this view.
  */
 export function AnalogClockView() {
-  const { events, use24HourFormat } = useCalendar();
+  const { events, use24HourFormat, getAccessRole } = useCalendar();
   const today = useDateNow();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
@@ -196,6 +196,9 @@ export function AnalogClockView() {
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
         onEdit={handleEdit}
+        accessRole={
+          selectedEvent ? getAccessRole(selectedEvent.calendarId) : undefined
+        }
       />
     </div>
   );
