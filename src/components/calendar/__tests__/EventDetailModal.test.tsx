@@ -384,6 +384,247 @@ describe("EventDetailModal", () => {
     });
   });
 
+  describe("edit (#265)", () => {
+    it("does not render an edit button when no onEdit handler is provided", () => {
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.queryByRole("button", { name: /^edit event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders an edit button when onEdit is provided", () => {
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onEdit={vi.fn().mockResolvedValue(undefined)}
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.getByRole("button", { name: /^edit event$/i })
+      ).toBeInTheDocument();
+    });
+
+    it("hides the edit button on read-only calendars", () => {
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onEdit={vi.fn().mockResolvedValue(undefined)}
+          accessRole="reader"
+          use24HourFormat
+        />
+      );
+
+      expect(
+        screen.queryByRole("button", { name: /^edit event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("swaps the read-only body for an edit form when the edit button is clicked", async () => {
+      const user = userEvent.setup();
+
+      render(
+        <EventDetailModal
+          event={mockEvent({
+            title: "Quarterly Review",
+            description: "Q2 planning",
+          })}
+          onClose={vi.fn()}
+          onEdit={vi.fn().mockResolvedValue(undefined)}
+          use24HourFormat
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /^edit event$/i }));
+
+      // The form fields are seeded from the event.
+      const titleInput = screen.getByLabelText(/title/i) as HTMLInputElement;
+      expect(titleInput.value).toBe("Quarterly Review");
+      const descriptionInput = screen.getByLabelText(
+        /description/i
+      ) as HTMLTextAreaElement;
+      expect(descriptionInput.value).toBe("Q2 planning");
+      // Save + Cancel replace the Delete + Close affordances while editing.
+      expect(screen.getByRole("button", { name: /save/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /cancel/i })
+      ).toBeInTheDocument();
+    });
+
+    it("calls onEdit with the new field values on save, then closes the modal on success", async () => {
+      const user = userEvent.setup();
+      const onEdit = vi.fn().mockResolvedValue(undefined);
+      const onClose = vi.fn();
+      const event = mockEvent({
+        id: "evt-99",
+        title: "Quarterly Review",
+        calendarId: "primary",
+      });
+
+      render(
+        <EventDetailModal
+          event={event}
+          onClose={onClose}
+          onEdit={onEdit}
+          use24HourFormat
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /^edit event$/i }));
+
+      const titleInput = screen.getByLabelText(/title/i) as HTMLInputElement;
+      await user.clear(titleInput);
+      await user.type(titleInput, "Q2 Strategy Review");
+
+      await user.click(screen.getByRole("button", { name: /save/i }));
+
+      expect(onEdit).toHaveBeenCalledTimes(1);
+      const [calledEvent, patch] = onEdit.mock.calls[0];
+      // The modal forwards the source event verbatim so the parent's
+      // `editEvent` handler knows which row + calendar to target — it
+      // intentionally omits `calendarId` from the patch payload since the
+      // route reads it from the URL.
+      expect(calledEvent.id).toBe("evt-99");
+      expect(calledEvent.calendarId).toBe("primary");
+      expect(patch).toMatchObject({
+        title: "Q2 Strategy Review",
+        color: "blue",
+        isAllDay: false,
+      });
+      expect(patch).not.toHaveProperty("calendarId");
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns to the read-only view when cancel is clicked without invoking onEdit", async () => {
+      const user = userEvent.setup();
+      const onEdit = vi.fn().mockResolvedValue(undefined);
+      const onClose = vi.fn();
+
+      render(
+        <EventDetailModal
+          event={mockEvent({ title: "Quarterly Review" })}
+          onClose={onClose}
+          onEdit={onEdit}
+          use24HourFormat
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /^edit event$/i }));
+
+      // Make an edit, then cancel — it should be discarded.
+      const titleInput = screen.getByLabelText(/title/i) as HTMLInputElement;
+      await user.clear(titleInput);
+      await user.type(titleInput, "Scratch this");
+
+      await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+      expect(onEdit).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+      // We're back in the read-only view: the original title shows in the
+      // dialog heading and the Edit button is once again visible.
+      expect(
+        screen.getByRole("heading", { name: "Quarterly Review" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^edit event$/i })
+      ).toBeInTheDocument();
+    });
+
+    it("keeps the form open and does not close the modal when onEdit rejects", async () => {
+      const user = userEvent.setup();
+      const onEdit = vi.fn().mockRejectedValue(new Error("network down"));
+      const onClose = vi.fn();
+
+      render(
+        <EventDetailModal
+          event={mockEvent({ title: "Quarterly Review" })}
+          onClose={onClose}
+          onEdit={onEdit}
+          use24HourFormat
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /^edit event$/i }));
+      await user.click(screen.getByRole("button", { name: /save/i }));
+
+      expect(onEdit).toHaveBeenCalledTimes(1);
+      expect(onClose).not.toHaveBeenCalled();
+      // Still in the form (not the read-only view).
+      expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
+    });
+
+    it("forwards an all-day toggle and the new YYYY-MM-DD bounds on save", async () => {
+      const user = userEvent.setup();
+      const onEdit = vi.fn().mockResolvedValue(undefined);
+      const event = mockEvent({
+        startDate: new Date(2026, 3, 20, 10, 0).toISOString(),
+        endDate: new Date(2026, 3, 20, 11, 0).toISOString(),
+        isAllDay: false,
+      });
+
+      render(
+        <EventDetailModal
+          event={event}
+          onClose={vi.fn()}
+          onEdit={onEdit}
+          use24HourFormat
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /^edit event$/i }));
+      await user.click(screen.getByLabelText(/all day/i));
+
+      await user.click(screen.getByRole("button", { name: /save/i }));
+
+      expect(onEdit).toHaveBeenCalledTimes(1);
+      const patch = onEdit.mock.calls[0][1];
+      expect(patch.isAllDay).toBe(true);
+      // The wire format for all-day events is YYYY-MM-DD strings, not ISO
+      // datetimes — same contract as `EventCreateDialog` so the route
+      // validator accepts the same body.
+      expect(patch.startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(patch.endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it("disables the save button while a save is in flight", async () => {
+      const user = userEvent.setup();
+      let resolveEdit: (() => void) | undefined;
+      const onEdit = vi.fn().mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveEdit = resolve;
+          })
+      );
+
+      render(
+        <EventDetailModal
+          event={mockEvent()}
+          onClose={vi.fn()}
+          onEdit={onEdit}
+          use24HourFormat
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /^edit event$/i }));
+      await user.click(screen.getByRole("button", { name: /save/i }));
+
+      const saveButton = screen.getByRole("button", { name: /saving|save/i });
+      expect(saveButton).toBeDisabled();
+
+      resolveEdit?.();
+    });
+  });
+
   describe("accessRole gating (#266)", () => {
     it("renders the delete button when accessRole is 'owner'", () => {
       render(

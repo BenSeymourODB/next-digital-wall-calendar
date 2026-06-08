@@ -3,6 +3,7 @@
 import { AnalogClock } from "@/components/calendar/analog-clock";
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { useEventDelete } from "@/hooks/useEventDelete";
+import { useEventEdit } from "@/hooks/useEventEdit";
 import { getColorClass } from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
@@ -34,6 +35,7 @@ export function AnalogClockView() {
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
+  const handleEdit = useEventEdit();
 
   const allDayToday = events
     .filter((event) => isAllDayToday(event, today))
@@ -119,6 +121,7 @@ export function AnalogClockView() {
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
+        onEdit={handleEdit}
       />
     </div>
   );

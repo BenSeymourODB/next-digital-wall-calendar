@@ -5,6 +5,7 @@ import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { useSlideDirection } from "@/hooks/use-slide-direction";
 import { useEventDelete } from "@/hooks/useEventDelete";
+import { useEventEdit } from "@/hooks/useEventEdit";
 import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import {
   applyCalendarKeyboardAction,
@@ -61,6 +62,7 @@ export function SimpleCalendar() {
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
+  const handleEdit = useEventEdit();
 
   const weekdayHeaders = getShortWeekdayLabels(weekStartDay);
 
@@ -408,6 +410,7 @@ export function SimpleCalendar() {
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
+        onEdit={handleEdit}
         accessRole={
           selectedEvent ? getAccessRole(selectedEvent.calendarId) : undefined
         }

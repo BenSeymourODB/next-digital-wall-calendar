@@ -53,6 +53,14 @@ export interface CreateEventInput {
   calendarId: string;
 }
 
+/**
+ * Server-bound payload for `editEvent` (#265). Shape matches
+ * `CreateEventInput` because `PATCH /api/calendar/events/[id]` accepts the
+ * same wire format as `POST` — the route uses the path/query for the
+ * target event + calendar and the body for the new field values.
+ */
+export type EditEventInput = CreateEventInput;
+
 export interface ICalendarContext {
   selectedDate: Date;
   view: TCalendarView;
@@ -96,6 +104,18 @@ export interface ICalendarContext {
    * The promise rejects on failure so the caller can surface a toast.
    */
   deleteEvent: (eventId: string, calendarId: string) => Promise<void>;
+  /**
+   * Edit an event on Google Calendar with an optimistic local update.
+   * Merges `input` over the existing local row, then PATCHes the server
+   * and reconciles to the canonical response. On failure the original row
+   * is restored and the promise rejects so the caller can surface a toast.
+   * Rejects without issuing a PATCH when no local row matches `eventId`.
+   */
+  editEvent: (
+    eventId: string,
+    calendarId: string,
+    input: EditEventInput
+  ) => Promise<IEvent>;
   clearFilter: () => void;
   refreshEvents: () => Promise<void>;
   /**
@@ -659,6 +679,105 @@ export function CalendarProvider({
       logger.error(error as Error, {
         context: "createEvent",
         calendarId: input.calendarId,
+      });
+      throw error;
+    }
+  };
+
+  const editEvent = async (
+    eventId: string,
+    calendarId: string,
+    input: EditEventInput
+  ): Promise<IEvent> => {
+    // Read the original from the current render snapshot. A `setAllEvents`
+    // functional updater wouldn't help here because its callback runs at
+    // React's flush time, *after* this line — we'd need the existence check
+    // to gate the optimistic apply, so we have to read synchronously.
+    const original = allEvents.find((e) => e.id === eventId);
+    if (!original) {
+      const err = new Error(`Event ${eventId} not found in local list`);
+      logger.error(err, { context: "editEvent", eventId, calendarId });
+      throw err;
+    }
+
+    const optimistic: IEvent = {
+      ...original,
+      title: input.title,
+      description: input.description,
+      color: input.color,
+      isAllDay: input.isAllDay,
+      startDate: input.startDate,
+      endDate: input.endDate,
+    };
+    // Functional update so a concurrent refresh's writes to *other* rows
+    // aren't clobbered — same pattern as `createEvent` / `deleteEvent`.
+    setAllEvents((prev) =>
+      prev.map((e) => (e.id === eventId ? optimistic : e))
+    );
+
+    try {
+      const url = new URL(
+        `/api/calendar/events/${encodeURIComponent(eventId)}`,
+        window.location.origin
+      );
+      url.searchParams.set("calendarId", calendarId);
+
+      const response = await fetch(url.toString(), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: input.title,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          color: input.color,
+          description: input.description,
+          isAllDay: input.isAllDay,
+          calendarId: input.calendarId,
+        }),
+      });
+
+      if (!response.ok) {
+        let message = "Failed to update event";
+        try {
+          const body = await response.json();
+          if (typeof body?.error === "string") message = body.error;
+        } catch {
+          // Some upstream proxies return non-JSON 502s; the generic message
+          // is sufficient for the toast.
+        }
+        throw new Error(message);
+      }
+
+      const body = (await response.json()) as { event: GoogleCalendarEvent };
+      // Reconcile through the in-memory colorMappings + calendarMetadata so
+      // the canonical row carries the same user attribution + color the rest
+      // of the list does (mirrors `createEvent`).
+      const reconciled = transformGoogleEvent(
+        body.event,
+        colorMappings,
+        calendarMetadata
+      );
+
+      setAllEvents((current) =>
+        current.map((e) => (e.id === eventId ? reconciled : e))
+      );
+
+      logger.event("CalendarEventUpdated", {
+        eventId: reconciled.id,
+        calendarId,
+      });
+
+      return reconciled;
+    } catch (error) {
+      // Rollback: restore the original row in place. Use a functional update
+      // so any concurrent edits to *other* rows are preserved.
+      setAllEvents((current) =>
+        current.map((e) => (e.id === eventId ? original : e))
+      );
+      logger.error(error as Error, {
+        context: "editEvent",
+        eventId,
+        calendarId,
       });
       throw error;
     }
@@ -1233,6 +1352,7 @@ export function CalendarProvider({
     updateEvent,
     removeEvent,
     createEvent,
+    editEvent,
     deleteEvent,
     clearFilter,
     refreshEvents,
