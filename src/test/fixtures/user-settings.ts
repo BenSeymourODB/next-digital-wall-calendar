@@ -17,10 +17,11 @@
  */
 import type { UserSettings } from "@/generated/prisma/client";
 import type { CalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
+import type { TDateFormat } from "@/lib/format-date";
 import type { TWeekStartDay } from "@/types/calendar";
 
 /**
- * The Prisma `UserSettings` row, but with the two columns that have a narrower
+ * The Prisma `UserSettings` row, but with the columns that have a narrower
  * application-level contract retyped to their unions. This keeps the factory's
  * return value assignable to the narrower component prop types
  * (`UserSettingsData`, `DisplayValues`) without an `as` cast, while staying
@@ -28,10 +29,11 @@ import type { TWeekStartDay } from "@/types/calendar";
  */
 export type MockUserSettings = Omit<
   UserSettings,
-  "weekStartDay" | "calendarTransitionSpeed"
+  "weekStartDay" | "calendarTransitionSpeed" | "dateFormat"
 > & {
   weekStartDay: TWeekStartDay;
   calendarTransitionSpeed: CalendarTransitionSpeed;
+  dateFormat: TDateFormat;
 };
 
 /**

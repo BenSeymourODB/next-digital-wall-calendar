@@ -3,6 +3,7 @@
 import { useProfile } from "@/components/profiles/profile-context";
 import type { TransitionConfig } from "@/components/scheduler/types";
 import type { CalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
+import type { TDateFormat } from "@/lib/format-date";
 import { DEFAULT_TRANSITION_CONFIG } from "@/lib/scheduler/schedule-config";
 import {
   loadScheduleConfig,
@@ -35,7 +36,7 @@ const DEFAULT_TASK_SETTINGS: ProfileTaskSettings = {
 interface UserSettingsData {
   theme: string;
   timeFormat: string;
-  dateFormat: string;
+  dateFormat: TDateFormat;
   defaultZoomLevel: number;
   weekStartDay: TWeekStartDay;
   rewardSystemEnabled: boolean;
@@ -203,6 +204,7 @@ export function SettingsForm({
         createdAt={createdAt}
         providers={providers}
         onDeleteAccount={handleDeleteAccount}
+        dateFormat={settings.dateFormat}
       />
 
       <DisplaySection

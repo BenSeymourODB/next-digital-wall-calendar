@@ -5,6 +5,7 @@ import {
   isCalendarTransitionSpeed,
 } from "@/lib/calendar/transition-speed";
 import { prisma } from "@/lib/db";
+import { DEFAULT_DATE_FORMAT, isDateFormat } from "@/lib/format-date";
 import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
@@ -48,7 +49,12 @@ export default async function SettingsPage() {
         initialSettings={{
           theme: settings.theme,
           timeFormat: settings.timeFormat,
-          dateFormat: settings.dateFormat,
+          // Narrow at the boundary so the form's `UserSettingsData` can
+          // carry the strong `TDateFormat` type — a stale DB row with an
+          // unknown value falls back to the schema default.
+          dateFormat: isDateFormat(settings.dateFormat)
+            ? settings.dateFormat
+            : DEFAULT_DATE_FORMAT,
           defaultZoomLevel: settings.defaultZoomLevel,
           // Clamp defensively so a manually-edited DB row of e.g. 5 doesn't
           // poison every `weekStartsOn` parameter; only 0/1 are valid here.

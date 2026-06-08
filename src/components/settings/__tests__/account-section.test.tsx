@@ -170,4 +170,56 @@ describe("AccountSection", () => {
 
     expect(screen.getByText(/member since/i)).toBeInTheDocument();
   });
+
+  describe("dateFormat (#339)", () => {
+    // Use a local-noon ISO so the rendered numeric date is the same
+    // calendar day regardless of which TZ the test harness runs in
+    // (a 00:00:00Z timestamp shifts a day in negative-offset zones).
+    const ISO = "2026-03-05T12:00:00Z";
+
+    it("renders the createdAt date in MM/DD/YYYY by default", () => {
+      render(
+        <AccountSection
+          user={mockUser}
+          createdAt={ISO}
+          providers={["google"]}
+          onDeleteAccount={mockOnDeleteAccount}
+        />
+      );
+
+      expect(
+        screen.getByText(/member since 03\/05\/2026/i)
+      ).toBeInTheDocument();
+    });
+
+    it("renders the createdAt date in DD/MM/YYYY when requested", () => {
+      render(
+        <AccountSection
+          user={mockUser}
+          createdAt={ISO}
+          providers={["google"]}
+          onDeleteAccount={mockOnDeleteAccount}
+          dateFormat="DD/MM/YYYY"
+        />
+      );
+
+      expect(
+        screen.getByText(/member since 05\/03\/2026/i)
+      ).toBeInTheDocument();
+    });
+
+    it("renders the createdAt date in YYYY-MM-DD when requested", () => {
+      render(
+        <AccountSection
+          user={mockUser}
+          createdAt={ISO}
+          providers={["google"]}
+          onDeleteAccount={mockOnDeleteAccount}
+          dateFormat="YYYY-MM-DD"
+        />
+      );
+
+      expect(screen.getByText(/member since 2026-03-05/i)).toBeInTheDocument();
+    });
+  });
 });
