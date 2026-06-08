@@ -32,7 +32,13 @@ describe("formatUserDate", () => {
     expect(formatUserDate(singleDigit, "YYYY-MM-DD")).toBe("2026-03-05");
   });
 
-  it("accepts ISO strings as input", () => {
+  it("accepts a local-datetime string and reads its local Y/M/D fields", () => {
+    // The string is intentionally without a `Z` suffix — `new Date(...)`
+    // interprets it as local time, and `format()` reads local fields, so
+    // the assertion is TZ-safe. A `Z`-suffixed (true UTC) input would be
+    // shifted by the harness's offset and produce a different calendar
+    // day in negative-offset zones, so don't add one without a UTC-aware
+    // helper to assert against.
     expect(formatUserDate("2026-01-07T12:00:00", "YYYY-MM-DD")).toBe(
       "2026-01-07"
     );
