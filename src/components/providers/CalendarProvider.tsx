@@ -1,6 +1,7 @@
 "use client";
 
 import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
+import { useEventCacheVisibilitySweep } from "@/hooks/useEventCacheVisibilitySweep";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { type TTimeFormat, useUserSettings } from "@/hooks/useUserSettings";
 import {
@@ -214,6 +215,11 @@ export function CalendarProvider({
    */
   initialAgendaMode?: boolean;
 }) {
+  // Sweep expired IndexedDB cache rows on tab return to visible (#290
+  // sub-task 2). Lives at provider scope so the cleanup follows the
+  // calendar lifecycle, not any single view.
+  useEventCacheVisibilitySweep();
+
   // Use NextAuth session for authentication
   const { data: session, status } = useSession();
   const isAuthenticated = status === "authenticated";
