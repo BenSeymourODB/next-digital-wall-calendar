@@ -5,6 +5,10 @@
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
 import {
+  buildGoogleEventBody,
+  validateEventBody,
+} from "@/lib/calendar/event-body";
+import {
   type GoogleCalendarEvent,
   normalizeFetchedEvent,
 } from "@/lib/google-calendar-mappers";
@@ -18,29 +22,9 @@ import {
 } from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
-import type { TEventColor } from "@/types/calendar";
 import { NextRequest, NextResponse } from "next/server";
 
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
-
-/**
- * Map our `TEventColor` palette to a representative Google Calendar `colorId`.
- * Google's event-level colors are 1–11; we pick the closest match for each
- * Tailwind palette entry. The reverse mapping (colorId → TEventColor) lives
- * in `src/lib/calendar-transform.ts`.
- */
-const TAILWIND_TO_GOOGLE_COLOR_ID: Record<TEventColor, string> = {
-  blue: "1",
-  green: "2",
-  purple: "3",
-  red: "4",
-  yellow: "5",
-  orange: "6",
-};
-
-const SUPPORTED_COLORS = Object.keys(
-  TAILWIND_TO_GOOGLE_COLOR_ID
-) as TEventColor[];
 
 /**
  * Wire shape for per-calendar errors surfaced in the partial-failure response.
@@ -315,216 +299,6 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Wire format for `POST /api/calendar/events`.
- *
- * For **timed** events (`isAllDay` absent or `false`):
- * - `startDate` / `endDate` are ISO-8601 datetime strings (e.g.
- *   `"2026-05-01T14:00:00.000Z"`).
- *
- * For **all-day** events (`isAllDay: true`):
- * - `startDate` / `endDate` are `YYYY-MM-DD` date strings (e.g.
- *   `"2026-04-20"`). Using plain date strings avoids the UTC-offset skew
- *   that occurs when a positive-offset client (e.g. NZST UTC+12) encodes
- *   local midnight as a UTC ISO string — Apr-20 00:00 NZST is Apr-19 in UTC.
- * - `endDate` is the **last included** day (inclusive). The route adds one
- *   calendar day to produce Google's exclusive-end `end.date`.
- *
- * Optional: `calendarId` (defaults to `"primary"`).
- */
-interface CreateEventBody {
-  title: string;
-  startDate: string;
-  endDate: string;
-  color: TEventColor;
-  description?: string;
-  isAllDay?: boolean;
-  calendarId?: string;
-}
-
-interface ValidatedTimedEvent {
-  title: string;
-  description: string;
-  color: TEventColor;
-  isAllDay: false;
-  start: Date;
-  end: Date;
-  calendarId: string;
-}
-
-interface ValidatedAllDayEvent {
-  title: string;
-  description: string;
-  color: TEventColor;
-  isAllDay: true;
-  /** Inclusive start date as YYYY-MM-DD string. */
-  startDateStr: string;
-  /** Inclusive end date as YYYY-MM-DD string. */
-  endDateStr: string;
-  calendarId: string;
-}
-
-type ValidatedEvent = ValidatedTimedEvent | ValidatedAllDayEvent;
-
-type ValidationResult =
-  | { ok: true; event: ValidatedEvent }
-  | { ok: false; error: string };
-
-function isSupportedColor(value: unknown): value is TEventColor {
-  return (
-    typeof value === "string" && (SUPPORTED_COLORS as string[]).includes(value)
-  );
-}
-
-const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * Advance a `YYYY-MM-DD` string by one calendar day, returning a new
- * `YYYY-MM-DD` string. Used to compute Google's exclusive end date for
- * all-day events.
- */
-function addOneDay(dateStr: string): string {
-  // Split to avoid any TZ interpretation by `new Date(dateStr)`.
-  const [y, m, d] = dateStr.split("-").map(Number) as [number, number, number];
-  const next = new Date(y, m - 1, d + 1);
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`;
-}
-
-function validateCreateBody(body: unknown): ValidationResult {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return { ok: false, error: "Request body must be a JSON object" };
-  }
-
-  const raw = body as Partial<CreateEventBody>;
-
-  const title = typeof raw.title === "string" ? raw.title.trim() : "";
-  if (!title) {
-    return { ok: false, error: "Title is required" };
-  }
-
-  if (typeof raw.startDate !== "string" || typeof raw.endDate !== "string") {
-    return { ok: false, error: "startDate and endDate must be strings" };
-  }
-
-  if (!isSupportedColor(raw.color)) {
-    return {
-      ok: false,
-      error: `color must be one of ${SUPPORTED_COLORS.join(", ")}`,
-    };
-  }
-
-  const calendarId =
-    typeof raw.calendarId === "string" && raw.calendarId.trim().length > 0
-      ? raw.calendarId.trim()
-      : "primary";
-
-  const description =
-    typeof raw.description === "string" ? raw.description : "";
-
-  if (raw.isAllDay === true) {
-    // All-day wire format: YYYY-MM-DD strings (timezone-independent).
-    if (!DATE_ONLY_RE.test(raw.startDate)) {
-      return {
-        ok: false,
-        error: "startDate must be a YYYY-MM-DD string for all-day events",
-      };
-    }
-    if (!DATE_ONLY_RE.test(raw.endDate)) {
-      return {
-        ok: false,
-        error: "endDate must be a YYYY-MM-DD string for all-day events",
-      };
-    }
-    if (raw.endDate < raw.startDate) {
-      return { ok: false, error: "endDate must be after startDate" };
-    }
-    return {
-      ok: true,
-      event: {
-        title,
-        description,
-        color: raw.color,
-        isAllDay: true,
-        startDateStr: raw.startDate,
-        endDateStr: raw.endDate,
-        calendarId,
-      },
-    };
-  }
-
-  // Timed event: ISO datetime strings.
-  const start = new Date(raw.startDate);
-  if (Number.isNaN(start.getTime())) {
-    return { ok: false, error: "startDate is not a valid ISO date" };
-  }
-
-  const end = new Date(raw.endDate);
-  if (Number.isNaN(end.getTime())) {
-    return { ok: false, error: "endDate is not a valid ISO date" };
-  }
-
-  if (end.getTime() <= start.getTime()) {
-    return { ok: false, error: "endDate must be after startDate" };
-  }
-
-  return {
-    ok: true,
-    event: {
-      title,
-      description,
-      color: raw.color,
-      isAllDay: false,
-      start,
-      end,
-      calendarId,
-    },
-  };
-}
-
-/**
- * Build the Google Calendar `events.insert` body from a validated event.
- *
- * For all-day events we emit `start.date` / `end.date` using Google's
- * exclusive-end convention: a single-day event on Apr 20 sends
- * `start.date = "2026-04-20"` / `end.date = "2026-04-21"`.
- *
- * `startDateStr` and `endDateStr` on `ValidatedAllDayEvent` are the
- * client's local YYYY-MM-DD strings — already timezone-correct since they
- * come straight from the `<input type="date">` value rather than being
- * derived from a UTC-adjusted `Date`. The exclusive end is simply
- * `addOneDay(endDateStr)`, which adds one calendar day without touching
- * UTC at all.
- */
-function buildGoogleInsertBody(event: ValidatedEvent) {
-  const insertBody: {
-    summary: string;
-    description?: string;
-    colorId?: string;
-    start: { dateTime?: string; date?: string };
-    end: { dateTime?: string; date?: string };
-  } = {
-    summary: event.title,
-    colorId: TAILWIND_TO_GOOGLE_COLOR_ID[event.color],
-    start: {},
-    end: {},
-  };
-
-  if (event.description) {
-    insertBody.description = event.description;
-  }
-
-  if (event.isAllDay) {
-    insertBody.start.date = event.startDateStr;
-    insertBody.end.date = addOneDay(event.endDateStr);
-  } else {
-    insertBody.start.dateTime = event.start.toISOString();
-    insertBody.end.dateTime = event.end.toISOString();
-  }
-
-  return insertBody;
-}
-
-/**
  * POST /api/calendar/events
  *
  * Creates a new event on a Google Calendar via `events.insert`. Auth and
@@ -566,7 +340,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validation = validateCreateBody(raw);
+    const validation = validateEventBody(raw);
     if (!validation.ok) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
@@ -578,7 +352,7 @@ export async function POST(request: NextRequest) {
       event.calendarId
     )}/events`;
 
-    const insertBody = buildGoogleInsertBody(event);
+    const insertBody = buildGoogleEventBody(event);
 
     const response = await fetch(apiUrl, {
       method: "POST",
