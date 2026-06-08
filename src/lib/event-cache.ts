@@ -45,6 +45,14 @@ export interface EventStore {
    * Used by `EventCache` to recover from `QuotaExceededError` (#290).
    */
   evictOldest(count: number): Promise<number>;
+  /**
+   * Remove every row whose age (`now - cachedAt`) is at least
+   * `EVENT_CACHE_TTL_MS`. Resolves with the count of rows removed.
+   * Used by `EventCache` for the visibility-change cleanup sweep
+   * (#290 sub-task 2). Idempotent with the same expiry filter applied
+   * in `getAll`.
+   */
+  sweepExpired(now: number): Promise<number>;
 }
 
 /**
@@ -97,6 +105,19 @@ export class InMemoryEventStore implements EventStore {
       this.rows.delete(id);
     }
     return toEvict.length;
+  }
+
+  async sweepExpired(now: number): Promise<number> {
+    let evicted = 0;
+    // Predicate mirrors `getAll`'s expiry check (`now - cachedAt < TTL` keeps
+    // fresh) so a row at exactly the TTL boundary expires under both paths.
+    for (const [id, row] of this.rows) {
+      if (now - row.cachedAt >= EVENT_CACHE_TTL_MS) {
+        this.rows.delete(id);
+        evicted += 1;
+      }
+    }
+    return evicted;
   }
 }
 
@@ -240,6 +261,40 @@ export class IndexedDBEventStore implements EventStore {
       transaction.onerror = () => reject(transaction.error);
     });
   }
+
+  async sweepExpired(now: number): Promise<number> {
+    await this.init();
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], "readwrite");
+      const objectStore = transaction.objectStore(STORE_NAME);
+      const index = objectStore.index("cachedAt");
+      // Ascending cursor over `cachedAt`: we can stop as soon as we see a
+      // row that's still fresh, because the index is sorted by `cachedAt`
+      // and every subsequent row has a larger (= more recent) timestamp.
+      const cursorRequest = index.openCursor(null, "next");
+      let evicted = 0;
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return;
+        const row = cursor.value as CachedEventRow;
+        if (now - row.cachedAt < EVENT_CACHE_TTL_MS) {
+          // Cutoff reached — every later row in the cursor is also fresh.
+          return;
+        }
+        cursor.delete();
+        evicted += 1;
+        cursor.continue();
+      };
+      cursorRequest.onerror = () => reject(cursorRequest.error);
+      // Resolution deferred to transaction.oncomplete so the count reflects
+      // committed deletes — same pattern as `evictOldest` above.
+      transaction.oncomplete = () => resolve(evicted);
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
 }
 
 /**
@@ -327,6 +382,32 @@ export class EventCache {
       async (store) => store.getAll(Date.now()),
       "EventCache.getEvents"
     );
+  }
+
+  /**
+   * Proactively evict expired rows from the active store and resolve with
+   * the count removed. Intended for the visibility-change cleanup sweep
+   * (#290 sub-task 2): on a cold cache where no read has occurred since
+   * rows went stale, read-time eviction (`getAll`) cannot reclaim that
+   * space until the next refresh. Idempotent with the same expiry rule
+   * applied in `getAll`, so it is safe to interleave with reads.
+   *
+   * Emits a structured `logger.event` only when rows were actually
+   * evicted — a zero-row sweep happens on every visibility transition
+   * for a tab with no stale rows and is uninteresting noise.
+   */
+  async sweepExpired(): Promise<number> {
+    return this.withFallback(async (store) => {
+      const evicted = await store.sweepExpired(Date.now());
+      if (evicted > 0) {
+        logger.event(
+          "event-cache.visibility-swept",
+          { context: "EventCache.sweepExpired" },
+          { evicted }
+        );
+      }
+      return evicted;
+    }, "EventCache.sweepExpired");
   }
 
   private async withFallback<T>(
