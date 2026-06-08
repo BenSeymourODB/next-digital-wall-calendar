@@ -14,29 +14,42 @@
  * `playwright.config.ts`).
  */
 import { expect, test } from "@playwright/test";
-import { mockCalendarEventsResponse } from "../fixtures/google-api-mocks";
 
 test.describe("/calendar — ?view= deep linking (#238, #278)", () => {
-  // The production page issues real Google Calendar fetches once the
-  // session resolves. Stub those with an empty event list so the test
-  // doesn't depend on the network or on any seeded calendar data — the
-  // YearCalendar landmarks render before events arrive.
+  // The production page calls Google through the app's own Next.js API
+  // routes (`/api/calendar/*`, `/api/settings`) rather than hitting
+  // `googleapis.com` from the browser — Playwright's `page.route` only
+  // sees browser-originated requests, so the relevant intercept points
+  // are the internal routes. Stub each with an empty/permissive
+  // response so the YearCalendar landmarks render without depending on
+  // a real Google account behind the shared session.
   test.beforeEach(async ({ page }) => {
-    await page.route("**/www.googleapis.com/calendar/**", (route) => {
+    await page.route("**/api/calendar/events**", (route) => {
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          ...mockCalendarEventsResponse(),
-          items: [],
-        }),
+        body: JSON.stringify({ items: [], nextSyncToken: null }),
       });
     });
-    await page.route("**/tasks.googleapis.com/**", (route) => {
+    await page.route("**/api/calendar/calendars", (route) => {
       route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ items: [] }),
+      });
+    });
+    await page.route("**/api/calendar/colors", (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ event: {}, calendar: {} }),
+      });
+    });
+    await page.route("**/api/settings", (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({}),
       });
     });
   });
@@ -48,7 +61,11 @@ test.describe("/calendar — ?view= deep linking (#238, #278)", () => {
     await expect(page.getByTestId("year-calendar-month-0")).toBeVisible();
     await expect(page.getByTestId("year-calendar-month-11")).toBeVisible();
 
-    const year = new Date().getFullYear().toString();
+    // Read the year in the browser so we compare against whatever the
+    // page itself believes "now" is — avoids a one-second flake at
+    // midnight on Dec 31 where the test process and the browser
+    // process disagree on the year.
+    const year = await page.evaluate(() => String(new Date().getFullYear()));
     await expect(page.getByRole("heading", { level: 2 }).first()).toContainText(
       year
     );
@@ -62,6 +79,18 @@ test.describe("/calendar — ?view= deep linking (#238, #278)", () => {
     // need a full payload, just enough that the boot path would prefer
     // month if the URL signal were ignored.
     await page.goto("/calendar");
+    // Wait for the calendar surface to commit before touching
+    // localStorage. Without this, an auth/redirect interstitial (e.g.
+    // a slow session check that bounces to `/auth/signin` for a beat)
+    // would let the `localStorage.setItem` below silently no-op on the
+    // wrong origin, and the next-line assertion would pass for the
+    // wrong reason. Tying the seed to a visible landmark on the
+    // production page makes the test fail loudly if the shared session
+    // ever stops being recognised.
+    await expect(
+      page.getByRole("heading", { name: "Wall Calendar" })
+    ).toBeVisible();
+
     await page.evaluate(() => {
       window.localStorage.setItem(
         "calendar-settings",

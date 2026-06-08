@@ -48,11 +48,20 @@ export interface AuthenticatedUser {
 export const SHARED_TEST_USER_EMAIL = "e2e-shared@example.com";
 
 /**
- * Path (relative to the repo root) where the shared user's
- * `storageState` JSON is persisted. The setup project writes it; the
- * `authenticated-chromium` project reads it via `use.storageState`.
+ * Absolute path where the shared user's `storageState` JSON is persisted.
+ * The setup project writes it; the `authenticated-chromium` project
+ * reads it via `use.storageState`. Resolved against `__dirname` rather
+ * than `process.cwd()` so both ends agree on the same file regardless
+ * of the working directory Playwright was launched from.
  */
-export const SHARED_STORAGE_STATE_PATH = "playwright/.auth/user.json";
+export const SHARED_STORAGE_STATE_PATH = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "playwright",
+  ".auth",
+  "user.json"
+);
 
 /**
  * Generate a unique test ID to avoid collisions between parallel tests
@@ -286,24 +295,51 @@ export async function disconnectDatabase(): Promise<void> {
  * — the resulting session token is the one persisted in
  * `playwright/.auth/user.json` for the `authenticated-chromium` project to
  * reuse.
+ *
+ * Concurrency: serialised via a Postgres advisory lock keyed off
+ * `SHARED_TEST_USER_LOCK_KEY` so two simultaneous `pnpm test:e2e`
+ * invocations (e.g. CI matrix shards sharing one database) cannot race
+ * on the `User.email` UNIQUE constraint between the wipe and the
+ * re-create.
  */
-export async function getOrCreateSharedTestUser(): Promise<AuthenticatedUser> {
-  // Wipe any stale rows under this email first. We can't reuse them —
-  // sessionToken / accessToken values aren't recoverable here once the
-  // storageState file is gone, and on a re-run we always want a fresh
-  // pair so the prior pair becomes garbage. cleanupTestUser swallows
-  // missing-row errors, so this is safe even on a clean DB.
-  const existing = await pool.query(`SELECT id FROM "User" WHERE email = $1`, [
-    SHARED_TEST_USER_EMAIL,
-  ]);
-  for (const row of existing.rows) {
-    await cleanupTestUser(row.id);
-  }
+const SHARED_TEST_USER_LOCK_KEY = 727801; // arbitrary constant for e2e setup
 
-  return createTestUser({
-    email: SHARED_TEST_USER_EMAIL,
-    name: "E2E Shared User",
-  });
+export async function getOrCreateSharedTestUser(): Promise<AuthenticatedUser> {
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT pg_advisory_lock($1)", [
+      SHARED_TEST_USER_LOCK_KEY,
+    ]);
+
+    // Wipe any stale rows under this email first. We can't reuse them —
+    // sessionToken / accessToken values aren't recoverable here once the
+    // storageState file is gone, and on a re-run we always want a fresh
+    // pair so the prior pair becomes garbage.
+    const existing = await client.query(
+      `SELECT id FROM "User" WHERE email = $1`,
+      [SHARED_TEST_USER_EMAIL]
+    );
+    for (const row of existing.rows) {
+      await client.query(`DELETE FROM "Session" WHERE "userId" = $1`, [row.id]);
+      await client.query(`DELETE FROM "Account" WHERE "userId" = $1`, [row.id]);
+      await client.query(`DELETE FROM "User" WHERE id = $1`, [row.id]);
+    }
+
+    const created = await createTestUser({
+      email: SHARED_TEST_USER_EMAIL,
+      name: "E2E Shared User",
+    });
+
+    return created;
+  } finally {
+    try {
+      await client.query("SELECT pg_advisory_unlock($1)", [
+        SHARED_TEST_USER_LOCK_KEY,
+      ]);
+    } finally {
+      client.release();
+    }
+  }
 }
 
 /**

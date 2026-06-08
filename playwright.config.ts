@@ -36,12 +36,12 @@ export default defineConfig({
     // depends on `setup` finishes and removes the user.
     {
       name: "setup",
-      testMatch: /.*\.setup\.ts/,
+      testMatch: /e2e[\\/]auth\.setup\.ts$/,
       teardown: "teardown",
     },
     {
       name: "teardown",
-      testMatch: /.*\.teardown\.ts/,
+      testMatch: /e2e[\\/]auth\.teardown\.ts$/,
     },
     // Authenticated browser project — only picks up specs in
     // `e2e/authenticated/**` and loads the storageState saved by the
