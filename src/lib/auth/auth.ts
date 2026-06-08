@@ -10,7 +10,7 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { encryptLinkedAccount } from "./link-account";
 import { refreshGoogleAccessToken } from "./refresh-google-token";
-import { refreshGoogleSessionTokensIfNeeded } from "./refresh-session-tokens";
+import { getOrStartSessionTokenRefresh } from "./refresh-session-tokens";
 import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
 
 // Fail fast on a missing / misconfigured encryption key. Without this, the
@@ -110,10 +110,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       // Delegated to refresh-session-tokens.ts so the classifier branching is
       // unit-testable in isolation (see __tests__/session-callback.test.ts).
-      // Returns a terminal-error outcome only for genuine Google revocation /
-      // missing refresh-token / undecryptable ciphertext — transient failures
-      // leave the session untouched so the next callback retries (#315).
-      const outcome = await refreshGoogleSessionTokensIfNeeded(
+      // Wrapped in a per-userId singleflight cache so concurrent `session`
+      // callbacks for the same user share one OAuth round-trip + one DB
+      // write rather than racing each other (#216). Returns a terminal-error
+      // outcome only for genuine Google revocation / missing refresh-token /
+      // undecryptable ciphertext — transient failures leave the session
+      // untouched so the next callback retries (#315).
+      const outcome = await getOrStartSessionTokenRefresh(
         user.id,
         googleAccount,
         {

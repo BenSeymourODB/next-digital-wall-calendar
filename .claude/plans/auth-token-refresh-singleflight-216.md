@@ -10,89 +10,93 @@ Issue #216 bundles two distinct workstreams:
 1. **Concurrent token-refresh queue** — singleflight the Google OAuth refresh round-trip so two server requests with an expired access token result in **one** `oauth2.googleapis.com/token` call, not two.
 2. **Idle session timeout** — sliding `maxAge`, user-settings toggle, 24/7 wall-display preserve mode.
 
-This plan covers slice 1 only. Slice 2 is deferred to a follow-up issue (will be noted in the PR body).
+This plan covers slice 1 only. Slice 2 is deferred to a follow-up issue.
 
-## Why this slice first
+## History — superseded by main's auth refactor
 
-- Pure server-side logic; no UI, no Prisma migration, no NextAuth config negotiation.
-- High-confidence unit-test story: a `Map<string, Promise>` with a settle-then-purge contract is small and tractable.
-- Removes a real production-data hazard (two concurrent updates to `Account.access_token` racing each other; the second clobbers the first and the rejected refresh-token races into a bogus `RefreshTokenError`).
-- Independent of every in-flight PR; no merge conflicts.
+The original slice-1 design extracted a self-contained `src/lib/auth/token-refresh.ts` that owned the HTTP round-trip, the DB update, and the singleflight cache in one module. That module was reviewed and approved on 2026-05-04 (PR feedback addressed in `4657bfd`).
 
-## Current state on `main`
+Between then and the 2026-06-06 rebase, `main` landed a substantial auth refactor:
 
-`src/lib/auth/auth.ts:42-104` — the NextAuth `session` callback inlines the refresh round-trip:
+- **#215** — refresh tokens are now encrypted at rest (`encryptToken` / `decryptToken` from `src/lib/crypto/token-cipher.ts`). Plaintext refresh-token writes are gone.
+- **#315 / #348** — refresh errors are now classified as `terminal` vs `transient` (`src/lib/auth/refresh-error-classifier.ts`). Transient failures no longer dump the user to a sign-in screen for a network blip.
+- **#217** — `fetchWithRetry` wraps the Google OAuth round-trip in `src/lib/auth/refresh-google-token.ts`.
+- The session-callback path is now factored into:
+  - `refresh-google-token.ts` — the HTTP layer (retry-aware).
+  - `refresh-session-tokens.ts` — orchestration: decrypt → fetch → re-encrypt → DB write → classify-on-error.
+  - `auth.ts` — thin: calls `refreshGoogleSessionTokensIfNeeded` and branches on the discriminated `RefreshOutcome`.
+
+The original `token-refresh.ts` would now duplicate the HTTP layer **without** encryption support and **without** transient/terminal classification — i.e. it would regress two production-critical fixes. The right integration is to wrap singleflight **around** the new orchestration entry point.
+
+## Final design — what actually lands
+
+### Singleflight wrapper
+
+`src/lib/auth/refresh-session-tokens.ts` exports a thin wrapper alongside the existing `refreshGoogleSessionTokensIfNeeded`:
 
 ```ts
-if (googleAccount.expires_at && googleAccount.expires_at * 1000 < Date.now()) {
-  const response = await fetch("https://oauth2.googleapis.com/token", { ... });
-  // ...
-  await prisma.account.update({ ... });
+const inflight = new Map<string, Promise<RefreshOutcome>>();
+
+export function getOrStartSessionTokenRefresh(
+  userId: string,
+  account: GoogleAccountForRefresh,
+  deps: RefreshSessionDeps
+): Promise<RefreshOutcome> {
+  const existing = inflight.get(userId);
+  if (existing) return existing;
+  const pending = refreshGoogleSessionTokensIfNeeded(userId, account, deps).finally(() =>
+    inflight.delete(userId)
+  );
+  inflight.set(userId, pending);
+  return pending;
+}
+
+export function __resetSessionTokenSingleflightCache(): void {
+  if (process.env.NODE_ENV === "production") return;
+  inflight.clear();
 }
 ```
 
-There is no de-duplication. Concurrent `auth()` invocations both fire the fetch and both write to the DB.
+Key change from the original design: keyed by **`userId`** (string) rather than `provider:providerAccountId`. This app has one Google account per user, and the callers already have `userId` — keying by `userId` avoids the wrapper having to reach into `account.provider`/`account.providerAccountId` for cache identity.
 
-`/api/auth/refresh-token/route.ts` is a separate, client-driven endpoint that takes a refresh token in the request body. Out of scope for this slice (different code path, no DB lookup, distinct caller story). Will note in PR body.
+### Why keep the singleflight layer separate from the orchestration
 
-## Phase 1 — Extract + singleflight
+`refreshGoogleSessionTokensIfNeeded` is a pure function (every dependency injected, no module-level state). Singleflight introduces a module-level `Map` — collapsing it into the orchestration function would make `refreshGoogleSessionTokensIfNeeded` impure and would force its 200+ lines of test coverage to thread cache-state setup/teardown through every case. Keeping the wrapper a separate three-line export preserves the orchestration's purity and lets the singleflight tests focus on the cache contract only.
 
-### New module
+### Caller wiring
 
-`src/lib/auth/token-refresh.ts`
-
-Exports:
-
-- `type GoogleTokenAccount = Pick<Account, "providerAccountId" | "refresh_token" | "expires_at" | ...>` — minimal shape we need.
-- `type TokenRefreshDeps = { fetch: typeof fetch; prisma: PrismaClient; logger: Logger; clientId: string; clientSecret: string; now?: () => number }` — injected so unit tests don't need a real network or DB.
-- `refreshGoogleAccessToken(account, deps): Promise<RefreshedTokens>` — the actual round-trip + DB update.
-- `getOrStartTokenRefresh(account, deps): Promise<RefreshedTokens>` — singleflight wrapper. Internal `Map<string, Promise<RefreshedTokens>>` keyed by `provider:providerAccountId`. Concurrent callers `await` the same in-flight promise. Cache entry is deleted in a `.finally()` so the next call after a settle (success **or** failure) starts a new refresh.
-- `__resetTokenRefreshCache()` — test-only helper exported for cache cleanup between tests.
+`src/lib/auth/auth.ts` calls `getOrStartSessionTokenRefresh(user.id, googleAccount, deps)` instead of `refreshGoogleSessionTokensIfNeeded(user.id, googleAccount, deps)`. No other call-site changes.
 
 ### Tests
 
-`src/lib/auth/__tests__/token-refresh.test.ts`
+`src/lib/auth/__tests__/refresh-session-tokens-singleflight.test.ts` — 7 unit tests covering the cache contract:
 
-Unit tests covering:
+1. **5 concurrent same-userId calls → 1 refresh + 1 DB write** (acceptance criterion).
+2. **Different userIds don't collapse** — 3 distinct userIds → 3 refreshes.
+3. **Slot released after success** — sequential calls each trigger a fresh refresh.
+4. **Slot released after transient failure** — first call rejects (network) → outcome `transient-error`; second call succeeds → outcome `refreshed`. Both refreshes ran.
+5. **All concurrent awaiters see the same outcome** — when the in-flight refresh fails with a network error, all 5 awaiters receive `kind: "transient-error"`.
+6. **No cache pollution on `null` refresh_token** — first call resolves with `terminal-error` (missing-token classifier); the `.finally()` purge still runs so a follow-up call with a valid account triggers a fresh refresh, not the cached terminal outcome.
+7. **`not-expired` short-circuit** — a fresh account skips refresh and DB entirely.
 
-1. **Happy path** — `refreshGoogleAccessToken` posts the correct body to the Google endpoint and updates the DB row with the new tokens + expires_at.
-2. **Network failure** — `refreshGoogleAccessToken` propagates the error and does not call `prisma.account.update`.
-3. **Singleflight, same key** — 5 concurrent `getOrStartTokenRefresh` calls with the same key result in exactly **1** `fetch` call (THE acceptance-criterion test).
-4. **Singleflight, different keys** — 5 concurrent calls split across two keys result in exactly **2** `fetch` calls.
-5. **Failure clears cache** — after a refresh rejects, the next call triggers a new fetch (no permanent stickiness).
-6. **Success clears cache** — after a refresh resolves, the next call triggers a new fetch (no stale memoisation past expiry).
-7. **Missing refresh_token** — `refreshGoogleAccessToken` rejects synchronously; the cache is not polluted.
-8. **All concurrent awaiters see the same rejection** — when the in-flight refresh fails, all 5 awaiters receive the same error.
+The existing 12-case `session-callback.test.ts` continues to cover the orchestration semantics (decrypt → fetch → classify → re-encrypt → write); the singleflight tests don't re-test those paths.
 
-## Phase 2 — Wire into the session callback
+## Files deleted
 
-- Replace the inline refresh logic in `src/lib/auth/auth.ts` with a call to `getOrStartTokenRefresh()`.
-- Inject `fetch`, `prisma`, `logger`, env vars at call-site (or via a tiny default-deps helper).
-- Preserve all existing semantics:
-  - Same `RefreshTokenError` surfacing on failure.
-  - Same `TokenRefreshed` log event on success.
-  - Same DB update shape.
-- Update `src/lib/auth/__tests__/helpers.test.ts` if any session-callback paths are touched (likely none — helpers tests mock `auth` directly).
+The earlier-iteration files are removed because their functionality is now duplicated (without encryption) by main's refactored modules:
+
+- `src/lib/auth/token-refresh.ts`
+- `src/lib/auth/__tests__/token-refresh.test.ts`
 
 ## Out of scope (deferred)
 
-- Idle-session timeout (NextAuth `maxAge` sliding refresh + user-settings toggle + wall-display preserve mode). New follow-up issue or separate PR on the same #216 thread.
-- Unifying `/api/auth/refresh-token`'s direct-from-client refresh with the singleflight queue. Would require routing every refresh through a userId lookup; doable but a bigger refactor.
-- Persistence of the singleflight cache across processes (multi-instance deployments). The current scope says "Survives the lifetime of a single Node process (in-memory Map keyed by user id)" — explicit guidance.
+- Idle-session timeout (NextAuth `maxAge` sliding refresh + user-settings toggle + wall-display preserve mode). New follow-up issue or separate PR.
+- Unifying `/api/auth/refresh-token`'s direct-from-client refresh with the singleflight queue. Tracked in #285.
+- Cross-process refresh dedupe for multi-instance deployments (the current scope is explicitly process-local). Tracked in #286.
 
 ## Acceptance criteria → mapping
 
-- ✅ "Refresh queue: integration test fires 5 concurrent expired-token requests and asserts exactly one Google OAuth refresh hits the network" → Phase 1, test #3.
-- ✅ "No regression in single-request refresh path" → Phase 1, test #1; Phase 2 preserves existing semantics; existing helper tests stay green.
+- ✅ "Refresh queue: integration test fires 5 concurrent expired-token requests and asserts exactly one Google OAuth refresh hits the network" → singleflight test #1.
+- ✅ "No regression in single-request refresh path" → existing `session-callback.test.ts` continues to pass against the wrapped call.
 - ⏸ "Idle expiration logs the user out after the configured timeout" → deferred.
 - ⏸ "Wall-display mode (no idle expiration) is preserved via setting" → deferred.
-
-## Test-driven order
-
-1. Write `token-refresh.test.ts` with all 8 cases — they all fail (module doesn't exist).
-2. Implement `token-refresh.ts` to satisfy each test, simplest first.
-3. Phase-1 commit + push + draft PR.
-4. Wire the new module into `auth.ts`.
-5. Run full `pnpm test:run`; confirm no regressions in `helpers.test.ts` or any API route tests that touch auth.
-6. Phase-2 commit + push.
-7. Mark PR ready, run review subagent, address feedback.

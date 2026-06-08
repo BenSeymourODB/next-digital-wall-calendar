@@ -160,3 +160,58 @@ export async function refreshGoogleSessionTokensIfNeeded(
     return { kind: "transient-error", error: err };
   }
 }
+
+// Per-user singleflight cache. Concurrent `session` callbacks for the same
+// user share the same in-flight refresh promise so only one Google OAuth
+// round-trip and one `prisma.account.update` happen per stale token, no
+// matter how many requests fan in. Keyed by `userId` (one Google account per
+// user in this app); the cache slot is purged in `.finally()` so transient
+// failures don't pin the slot and the next callback can retry.
+//
+// This is the second half of issue #216's refresh-queue work — paired with
+// the transient/terminal classifier from #315.
+const inflight = new Map<string, Promise<RefreshOutcome>>();
+
+/**
+ * Singleflight wrapper around {@link refreshGoogleSessionTokensIfNeeded}.
+ *
+ * Multiple concurrent `session` callbacks for the same `userId` share the
+ * same in-flight refresh promise so exactly one OAuth round-trip and exactly
+ * one DB write occur per stale token. Without this, two concurrent
+ * `session()` invocations both call `oauth2.googleapis.com/token` and both
+ * `prisma.account.update()` — the second `prisma` write clobbers the first,
+ * and the loser's rejected refresh-token can surface as a bogus
+ * `RefreshTokenError` even though the winner just succeeded.
+ *
+ * Process-local only: the in-memory map does not survive a restart and is
+ * not shared across instances. Cross-process dedupe is tracked in #286.
+ */
+export function getOrStartSessionTokenRefresh(
+  userId: string,
+  account: GoogleAccountForRefresh,
+  deps: RefreshSessionDeps
+): Promise<RefreshOutcome> {
+  const existing = inflight.get(userId);
+  if (existing) {
+    return existing;
+  }
+  const pending = refreshGoogleSessionTokensIfNeeded(
+    userId,
+    account,
+    deps
+  ).finally(() => {
+    inflight.delete(userId);
+  });
+  inflight.set(userId, pending);
+  return pending;
+}
+
+/**
+ * Test-only helper to clear the singleflight cache between tests. Gated on
+ * `NODE_ENV` so an accidental production call is a no-op rather than wiping
+ * the in-flight map mid-refresh.
+ */
+export function __resetSessionTokenSingleflightCache(): void {
+  if (process.env.NODE_ENV === "production") return;
+  inflight.clear();
+}
