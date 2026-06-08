@@ -123,6 +123,9 @@ export function SettingsForm({
     // to other keys is preserved (#363).
     let previousPartial: Partial<UserSettingsData> | undefined;
     setSettings((curr) => {
+      // The cast is sound because `Object.keys(partial)` is bounded by
+      // `partial`'s `Partial<UserSettingsData>` type — no extraneous keys
+      // can enter the snapshot.
       previousPartial = Object.fromEntries(
         (Object.keys(partial) as Array<keyof UserSettingsData>).map((key) => [
           key,
