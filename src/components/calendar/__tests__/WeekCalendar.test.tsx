@@ -3,6 +3,7 @@ import {
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import { __resetUseDateNowForTests } from "@/lib/hooks/use-date-now";
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
 import { render, screen } from "@testing-library/react";
@@ -15,7 +16,7 @@ import {
   startOfWeek,
   subWeeks,
 } from "date-fns";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WeekCalendar } from "../WeekCalendar";
 
 /**
@@ -159,6 +160,50 @@ describe("WeekCalendar", () => {
     });
   });
 
+  describe("current-week predicate respects weekStartDay", () => {
+    // Regression: #352. WeekCalendar.isCurrentWeek must use the user's
+    // weekStartDay so the Today button toggles enabled/disabled on the
+    // Sun→Mon (or Sat→Sun) boundary, not on a hard-coded WEEK_STARTS_ON.
+    //
+    // `useTodayStartOfDay` caches the day at module load, so each test
+    // resets the cache after `vi.setSystemTime` to pull the fake clock —
+    // same pattern as `midnight-rollover.test.tsx`.
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      __resetUseDateNowForTests();
+      vi.useRealTimers();
+    });
+
+    it("disables Today when today and selectedDate share a Monday-first week but not a Sunday-first one", () => {
+      // Today = Sun Apr 19 2026, selectedDate = Fri Apr 17 2026.
+      // - Sunday-first: today ∈ [Sun Apr 19 – Sat Apr 25]; selectedDate ∈ [Sun Apr 12 – Sat Apr 18] → different weeks.
+      // - Monday-first: today ∈ [Mon Apr 13 – Sun Apr 19]; selectedDate ∈ same week → same week.
+      vi.setSystemTime(new Date(2026, 3, 19, 12, 0, 0));
+      __resetUseDateNowForTests();
+      const selectedDate = new Date(2026, 3, 17, 12, 0, 0);
+
+      renderWithContext({ selectedDate, weekStartDay: 1 });
+
+      expect(screen.getByTestId("week-calendar-today-btn")).toBeDisabled();
+    });
+
+    it("enables Today when today and selectedDate share a Sunday-first week but fall in different Monday-first weeks", () => {
+      // Today = Sat Apr 18 2026, selectedDate = Sun Apr 12 2026.
+      // - Sunday-first: today ∈ [Sun Apr 12 – Sat Apr 18]; selectedDate ∈ same week → same week.
+      // - Monday-first: today ∈ [Mon Apr 13 – Sun Apr 19]; selectedDate ∈ [Mon Apr 6 – Sun Apr 12] → different weeks.
+      vi.setSystemTime(new Date(2026, 3, 18, 12, 0, 0));
+      __resetUseDateNowForTests();
+      const selectedDate = new Date(2026, 3, 12, 12, 0, 0);
+
+      renderWithContext({ selectedDate, weekStartDay: 1 });
+
+      expect(screen.getByTestId("week-calendar-today-btn")).toBeEnabled();
+    });
+  });
+
   describe("Navigation", () => {
     it("navigates to previous week", async () => {
       const selectedDate = midday(new Date(2026, 3, 15));
@@ -194,7 +239,7 @@ describe("WeekCalendar", () => {
   describe("Weekday grid", () => {
     it("renders 7 day columns with weekday labels in WEEK_STARTS_ON order", () => {
       renderWithContext();
-      for (const label of getShortWeekdayLabels()) {
+      for (const label of getShortWeekdayLabels(WEEK_STARTS_ON)) {
         expect(
           screen.getAllByText(label, { exact: true }).length
         ).toBeGreaterThan(0);
