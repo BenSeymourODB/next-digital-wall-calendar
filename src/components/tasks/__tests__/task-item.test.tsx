@@ -549,5 +549,106 @@ describe("TaskItem", () => {
 
       expect(onToggle).toHaveBeenCalledTimes(1);
     });
+
+    it("guards against double-click: handleToggle is single-flight", async () => {
+      mockFetch
+        // GET /api/points (provider mount)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              totalPoints: 50,
+              enabled: true,
+              defaultTaskPoints: 10,
+              showPointsOnCompletion: true,
+            }),
+        })
+        // POST /api/points/award — should fire exactly once even though
+        // both clicks reach the checkbox.
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              newTotal: 60,
+              alreadyAwarded: false,
+            }),
+        });
+
+      // Hold the first onToggle pending so the second click arrives while
+      // the first handleToggle invocation is still in flight.
+      let releaseToggle: () => void = () => {};
+      const togglePromise = new Promise<void>((resolve) => {
+        releaseToggle = resolve;
+      });
+      const onToggle = vi.fn().mockReturnValue(togglePromise);
+      const user = userEvent.setup();
+
+      render(
+        <TaskItem
+          task={createTask({ status: "needsAction" })}
+          onToggle={onToggle}
+        />,
+        { wrapper: withPointsProvider("profile-1") }
+      );
+
+      // Wait for the points provider to settle so awardPoints is reachable.
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+
+      const checkbox = screen.getByRole("checkbox");
+
+      // Two concurrent clicks driven through userEvent's full pointer-event
+      // pipeline — avoids the jsdom/Radix edge case where a bare
+      // `fireEvent.click` might not route through `onCheckedChange`.
+      // The second click must early-return because the first set
+      // `inFlight.current = true` before its first `await`.
+      const clicks = Promise.all([user.click(checkbox), user.click(checkbox)]);
+
+      // Yield until both pointer-event sequences have fired their click
+      // handlers. They cannot fully resolve yet because the first
+      // handleToggle is still awaiting our held `togglePromise`.
+      await waitFor(() => {
+        expect(onToggle).toHaveBeenCalledTimes(1);
+      });
+
+      // Release the in-flight toggle and let both user.click() promises resolve.
+      releaseToggle();
+      await clicks;
+
+      // Only one POST to /api/points/award should ever land.
+      const awardCalls = mockFetch.mock.calls.filter(
+        ([url]) => typeof url === "string" && url.includes("/api/points/award")
+      );
+      expect(awardCalls).toHaveLength(1);
+    });
+
+    it("releases the in-flight guard between sequential clicks", async () => {
+      // No PointsProvider — this test is purely about the guard's `finally`
+      // releasing between clicks, not about the award path.
+      const onToggle = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+
+      render(
+        <TaskItem
+          task={createTask({ status: "needsAction" })}
+          onToggle={onToggle}
+        />
+      );
+
+      const checkbox = screen.getByRole("checkbox");
+
+      await user.click(checkbox);
+      await waitFor(() => {
+        expect(onToggle).toHaveBeenCalledTimes(1);
+      });
+
+      // Second click after the first has settled — guard must have released.
+      await user.click(checkbox);
+      await waitFor(() => {
+        expect(onToggle).toHaveBeenCalledTimes(2);
+      });
+    });
   });
 });
