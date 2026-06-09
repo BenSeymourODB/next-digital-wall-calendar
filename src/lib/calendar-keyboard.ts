@@ -10,7 +10,6 @@ import {
   subMonths,
   subYears,
 } from "date-fns";
-import { WEEK_STARTS_ON } from "./calendar-helpers";
 
 /**
  * Keyboard-driven navigation actions for the month grid.
@@ -62,15 +61,13 @@ export function keyboardEventToAction(
 /**
  * Apply a keyboard action to the currently-focused date.
  *
- * `weekStartsOn` controls the `WEEK_START`/`WEEK_END` actions only and
- * defaults to `WEEK_STARTS_ON` so callers that don't yet thread the
- * user's `weekStartDay` preference keep the previous Sunday-start
- * behaviour. All other actions are independent of the week boundary.
+ * `weekStartsOn` controls the `WEEK_START`/`WEEK_END` actions only;
+ * other actions are independent of the week boundary.
  */
 export function applyCalendarKeyboardAction(
   date: Date,
   action: CalendarKeyboardAction,
-  weekStartsOn: Day = WEEK_STARTS_ON
+  weekStartsOn: Day
 ): Date {
   switch (action.type) {
     case "PREVIOUS_DAY":

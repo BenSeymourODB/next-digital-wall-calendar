@@ -36,13 +36,15 @@ import {
 const FORMAT_STRING = "MMM d, yyyy";
 
 /**
- * Project-wide default for which day a calendar week begins on.
+ * Project-wide reference for the default week-start day used by tests and
+ * documentation.
  *
  * 0 = Sunday, 1 = Monday, ..., 6 = Saturday (matches `date-fns` `Day`).
  *
- * Used as the fallback when a caller hasn't been wired through to the
- * user-selectable `weekStartDay` setting (#86). New code should prefer
- * reading `weekStartDay` from `CalendarProvider` over this constant.
+ * Production code must pass the user's `weekStartDay` from
+ * `CalendarProvider` to every helper that consumes it (#352); the value
+ * is exported here only so tests can reference the project default
+ * without re-deriving it.
  */
 export const WEEK_STARTS_ON: Day = 0;
 
@@ -86,13 +88,8 @@ const SHORT_WEEKDAY_LABELS = [
  * Returns the 7 short weekday labels (`"Sun"`…`"Sat"`) rotated so the
  * first entry corresponds to `weekStartsOn`. Use this for day-of-week
  * headers instead of hard-coding the array so every view agrees.
- *
- * `weekStartsOn` defaults to `WEEK_STARTS_ON` for callers that haven't
- * been wired through to the user-selectable setting yet (#86).
  */
-export const getShortWeekdayLabels = (
-  weekStartsOn: Day = WEEK_STARTS_ON
-): string[] => [
+export const getShortWeekdayLabels = (weekStartsOn: Day): string[] => [
   ...SHORT_WEEKDAY_LABELS.slice(weekStartsOn),
   ...SHORT_WEEKDAY_LABELS.slice(0, weekStartsOn),
 ];
@@ -100,7 +97,7 @@ export const getShortWeekdayLabels = (
 export function rangeText(
   view: TCalendarView,
   date: Date,
-  weekStartsOn: Day = WEEK_STARTS_ON
+  weekStartsOn: Day
 ): string {
   let start: Date;
   let end: Date;
@@ -148,7 +145,7 @@ export function getEventsCount(
   events: IEvent[],
   date: Date,
   view: TCalendarView,
-  weekStartsOn: Day = WEEK_STARTS_ON
+  weekStartsOn: Day
 ): number {
   const compareFns: Record<TCalendarView, (d1: Date, d2: Date) => boolean> = {
     day: isSameDay,
@@ -192,7 +189,7 @@ export function groupEvents(dayEvents: IEvent[]): IEvent[][] {
 
 export function getCalendarCells(
   selectedDate: Date,
-  weekStartsOn: Day = WEEK_STARTS_ON
+  weekStartsOn: Day
 ): ICalendarCell[] {
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth();
@@ -382,10 +379,7 @@ export const getEventsForDay = (
     });
 };
 
-export const getWeekDates = (
-  date: Date,
-  weekStartsOn: Day = WEEK_STARTS_ON
-): Date[] => {
+export const getWeekDates = (date: Date, weekStartsOn: Day): Date[] => {
   const startDate = startOfWeek(date, { weekStartsOn });
   return Array.from({ length: 7 }, (_, i) => addDays(startDate, i));
 };
@@ -393,7 +387,7 @@ export const getWeekDates = (
 export const getEventsForWeek = (
   events: IEvent[],
   date: Date,
-  weekStartsOn: Day = WEEK_STARTS_ON
+  weekStartsOn: Day
 ): IEvent[] => {
   // Use startOfWeek/endOfWeek so the upper bound covers the last
   // millisecond of the last day (fix from PR #228 / issue #201). Indexing
@@ -479,7 +473,7 @@ export const getEventsByMode = (
   events: IEvent[],
   view: TCalendarView,
   selectedDate: Date,
-  weekStartsOn: Day = WEEK_STARTS_ON
+  weekStartsOn: Day
 ) => {
   switch (view) {
     case "day":
