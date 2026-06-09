@@ -23,7 +23,7 @@ import { usePointsOptional } from "@/components/rewards/points-context";
 import { Checkbox } from "@/components/ui/checkbox";
 import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { type TaskWithMeta, formatDueDate } from "./types";
 
 export interface TaskItemProps {
@@ -42,38 +42,52 @@ export function TaskItem({ task, onToggle, disabled = false }: TaskItemProps) {
 
   const [animationPoints, setAnimationPoints] = useState<number | null>(null);
 
+  // Client-side double-click guard. The server's unique
+  // `(profileId, taskId, reason)` index already prevents double-credit, but
+  // dropping the second invocation here avoids a wasted round-trip and
+  // optimistic-UI flicker. Cleared in `finally` so an error path cannot
+  // permanently lock the item.
+  const inFlight = useRef(false);
+
   const handleToggle = async () => {
-    // Captured before the async toggle: React may re-render TaskItem
-    // with the updated task.status before this closure resumes, so we
-    // can't rely on `isCompleted` after the await to know the direction.
-    const wasCompleted = isCompleted;
-
-    // Always run the parent's toggle first — that's the source of truth
-    // for the task's status. Whatever happens with rewards is layered on
-    // top and must never replace the underlying toggle behaviour.
-    await Promise.resolve(onToggle());
-
-    // Award points only on the incomplete → complete transition.
-    if (wasCompleted) return;
-    if (!points || !points.isEnabled) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
 
     try {
-      const result = await points.awardPoints(
-        points.defaultTaskPoints,
-        "task_completed",
-        { taskId: task.id, taskTitle: task.title }
-      );
+      // Captured before the async toggle: React may re-render TaskItem
+      // with the updated task.status before this closure resumes, so we
+      // can't rely on `isCompleted` after the await to know the direction.
+      const wasCompleted = isCompleted;
 
-      // alreadyAwarded means the server's unique index fired — re-completing
-      // the same task does not re-credit, so we suppress the animation too.
-      if (!result.alreadyAwarded && points.showPointsOnCompletion) {
-        setAnimationPoints(points.defaultTaskPoints);
+      // Always run the parent's toggle first — that's the source of truth
+      // for the task's status. Whatever happens with rewards is layered on
+      // top and must never replace the underlying toggle behaviour.
+      await Promise.resolve(onToggle());
+
+      // Award points only on the incomplete → complete transition.
+      if (wasCompleted) return;
+      if (!points || !points.isEnabled) return;
+
+      try {
+        const result = await points.awardPoints(
+          points.defaultTaskPoints,
+          "task_completed",
+          { taskId: task.id, taskTitle: task.title }
+        );
+
+        // alreadyAwarded means the server's unique index fired — re-completing
+        // the same task does not re-credit, so we suppress the animation too.
+        if (!result.alreadyAwarded && points.showPointsOnCompletion) {
+          setAnimationPoints(points.defaultTaskPoints);
+        }
+      } catch (error) {
+        logger.error(error as Error, {
+          context: "TaskAwardPointsFailed",
+          taskId: task.id,
+        });
       }
-    } catch (error) {
-      logger.error(error as Error, {
-        context: "TaskAwardPointsFailed",
-        taskId: task.id,
-      });
+    } finally {
+      inFlight.current = false;
     }
   };
 

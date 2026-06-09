@@ -2,7 +2,13 @@
  * Tests for TaskItem component
  */
 import { type ReactNode } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PointsProvider } from "../../rewards/points-context";
@@ -548,6 +554,129 @@ describe("TaskItem", () => {
       });
 
       expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it("guards against double-click: handleToggle is single-flight", async () => {
+      mockFetch
+        // GET /api/points (provider mount)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              totalPoints: 50,
+              enabled: true,
+              defaultTaskPoints: 10,
+              showPointsOnCompletion: true,
+            }),
+        })
+        // POST /api/points/award (should fire exactly once)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              newTotal: 60,
+              alreadyAwarded: false,
+            }),
+        });
+
+      // Hold the first onToggle pending so the second click arrives while
+      // the first handleToggle invocation is still in flight.
+      let releaseToggle: () => void = () => {};
+      const togglePromise = new Promise<void>((resolve) => {
+        releaseToggle = resolve;
+      });
+      const onToggle = vi.fn().mockReturnValue(togglePromise);
+
+      render(
+        <TaskItem
+          task={createTask({ status: "needsAction" })}
+          onToggle={onToggle}
+        />,
+        { wrapper: withPointsProvider("profile-1") }
+      );
+
+      // Wait for the points provider to settle so awardPoints is reachable.
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+
+      const checkbox = screen.getByRole("checkbox");
+
+      // Two rapid synchronous clicks. The guard must drop the second one.
+      fireEvent.click(checkbox);
+      fireEvent.click(checkbox);
+
+      // The first click captured the in-flight slot; the second early-returns.
+      expect(onToggle).toHaveBeenCalledTimes(1);
+
+      // Release the in-flight toggle so the award path can run.
+      releaseToggle();
+
+      // Only one POST to /api/points/award should ever land.
+      await waitFor(() => {
+        const awardCalls = mockFetch.mock.calls.filter(
+          ([url]) =>
+            typeof url === "string" && url.includes("/api/points/award")
+        );
+        expect(awardCalls).toHaveLength(1);
+      });
+
+      expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it("releases the in-flight guard between sequential clicks", async () => {
+      mockFetch
+        // GET /api/points (provider mount)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              totalPoints: 50,
+              enabled: true,
+              defaultTaskPoints: 10,
+              showPointsOnCompletion: true,
+            }),
+        })
+        // POST /api/points/award — first click (incomplete → complete)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              newTotal: 60,
+              alreadyAwarded: false,
+            }),
+        });
+
+      const onToggle = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+
+      render(
+        <TaskItem
+          task={createTask({ status: "needsAction" })}
+          onToggle={onToggle}
+        />,
+        { wrapper: withPointsProvider("profile-1") }
+      );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+
+      const checkbox = screen.getByRole("checkbox");
+
+      // First click — completes the full handleToggle (toggle + award).
+      await user.click(checkbox);
+      await waitFor(() => {
+        expect(onToggle).toHaveBeenCalledTimes(1);
+      });
+
+      // Second click after the first has settled — guard must have released.
+      await user.click(checkbox);
+      await waitFor(() => {
+        expect(onToggle).toHaveBeenCalledTimes(2);
+      });
     });
   });
 });
