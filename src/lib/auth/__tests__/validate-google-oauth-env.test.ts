@@ -9,14 +9,13 @@ import { validateGoogleOAuthEnv } from "../validate-google-oauth-env";
  * `invalid_client` mid-session that the refresh-error classifier (correctly)
  * promotes to terminal and force-logs the user out.
  *
- * `vi.stubEnv` only writes strings, so the truly-absent case (`undefined`)
- * has to be tested with a direct `delete process.env.X`. Each test restores
- * the variable in `afterEach`.
+ * `vi.stubEnv(name, undefined)` deletes the key from `process.env`, so it
+ * covers both the empty-string footgun (pass `""`) and the truly-absent
+ * case (pass `undefined`). `vi.unstubAllEnvs()` in `afterEach` restores
+ * every stubbed key to its original value — no manual snapshot/restore
+ * needed.
  */
 describe("validateGoogleOAuthEnv", () => {
-  const ORIGINAL_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-  const ORIGINAL_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-
   beforeEach(() => {
     vi.stubEnv("GOOGLE_CLIENT_ID", "client-id.apps.googleusercontent.com");
     vi.stubEnv("GOOGLE_CLIENT_SECRET", "client-secret-value");
@@ -24,16 +23,6 @@ describe("validateGoogleOAuthEnv", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    if (ORIGINAL_CLIENT_ID === undefined) {
-      delete process.env.GOOGLE_CLIENT_ID;
-    } else {
-      process.env.GOOGLE_CLIENT_ID = ORIGINAL_CLIENT_ID;
-    }
-    if (ORIGINAL_CLIENT_SECRET === undefined) {
-      delete process.env.GOOGLE_CLIENT_SECRET;
-    } else {
-      process.env.GOOGLE_CLIENT_SECRET = ORIGINAL_CLIENT_SECRET;
-    }
   });
 
   it("returns silently when both env vars are populated", () => {
@@ -41,12 +30,12 @@ describe("validateGoogleOAuthEnv", () => {
   });
 
   it("throws when GOOGLE_CLIENT_ID is absent (process.env.GOOGLE_CLIENT_ID === undefined)", () => {
-    delete process.env.GOOGLE_CLIENT_ID;
+    vi.stubEnv("GOOGLE_CLIENT_ID", undefined);
     expect(() => validateGoogleOAuthEnv()).toThrow(/GOOGLE_CLIENT_ID/);
   });
 
   it("throws when GOOGLE_CLIENT_SECRET is absent", () => {
-    delete process.env.GOOGLE_CLIENT_SECRET;
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", undefined);
     expect(() => validateGoogleOAuthEnv()).toThrow(/GOOGLE_CLIENT_SECRET/);
   });
 
@@ -73,31 +62,16 @@ describe("validateGoogleOAuthEnv", () => {
   it("mentions both var names in a single error when both are missing", () => {
     // One restart should be enough for an operator to learn about every
     // missing variable — don't make them fix-and-restart twice.
-    delete process.env.GOOGLE_CLIENT_ID;
-    delete process.env.GOOGLE_CLIENT_SECRET;
-    let caught: unknown;
-    try {
-      validateGoogleOAuthEnv();
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(Error);
-    const message = (caught as Error).message;
-    expect(message).toMatch(/GOOGLE_CLIENT_ID/);
-    expect(message).toMatch(/GOOGLE_CLIENT_SECRET/);
+    vi.stubEnv("GOOGLE_CLIENT_ID", undefined);
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", undefined);
+    expect(() => validateGoogleOAuthEnv()).toThrow(/GOOGLE_CLIENT_ID/);
+    expect(() => validateGoogleOAuthEnv()).toThrow(/GOOGLE_CLIENT_SECRET/);
   });
 
   it("references the originating issue trail (#315 / #379) for triage", () => {
     // Future readers shouldn't have to redo the misconfig-vs-terminal-class
     // analysis — point them straight at the issues.
-    delete process.env.GOOGLE_CLIENT_ID;
-    let caught: unknown;
-    try {
-      validateGoogleOAuthEnv();
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(Error);
-    expect((caught as Error).message).toMatch(/#315|#379/);
+    vi.stubEnv("GOOGLE_CLIENT_ID", undefined);
+    expect(() => validateGoogleOAuthEnv()).toThrow(/#315|#379/);
   });
 });
