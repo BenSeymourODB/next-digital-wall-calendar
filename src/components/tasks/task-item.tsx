@@ -45,8 +45,7 @@ export function TaskItem({ task, onToggle, disabled = false }: TaskItemProps) {
   // Client-side double-click guard. The server's unique
   // `(profileId, taskId, reason)` index already prevents double-credit, but
   // dropping the second invocation here avoids a wasted round-trip and
-  // optimistic-UI flicker. Cleared in `finally` so an error path cannot
-  // permanently lock the item.
+  // optimistic-UI flicker.
   const inFlight = useRef(false);
 
   const handleToggle = async () => {

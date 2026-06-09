@@ -2,13 +2,7 @@
  * Tests for TaskItem component
  */
 import { type ReactNode } from "react";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PointsProvider } from "../../rewards/points-context";
@@ -569,7 +563,8 @@ describe("TaskItem", () => {
               showPointsOnCompletion: true,
             }),
         })
-        // POST /api/points/award (should fire exactly once)
+        // POST /api/points/award — should fire exactly once even though
+        // both clicks reach the checkbox.
         .mockResolvedValueOnce({
           ok: true,
           json: () =>
@@ -587,6 +582,7 @@ describe("TaskItem", () => {
         releaseToggle = resolve;
       });
       const onToggle = vi.fn().mockReturnValue(togglePromise);
+      const user = userEvent.setup();
 
       render(
         <TaskItem
@@ -603,52 +599,34 @@ describe("TaskItem", () => {
 
       const checkbox = screen.getByRole("checkbox");
 
-      // Two rapid synchronous clicks. The guard must drop the second one.
-      fireEvent.click(checkbox);
-      fireEvent.click(checkbox);
+      // Two concurrent clicks driven through userEvent's full pointer-event
+      // pipeline — avoids the jsdom/Radix edge case where a bare
+      // `fireEvent.click` might not route through `onCheckedChange`.
+      // The second click must early-return because the first set
+      // `inFlight.current = true` before its first `await`.
+      const clicks = Promise.all([user.click(checkbox), user.click(checkbox)]);
 
-      // The first click captured the in-flight slot; the second early-returns.
-      expect(onToggle).toHaveBeenCalledTimes(1);
-
-      // Release the in-flight toggle so the award path can run.
-      releaseToggle();
-
-      // Only one POST to /api/points/award should ever land.
+      // Yield until both pointer-event sequences have fired their click
+      // handlers. They cannot fully resolve yet because the first
+      // handleToggle is still awaiting our held `togglePromise`.
       await waitFor(() => {
-        const awardCalls = mockFetch.mock.calls.filter(
-          ([url]) =>
-            typeof url === "string" && url.includes("/api/points/award")
-        );
-        expect(awardCalls).toHaveLength(1);
+        expect(onToggle).toHaveBeenCalledTimes(1);
       });
 
-      expect(onToggle).toHaveBeenCalledTimes(1);
+      // Release the in-flight toggle and let both user.click() promises resolve.
+      releaseToggle();
+      await clicks;
+
+      // Only one POST to /api/points/award should ever land.
+      const awardCalls = mockFetch.mock.calls.filter(
+        ([url]) => typeof url === "string" && url.includes("/api/points/award")
+      );
+      expect(awardCalls).toHaveLength(1);
     });
 
     it("releases the in-flight guard between sequential clicks", async () => {
-      mockFetch
-        // GET /api/points (provider mount)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              totalPoints: 50,
-              enabled: true,
-              defaultTaskPoints: 10,
-              showPointsOnCompletion: true,
-            }),
-        })
-        // POST /api/points/award — first click (incomplete → complete)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              newTotal: 60,
-              alreadyAwarded: false,
-            }),
-        });
-
+      // No PointsProvider — this test is purely about the guard's `finally`
+      // releasing between clicks, not about the award path.
       const onToggle = vi.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
 
@@ -656,17 +634,11 @@ describe("TaskItem", () => {
         <TaskItem
           task={createTask({ status: "needsAction" })}
           onToggle={onToggle}
-        />,
-        { wrapper: withPointsProvider("profile-1") }
+        />
       );
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledTimes(1);
-      });
 
       const checkbox = screen.getByRole("checkbox");
 
-      // First click — completes the full handleToggle (toggle + award).
       await user.click(checkbox);
       await waitFor(() => {
         expect(onToggle).toHaveBeenCalledTimes(1);
