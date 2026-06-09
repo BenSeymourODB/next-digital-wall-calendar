@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTheme } from "next-themes";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, MonitorPlay, Moon, Sun } from "lucide-react";
 
 interface ThemeToggleProps {
   className?: string;
@@ -39,6 +39,10 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
         <DropdownMenuItem onClick={() => setTheme("dark")}>
           <Moon className="mr-2 h-4 w-4" />
           Dark
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("wall-projector")}>
+          <MonitorPlay className="mr-2 h-4 w-4" />
+          Wall-Projector
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("system")}>
           <Monitor className="mr-2 h-4 w-4" />

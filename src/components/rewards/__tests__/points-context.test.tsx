@@ -224,6 +224,44 @@ describe("usePoints", () => {
     });
   });
 
+  it("exposes defaultTaskPoints and showPointsOnCompletion from the API", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          totalPoints: 50,
+          enabled: true,
+          defaultTaskPoints: 25,
+          showPointsOnCompletion: false,
+        }),
+    });
+
+    const { result } = renderHook(() => usePoints(), {
+      wrapper: makeWrapper("profile-1"),
+    });
+
+    await waitFor(() => {
+      expect(result.current.defaultTaskPoints).toBe(25);
+      expect(result.current.showPointsOnCompletion).toBe(false);
+    });
+  });
+
+  it("falls back to schema defaults (10 / true) when API omits reward settings", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ totalPoints: 50, enabled: true }),
+    });
+
+    const { result } = renderHook(() => usePoints(), {
+      wrapper: makeWrapper("profile-1"),
+    });
+
+    await waitFor(() => expect(result.current.totalPoints).toBe(50));
+
+    expect(result.current.defaultTaskPoints).toBe(10);
+    expect(result.current.showPointsOnCompletion).toBe(true);
+  });
+
   it("refreshPoints re-fetches and updates state", async () => {
     mockFetch
       .mockResolvedValueOnce({

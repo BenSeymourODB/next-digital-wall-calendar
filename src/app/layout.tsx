@@ -3,6 +3,7 @@ import { ProfileProvider } from "@/components/profiles/profile-context";
 import { AppInsightsProvider } from "@/components/providers/AppInsightsProvider";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import { MountedPointsProvider } from "@/components/rewards/mounted-points-provider";
 import type { Metadata } from "next";
 import "./globals.css";
 
@@ -29,7 +30,9 @@ export default function RootLayout({
           <ThemeProvider>
             <AppInsightsProvider>
               <ProfileProvider>
-                <AppShell>{children}</AppShell>
+                <MountedPointsProvider>
+                  <AppShell>{children}</AppShell>
+                </MountedPointsProvider>
               </ProfileProvider>
             </AppInsightsProvider>
           </ThemeProvider>
