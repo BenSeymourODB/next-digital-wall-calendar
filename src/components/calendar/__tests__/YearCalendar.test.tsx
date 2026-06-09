@@ -8,7 +8,7 @@ import type { IEvent, TEventColor } from "@/types/calendar";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { YearCalendar } from "../YearCalendar";
+import { YearCalendar, bucketEventColorsByDayKey } from "../YearCalendar";
 
 function createMockContext(
   overrides: Partial<ICalendarContext> = {}
@@ -51,22 +51,31 @@ describe("YearCalendar", () => {
     });
 
     it("displays total event count for the year", () => {
+      // Each fixture event is bounded entirely within its intended year so
+      // the overlap-based count (#203 bug 2) is deterministic. The
+      // "other-year" event must end inside 2025 — leaving its endDate at
+      // the createMockEvent default ("now") would let it correctly overlap
+      // into 2026 and inflate the count.
       const events = [
         createMockEvent({
           id: "e1",
-          startDate: new Date(2026, 0, 5).toISOString(),
+          startDate: new Date(2026, 0, 5, 9).toISOString(),
+          endDate: new Date(2026, 0, 5, 10).toISOString(),
         }),
         createMockEvent({
           id: "e2",
-          startDate: new Date(2026, 5, 10).toISOString(),
+          startDate: new Date(2026, 5, 10, 9).toISOString(),
+          endDate: new Date(2026, 5, 10, 10).toISOString(),
         }),
         createMockEvent({
           id: "e3",
-          startDate: new Date(2026, 11, 20).toISOString(),
+          startDate: new Date(2026, 11, 20, 9).toISOString(),
+          endDate: new Date(2026, 11, 20, 10).toISOString(),
         }),
         createMockEvent({
           id: "e-other-year",
-          startDate: new Date(2025, 6, 4).toISOString(),
+          startDate: new Date(2025, 6, 4, 9).toISOString(),
+          endDate: new Date(2025, 6, 4, 10).toISOString(),
         }),
       ];
 
@@ -81,7 +90,8 @@ describe("YearCalendar", () => {
       const events = [
         createMockEvent({
           id: "e1",
-          startDate: new Date(2026, 0, 5).toISOString(),
+          startDate: new Date(2026, 0, 5, 9).toISOString(),
+          endDate: new Date(2026, 0, 5, 10).toISOString(),
         }),
       ];
 
@@ -94,7 +104,9 @@ describe("YearCalendar", () => {
   });
 
   describe("Year navigation", () => {
-    it("navigates to the previous year", async () => {
+    it("navigates to January 1 of the previous year (#203 bug 4)", async () => {
+      // Starting from April 15 — month/day must not bleed into the target
+      // year. Issue #203 specifies prev/next-year nav lands on Jan 1.
       const user = userEvent.setup();
       const { contextValue } = renderWithContext({
         selectedDate: new Date(2026, 3, 15),
@@ -107,9 +119,11 @@ describe("YearCalendar", () => {
         contextValue.setSelectedDate as ReturnType<typeof vi.fn>
       ).mock.calls[0][0] as Date;
       expect(calledWith.getFullYear()).toBe(2025);
+      expect(calledWith.getMonth()).toBe(0);
+      expect(calledWith.getDate()).toBe(1);
     });
 
-    it("navigates to the next year", async () => {
+    it("navigates to January 1 of the next year (#203 bug 4)", async () => {
       const user = userEvent.setup();
       const { contextValue } = renderWithContext({
         selectedDate: new Date(2026, 3, 15),
@@ -122,6 +136,8 @@ describe("YearCalendar", () => {
         contextValue.setSelectedDate as ReturnType<typeof vi.fn>
       ).mock.calls[0][0] as Date;
       expect(calledWith.getFullYear()).toBe(2027);
+      expect(calledWith.getMonth()).toBe(0);
+      expect(calledWith.getDate()).toBe(1);
     });
 
     it("disables the Today button when viewing the current year", () => {
@@ -422,6 +438,133 @@ describe("YearCalendar", () => {
       );
 
       expect(loadEventsForYear).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("bucketEventColorsByDayKey (#203 bug 3)", () => {
+    it("returns a map keyed by local YYYY-MM-DD with deduped colors per day", () => {
+      const events = [
+        createMockEvent({
+          id: "a",
+          color: "blue",
+          startDate: new Date(2026, 0, 5, 9).toISOString(),
+        }),
+        createMockEvent({
+          id: "b",
+          color: "blue",
+          startDate: new Date(2026, 0, 5, 14).toISOString(),
+        }),
+        createMockEvent({
+          id: "c",
+          color: "green",
+          startDate: new Date(2026, 0, 5, 16).toISOString(),
+        }),
+        createMockEvent({
+          id: "d",
+          color: "red",
+          startDate: new Date(2026, 5, 12, 10).toISOString(),
+        }),
+      ];
+
+      const map = bucketEventColorsByDayKey(events);
+
+      expect(map.get("2026-01-05")).toEqual(new Set(["blue", "green"]));
+      expect(map.get("2026-06-12")).toEqual(new Set(["red"]));
+      expect(map.get("2026-03-30")).toBeUndefined();
+    });
+
+    it("treats bare YYYY-MM-DD startDates as the local calendar day", () => {
+      // Same defensive parsing the dot-rendering path uses (#203 bug 1) —
+      // bare-date startDates must bucket on the local day, not UTC.
+      const events = [
+        createMockEvent({
+          id: "all-day",
+          color: "purple",
+          startDate: "2026-06-15",
+          endDate: "2026-06-15",
+          isAllDay: true,
+        }),
+      ];
+
+      const map = bucketEventColorsByDayKey(events);
+
+      expect(map.get("2026-06-15")).toEqual(new Set(["purple"]));
+      expect(map.get("2026-06-14")).toBeUndefined();
+    });
+  });
+
+  describe("Multi-year yearEventCount overlap (#203 bug 2)", () => {
+    it("counts an event spanning Dec → Jan in both years", () => {
+      // The previous filter checked `isSameYear(event.startDate, selectedDate)`
+      // and so missed Dec 2025 → Jan 2026 events when viewing 2026.
+      // The fix delegates to getEventsForYear, which uses overlap logic.
+      const overlappingEvent = createMockEvent({
+        id: "yearend",
+        startDate: new Date(2025, 11, 30, 18, 0).toISOString(),
+        endDate: new Date(2026, 0, 2, 12, 0).toISOString(),
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider
+          value={createMockContext({
+            selectedDate: new Date(2026, 5, 15),
+            events: [overlappingEvent],
+          })}
+        >
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(screen.getByTestId("year-calendar-event-count")).toHaveTextContent(
+        "1 event"
+      );
+
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({
+            selectedDate: new Date(2025, 5, 15),
+            events: [overlappingEvent],
+          })}
+        >
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(screen.getByTestId("year-calendar-event-count")).toHaveTextContent(
+        "1 event"
+      );
+    });
+  });
+
+  describe("All-day timezone correctness (#203 bug 1)", () => {
+    it("renders the dot on the calendar-local day for an all-day bare-date startDate", () => {
+      // All-day events from non-canonical sources may carry a bare YYYY-MM-DD
+      // string (the canonical Google → IEvent transformer appends T00:00:00,
+      // but the year grid must not depend on that). `new Date("2026-06-15")`
+      // is parsed as UTC midnight, which slips to 2026-06-14 in negative-
+      // offset zones. The grid must treat the bare date as the local calendar
+      // day so the dot renders on 2026-06-15 regardless of harness TZ.
+      const events = [
+        createMockEvent({
+          id: "all-day-bare",
+          color: "blue",
+          startDate: "2026-06-15",
+          endDate: "2026-06-15",
+          isAllDay: true,
+        }),
+      ];
+
+      renderWithContext({ selectedDate: new Date(2026, 5, 15), events });
+
+      const correctCell = screen.getByTestId("year-calendar-day-2026-06-15");
+      expect(
+        within(correctCell).getAllByTestId("year-calendar-dot")
+      ).toHaveLength(1);
+
+      const previousCell = screen.getByTestId("year-calendar-day-2026-06-14");
+      expect(
+        within(previousCell).queryAllByTestId("year-calendar-dot")
+      ).toHaveLength(0);
     });
   });
 
