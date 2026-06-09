@@ -2,6 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { getEventsForYear } from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useRef } from "react";
@@ -47,20 +48,57 @@ function formatDayKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function getUniqueColorsForDay(events: IEvent[], day: Date): TEventColor[] {
-  const colors = new Set<TEventColor>();
-  for (const event of events) {
-    if (isSameDay(new Date(event.startDate), day)) {
-      colors.add(event.color);
-    }
+const BARE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+// All-day events from non-canonical sources can carry a bare YYYY-MM-DD
+// startDate. `new Date("YYYY-MM-DD")` parses it as UTC midnight, which slips
+// to the previous day in negative-offset zones — so the dot would render on
+// the wrong cell. Construct the date from local Y/M/D parts in that case.
+function parseEventStartLocal(event: IEvent): Date {
+  const match = BARE_DATE_RE.exec(event.startDate);
+  if (match) {
+    const [, y, m, d] = match;
+    return new Date(Number(y), Number(m) - 1, Number(d));
   }
+  return new Date(event.startDate);
+}
+
+// Pre-bucket events into a Map<dayKey, Set<TEventColor>> so each day cell
+// reduces to an O(1) lookup instead of scanning the whole event array.
+// Drops the year-grid render from O(events × cells) to O(events + cells).
+// Exported for unit testing — the map shape is the contract that lets
+// MonthPanel render dots without ever touching the raw event list.
+export function bucketEventColorsByDayKey(
+  events: IEvent[]
+): Map<string, Set<TEventColor>> {
+  const map = new Map<string, Set<TEventColor>>();
+  for (const event of events) {
+    const key = formatDayKey(parseEventStartLocal(event));
+    let colors = map.get(key);
+    if (!colors) {
+      colors = new Set<TEventColor>();
+      map.set(key, colors);
+    }
+    colors.add(event.color);
+  }
+  return map;
+}
+
+const EMPTY_COLORS: ReadonlySet<TEventColor> = new Set();
+
+function orderedColorsForDay(
+  colorsByDayKey: Map<string, Set<TEventColor>>,
+  dayKey: string
+): TEventColor[] {
+  const colors = colorsByDayKey.get(dayKey) ?? EMPTY_COLORS;
+  if (colors.size === 0) return [];
   return COLOR_DISPLAY_ORDER.filter((c) => colors.has(c));
 }
 
 interface MonthPanelProps {
   monthDate: Date;
   today: Date;
-  events: IEvent[];
+  colorsByDayKey: Map<string, Set<TEventColor>>;
   onDayClick: (date: Date) => void;
   onMonthClick: (monthDate: Date) => void;
 }
@@ -68,7 +106,7 @@ interface MonthPanelProps {
 function MonthPanel({
   monthDate,
   today,
-  events,
+  colorsByDayKey,
   onDayClick,
   onMonthClick,
 }: MonthPanelProps) {
@@ -107,10 +145,10 @@ function MonthPanel({
         ))}
 
         {days.map((day) => {
-          const colors = getUniqueColorsForDay(events, day);
+          const key = formatDayKey(day);
+          const colors = orderedColorsForDay(colorsByDayKey, key);
           const visibleDots = colors.slice(0, MAX_DOTS_PER_DAY);
           const isToday = isSameDay(day, today);
-          const key = formatDayKey(day);
 
           return (
             <button
@@ -183,16 +221,26 @@ export function YearCalendar() {
 
   const months = Array.from({ length: 12 }, (_, i) => new Date(year, i, 1));
 
-  const yearEventCount = events.filter((event) =>
-    isSameYear(new Date(event.startDate), selectedDate)
-  ).length;
+  // Bucket once per render: each day cell then resolves its dots via an
+  // O(1) Map.get instead of scanning the full event array (was up to
+  // 366 cells × N events). React Compiler memoises identity automatically.
+  const colorsByDayKey = bucketEventColorsByDayKey(events);
 
+  // Use overlap logic so an event spanning Dec → Jan is counted in both
+  // years. Filtering only by `startDate` would drop the Dec 30 → Jan 2
+  // case from the Jan-side year's count.
+  const yearEventCount = getEventsForYear(events, selectedDate).length;
+
+  // Prev/next-year nav lands on Jan 1 of the target year so the destination
+  // doesn't depend on the month the user happened to be viewing. Issue #203
+  // bug 4: previously preserved `selectedDate.getMonth()`, which made the
+  // semantics "go to April 1 of the next year" rather than "go to next year".
   const previousYear = () => {
-    setSelectedDate(new Date(year - 1, selectedDate.getMonth(), 1));
+    setSelectedDate(new Date(year - 1, 0, 1));
   };
 
   const nextYear = () => {
-    setSelectedDate(new Date(year + 1, selectedDate.getMonth(), 1));
+    setSelectedDate(new Date(year + 1, 0, 1));
   };
 
   const goToToday = () => {
@@ -280,7 +328,7 @@ export function YearCalendar() {
             key={monthDate.getMonth()}
             monthDate={monthDate}
             today={today}
-            events={events}
+            colorsByDayKey={colorsByDayKey}
             onDayClick={handleDayClick}
             onMonthClick={handleMonthClick}
           />

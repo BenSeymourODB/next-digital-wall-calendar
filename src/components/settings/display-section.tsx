@@ -19,7 +19,16 @@ interface DisplaySectionProps {
   onChange: (values: Partial<DisplayValues>) => void;
 }
 
-const THEME_OPTIONS = ["light", "dark", "system"] as const;
+// Keep in sync with `THEMES` in `src/components/providers/ThemeProvider.tsx`
+// and `VALID_THEMES` in `src/app/api/settings/route.ts`.
+const THEME_OPTIONS = ["light", "dark", "wall-projector", "system"] as const;
+
+const THEME_LABELS: Record<(typeof THEME_OPTIONS)[number], string> = {
+  light: "Light",
+  dark: "Dark",
+  "wall-projector": "Wall-Projector",
+  system: "System",
+};
 
 export function DisplaySection({ values, onChange }: DisplaySectionProps) {
   const { setTheme } = useTheme();
@@ -53,7 +62,7 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
                   onChange={() => handleThemeChange(theme)}
                   className="text-blue-600"
                 />
-                <span className="capitalize">{theme}</span>
+                <span>{THEME_LABELS[theme]}</span>
               </Label>
             ))}
           </div>

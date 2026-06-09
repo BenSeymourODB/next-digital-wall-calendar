@@ -16,6 +16,7 @@ import {
   normalizeCalendarListEntry,
   normalizeFetchedEvent,
 } from "@/lib/google-calendar";
+import { canWriteToCalendar } from "@/lib/google-calendar-mappers";
 import { describe, expect, it } from "vitest";
 
 describe("normalizeFetchedEvent", () => {
@@ -342,6 +343,26 @@ describe("end-to-end: enriched API responses flow through the mappers", () => {
     expect(mapped[0]?.selected).toBe(true);
     expect(mapped[1]?.accessRole).toBe("reader");
     expect(mapped[1]?.summary).toBe("Shared");
+  });
+});
+
+describe("canWriteToCalendar (#266)", () => {
+  it("returns true for owner and writer roles", () => {
+    expect(canWriteToCalendar("owner")).toBe(true);
+    expect(canWriteToCalendar("writer")).toBe(true);
+  });
+
+  it("returns false for reader and freeBusyReader roles", () => {
+    expect(canWriteToCalendar("reader")).toBe(false);
+    expect(canWriteToCalendar("freeBusyReader")).toBe(false);
+  });
+
+  it("returns true when role is undefined (permissive default)", () => {
+    // `undefined` means the calendar list hasn't loaded yet or the
+    // calendarId wasn't in the payload. Failing closed here would
+    // silently hide delete buttons on owned calendars — Google's
+    // server-side 403 is the backstop for actual permission changes.
+    expect(canWriteToCalendar(undefined)).toBe(true);
   });
 });
 

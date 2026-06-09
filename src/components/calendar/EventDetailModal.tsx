@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { canWriteToCalendar } from "@/lib/google-calendar-mappers";
 import type {
   IEvent,
   TCalendarAccessRole,
@@ -65,10 +66,6 @@ interface EventDetailModalProps {
    * list doesn't accidentally hide the button on owned calendars.
    */
   accessRole?: TCalendarAccessRole;
-}
-
-function isReadOnlyRole(role: TCalendarAccessRole | undefined): boolean {
-  return role === "reader" || role === "freeBusyReader";
 }
 
 function getInitials(name: string): string {
@@ -118,7 +115,7 @@ export function EventDetailModal({
   // Single chokepoint for "this calendar disallows mutation". When #265
   // adds the edit (PATCH) button it should reuse this same flag rather
   // than re-deriving the rule.
-  const canDelete = Boolean(onDelete) && !isReadOnlyRole(accessRole);
+  const canDelete = Boolean(onDelete) && canWriteToCalendar(accessRole);
 
   const handleConfirmDelete = async () => {
     if (!onDelete) return;
