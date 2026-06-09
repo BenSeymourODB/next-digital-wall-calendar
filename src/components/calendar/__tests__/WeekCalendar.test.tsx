@@ -3,6 +3,7 @@ import {
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
 import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import { __resetUseDateNowForTests } from "@/lib/hooks/use-date-now";
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
 import { render, screen } from "@testing-library/react";
@@ -163,11 +164,16 @@ describe("WeekCalendar", () => {
     // Regression: #352. WeekCalendar.isCurrentWeek must use the user's
     // weekStartDay so the Today button toggles enabled/disabled on the
     // Sun→Mon (or Sat→Sun) boundary, not on a hard-coded WEEK_STARTS_ON.
+    //
+    // `useTodayStartOfDay` caches the day at module load, so each test
+    // resets the cache after `vi.setSystemTime` to pull the fake clock —
+    // same pattern as `midnight-rollover.test.tsx`.
     beforeEach(() => {
       vi.useFakeTimers();
     });
 
     afterEach(() => {
+      __resetUseDateNowForTests();
       vi.useRealTimers();
     });
 
@@ -176,6 +182,7 @@ describe("WeekCalendar", () => {
       // - Sunday-first: today ∈ [Sun Apr 19 – Sat Apr 25]; selectedDate ∈ [Sun Apr 12 – Sat Apr 18] → different weeks.
       // - Monday-first: today ∈ [Mon Apr 13 – Sun Apr 19]; selectedDate ∈ same week → same week.
       vi.setSystemTime(new Date(2026, 3, 19, 12, 0, 0));
+      __resetUseDateNowForTests();
       const selectedDate = new Date(2026, 3, 17, 12, 0, 0);
 
       renderWithContext({ selectedDate, weekStartDay: 1 });
@@ -188,6 +195,7 @@ describe("WeekCalendar", () => {
       // - Sunday-first: today ∈ [Sun Apr 12 – Sat Apr 18]; selectedDate ∈ same week → same week.
       // - Monday-first: today ∈ [Mon Apr 13 – Sun Apr 19]; selectedDate ∈ [Mon Apr 6 – Sun Apr 12] → different weeks.
       vi.setSystemTime(new Date(2026, 3, 18, 12, 0, 0));
+      __resetUseDateNowForTests();
       const selectedDate = new Date(2026, 3, 12, 12, 0, 0);
 
       renderWithContext({ selectedDate, weekStartDay: 1 });
