@@ -502,6 +502,163 @@ describe("AgendaCalendar", () => {
     });
   });
 
+  describe("Group by category (#211)", () => {
+    const multiCategoryEvents = (): IEvent[] => [
+      createMockEvent({
+        id: "work-1",
+        title: "Standup",
+        category: "Work",
+        startDate: getFutureDate(1, 9, 0),
+        endDate: getFutureDate(1, 9, 15),
+      }),
+      createMockEvent({
+        id: "family-1",
+        title: "School Pickup",
+        category: "Family",
+        startDate: getFutureDate(1, 15, 0),
+        endDate: getFutureDate(1, 15, 30),
+      }),
+      createMockEvent({
+        id: "work-2",
+        title: "Roadmap Review",
+        category: "Work",
+        startDate: getFutureDate(2, 11, 0),
+        endDate: getFutureDate(2, 12, 0),
+      }),
+      createMockEvent({
+        id: "uncat-1",
+        title: "Coffee with Sam",
+        startDate: getFutureDate(2, 13, 0),
+        endDate: getFutureDate(2, 14, 0),
+        // No category — should fall under "Uncategorised"
+      }),
+    ];
+
+    it("renders one section per category, alphabetised case-insensitively", () => {
+      renderWithContext(multiCategoryEvents(), {
+        agendaModeGroupBy: "category",
+      });
+
+      const headers = screen
+        .getAllByRole("heading", { level: 3 })
+        .map((h) => (h.textContent ?? "").trim());
+
+      // "Family" sorts before "Work" alphabetically, and the test pushes
+      // Uncategorised last (covered by a separate assertion below).
+      expect(headers).toEqual(expect.arrayContaining(["Family", "Work"]));
+      const family = headers.indexOf("Family");
+      const work = headers.indexOf("Work");
+      expect(family).toBeGreaterThanOrEqual(0);
+      expect(work).toBeGreaterThan(family);
+    });
+
+    it("places the 'Uncategorised' bucket last when present", () => {
+      renderWithContext(multiCategoryEvents(), {
+        agendaModeGroupBy: "category",
+      });
+
+      const headers = screen
+        .getAllByRole("heading", { level: 3 })
+        .map((h) => (h.textContent ?? "").trim());
+
+      expect(headers[headers.length - 1]).toBe("Uncategorised");
+    });
+
+    it("omits the 'Uncategorised' bucket when every event has a category", () => {
+      const categorised = multiCategoryEvents().filter(
+        (event) => event.category !== undefined
+      );
+      renderWithContext(categorised, { agendaModeGroupBy: "category" });
+
+      const headers = screen
+        .getAllByRole("heading", { level: 3 })
+        .map((h) => (h.textContent ?? "").trim());
+
+      expect(headers).not.toContain("Uncategorised");
+    });
+
+    it("shows the per-category event count badge", () => {
+      renderWithContext(multiCategoryEvents(), {
+        agendaModeGroupBy: "category",
+      });
+
+      // Family: 1 event, Work: 2 events, Uncategorised: 1 event
+      const counts = screen
+        .getAllByText(/\d+ events?/)
+        .map((node) => (node.textContent ?? "").trim());
+      expect(counts).toEqual(
+        expect.arrayContaining(["1 event", "2 events", "1 event"])
+      );
+    });
+
+    it("applies the search filter within each category group", async () => {
+      const user = userEvent.setup();
+      renderWithContext(multiCategoryEvents(), {
+        agendaModeGroupBy: "category",
+      });
+
+      await user.type(screen.getByPlaceholderText(/search events/i), "road");
+
+      expect(screen.getByText("Roadmap Review")).toBeInTheDocument();
+      expect(screen.queryByText("Standup")).not.toBeInTheDocument();
+      expect(screen.queryByText("School Pickup")).not.toBeInTheDocument();
+      expect(screen.queryByText("Coffee with Sam")).not.toBeInTheDocument();
+    });
+
+    it("invokes setAgendaModeGroupBy('category') when the toggle is clicked", async () => {
+      const setAgendaModeGroupBy = vi.fn();
+      const user = userEvent.setup();
+      renderWithContext(multiCategoryEvents(), {
+        agendaModeGroupBy: "date",
+        setAgendaModeGroupBy,
+      });
+
+      const toggle = screen.getByRole("button", {
+        name: /group by category/i,
+      });
+      await user.click(toggle);
+
+      expect(setAgendaModeGroupBy).toHaveBeenCalledWith("category");
+    });
+
+    it("reflects active state via aria-pressed on the category toggle", () => {
+      renderWithContext(multiCategoryEvents(), {
+        agendaModeGroupBy: "category",
+      });
+
+      const dateToggle = screen.getByRole("button", { name: /group by date/i });
+      const colorToggle = screen.getByRole("button", {
+        name: /group by color/i,
+      });
+      const categoryToggle = screen.getByRole("button", {
+        name: /group by category/i,
+      });
+
+      expect(categoryToggle).toHaveAttribute("aria-pressed", "true");
+      expect(dateToggle).toHaveAttribute("aria-pressed", "false");
+      expect(colorToggle).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("treats whitespace-only category strings as uncategorised", () => {
+      const events = [
+        createMockEvent({
+          id: "ws-1",
+          title: "Whitespace cat",
+          category: "   ",
+          startDate: getFutureDate(1, 10, 0),
+          endDate: getFutureDate(1, 11, 0),
+        }),
+      ];
+
+      renderWithContext(events, { agendaModeGroupBy: "category" });
+
+      const headers = screen
+        .getAllByRole("heading", { level: 3 })
+        .map((h) => (h.textContent ?? "").trim());
+      expect(headers).toEqual(["Uncategorised"]);
+    });
+  });
+
   describe("Search + Group by interaction", () => {
     it("applies the search filter within each color group", async () => {
       const user = userEvent.setup();

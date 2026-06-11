@@ -27,6 +27,27 @@ export type TEventColor =
   | "orange";
 
 /**
+ * How `AgendaCalendar` (and `AgendaList` when `agendaMode` is on) buckets
+ * the events inside the current window. `"category"` was added with #211
+ * to surface the user-supplied `IEvent.category` label as a third
+ * grouping. Persists to `calendar-settings` localStorage; pre-#211
+ * payloads holding only `"date"` or `"color"` still satisfy this union
+ * (type-only widening, no runtime decoder).
+ */
+export type TAgendaGroupBy = "date" | "color" | "category";
+
+const AGENDA_GROUP_BY_VALUES: readonly TAgendaGroupBy[] = [
+  "date",
+  "color",
+  "category",
+] as const;
+
+/** Narrow an unchecked string (e.g. from a `RadioGroup.onValueChange`) onto `TAgendaGroupBy`. */
+export function isAgendaGroupBy(value: string): value is TAgendaGroupBy {
+  return (AGENDA_GROUP_BY_VALUES as readonly string[]).includes(value);
+}
+
+/**
  * Per-calendar permission level reported by Google's `CalendarList.list`.
  * Mirrors `gapi.client.calendar.CalendarListEntry.accessRole`. Lives here
  * (rather than in `CalendarProvider`) so server-only modules — the
@@ -85,6 +106,14 @@ export interface IEvent {
   user: IUser;
   isAllDay: boolean;
   calendarId: string;
+  /**
+   * User-supplied category label sourced from Google Calendar's
+   * `extendedProperties.shared.category` (preferred) or
+   * `.private.category` (fallback). Optional because Google does not
+   * expose a first-class category field — events created from clients
+   * that don't stamp this property carry no category. See issue #211.
+   */
+  category?: string;
 }
 
 /**
