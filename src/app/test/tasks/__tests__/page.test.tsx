@@ -305,19 +305,16 @@ describe("/test/tasks page", () => {
       ).toBeInTheDocument();
     });
 
-    it("keeps the picker in sync with the rendered TaskList after a stale selection", async () => {
+    it("falls back to lists[0] when a retry returns lists without the persisted selection", async () => {
+      // The user previously chose "list-b" (persisted in localStorage). The
+      // first load fails, and the retry returns a list set where "list-b"
+      // has since been deleted. The resolved `selectedList ?? lists[0]`
+      // fallback must drive both the <select value> and the rendered
+      // TaskList to a real list id — the picker can never display the stale
+      // "list-b" once it's gone from the fetched set.
+      window.localStorage.setItem(LIVE_LIST_LS_KEY, JSON.stringify("list-b"));
       mockFetch
-        .mockResolvedValueOnce(
-          jsonResponse({
-            lists: [
-              { id: "list-a", title: "Personal", updated: "2026-05-01T00:00Z" },
-              { id: "list-b", title: "Work", updated: "2026-05-01T00:00Z" },
-            ],
-          })
-        )
         .mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500))
-        // Returned lists differ from the user's previous selection — the
-        // picker must not display the stale id.
         .mockResolvedValueOnce(
           jsonResponse({
             lists: [
@@ -329,26 +326,22 @@ describe("/test/tasks page", () => {
       const user = userEvent.setup();
       render(<TestTasksPage />);
 
+      await screen.findByTestId("test-tasks-live-error");
+      await user.click(screen.getByRole("button", { name: /try again/i }));
+
+      const picker = (await screen.findByTestId(
+        "test-tasks-live-picker"
+      )) as HTMLSelectElement;
+      await waitFor(() => expect(picker.value).toBe("list-c"));
+      expect(picker.value).not.toBe("list-b");
+
+      // TaskList must render the resolved list, not the stale persisted id.
       await waitFor(() => expect(mockTaskList).toHaveBeenCalled());
-
-      // Pick the second list, then trigger a reload that fails. We can
-      // simulate a reload by advancing the URL; here we drive it via the
-      // retry button in the error state, so we need the next fetch (the
-      // automatic one after picker change) to fail. Easier: directly
-      // advance the picker, then assert that an unrelated re-fetch which
-      // returns a different list shape still sets the picker's
-      // <select value> to a real list id.
-      await user.selectOptions(
-        screen.getByTestId("test-tasks-live-picker"),
-        "list-b"
-      );
-
-      // Selection is "list-b"; lists in state still contain list-b, so
-      // the picker shows list-b. (Sanity check that onChange wired up.)
-      expect(
-        (screen.getByTestId("test-tasks-live-picker") as HTMLSelectElement)
-          .value
-      ).toBe("list-b");
+      const config = getRenderedConfig(mockTaskList.mock.calls.length - 1);
+      expect(config.lists[0]).toMatchObject({
+        listId: "list-c",
+        listTitle: "Renamed",
+      });
     });
   });
 

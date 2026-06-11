@@ -76,10 +76,16 @@ the live-mode picker visually consistent with the existing settings UI.
 - [ ] No `test-results/` / `playwright-report/` / `blob-report/` committed
 - [ ] `pnpm test && pnpm lint:fix && pnpm format:fix && pnpm check-types` clean
 
+## Shipped beyond the original scope
+
+- Persisting the picker selection to localStorage — folded in during the
+  rebase onto current `main` (commit `3018c50`) to preserve the behaviour
+  PR #289 added while this branch sat on a stale base. Driven by
+  `useLocalStorage(LIVE_LIST_LS_KEY)`; covered by the `picker persistence
+(#289)` describe block in `page.test.tsx`.
+
 ## Out of scope / deferred
 
-- Persisting the picker selection to localStorage (probably worth a
-  follow-up alongside #208's filter-persistence work).
 - Surfacing the live mode at the production tasks UI (`/test/tasks` is
   explicitly a developer harness; the production wiring lives elsewhere
   and is tracked under #166 / #200).
