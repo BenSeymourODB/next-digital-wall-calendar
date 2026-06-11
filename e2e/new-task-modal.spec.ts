@@ -97,7 +97,7 @@ test.describe("NewTaskModal launched from TaskList", () => {
   test("opens the dialog from the Add Task footer button", async ({ page }) => {
     await mockTasksApi(page);
 
-    await page.goto("/test/tasks");
+    await page.goto("/test/tasks?lists=single");
 
     const addBtn = page.getByRole("button", { name: /add task/i });
     await expect(addBtn).toBeVisible();
@@ -112,7 +112,7 @@ test.describe("NewTaskModal launched from TaskList", () => {
 
   test("smart default pre-selects the only enabled list", async ({ page }) => {
     await mockTasksApi(page);
-    await page.goto("/test/tasks");
+    await page.goto("/test/tasks?lists=single");
 
     await page.getByRole("button", { name: /add task/i }).click();
     const dialog = page.getByRole("dialog");
@@ -138,7 +138,7 @@ test.describe("NewTaskModal launched from TaskList", () => {
     page,
   }) => {
     await mockTasksApi(page);
-    await page.goto("/test/tasks");
+    await page.goto("/test/tasks?lists=single");
 
     await page.getByRole("button", { name: /add task/i }).click();
     const dialog = page.getByRole("dialog");
@@ -154,7 +154,7 @@ test.describe("NewTaskModal launched from TaskList", () => {
     page,
   }) => {
     const { created } = await mockTasksApi(page);
-    await page.goto("/test/tasks");
+    await page.goto("/test/tasks?lists=single");
 
     // Initial empty state
     await expect(page.getByText(/no tasks/i)).toBeVisible();
@@ -187,7 +187,7 @@ test.describe("NewTaskModal launched from TaskList", () => {
     const api = await mockTasksApi(page);
     api.setNextPostFailure(500, { error: "Server boom" });
 
-    await page.goto("/test/tasks");
+    await page.goto("/test/tasks?lists=single");
 
     await page.getByRole("button", { name: /add task/i }).click();
     const dialog = page.getByRole("dialog");
@@ -203,7 +203,7 @@ test.describe("NewTaskModal launched from TaskList", () => {
     page,
   }) => {
     const { created } = await mockTasksApi(page);
-    await page.goto("/test/tasks");
+    await page.goto("/test/tasks?lists=single");
 
     await page.getByRole("button", { name: /add task/i }).click();
     const dialog = page.getByRole("dialog");
