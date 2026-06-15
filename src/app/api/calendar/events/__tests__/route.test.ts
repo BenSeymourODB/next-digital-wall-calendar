@@ -613,17 +613,27 @@ describe("/api/calendar/events", () => {
           );
 
           // Both calendars 404 — the typical "two stale ids in the saved
-          // filter" scenario after a calendar share is revoked.
+          // filter" scenario after a calendar share is revoked. Mock body
+          // mirrors the real Google error envelope (`error.message` nested)
+          // so `parseGoogleErrorBody` exercises its happy path on the way
+          // through, not the empty-body fallback.
+          const notFoundBody = {
+            error: {
+              code: 404,
+              message: "Calendar not found",
+              status: "NOT_FOUND",
+            },
+          };
           mockFetch
             .mockResolvedValueOnce({
               ok: false,
               status: 404,
-              json: () => Promise.resolve({ error: "Calendar not found" }),
+              json: () => Promise.resolve(notFoundBody),
             })
             .mockResolvedValueOnce({
               ok: false,
               status: 404,
-              json: () => Promise.resolve({ error: "Calendar not found" }),
+              json: () => Promise.resolve(notFoundBody),
             });
 
           const request = createMockRequest(
@@ -643,14 +653,23 @@ describe("/api/calendar/events", () => {
             mockGoogleAccount.access_token!
           );
 
-          // One 404 (stale id), one 502 (validation failure or upstream
-          // outage). The caller cannot generally pick one as canonical, so
-          // collapse to 502 — "we tried, nothing worked".
+          // One 404 (stale id, HTTP-level failure), one 502 (Zod validation
+          // failure — `ok: true` body with missing required `id` maps to
+          // `status: 502` inside `fetchEventsFromCalendar`). The caller
+          // cannot generally pick one status as canonical, so we collapse
+          // to 502 — "we tried, nothing worked".
           mockFetch
             .mockResolvedValueOnce({
               ok: false,
               status: 404,
-              json: () => Promise.resolve({ error: "Calendar not found" }),
+              json: () =>
+                Promise.resolve({
+                  error: {
+                    code: 404,
+                    message: "Calendar not found",
+                    status: "NOT_FOUND",
+                  },
+                }),
             })
             .mockResolvedValueOnce({
               ok: true,

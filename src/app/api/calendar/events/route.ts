@@ -270,9 +270,13 @@ export async function GET(request: NextRequest) {
     // collapse to 502 because we can't generally pick one as canonical.
     //
     // Single-calendar all-fail naturally falls through this branch with
-    // `statuses` of length 1, preserving the original 404/500/etc. wire
-    // behaviour. Issue #386 item 2.
-    if (errors.length === calendarIds.length && errors.length > 0) {
+    // `statuses` of length 1 (`every` is vacuously true), preserving the
+    // original 404/500/etc. wire behaviour. `calendarIds` is always
+    // non-empty by construction (`calendarIdsParam?.split(",")` yields a
+    // non-empty array if set, otherwise `[calendarId]` which defaults to
+    // `["primary"]`), so the `errors.length === calendarIds.length` check
+    // already implies a non-zero error count. Issue #386 item 2.
+    if (errors.length === calendarIds.length) {
       const statuses = errors.map((e) => e.status ?? 500);
       const allSame = statuses.every((s) => s === statuses[0]);
       return NextResponse.json(
