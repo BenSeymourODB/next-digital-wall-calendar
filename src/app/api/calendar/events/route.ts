@@ -14,6 +14,8 @@ import {
   GoogleEventSchema,
   type GoogleEventsListResponse,
   GoogleEventsListResponseSchema,
+  VALIDATION_ISSUES_SUMMARY_COUNT,
+  parseGoogleErrorBody,
   parseGoogleResponse,
 } from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
@@ -107,7 +109,9 @@ async function fetchEventsFromCalendar(
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorData = parseGoogleErrorBody(
+      await response.json().catch(() => ({}))
+    );
     return {
       events: [],
       error: {
@@ -131,7 +135,7 @@ async function fetchEventsFromCalendar(
         endpoint: error.endpoint,
         ...(error.calendarId ? { calendarId: error.calendarId } : {}),
         validationIssues: error.issues
-          .slice(0, 5)
+          .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
           .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
           .join("; "),
       });
@@ -259,11 +263,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // If ALL calendars failed (and not auth errors), return error
-    if (errors.length === calendarIds.length && calendarIds.length === 1) {
+    // If every calendar in the request failed (and none were auth errors —
+    // those bail out earlier with a 401), surface an error status so a
+    // caller keying off the top-level status sees the failure. When the
+    // per-calendar statuses agree, use that shared status; mixed statuses
+    // collapse to 502 because we can't generally pick one as canonical.
+    //
+    // Single-calendar all-fail naturally falls through this branch with
+    // `statuses` of length 1, preserving the original 404/500/etc. wire
+    // behaviour. Issue #386 item 2.
+    if (errors.length === calendarIds.length && errors.length > 0) {
+      const statuses = errors.map((e) => e.status ?? 500);
+      const allSame = statuses.every((s) => s === statuses[0]);
       return NextResponse.json(
         { error: "Failed to fetch calendar events" },
-        { status: errors[0].status || 500 }
+        { status: allSame ? statuses[0] : 502 }
       );
     }
 
@@ -606,7 +620,7 @@ export async function POST(request: NextRequest) {
               : {}),
             userId: session.user.id,
             validationIssues: validationError.issues
-              .slice(0, 5)
+              .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
               .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
               .join("; "),
           });
@@ -668,12 +682,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const errorBody = await response.json().catch(() => ({}));
+    const errorBody = parseGoogleErrorBody(
+      await response.json().catch(() => ({}))
+    );
     logger.error(new Error("Google Calendar create failed"), {
       userId: session.user.id,
       calendarId: event.calendarId,
       googleStatus: response.status,
-      googleError: errorBody?.error?.message ?? "unknown",
+      googleError: errorBody.error?.message ?? "unknown",
     });
 
     return NextResponse.json(

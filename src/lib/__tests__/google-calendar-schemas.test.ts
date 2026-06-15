@@ -13,6 +13,7 @@ import {
   GoogleCalendarListResponseSchema,
   GoogleEventSchema,
   GoogleEventsListResponseSchema,
+  parseGoogleErrorBody,
   parseGoogleResponse,
 } from "../google-calendar-schemas";
 
@@ -214,6 +215,59 @@ describe("GoogleApiErrorBodySchema", () => {
       error: { message: "Forbidden" },
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("parseGoogleErrorBody", () => {
+  it("returns the parsed body on a canonical Google error envelope", () => {
+    const parsed = parseGoogleErrorBody({
+      error: {
+        code: 404,
+        message: "Calendar not found",
+        status: "NOT_FOUND",
+      },
+    });
+    expect(parsed.error?.message).toBe("Calendar not found");
+    expect(parsed.error?.code).toBe(404);
+    expect(parsed.error?.status).toBe("NOT_FOUND");
+  });
+
+  it("returns the body unchanged when error.message is the only field present", () => {
+    const parsed = parseGoogleErrorBody({ error: { message: "Forbidden" } });
+    expect(parsed.error?.message).toBe("Forbidden");
+  });
+
+  it("returns an empty object for an empty body (mirrors `.catch(() => ({}))` fallback)", () => {
+    const parsed = parseGoogleErrorBody({});
+    expect(parsed.error).toBeUndefined();
+  });
+
+  it("returns an empty object when the input is null", () => {
+    expect(parseGoogleErrorBody(null)).toEqual({});
+  });
+
+  it("returns an empty object when the input is a non-object primitive", () => {
+    expect(parseGoogleErrorBody("not a body")).toEqual({});
+    expect(parseGoogleErrorBody(42)).toEqual({});
+    expect(parseGoogleErrorBody(true)).toEqual({});
+  });
+
+  it("returns an empty object when the input is an array", () => {
+    expect(parseGoogleErrorBody([])).toEqual({});
+    expect(parseGoogleErrorBody([{ error: "wrong shape" }])).toEqual({});
+  });
+
+  it("returns an empty object when `error` is the wrong type", () => {
+    expect(parseGoogleErrorBody({ error: "string instead of object" })).toEqual(
+      {}
+    );
+  });
+
+  it("never throws — soft-fails to {} so route fallback chains stay intact", () => {
+    expect(() => parseGoogleErrorBody(undefined)).not.toThrow();
+    expect(() =>
+      parseGoogleErrorBody({ error: { code: "not a number" } })
+    ).not.toThrow();
   });
 });
 

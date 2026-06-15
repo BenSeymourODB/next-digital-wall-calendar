@@ -240,6 +240,14 @@ export const GoogleApiErrorBodySchema = z
 export type GoogleApiErrorBody = z.infer<typeof GoogleApiErrorBodySchema>;
 
 /**
+ * Maximum number of Zod issues to include when summarising a validation
+ * failure. Used both in the human-readable {@link GoogleApiValidationError}
+ * message and in the structured `validationIssues` log field every route
+ * emits, so the count stays consistent across the two surfaces.
+ */
+export const VALIDATION_ISSUES_SUMMARY_COUNT = 5;
+
+/**
  * Context for a {@link GoogleApiValidationError} so route logging has enough
  * information to triage which Google endpoint produced the malformed
  * payload.
@@ -263,7 +271,7 @@ export class GoogleApiValidationError extends Error {
 
   constructor(context: GoogleApiValidationContext, issues: z.core.$ZodIssue[]) {
     const summary = issues
-      .slice(0, 3)
+      .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
       .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
       .join("; ");
     super(
@@ -274,6 +282,31 @@ export class GoogleApiValidationError extends Error {
     this.calendarId = context.calendarId;
     this.issues = issues;
   }
+}
+
+/**
+ * Soft-parse a Google API error response body. Used at the route-handler
+ * boundary on non-2xx responses, where the existing pattern is:
+ *
+ *     const errorData = await response.json().catch(() => ({}));
+ *     const msg = errorData.error?.message ?? "...";
+ *
+ * That access path is safe at runtime but bypasses
+ * {@link GoogleApiErrorBodySchema}. This helper restores type safety
+ * without changing observable behaviour: it returns the parsed body on a
+ * canonical Google error envelope and `{}` on anything else — `null`,
+ * primitives, arrays, wrong-typed `error` field, etc. It never throws, so
+ * existing fallbacks (`?? "unknown"`, `|| "Failed to fetch events"`)
+ * continue to do their job when Google sends a degenerate body.
+ *
+ * Why soft-fail and not throw? Routes already key off `response.status` to
+ * choose the wire response, and the body is only used for human-readable
+ * detail in the log line. A malformed body is a Google-side anomaly, not
+ * a route-handler failure mode worth a 502.
+ */
+export function parseGoogleErrorBody(data: unknown): GoogleApiErrorBody {
+  const result = GoogleApiErrorBodySchema.safeParse(data);
+  return result.success ? result.data : {};
 }
 
 /**
