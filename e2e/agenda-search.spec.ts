@@ -83,17 +83,20 @@ test.describe("Agenda Calendar — Search (family scenario)", () => {
 test.describe("Agenda Calendar — Webkit native cancel button", () => {
   // The agenda `<input type="search">` renders a UA cancel button on
   // Webkit/Blink in addition to the custom clear `<button>`. Hide the UA
-  // one globally so users only see the custom control. The pseudo
-  // (`::-webkit-search-cancel-button`) is Webkit/Blink only — skip Firefox
-  // and the iPad project (which uses Safari's iPad UA, where the pseudo
-  // is reachable but the device profile is redundant for this check).
+  // one globally so users only see the custom control. Scope this
+  // assertion to chromium only: Firefox does not render the pseudo, and
+  // WebKit's JS reflection of `::-webkit-search-cancel-button` returns
+  // `""` (empty string) in both the before- and after-fix states across
+  // Safari/WebKit versions, which would let the test pass spuriously.
+  // Chromium reliably returns `""` before the rule and `"none"` after,
+  // so it is the trustworthy signal for this regression guard.
   test("hides the native Webkit cancel button so only the custom clear control is visible", async ({
     page,
     browserName,
   }) => {
     test.skip(
-      browserName === "firefox",
-      "Firefox does not render ::-webkit-search-cancel-button"
+      browserName !== "chromium",
+      "Only chromium reliably reflects display:none on ::-webkit-search-cancel-button via getComputedStyle"
     );
 
     await page.goto("/test/calendar?events=default&view=agenda");
