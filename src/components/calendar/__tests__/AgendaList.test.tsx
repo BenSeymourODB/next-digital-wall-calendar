@@ -229,7 +229,7 @@ describe("AgendaList", () => {
       expect(titles).toEqual(["Dentist Appointment"]);
     });
 
-    it("renders a 'no matches' empty state when the query matches nothing in range", async () => {
+    it("renders a 'no matches' empty state when the query matches nothing in range, and restores the list on clear", async () => {
       const user = userEvent.setup();
       renderList({ events: [morning, afternoon], ...range });
 
@@ -244,6 +244,29 @@ describe("AgendaList", () => {
       ).toHaveTextContent(/nothing-matches/);
       // The contextual range-empty state must not also appear.
       expect(screen.queryByTestId("agenda-list-empty")).toBeNull();
+
+      // Clearing a non-matching query brings the original events back.
+      await user.click(screen.getByTestId("agenda-list-search-clear"));
+      expect(screen.queryByTestId("agenda-list-search-no-matches")).toBeNull();
+      const titles = screen
+        .getAllByTestId("agenda-list-event-title")
+        .map((el) => el.textContent);
+      expect(titles.sort()).toEqual(["Dentist Appointment", "Soccer Practice"]);
+    });
+
+    it("filters events by query when grouped by color", async () => {
+      const user = userEvent.setup();
+      renderList(
+        { events: [morning, afternoon], ...range },
+        { agendaModeGroupBy: "color" }
+      );
+
+      await user.type(screen.getByTestId("agenda-list-search-input"), "soccer");
+
+      const titles = screen
+        .getAllByTestId("agenda-list-event-title")
+        .map((el) => el.textContent);
+      expect(titles).toEqual(["Soccer Practice"]);
     });
 
     it("shows and uses the clear-search control once a query is typed", async () => {

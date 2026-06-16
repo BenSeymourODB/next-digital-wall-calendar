@@ -29,8 +29,11 @@ removing it.
 Move `filterEventsBySearch` into a new pure module
 `src/components/calendar/agenda-helpers.ts`. Both `AgendaCalendar.tsx` and
 `AgendaList.tsx` import from there. The helper is already heavily tested in
-`agenda-helpers.test.ts` (which currently imports from `AgendaCalendar`); the
-test file moves its import to the new module path with no test changes.
+`agenda-helpers.test.ts` (which currently imports from `AgendaCalendar`). To
+keep the diff minimal and avoid touching the existing test file, the
+implementation re-exports `filterEventsBySearch` from `AgendaCalendar.tsx`,
+so `agenda-helpers.test.ts` continues to import from `../AgendaCalendar`
+unchanged.
 
 We do **not** also relocate `sortEventsByStartTime` / `groupEventsByColor` /
 `groupEventsByDate` / `parseDateKey` / `capitalize` / `getColorClasses`. Those
@@ -72,9 +75,21 @@ days).
 
 - `aria-label="Search events"` on the input.
 - `aria-label="Clear search"` on the clear button.
-- `role="status"` sr-only live region announces match count while typing.
+- `aria-live="polite" aria-atomic="true"` on an sr-only `<p>` announces the
+  match count while typing. (Functionally equivalent to `role="status"`,
+  which is just syntactic sugar for the same ARIA implicit live region.)
 - `aria-hidden="true"` on the visible match-count span so the live region is
   the sole announcement vector.
+
+### Resetting search on date navigation
+
+`AgendaList` keeps `searchQuery` in local component state. When the user
+navigates to the next/previous day or week, `DayCalendar` and `WeekCalendar`
+re-render with new `rangeStart`/`rangeEnd` props but the `AgendaList`
+component instance is preserved, so the search query would silently carry
+over. The call sites in `DayCalendar.tsx` and `WeekCalendar.tsx` set
+`key={rangeStart.toISOString()}` on `<AgendaList>` so React remounts it on
+navigation and the search query (plus any open modal) resets cleanly.
 
 ## TDD plan
 

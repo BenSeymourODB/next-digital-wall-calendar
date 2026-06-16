@@ -552,5 +552,61 @@ describe("DayCalendar", () => {
       await user.click(screen.getByTestId("day-calendar-next"));
       expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
     });
+
+    // The AgendaList stays mounted as the same component instance when the
+    // user navigates day-by-day; without a remount, a search query typed on
+    // one day would silently carry over to the next. Keying AgendaList on
+    // the day forces a remount and clears search state.
+    it("clears the AgendaList search query when the selected day changes", async () => {
+      const userEv = userEvent.setup();
+      const dayA = startOfDay(new Date(2026, 3, 15));
+      const dayB = startOfDay(new Date(2026, 3, 16));
+      const eventA = createMockEvent({
+        id: "a",
+        title: "SoccerPractice",
+        startDate: at(dayA, 10),
+        endDate: at(dayA, 11),
+      });
+      const eventB = createMockEvent({
+        id: "b",
+        title: "OtherEvent",
+        startDate: at(dayB, 10),
+        endDate: at(dayB, 11),
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider
+          value={createMockContext({
+            agendaMode: true,
+            selectedDate: dayA,
+            events: [eventA, eventB],
+          })}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+      await userEv.type(
+        screen.getByTestId("agenda-list-search-input"),
+        "soccer"
+      );
+      expect(screen.getByTestId("agenda-list-search-input")).toHaveValue(
+        "soccer"
+      );
+
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({
+            agendaMode: true,
+            selectedDate: dayB,
+            events: [eventA, eventB],
+          })}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(screen.getByTestId("agenda-list-search-input")).toHaveValue("");
+      expect(screen.getByText("OtherEvent")).toBeInTheDocument();
+    });
   });
 });

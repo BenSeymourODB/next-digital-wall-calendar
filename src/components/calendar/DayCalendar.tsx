@@ -218,7 +218,11 @@ export function DayCalendar() {
       )}
 
       {agendaMode ? (
+        // Key on the day boundary so React remounts AgendaList on prev/next
+        // navigation. Without this, AgendaList's local searchQuery state
+        // would silently carry over from one day to the next.
         <AgendaList
+          key={startOfDay(selectedDate).toISOString()}
           events={dayEvents}
           rangeStart={startOfDay(selectedDate)}
           rangeEnd={endOfDay(selectedDate)}

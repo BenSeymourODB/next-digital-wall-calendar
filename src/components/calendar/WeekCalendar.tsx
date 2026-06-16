@@ -197,7 +197,11 @@ export function WeekCalendar() {
       )}
 
       {agendaMode ? (
+        // Key on the week start so React remounts AgendaList on prev/next
+        // week navigation. Without this, AgendaList's local searchQuery
+        // state would silently carry over from one week to the next.
         <AgendaList
+          key={weekStart.toISOString()}
           events={weekEvents}
           rangeStart={weekStart}
           rangeEnd={weekEnd}

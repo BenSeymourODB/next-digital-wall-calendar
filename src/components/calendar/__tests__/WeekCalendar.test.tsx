@@ -559,5 +559,66 @@ describe("WeekCalendar", () => {
       await user.click(screen.getByTestId("week-calendar-next"));
       expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
     });
+
+    // Keying AgendaList on the week start forces a remount on week
+    // navigation, clearing the local search query so it doesn't carry
+    // silently into the next week.
+    it("clears the AgendaList search query when the selected week changes", async () => {
+      const userEv = userEvent.setup();
+      const dateInWeekA = new Date(2026, 3, 15); // Wed
+      const dateInWeekB = new Date(2026, 3, 22); // Wed, +1 week
+      const weekAStart = startOfWeek(dateInWeekA, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const weekBStart = startOfWeek(dateInWeekB, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const eventA = createMockEvent({
+        id: "a",
+        title: "SoccerPractice",
+        startDate: midday(addDays(weekAStart, 1)).toISOString(),
+        endDate: midday(addDays(weekAStart, 1)).toISOString(),
+      });
+      const eventB = createMockEvent({
+        id: "b",
+        title: "OtherEvent",
+        startDate: midday(addDays(weekBStart, 1)).toISOString(),
+        endDate: midday(addDays(weekBStart, 1)).toISOString(),
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider
+          value={createMockContext({
+            agendaMode: true,
+            selectedDate: dateInWeekA,
+            events: [eventA, eventB],
+          })}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+      await userEv.type(
+        screen.getByTestId("agenda-list-search-input"),
+        "soccer"
+      );
+      expect(screen.getByTestId("agenda-list-search-input")).toHaveValue(
+        "soccer"
+      );
+
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({
+            agendaMode: true,
+            selectedDate: dateInWeekB,
+            events: [eventA, eventB],
+          })}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+
+      expect(screen.getByTestId("agenda-list-search-input")).toHaveValue("");
+      expect(screen.getByText("OtherEvent")).toBeInTheDocument();
+    });
   });
 });
