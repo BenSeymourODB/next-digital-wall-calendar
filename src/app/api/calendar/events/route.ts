@@ -82,10 +82,10 @@ function toWireFetchError(e: InternalCalendarFetchError): CalendarFetchError {
  * mixed statuses, collapse to a 502 — proxy-style "upstream failures" that
  * signals the overall request couldn't be served without claiming any
  * single upstream status as canonical. Auth (401) errors short-circuit the
- * outer handler so they never reach this function.
+ * outer handler so they never reach this function. The caller's guard
+ * (`errors.length === calendarIds.length`) ensures `errors` is non-empty.
  */
 function resolveAllFailStatus(errors: InternalCalendarFetchError[]): number {
-  if (errors.length === 0) return 500;
   const first = errors[0].status ?? 500;
   return errors.every((e) => (e.status ?? 500) === first) ? first : 502;
 }

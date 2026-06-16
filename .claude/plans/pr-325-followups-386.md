@@ -62,7 +62,9 @@ helper falls back to `{}` so callers keep their `?.error?.message ?? "..."`
 ladder; the only behaviour change is that the read goes through a parsed,
 typed envelope instead of a raw cast.
 
-Replace the four sites:
+Replace the three error-body access sites in the events routes (the
+`calendars` and `colors` routes log the raw `errorData` as a structured
+blob rather than reading `.error.message`, so they're not in scope):
 
 | File                                        | Line    | Pattern today                                                 |
 | ------------------------------------------- | ------- | ------------------------------------------------------------- |
