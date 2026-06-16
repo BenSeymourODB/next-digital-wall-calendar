@@ -100,10 +100,18 @@ describe("getOrStartSessionRefresh (singleflight #216)", () => {
     expect(deps.prisma.account.update).toHaveBeenCalledTimes(1);
   });
 
-  it("does not collapse calls for distinct providerAccountIds", async () => {
-    const deps = makeDeps();
+  it("does not collapse calls for distinct providerAccountIds (true in-flight concurrency)", async () => {
+    // Hold every flight open with a shared gate so all three slots coexist in
+    // the inflight Map simultaneously before any resolves. Without the gate
+    // the test only proves serial independence (one slot purges before the
+    // next sets), which would miss a bug where two truly concurrent flights
+    // for different keys shared state.
+    const gate = deferred<GoogleRefreshedTokens>();
+    const deps = makeDeps({
+      refreshGoogleAccessToken: vi.fn().mockReturnValue(gate.promise),
+    });
 
-    const outcomes = await Promise.all([
+    const calls = [
       getOrStartSessionRefresh(
         "user-a",
         makeAccount({ providerAccountId: "google-a" }),
@@ -119,18 +127,25 @@ describe("getOrStartSessionRefresh (singleflight #216)", () => {
         makeAccount({ providerAccountId: "google-c" }),
         deps
       ),
-    ]);
+    ];
+
+    // All three flights are in-flight at this point; the gate hasn't fired.
+    // refreshGoogleAccessToken must already have been called 3× (once per
+    // distinct slot) — proving no collapse — even though zero have resolved.
+    expect(deps.refreshGoogleAccessToken).toHaveBeenCalledTimes(3);
+
+    gate.resolve({ access_token: "new-access-token", expires_in: 3600 });
+    const outcomes = await Promise.all(calls);
 
     expect(outcomes).toEqual([
       { kind: "refreshed" },
       { kind: "refreshed" },
       { kind: "refreshed" },
     ]);
-    expect(deps.refreshGoogleAccessToken).toHaveBeenCalledTimes(3);
     expect(deps.prisma.account.update).toHaveBeenCalledTimes(3);
   });
 
-  it("delivers the same rejection outcome to every concurrent awaiter", async () => {
+  it("delivers the same transient-error outcome to every concurrent awaiter (errors are classified, not thrown)", async () => {
     const err = new GoogleTokenRefreshError(503, {
       error: "service_unavailable",
     });

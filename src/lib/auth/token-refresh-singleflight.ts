@@ -30,7 +30,14 @@ export function getOrStartSessionRefresh(
   account: GoogleAccountForRefresh,
   deps: RefreshSessionDeps
 ): Promise<RefreshOutcome> {
-  const key = account.providerAccountId;
+  // Prefix with the provider. The `Account` table's unique constraint is on
+  // `(provider, providerAccountId)`, not on `providerAccountId` alone — two
+  // numerically identical IDs across different OAuth providers (none today,
+  // app is Google-only, but defensive against future provider additions or
+  // accidental re-use of this module from another wrapper) must not share an
+  // in-flight slot. Hardcoded literal because this module wraps the
+  // Google-specific orchestrator `refreshGoogleSessionTokensIfNeeded`.
+  const key = `google:${account.providerAccountId}`;
   const existing = inflight.get(key);
   if (existing) return existing;
 
