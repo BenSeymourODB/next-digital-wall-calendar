@@ -5,6 +5,7 @@
  * for the active profile.
  */
 import { useProfile } from "@/components/profiles/profile-context";
+import { subscribeUserSettings } from "@/lib/user-settings-bus";
 import { makeProfile } from "@/test/fixtures/profile";
 import { makeUserSettings } from "@/test/fixtures/user-settings";
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -510,5 +511,112 @@ describe("SettingsForm — updateSettings rollback", () => {
 
     expect(darkRadio).toBeChecked();
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Tests for SettingsForm — bus-rollback semantics (#414).
+ *
+ * `emitUserSettingsChange` fires on PUT success so in-tab subscribers (e.g.
+ * `CalendarProvider` via `useUserSettings`) stay in sync. The catch path
+ * must mirror that emit with the *reverted* partial — without it, any
+ * subscriber that consumed an earlier optimistic emit (e.g. via a
+ * preceding successful PUT to the same key, or a future move of the emit
+ * to the optimistic path) would be left holding a stale value until the
+ * next refresh.
+ */
+describe("SettingsForm — bus rollback on PUT failure (#414)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockActiveProfile(ACTIVE_PROFILE_ID);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("emits the reverted partial on the user-settings bus when a PUT fails", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (typeof url === "string" && url.startsWith("/api/profiles/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              taskSortOrder: "dueDate",
+              showCompletedTasks: false,
+            }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({ ok: false } as Response);
+      })
+    );
+
+    const busHandler = vi.fn();
+    const unsubscribe = subscribeUserSettings(busHandler);
+
+    renderSettings();
+
+    // Wait for the profile-settings GET to settle so the form is fully
+    // wired before driving the theme change.
+    await screen.findByRole("switch", { name: /show completed tasks/i });
+
+    const darkRadio = screen.getByLabelText(/^dark$/i);
+    await user.click(darkRadio);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to save settings");
+    });
+
+    // The bus subscriber must observe the rollback: the pre-call
+    // theme ("light"), not the optimistic value ("dark").
+    expect(busHandler).toHaveBeenCalledWith({ theme: "light" });
+
+    unsubscribe();
+  });
+
+  it("emits exactly once (the optimistic partial) when the PUT succeeds", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (typeof url === "string" && url.startsWith("/api/profiles/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              taskSortOrder: "dueDate",
+              showCompletedTasks: false,
+            }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({ ok: true } as Response);
+      })
+    );
+
+    const busHandler = vi.fn();
+    const unsubscribe = subscribeUserSettings(busHandler);
+
+    renderSettings();
+
+    await screen.findByRole("switch", { name: /show completed tasks/i });
+
+    const darkRadio = screen.getByLabelText(/^dark$/i);
+    await user.click(darkRadio);
+
+    await waitFor(() => {
+      expect(busHandler).toHaveBeenCalledWith({ theme: "dark" });
+    });
+
+    // Give a microtask flush so any stray catch-path emit would have fired.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Exactly one emit — the success path — and never the rollback value.
+    expect(busHandler).toHaveBeenCalledTimes(1);
+    expect(busHandler).not.toHaveBeenCalledWith({ theme: "light" });
+
+    unsubscribe();
   });
 });

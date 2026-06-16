@@ -155,6 +155,11 @@ export function SettingsForm({
       const revert = previousPartial;
       if (revert) {
         setSettings((curr) => ({ ...curr, ...revert }));
+        // #414 — pair the local rollback with a bus emit so in-tab
+        // subscribers (e.g. `CalendarProvider` via `useUserSettings`)
+        // converge on the rolled-back value rather than holding any
+        // earlier optimistic value they may have consumed.
+        emitUserSettingsChange(revert);
       }
     }
   };
