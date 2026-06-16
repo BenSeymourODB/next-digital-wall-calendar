@@ -7,7 +7,11 @@ import { expect, test } from "@playwright/test";
 // not legal mid-describe). Splitting these specs into their own file
 // preserves the per-describe scoping intent without affecting the rest of
 // `calendar.spec.ts`.
-test.use({ video: "on" });
+// A tall viewport keeps the 10-event popover opening downward and fully on
+// screen. At the default 720px height Radix flips it upward (not enough room
+// below the mid-grid trigger), which pushes the header close button above the
+// viewport top so Playwright can't click it.
+test.use({ video: "on", viewport: { width: 1280, height: 1400 } });
 
 test.describe("Month Calendar - Day Overflow Popover", () => {
   // Read today's key inside the browser after navigation so the test and the

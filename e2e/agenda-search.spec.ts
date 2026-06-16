@@ -1,10 +1,20 @@
 import { expect, test } from "@playwright/test";
 
+// SKIPPED (whole file): these specs drive the legacy on-page agenda *search*
+// surface — the "Upcoming Events" header, `agenda-search-input`,
+// `agenda-search-clear`, and the Group-by-date/color buttons rendered by the
+// old AgendaCalendar component. Issue #287 replaced the /test/calendar agenda
+// surface with DayCalendar + AgendaList, which has no on-page search, so this
+// coverage no longer maps to anything reachable in the app. The search logic
+// itself is still unit-tested in AgendaCalendar.test.tsx. These are parked
+// (not deleted) pending a product decision on whether/where agenda search is
+// surfaced — tracked in the "agenda search access" issue.
+
 // Retain video only when a test fails so the interaction flow can be replayed
 // without accumulating artifacts on every passing run.
 test.use({ video: "retain-on-failure" });
 
-test.describe("Agenda Calendar — Search", () => {
+test.describe.skip("Agenda Calendar — Search", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/test/calendar?events=default&view=agenda");
     await expect(page.getByText("Upcoming Events")).toBeVisible();
@@ -60,7 +70,7 @@ test.describe("Agenda Calendar — Search", () => {
   });
 });
 
-test.describe("Agenda Calendar — Search (family scenario)", () => {
+test.describe.skip("Agenda Calendar — Search (family scenario)", () => {
   test("filters multi-user events by attendee name", async ({ page }) => {
     await page.goto("/test/calendar?events=family&view=agenda");
     await expect(page.getByText("Upcoming Events")).toBeVisible();
@@ -80,7 +90,7 @@ test.describe("Agenda Calendar — Search (family scenario)", () => {
   });
 });
 
-test.describe("Agenda Calendar — Group By", () => {
+test.describe.skip("Agenda Calendar — Group By", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/test/calendar?events=default&view=agenda");
     await expect(page.getByText("Upcoming Events")).toBeVisible();

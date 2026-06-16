@@ -6,7 +6,10 @@ import { expect, test } from "@playwright/test";
 
 test.use({ video: "retain-on-failure" });
 
-test.describe("QA Screenshots — Agenda Search (#144)", () => {
+// SKIPPED (whole file): QA screenshots of the legacy on-page agenda search UI
+// (removed from /test/calendar by #287 — see agenda-search.spec.ts for the full
+// rationale). Parked pending the agenda-search-access product decision.
+test.describe.skip("QA Screenshots — Agenda Search (#144)", () => {
   test("01-default-agenda — search input visible, events listed", async ({
     page,
   }) => {
