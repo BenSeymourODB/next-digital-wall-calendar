@@ -536,6 +536,38 @@ describe("YearCalendar", () => {
     });
   });
 
+  describe("Bare-date count/dot parity (#375)", () => {
+    it("counts a bare-date Jan-1 event in the year header to match the dot", () => {
+      // Before #375 was fixed: the dot path used `parseEventStartLocal`
+      // (treats bare YYYY-MM-DD as the local calendar day) while the count
+      // path called `getEventsForYear`, which used `parseISO` (treats it as
+      // UTC midnight). In negative-offset zones, the count silently
+      // undercounted bare-date Jan-1 events while the dot still rendered.
+      // After the fix both paths share `parseEventStart`, so the count must
+      // equal the rendered-dot count for the exact scenario from #375.
+      const events = [
+        createMockEvent({
+          id: "bare-jan-1",
+          color: "blue",
+          startDate: "2026-01-01",
+          endDate: "2026-01-01",
+          isAllDay: true,
+        }),
+      ];
+
+      renderWithContext({ selectedDate: new Date(2026, 0, 1), events });
+
+      expect(screen.getByTestId("year-calendar-event-count")).toHaveTextContent(
+        "1 event"
+      );
+
+      const janCell = screen.getByTestId("year-calendar-day-2026-01-01");
+      expect(within(janCell).getAllByTestId("year-calendar-dot")).toHaveLength(
+        1
+      );
+    });
+  });
+
   describe("All-day timezone correctness (#203 bug 1)", () => {
     it("renders the dot on the calendar-local day for an all-day bare-date startDate", () => {
       // All-day events from non-canonical sources may carry a bare YYYY-MM-DD
