@@ -44,19 +44,19 @@ describe("rangeText", () => {
 
   it("returns correct range for month view", () => {
     const result = rangeText("month", testDate);
-    expect(result).toBe("Mar 1, 2024 - Mar 31, 2024");
+    expect(result).toBe("Mar 1, 2024 – Mar 31, 2024");
   });
 
   it("returns correct range for week view", () => {
     const result = rangeText("week", testDate);
     // March 15, 2024 is a Friday; Sunday-first week is Mar 10 – Mar 16.
-    expect(result).toBe("Mar 10, 2024 - Mar 16, 2024");
+    expect(result).toBe("Mar 10, 2024 – Mar 16, 2024");
   });
 
   it("returns Monday-first range when weekStartsOn=1", () => {
     // March 15, 2024 is a Friday. Monday-first week is Mar 11 – Mar 17.
     const result = rangeText("week", testDate, 1);
-    expect(result).toBe("Mar 11, 2024 - Mar 17, 2024");
+    expect(result).toBe("Mar 11, 2024 – Mar 17, 2024");
   });
 
   it("returns single date for day view", () => {
@@ -66,7 +66,7 @@ describe("rangeText", () => {
 
   it("returns correct range for year view", () => {
     const result = rangeText("year", testDate);
-    expect(result).toBe("Jan 1, 2024 - Dec 31, 2024");
+    expect(result).toBe("Jan 1, 2024 – Dec 31, 2024");
   });
 
   it("returns single date for clock view (12-hour period of selected day)", () => {

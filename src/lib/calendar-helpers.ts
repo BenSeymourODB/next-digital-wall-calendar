@@ -125,7 +125,7 @@ export function rangeText(
       return "Error while formatting";
   }
 
-  return `${format(start, FORMAT_STRING)} - ${format(end, FORMAT_STRING)}`;
+  return `${format(start, FORMAT_STRING)} – ${format(end, FORMAT_STRING)}`;
 }
 
 export function navigateDate(
