@@ -41,13 +41,15 @@ targeted fix.
      `process.env.TZ` manipulation, matching the PR #251 test style).
 
 2. `src/lib/calendar-helpers.ts`:
-   - Export a `BARE_DATE_RE` and two helpers:
+   - Export two helpers:
      ```ts
      export function parseEventStart(event: IEvent): Date;
      export function parseEventEnd(event: IEvent): Date;
      ```
-   - Each tries `BARE_DATE_RE` first, falls back to `parseISO` on the
-     respective field.
+   - Each tries the module-private `BARE_DATE_RE` first, falls back to
+     `parseISO` on the respective field. The regex stays private — its
+     only callers are `parseEventStart` / `parseEventEnd`, so it doesn't
+     belong in the public surface.
 3. Swap `parseISO(event.startDate)` / `parseISO(event.endDate)` for the
    new helpers inside `getEventsForDay`, `getEventsForWeek`,
    `getEventsForMonth`, `getEventsForYear`. Other helpers stay on

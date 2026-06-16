@@ -565,6 +565,12 @@ describe("YearCalendar", () => {
       expect(within(janCell).getAllByTestId("year-calendar-dot")).toHaveLength(
         1
       );
+
+      // Guard against the UTC-midnight slip reappearing across the whole
+      // year grid: if the parser ever regresses to `parseISO`, the dot
+      // would migrate off Jan-1 to a different cell in a negative-offset
+      // zone. The total dot count must stay at exactly 1.
+      expect(screen.getAllByTestId("year-calendar-dot")).toHaveLength(1);
     });
   });
 

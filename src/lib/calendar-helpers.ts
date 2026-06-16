@@ -381,8 +381,11 @@ export const getEventsForDay = (
   const targetDate = startOfDay(date);
   return events
     .filter((event) => {
-      const startOfDayForEventStart = startOfDay(parseEventStart(event));
-      const startOfDayForEventEnd = startOfDay(parseEventEnd(event));
+      const eventStart = parseEventStart(event);
+      const eventEnd = parseEventEnd(event);
+      if (!isValid(eventStart) || !isValid(eventEnd)) return false;
+      const startOfDayForEventStart = startOfDay(eventStart);
+      const startOfDayForEventEnd = startOfDay(eventEnd);
       if (isWeek) {
         return (
           event.startDate !== event.endDate &&
