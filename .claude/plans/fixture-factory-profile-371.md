@@ -41,10 +41,10 @@ export function makeProfileSettings(
 ```
 
 Defaults mirror the `@default(...)` values in `schema.prisma`. `avatar` defaults
-to a stable `{ type: "initials", value: "TU", backgroundColor: "#3b82f6" }` so
-multi-profile renders never collide on identical avatars. `id`s are constant
-(`"profile-1"` / `"profile-settings-1"`) — tests that need uniqueness pass
-`id` via overrides.
+to a stable `{ type: "initials", value: "TP", backgroundColor: "#3b82f6" }`
+(matching the default `name: "Test Profile"`) so multi-profile renders never
+collide on identical avatars. `id`s are constant (`"profile-1"` /
+`"profile-settings-1"`) — tests that need uniqueness pass `id` via overrides.
 
 ## Phases
 

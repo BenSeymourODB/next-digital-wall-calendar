@@ -22,7 +22,6 @@ export const mockAdminProfile = makePrismaProfile({
   id: "profile-admin-1",
   userId: mockUserId,
   name: "Admin User",
-  color: "#3b82f6",
   avatar: { type: "initials", value: "AU", backgroundColor: "#3b82f6" },
   pinHash: "$2b$10$mockHashedPin", // Mock bcrypt hash
   pinEnabled: true,
