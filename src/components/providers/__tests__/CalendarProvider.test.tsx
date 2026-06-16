@@ -107,6 +107,9 @@ function SettingsProbe() {
       <button type="button" onClick={() => setAgendaModeGroupBy("color")}>
         group-color
       </button>
+      <button type="button" onClick={() => setAgendaModeGroupBy("category")}>
+        group-category
+      </button>
       <button type="button" onClick={() => setWeekStartDay(1)}>
         week-monday
       </button>
@@ -173,6 +176,44 @@ describe("CalendarProvider — settings state", () => {
     expect(stored).not.toBeNull();
     const parsed = JSON.parse(stored!);
     expect(parsed.weekStartDay).toBe(1);
+  });
+
+  it("persists agendaModeGroupBy=category round-trip (#211)", async () => {
+    const user = userEvent.setup();
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("group")).toHaveTextContent("date");
+    });
+
+    await user.click(screen.getByText("group-category"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("group")).toHaveTextContent("category");
+    });
+
+    const parsed = JSON.parse(
+      window.localStorage.getItem("calendar-settings") ?? "{}"
+    );
+    expect(parsed.agendaModeGroupBy).toBe("category");
+  });
+
+  it("rehydrates agendaModeGroupBy=category from localStorage on mount (#211)", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        agendaModeGroupBy: "category",
+        weekStartDay: 0,
+      })
+    );
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("group")).toHaveTextContent("category");
+    });
   });
 
   it("persists agenda group-by and badge changes alongside weekStartDay", async () => {

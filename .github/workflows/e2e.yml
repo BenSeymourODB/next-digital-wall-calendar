@@ -1,0 +1,114 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # postgres:17 (full) — matches the version we run locally and the version
+      # prisma migrate deploy is exercised against in dev. The main CI workflow
+      # uses postgres:16-alpine for shadow-only `migrate diff` checks, which is
+      # an independent code path; running E2E against the same major version as
+      # dev avoids surprises from pg17-only catalog/collation differences.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/e2e
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/e2e
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: e2e-test-secret-not-used-in-production
+      AUTH_SECRET: e2e-test-secret-not-used-in-production
+      GOOGLE_CLIENT_ID: e2e-dummy-client-id
+      GOOGLE_CLIENT_SECRET: e2e-dummy-client-secret
+      # TOKEN_ENCRYPTION_KEY intentionally omitted: src/lib/crypto/token-cipher.ts
+      # falls back to an HKDF-derived key from NEXTAUTH_SECRET in non-production
+      # builds, which is sufficient for E2E. If a future workflow runs the app
+      # with NODE_ENV=production, this var must be set explicitly.
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.x"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: |
+          version=$(node -p "require('./node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      # `playwright install` is idempotent: when the browser binary is already
+      # in the cache it skips the download. `--with-deps` always runs the apt
+      # step, which is required on every fresh runner regardless of cache hit
+      # since OS packages live outside ~/.cache/ms-playwright.
+      - name: Install Playwright browsers and OS deps
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Apply Prisma migrations
+        run: pnpm db:migrate:deploy
+
+      - name: Run Playwright tests (chromium)
+        # Playwright treats `--` as a positional test-filter (no Unix-style
+        # end-of-options convention), so `pnpm test:e2e -- --project=chromium`
+        # expands to `playwright test -- --project=chromium` and matches zero
+        # tests ("No tests found."). pnpm 10 forwards trailing args to script
+        # commands without an explicit separator — just append the flag.
+        run: pnpm test:e2e --project=chromium
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload Playwright test results
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 14
+          if-no-files-found: ignore
