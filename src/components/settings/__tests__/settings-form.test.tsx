@@ -526,12 +526,21 @@ describe("SettingsForm — updateSettings rollback", () => {
  * next refresh.
  */
 describe("SettingsForm — bus rollback on PUT failure (#414)", () => {
+  // Hold the per-test bus unsubscribe so afterEach can run it unconditionally
+  // even if a test throws before reaching its own teardown line. Without this,
+  // an aborted test's subscriber would leak into the next case and start
+  // receiving its emits.
+  let unsubscribeBus: (() => void) | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockActiveProfile(ACTIVE_PROFILE_ID);
+    unsubscribeBus = undefined;
   });
 
   afterEach(() => {
+    unsubscribeBus?.();
+    unsubscribeBus = undefined;
     vi.unstubAllGlobals();
   });
 
@@ -554,7 +563,7 @@ describe("SettingsForm — bus rollback on PUT failure (#414)", () => {
     );
 
     const busHandler = vi.fn();
-    const unsubscribe = subscribeUserSettings(busHandler);
+    unsubscribeBus = subscribeUserSettings(busHandler);
 
     renderSettings();
 
@@ -570,10 +579,12 @@ describe("SettingsForm — bus rollback on PUT failure (#414)", () => {
     });
 
     // The bus subscriber must observe the rollback: the pre-call
-    // theme ("light"), not the optimistic value ("dark").
+    // theme ("light"), not the optimistic value ("dark"). Asserting on the
+    // exact call count guards against a future refactor that emits
+    // optimistically before the PUT — that would still satisfy a bare
+    // `toHaveBeenCalledWith(...)` matcher.
+    expect(busHandler).toHaveBeenCalledTimes(1);
     expect(busHandler).toHaveBeenCalledWith({ theme: "light" });
-
-    unsubscribe();
   });
 
   it("emits exactly once (the optimistic partial) when the PUT succeeds", async () => {
@@ -595,7 +606,7 @@ describe("SettingsForm — bus rollback on PUT failure (#414)", () => {
     );
 
     const busHandler = vi.fn();
-    const unsubscribe = subscribeUserSettings(busHandler);
+    unsubscribeBus = subscribeUserSettings(busHandler);
 
     renderSettings();
 
@@ -608,15 +619,16 @@ describe("SettingsForm — bus rollback on PUT failure (#414)", () => {
       expect(busHandler).toHaveBeenCalledWith({ theme: "dark" });
     });
 
-    // Give a microtask flush so any stray catch-path emit would have fired.
+    // A single microtask flush is sufficient here because the failure path
+    // throws synchronously off the `response.ok` check and the catch fires
+    // in the same microtask chain — no awaited steps between throw and
+    // `emitUserSettingsChange`. If a future refactor inserts an `await`
+    // between them, this flush would need to grow.
     await act(async () => {
       await Promise.resolve();
     });
 
-    // Exactly one emit — the success path — and never the rollback value.
     expect(busHandler).toHaveBeenCalledTimes(1);
     expect(busHandler).not.toHaveBeenCalledWith({ theme: "light" });
-
-    unsubscribe();
   });
 });
