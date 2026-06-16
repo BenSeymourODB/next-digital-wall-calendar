@@ -48,9 +48,13 @@ export default defineConfig({
     },
   ],
 
-  // Run local dev server before starting tests
+  // Local dev uses the Turbopack dev server for fast iteration. CI runs against
+  // a production build (`next start`, built in a prior workflow step): the dev
+  // server's on-demand compilation and memory growth starved late-running specs
+  // under `workers: 1`, causing flaky 30s timeouts. A prebuilt server serves
+  // every route instantly and stays stable for the whole run.
   webServer: {
-    command: "pnpm dev",
+    command: process.env.CI ? "pnpm start" : "pnpm dev",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
