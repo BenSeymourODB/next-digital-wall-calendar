@@ -5,6 +5,7 @@
  * for the active profile.
  */
 import { useProfile } from "@/components/profiles/profile-context";
+import { makeProfile } from "@/test/fixtures/profile";
 import { makeUserSettings } from "@/test/fixtures/user-settings";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -41,17 +42,12 @@ const ACTIVE_PROFILE_ID = "profile-active-1";
 function mockActiveProfile(id: string | null) {
   vi.mocked(useProfile).mockReturnValue({
     activeProfile: id
-      ? {
+      ? makeProfile({
           id,
           userId: "user-1",
           name: "Active",
-          type: "admin",
-          ageGroup: "adult",
-          color: "#3b82f6",
           avatar: { type: "initials", value: "A" },
-          pinEnabled: false,
-          isActive: true,
-        }
+        })
       : null,
     allProfiles: [],
     viewMode: "profile",
