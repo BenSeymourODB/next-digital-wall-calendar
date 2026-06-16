@@ -215,9 +215,19 @@ export function SettingsForm({
       return;
     }
 
-    const previous = taskSettings;
-    const next = { ...previous, ...partial };
-    setTaskSettings(next);
+    // Capture the pre-call value of *only* the keys we're about to overwrite,
+    // read from the functional setter's current state (not a stale closure).
+    // On rollback, merge those keys back so any concurrent successful PUT
+    // to other task-settings keys is preserved (#413, mirrors #363/#366).
+    let previousPartial: Partial<ProfileTaskSettings> | undefined;
+    setTaskSettings((curr) => {
+      previousPartial = Object.fromEntries(
+        (Object.keys(partial) as Array<keyof ProfileTaskSettings>).map(
+          (key) => [key, curr[key]]
+        )
+      ) as Partial<ProfileTaskSettings>;
+      return { ...curr, ...partial };
+    });
 
     try {
       const response = await fetch(
@@ -234,7 +244,10 @@ export function SettingsForm({
       }
     } catch {
       toast.error("Failed to save task settings");
-      setTaskSettings(previous);
+      const revert = previousPartial;
+      if (revert) {
+        setTaskSettings((curr) => ({ ...curr, ...revert }));
+      }
     }
   };
 
