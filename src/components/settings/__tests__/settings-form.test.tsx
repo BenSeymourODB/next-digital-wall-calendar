@@ -842,10 +842,10 @@ describe("SettingsForm — updateTaskSettings rollback (#413)", () => {
     // showCompletedTasks reverts (its PUT failed)…
     expect(switchEl).toHaveAttribute("data-state", "unchecked");
     // …but the sort-order change must NOT be wiped by the failed
-    // toggle's rollback — its own PUT succeeded.
-    const updatedCombobox = screen
-      .getAllByRole("combobox")
-      .find((el) => /priority/i.test(el.textContent ?? ""));
-    expect(updatedCombobox).toBeDefined();
+    // toggle's rollback — its own PUT succeeded. Assert against the
+    // original combobox node identity so a different "priority"-bearing
+    // element elsewhere on the page cannot satisfy this check.
+    expect(combobox).toHaveTextContent(/priority/i);
+    expect(combobox).not.toHaveTextContent(/due date/i);
   });
 });
