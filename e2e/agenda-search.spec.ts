@@ -80,6 +80,39 @@ test.describe("Agenda Calendar — Search (family scenario)", () => {
   });
 });
 
+test.describe("Agenda Calendar — Webkit native cancel button", () => {
+  // The agenda `<input type="search">` renders a UA cancel button on
+  // Webkit/Blink in addition to the custom clear `<button>`. Hide the UA
+  // one globally so users only see the custom control. The pseudo
+  // (`::-webkit-search-cancel-button`) is Webkit/Blink only — skip Firefox
+  // and the iPad project (which uses Safari's iPad UA, where the pseudo
+  // is reachable but the device profile is redundant for this check).
+  test("hides the native Webkit cancel button so only the custom clear control is visible", async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(
+      browserName === "firefox",
+      "Firefox does not render ::-webkit-search-cancel-button"
+    );
+
+    await page.goto("/test/calendar?events=default&view=agenda");
+    await expect(page.getByText("Upcoming Events")).toBeVisible();
+
+    const input = page.getByTestId("agenda-search-input");
+    await input.fill("standup");
+
+    const cancelButtonDisplay = await input.evaluate(
+      (el) =>
+        window.getComputedStyle(el, "::-webkit-search-cancel-button").display
+    );
+    expect(cancelButtonDisplay).toBe("none");
+
+    // Custom clear control must still appear and function.
+    await expect(page.getByTestId("agenda-search-clear")).toBeVisible();
+  });
+});
+
 test.describe("Agenda Calendar — Group By", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/test/calendar?events=default&view=agenda");

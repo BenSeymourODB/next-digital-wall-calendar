@@ -288,6 +288,19 @@
   .grecaptcha-badge {
     visibility: hidden;
   }
+
+  /*
+   * Suppress the Webkit/Blink UA "cancel" button rendered inside
+   * `<input type="search">`. Both `AgendaCalendar` and `AgendaList` pair
+   * the input with a custom clear `<button>`; without this rule, Chrome,
+   * Edge, and Safari users see two overlapping clear controls. Issues
+   * #411 / #412.
+   */
+  input[type="search"]::-webkit-search-cancel-button {
+    display: none;
+    appearance: none;
+    -webkit-appearance: none;
+  }
 }
 
 @layer utilities {
