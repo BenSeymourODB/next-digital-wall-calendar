@@ -2,7 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
-import { getEventsForYear } from "@/lib/calendar-helpers";
+import { getEventsForYear, parseEventStart } from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useRef } from "react";
@@ -48,32 +48,20 @@ function formatDayKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-const BARE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-// All-day events from non-canonical sources can carry a bare YYYY-MM-DD
-// startDate. `new Date("YYYY-MM-DD")` parses it as UTC midnight, which slips
-// to the previous day in negative-offset zones — so the dot would render on
-// the wrong cell. Construct the date from local Y/M/D parts in that case.
-function parseEventStartLocal(event: IEvent): Date {
-  const match = BARE_DATE_RE.exec(event.startDate);
-  if (match) {
-    const [, y, m, d] = match;
-    return new Date(Number(y), Number(m) - 1, Number(d));
-  }
-  return new Date(event.startDate);
-}
-
 // Pre-bucket events into a Map<dayKey, Set<TEventColor>> so each day cell
 // reduces to an O(1) lookup instead of scanning the whole event array.
 // Drops the year-grid render from O(events × cells) to O(events + cells).
 // Exported for unit testing — the map shape is the contract that lets
 // MonthPanel render dots without ever touching the raw event list.
+//
+// `parseEventStart` (#375) shares the bare-date local-day parser with the
+// overlap helpers, so the dot path and getEventsForYear count path agree.
 export function bucketEventColorsByDayKey(
   events: IEvent[]
 ): Map<string, Set<TEventColor>> {
   const map = new Map<string, Set<TEventColor>>();
   for (const event of events) {
-    const key = formatDayKey(parseEventStartLocal(event));
+    const key = formatDayKey(parseEventStart(event));
     let colors = map.get(key);
     if (!colors) {
       colors = new Set<TEventColor>();
