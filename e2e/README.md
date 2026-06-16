@@ -1,0 +1,80 @@
+# E2E test suite
+
+Playwright specs that exercise the running app. Two project flavours:
+
+- **Unauthenticated** (`chromium`, `firefox`, `webkit`, `mobile-chrome`,
+  `tablet`) — every spec at the top level of `e2e/`, e.g.
+  `e2e/calendar.spec.ts`. These target the `/test/*` demo pages, which
+  bypass NextAuth so the suite can render any view without a session.
+- **Authenticated** (`authenticated-chromium`) — every spec under
+  `e2e/authenticated/`. These run with the shared E2E session cookie
+  loaded from `playwright/.auth/user.json` (created by the `setup`
+  project before each run, removed by `teardown` after). Issue #278.
+
+## Running
+
+Database-backed authentication is required for the authenticated
+project. The setup spec writes a `User` + `Account` + `Session` row to
+the database `auth-setup.ts` points at (`TEST_DATABASE_URL`, falling
+back to `DATABASE_URL`, then to a local Postgres default). Without a
+reachable Postgres instance, `setup` fails fast and no authenticated
+spec runs.
+
+```bash
+# Full suite (unauthenticated + authenticated)
+pnpm test:e2e
+
+# Only the authenticated project
+pnpm test:e2e --project=authenticated-chromium
+
+# Only unauthenticated projects
+pnpm test:e2e --project=chromium --project=firefox \
+              --project=webkit  --project=mobile-chrome \
+              --project=tablet
+```
+
+The `setup` and `teardown` projects run automatically whenever
+`authenticated-chromium` is selected — Playwright resolves the
+`dependencies` / `teardown` chain on its own.
+
+## Adding an authenticated spec
+
+1. Drop the spec under `e2e/authenticated/`. The
+   `authenticated-chromium` project picks it up via `testMatch`; every
+   other browser project ignores it via `testIgnore`.
+2. Write tests as normal — `page` and `context` arrive already
+   carrying the shared session cookie. No `createTestUser` boilerplate
+   per spec.
+3. Stub Google Calendar / Tasks responses with the helpers in
+   `e2e/fixtures/google-api-mocks.ts` to keep the spec hermetic. The
+   shared user has no real Google account behind it, so unstubbed
+   requests fail.
+
+If a spec needs a one-off user with non-default state (expired
+session, distinct quotas, etc.), keep using `createTestUser` /
+`setAuthCookies` directly inside the spec — the shared fixture is for
+read-only smoke tests, not state isolation.
+
+## Adding an unauthenticated spec
+
+Drop the spec at the top level of `e2e/`. It runs across every
+browser project automatically.
+
+## Files
+
+```
+e2e/
+├── auth.setup.ts              # creates shared user + storageState
+├── auth.teardown.ts           # removes shared user + storageState
+├── auth/auth-setup.ts         # createTestUser / setAuthCookies helpers
+├── authenticated/             # specs that need the shared session
+│   └── calendar-view-deeplink.spec.ts
+├── fixtures/                  # Google API mocks, mock events
+└── *.spec.ts                  # unauthenticated specs
+```
+
+`playwright/.auth/user.json` is generated at runtime by
+`auth.setup.ts` and removed by `auth.teardown.ts`. The whole
+`playwright/.auth/` directory is gitignored, so nothing inside it ever
+lands in commits — and nothing inside it is required to exist before
+the suite runs.
