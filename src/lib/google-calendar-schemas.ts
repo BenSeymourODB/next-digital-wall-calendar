@@ -248,6 +248,24 @@ export const GoogleApiErrorBodySchema = z
 export type GoogleApiErrorBody = z.infer<typeof GoogleApiErrorBodySchema>;
 
 /**
+ * Safely parse a non-2xx Google API response body into a typed envelope.
+ *
+ * Closes the success/error validation asymmetry surfaced by #386: the success
+ * paths go through {@link parseGoogleResponse} but every error path used to
+ * read `errorData.error?.message` against a raw `unknown` JSON body. This
+ * helper lets all four sites read the same field through a parsed envelope.
+ *
+ * Failure mode is deliberately quiet — a malformed Google error body is not a
+ * loggable contract break (the canonical envelope is documented but the route
+ * handlers already tolerate missing fields). On parse failure we fall back to
+ * `{}` so callers keep their `?.error?.message ?? "..."` ladder.
+ */
+export function parseGoogleErrorBody(data: unknown): GoogleApiErrorBody {
+  const result = GoogleApiErrorBodySchema.safeParse(data);
+  return result.success ? result.data : {};
+}
+
+/**
  * Context for a {@link GoogleApiValidationError} so route logging has enough
  * information to triage which Google endpoint produced the malformed
  * payload.

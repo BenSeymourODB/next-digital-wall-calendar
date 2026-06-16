@@ -15,6 +15,7 @@ import {
   type GoogleEventsListResponse,
   GoogleEventsListResponseSchema,
   VALIDATION_ISSUES_SUMMARY_COUNT,
+  parseGoogleErrorBody,
   parseGoogleResponse,
 } from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
@@ -108,12 +109,14 @@ async function fetchEventsFromCalendar(
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorBody = parseGoogleErrorBody(
+      await response.json().catch(() => ({}))
+    );
     return {
       events: [],
       error: {
         calendarId,
-        error: errorData.error?.message || "Failed to fetch events",
+        error: errorBody.error?.message || "Failed to fetch events",
         status: response.status,
       },
     };
@@ -669,12 +672,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const errorBody = await response.json().catch(() => ({}));
+    const errorBody = parseGoogleErrorBody(
+      await response.json().catch(() => ({}))
+    );
     logger.error(new Error("Google Calendar create failed"), {
       userId: session.user.id,
       calendarId: event.calendarId,
       googleStatus: response.status,
-      googleError: errorBody?.error?.message ?? "unknown",
+      googleError: errorBody.error?.message ?? "unknown",
     });
 
     return NextResponse.json(
