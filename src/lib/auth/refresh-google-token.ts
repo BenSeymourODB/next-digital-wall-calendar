@@ -94,9 +94,17 @@ export async function refreshGoogleAccessToken(
 
   const parsed = GoogleRefreshedTokensSchema.safeParse(rawBody);
   if (!parsed.success) {
+    // Scrub Zod's raw issues to a fixed shape — `received` / `input` fields on
+    // some issue codes can echo the offending value verbatim, which would
+    // surface in the orchestrator's `logger.error(err, ...)` if a future
+    // schema tightening ever applies to a string-typed token field.
     throw new GoogleTokenRefreshError(response.status, {
       error: "malformed_token_response",
-      issues: parsed.error.issues,
+      issues: parsed.error.issues.map(({ code, path, message }) => ({
+        code,
+        path,
+        message,
+      })),
     });
   }
   return parsed.data;

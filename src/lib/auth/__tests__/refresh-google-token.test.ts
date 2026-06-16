@@ -165,12 +165,24 @@ describe("refreshGoogleAccessToken", () => {
       ).rejects.toBeInstanceOf(GoogleTokenRefreshError);
     });
 
-    it("throws GoogleTokenRefreshError when expires_in is non-positive", async () => {
+    it("throws GoogleTokenRefreshError when expires_in is zero", async () => {
       // `Math.floor(now/1000 + 0)` would still update the row to an already-
       // expired window — caller would re-enter the refresh path on every
-      // session callback. Treat zero / negative as malformed.
+      // session callback. Treat zero as malformed.
       mockFetch.mockResolvedValue(
         jsonResponse({ access_token: "valid", expires_in: 0 })
+      );
+
+      await expect(
+        refreshGoogleAccessToken("rt", "cid", "sec")
+      ).rejects.toBeInstanceOf(GoogleTokenRefreshError);
+    });
+
+    it("throws GoogleTokenRefreshError when expires_in is negative", async () => {
+      // Sibling to the zero case — pins that the schema's `positive()`
+      // constraint actually means `> 0`, not just non-NaN.
+      mockFetch.mockResolvedValue(
+        jsonResponse({ access_token: "valid", expires_in: -1 })
       );
 
       await expect(
