@@ -9,6 +9,7 @@ import {
   type GoogleCalendarListEntry,
   type GoogleCalendarListResponse,
   GoogleCalendarListResponseSchema,
+  VALIDATION_ISSUES_SUMMARY_COUNT,
   parseGoogleResponse,
 } from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
@@ -104,7 +105,7 @@ export async function GET() {
           endpoint: validationError.endpoint,
           userId: session.user.id,
           validationIssues: validationError.issues
-            .slice(0, 5)
+            .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
             .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
             .join("; "),
         });

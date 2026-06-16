@@ -14,6 +14,7 @@ import {
   GoogleEventSchema,
   type GoogleEventsListResponse,
   GoogleEventsListResponseSchema,
+  VALIDATION_ISSUES_SUMMARY_COUNT,
   parseGoogleResponse,
 } from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
@@ -131,7 +132,7 @@ async function fetchEventsFromCalendar(
         endpoint: error.endpoint,
         ...(error.calendarId ? { calendarId: error.calendarId } : {}),
         validationIssues: error.issues
-          .slice(0, 5)
+          .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
           .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
           .join("; "),
       });
@@ -606,7 +607,7 @@ export async function POST(request: NextRequest) {
               : {}),
             userId: session.user.id,
             validationIssues: validationError.issues
-              .slice(0, 5)
+              .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
               .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
               .join("; "),
           });
