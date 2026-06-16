@@ -54,8 +54,9 @@ function formatDayKey(date: Date): string {
 // Exported for unit testing — the map shape is the contract that lets
 // MonthPanel render dots without ever touching the raw event list.
 //
-// `parseEventStart` (#375) shares the bare-date local-day parser with the
-// overlap helpers, so the dot path and getEventsForYear count path agree.
+// #375: bare-date events must parse as the local calendar day here and in
+// `getEventsForYear`; using the shared `parseEventStart` keeps the dot
+// path and count path from disagreeing in negative-offset zones.
 export function bucketEventColorsByDayKey(
   events: IEvent[]
 ): Map<string, Set<TEventColor>> {

@@ -44,22 +44,31 @@ const BARE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 // silently disagrees with the dot-rendering path that already uses a
 // local-day parser (#203 bug 1, #375). Construct the date from local
 // Y/M/D parts in that case so all consumers agree on the bucket.
-export function parseEventStart(event: IEvent): Date {
-  const match = BARE_DATE_RE.exec(event.startDate);
-  if (match) {
-    const [, y, m, d] = match;
-    return new Date(Number(y), Number(m) - 1, Number(d));
+//
+// `new Date(y, m-1, d)` silently overflows out-of-range months/days
+// (e.g. month 13 becomes Jan of the next year, Feb 30 becomes Mar 2),
+// where `parseISO` would return Invalid Date. The overflow guard
+// preserves the Invalid-Date semantics the `isValid` filter in the
+// overlap helpers relies on.
+function parseBareDateOrISO(value: string): Date {
+  const match = BARE_DATE_RE.exec(value);
+  if (!match) return parseISO(value);
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  const date = new Date(y, m - 1, d);
+  if (date.getMonth() !== m - 1 || date.getDate() !== d) {
+    return new Date(NaN);
   }
-  return parseISO(event.startDate);
+  return date;
+}
+
+export function parseEventStart(event: IEvent): Date {
+  return parseBareDateOrISO(event.startDate);
 }
 
 export function parseEventEnd(event: IEvent): Date {
-  const match = BARE_DATE_RE.exec(event.endDate);
-  if (match) {
-    const [, y, m, d] = match;
-    return new Date(Number(y), Number(m) - 1, Number(d));
-  }
-  return parseISO(event.endDate);
+  return parseBareDateOrISO(event.endDate);
 }
 
 /**

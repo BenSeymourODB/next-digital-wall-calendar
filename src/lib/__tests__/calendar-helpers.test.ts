@@ -1016,6 +1016,33 @@ describe("parseEventStart / parseEventEnd (#375)", () => {
       parseISO(event.endDate).getTime()
     );
   });
+
+  it("returns Invalid Date for out-of-range month/day (matches parseISO semantics)", () => {
+    // `new Date(2026, 12, 1)` silently overflows to 2027-01-01. The
+    // overflow guard preserves the Invalid-Date contract that the
+    // `isValid` filter in the overlap helpers relies on — pre-fix
+    // these strings round-tripped through parseISO and returned NaN.
+    const month13 = createMockEvent({
+      startDate: "2026-13-01",
+      endDate: "2026-13-01",
+    });
+    expect(parseEventStart(month13).getTime()).toBeNaN();
+    expect(parseEventEnd(month13).getTime()).toBeNaN();
+
+    const feb30 = createMockEvent({
+      startDate: "2026-02-30",
+      endDate: "2026-02-30",
+    });
+    expect(parseEventStart(feb30).getTime()).toBeNaN();
+    expect(parseEventEnd(feb30).getTime()).toBeNaN();
+
+    const month00 = createMockEvent({
+      startDate: "2026-00-15",
+      endDate: "2026-00-15",
+    });
+    expect(parseEventStart(month00).getTime()).toBeNaN();
+    expect(parseEventEnd(month00).getTime()).toBeNaN();
+  });
 });
 
 describe("bare-date overlap helpers (#375)", () => {
@@ -1023,6 +1050,14 @@ describe("bare-date overlap helpers (#375)", () => {
   // gives UTC midnight, so a bare-date event on the first or last day of a
   // range was excluded in negative-offset zones. The shared parser fixes it
   // regardless of harness TZ because we never round-trip through UTC.
+  //
+  // CI runs in UTC, where parseISO("YYYY-MM-DD") and new Date(y, m-1, d)
+  // happen to produce the same instant — so these integration tests pass
+  // against pre-fix code in UTC. The TZ-independent regression guard is
+  // the parseEventStart/parseEventEnd unit tests above, which assert local
+  // Y/M/D semantics via .getFullYear() / .getMonth() / .getDate(). These
+  // integration tests document the wiring contract and would catch a
+  // regression under a non-UTC TZ.
 
   it("getEventsForYear includes a bare-date event on Jan 1 of the queried year", () => {
     const event = createMockEvent({
@@ -1089,5 +1124,35 @@ describe("bare-date overlap helpers (#375)", () => {
     });
     const result = getEventsForDay([event], new Date(2026, 0, 1));
     expect(result.map((e) => e.id)).toEqual(["jan-1-all-day"]);
+  });
+
+  it("getEventsForDay (isWeek=true) includes a bare-date multi-day event spanning the queried day", () => {
+    // The isWeek branch filters to startDate !== endDate, which excludes
+    // single-day all-day events. A multi-day all-day event with bare
+    // endpoints must still resolve via the shared parser so the in-week
+    // overlap check matches the dot path's local-day bucketing.
+    const event = createMockEvent({
+      id: "multi-day-bare",
+      startDate: "2026-01-01",
+      endDate: "2026-01-03",
+      isAllDay: true,
+    });
+    const result = getEventsForDay([event], new Date(2026, 0, 2), true);
+    expect(result.map((e) => e.id)).toEqual(["multi-day-bare"]);
+  });
+
+  it("getEventsForYear includes an event with a full-ISO startDate but bare endDate on Dec 31", () => {
+    // The endDate is the binding edge here — the year-end overlap
+    // boundary depends on parseEventEnd, not parseEventStart, when the
+    // event spans into the year from earlier. Locks in the symmetric
+    // parser wiring on the endDate side.
+    const event = createMockEvent({
+      id: "spans-into-year-end",
+      startDate: "2026-12-20T10:00:00Z",
+      endDate: "2026-12-31",
+      isAllDay: true,
+    });
+    const result = getEventsForYear([event], new Date(2026, 5, 15));
+    expect(result.map((e) => e.id)).toEqual(["spans-into-year-end"]);
   });
 });
