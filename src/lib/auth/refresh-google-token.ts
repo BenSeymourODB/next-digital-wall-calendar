@@ -9,26 +9,44 @@
  * {@link GoogleTokenRefreshError} so the upstream HTTP status survives),
  * and Google's "no new refresh token" rotation policy is left untouched
  * (callers fall back to the existing plaintext refresh token).
+ *
+ * On a 200 response the JSON body is validated against
+ * {@link GoogleRefreshedTokensSchema} before returning. A malformed payload
+ * (proxy rewrite, partial body, edge-case rate-limit JSON) is converted into
+ * a `GoogleTokenRefreshError` with `body.error === "malformed_token_response"`
+ * so the orchestrator's classifier treats it as transient — the alternative
+ * is `expires_in` being `undefined`, `Math.floor(NaN)`, and a corrupted
+ * `expires_at` column. See issue #405.
  */
 import { fetchWithRetry } from "@/lib/http/retry";
+import { z } from "zod";
 
 export const GOOGLE_OAUTH_TOKEN_ENDPOINT =
   "https://oauth2.googleapis.com/token";
 
-export interface GoogleRefreshedTokens {
-  access_token: string;
-  expires_in: number;
-  /** Google only returns a new refresh_token on first consent or revocation. */
-  refresh_token?: string;
-  scope?: string;
-  token_type?: string;
-}
+/**
+ * Schema for the JSON body of a successful Google OAuth refresh-token grant
+ * response. Only `access_token` and `expires_in` are strictly required for
+ * the orchestrator to write a usable account row; `refresh_token` is omitted
+ * on routine refreshes and the remaining fields are advisory metadata.
+ */
+export const GoogleRefreshedTokensSchema = z.object({
+  access_token: z.string().min(1),
+  expires_in: z.number().int().positive(),
+  refresh_token: z.string().min(1).optional(),
+  scope: z.string().optional(),
+  token_type: z.string().optional(),
+});
+
+export type GoogleRefreshedTokens = z.infer<typeof GoogleRefreshedTokensSchema>;
 
 /**
  * Thrown by {@link refreshGoogleAccessToken} on a non-OK response from
- * Google's token endpoint. Carries both the upstream status (so server-side
- * routes can forward it to clients) and the parsed JSON body (so callers
- * can branch on `error: "invalid_grant"` etc. without re-reading the body).
+ * Google's token endpoint, or on a 200 whose body fails
+ * {@link GoogleRefreshedTokensSchema}. Carries both the upstream status (so
+ * server-side routes can forward it to clients) and the parsed JSON body /
+ * synthetic envelope (so callers can branch on `error: "invalid_grant"` or
+ * `"malformed_token_response"` without re-reading the body).
  */
 export class GoogleTokenRefreshError extends Error {
   readonly status: number;
@@ -45,7 +63,8 @@ export class GoogleTokenRefreshError extends Error {
 /**
  * Exchange a long-lived refresh token for a fresh access token.
  *
- * Throws {@link GoogleTokenRefreshError} on non-OK responses; transient
+ * Throws {@link GoogleTokenRefreshError} on non-OK responses or on a 200
+ * whose body doesn't match {@link GoogleRefreshedTokensSchema}; transient
  * 5xx / 429 / network failures are retried by {@link fetchWithRetry} before
  * reaching the throw.
  */
@@ -67,11 +86,18 @@ export async function refreshGoogleAccessToken(
     }),
   });
 
-  const tokensOrError = await response.json();
+  const rawBody: unknown = await response.json();
 
   if (!response.ok) {
-    throw new GoogleTokenRefreshError(response.status, tokensOrError);
+    throw new GoogleTokenRefreshError(response.status, rawBody);
   }
 
-  return tokensOrError as GoogleRefreshedTokens;
+  const parsed = GoogleRefreshedTokensSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    throw new GoogleTokenRefreshError(response.status, {
+      error: "malformed_token_response",
+      issues: parsed.error.issues,
+    });
+  }
+  return parsed.data;
 }
