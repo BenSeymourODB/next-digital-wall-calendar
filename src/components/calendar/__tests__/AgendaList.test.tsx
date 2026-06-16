@@ -141,6 +141,45 @@ describe("AgendaList", () => {
     expect(within(groups[1]).getByText("WednesdayEvent")).toBeInTheDocument();
   });
 
+  it("groups events by category with 'Uncategorised' last when groupBy is 'category' (#211)", () => {
+    const events: IEvent[] = [
+      makeEvent("w1", "2026-05-04T09:00:00.000Z", "2026-05-04T10:00:00.000Z", {
+        title: "Standup",
+        category: "Work",
+      }),
+      makeEvent("f1", "2026-05-04T11:00:00.000Z", "2026-05-04T12:00:00.000Z", {
+        title: "School Pickup",
+        category: "Family",
+      }),
+      makeEvent("u1", "2026-05-04T13:00:00.000Z", "2026-05-04T14:00:00.000Z", {
+        title: "Coffee with Sam",
+        // No category — should land under "Uncategorised"
+      }),
+    ];
+
+    renderList(
+      {
+        events,
+        rangeStart: new Date("2026-05-04T00:00:00.000Z"),
+        rangeEnd: new Date("2026-05-04T23:59:59.999Z"),
+      },
+      { agendaModeGroupBy: "category" }
+    );
+
+    const groups = screen.getAllByTestId("agenda-list-group");
+    expect(groups.length).toBe(3);
+    // Alphabetical Family → Work, then Uncategorised pinned last.
+    const headers = groups.map(
+      (group) =>
+        within(group).getByRole("heading", { level: 3 }).textContent?.trim() ??
+        ""
+    );
+    expect(headers).toEqual(["Family", "Work", "Uncategorised"]);
+    expect(within(groups[0]).getByText("School Pickup")).toBeInTheDocument();
+    expect(within(groups[1]).getByText("Standup")).toBeInTheDocument();
+    expect(within(groups[2]).getByText("Coffee with Sam")).toBeInTheDocument();
+  });
+
   it("renders an empty-state when no events fall within the range", () => {
     renderList({
       events: [],

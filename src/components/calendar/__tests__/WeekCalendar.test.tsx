@@ -5,7 +5,7 @@ import {
 import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   addDays,
@@ -15,7 +15,7 @@ import {
   startOfWeek,
   subWeeks,
 } from "date-fns";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WeekCalendar } from "../WeekCalendar";
 
 /**
@@ -205,6 +205,30 @@ describe("WeekCalendar", () => {
       renderWithContext({ selectedDate: new Date() });
       const todayCell = screen.getByTestId("week-calendar-today-cell");
       expect(todayCell).toBeInTheDocument();
+    });
+
+    it("flips the rendered week to Monday-first when weekStartDay=1", () => {
+      // Wed Apr 15 2026.
+      // - Sunday-first: range Apr 12 (Sun) – Apr 18 (Sat); first column = Apr 12.
+      // - Monday-first: range Apr 13 (Mon) – Apr 19 (Sun); first column = Apr 13.
+      const selectedDate = new Date(2026, 3, 15);
+
+      renderWithContext({ selectedDate, weekStartDay: 1 });
+
+      expect(screen.getByTestId("week-calendar-range")).toHaveTextContent(
+        "Apr 13, 2026 – Apr 19, 2026"
+      );
+      // First weekday header is "Mon" not "Sun".
+      expect(
+        screen.getAllByText("Mon", { exact: true }).length
+      ).toBeGreaterThan(0);
+      // The Apr 13 (Mon) column exists; the Apr 12 (Sun) column does not.
+      expect(
+        screen.getByTestId("week-calendar-day-col-2026-04-13")
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("week-calendar-day-col-2026-04-12")
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -617,8 +641,102 @@ describe("WeekCalendar", () => {
         </CalendarContext.Provider>
       );
 
-      expect(screen.getByTestId("agenda-list-search-input")).toHaveValue("");
-      expect(screen.getByText("OtherEvent")).toBeInTheDocument();
+      // The intra-view slide animation keeps the previous AgendaList in the
+      // DOM as `animated-swap-outgoing` while `animated-swap-incoming` holds
+      // the new one. The remount we care about lives in incoming.
+      const incoming = within(screen.getByTestId("animated-swap-incoming"));
+      expect(incoming.getByTestId("agenda-list-search-input")).toHaveValue("");
+      expect(incoming.getByText("OtherEvent")).toBeInTheDocument();
+    });
+  });
+
+  describe("Slide animation on week navigation (#207)", () => {
+    function installMatchMediaMock(reducedMotion: boolean) {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: reducedMotion && query === "(prefers-reduced-motion: reduce)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+    }
+
+    beforeEach(() => {
+      installMatchMediaMock(false);
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function rerenderOn(
+      selectedDate: Date,
+      ctx: Partial<ICalendarContext>,
+      rerender: ReturnType<typeof renderWithContext>["rerender"]
+    ) {
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...createMockContext(ctx), selectedDate }}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+    }
+
+    it("wraps the week body in an AnimatedSwap container", () => {
+      renderWithContext({ selectedDate: new Date(2026, 3, 15) });
+      expect(screen.getByTestId("animated-swap")).toBeInTheDocument();
+    });
+
+    it("slides the outgoing body left (translateX(-100%)) on next-week", () => {
+      const initial = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(addDays(initial, 7), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(-100%)");
+    });
+
+    it("slides the outgoing body right (translateX(100%)) on prev-week", () => {
+      const initial = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(subWeeks(initial, 1), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(100%)");
+    });
+
+    it("does not animate when selectedDate moves within the same week", () => {
+      // Mon → Wed in the same week: weekStart unchanged, no slide.
+      const monday = new Date(2026, 3, 13); // Apr 13 2026 (Mon)
+      const wednesday = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: monday };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(wednesday, baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders no outgoing snapshot when prefers-reduced-motion is set", () => {
+      installMatchMediaMock(true);
+
+      const initial = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+      rerenderOn(addDays(initial, 7), baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
     });
   });
 });

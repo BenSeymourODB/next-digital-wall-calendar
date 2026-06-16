@@ -13,6 +13,18 @@
 import type { TCalendarAccessRole } from "@/types/calendar";
 
 /**
+ * Returns true when the access role permits write actions (create, update,
+ * delete). `undefined` is treated as permissive so a not-yet-loaded calendar
+ * list doesn't silently disable UI for owner/writer calendars — Google's
+ * server-side 403 remains the safety net for race conditions (#266).
+ */
+export function canWriteToCalendar(
+  role: TCalendarAccessRole | undefined
+): boolean {
+  return role === undefined || role === "owner" || role === "writer";
+}
+
+/**
  * Canonical shape of a Google Calendar event inside the app.
  *
  * Extends `Omit<gapi.client.calendar.Event, "summary">` so every field on the

@@ -77,7 +77,7 @@ describe("ThemeToggle", () => {
     expect(svgs.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders three theme options: Light, Dark, System", () => {
+  it("renders four theme options: Light, Dark, System, Wall-Projector", () => {
     render(<ThemeToggle />);
 
     const menuItems = screen.getAllByRole("menuitem");
@@ -86,6 +86,19 @@ describe("ThemeToggle", () => {
     expect(texts).toContain("Light");
     expect(texts).toContain("Dark");
     expect(texts).toContain("System");
+    expect(texts).toContain("Wall-Projector");
+  });
+
+  it("calls setTheme('wall-projector') when Wall-Projector option is clicked", async () => {
+    const user = userEvent.setup();
+    render(<ThemeToggle />);
+
+    const wallProjectorOption = screen.getByRole("menuitem", {
+      name: /wall-projector/i,
+    });
+    await user.click(wallProjectorOption);
+
+    expect(mockSetTheme).toHaveBeenCalledWith("wall-projector");
   });
 
   it("calls setTheme('light') when Light option is clicked", async () => {

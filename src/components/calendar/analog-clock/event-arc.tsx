@@ -147,13 +147,18 @@ export function EventArc({
           : undefined
       }
     >
-      {/* Colored arc background */}
+      {/*
+       * Colored arc background. Stroke uses the card token so the 1.5px
+       * separator between adjacent arcs (and between the arcs and the clock
+       * face) matches whichever face background is rendered — including when
+       * the face is wrapped in a light ThemeScope on a dark page (#319).
+       */}
       <path
         data-testid={`event-arc-${id}`}
         d={arcPath}
         fill={color}
         fillOpacity={0.85}
-        stroke="white"
+        stroke="var(--card)"
         strokeWidth={1.5}
       />
 
@@ -181,7 +186,11 @@ export function EventArc({
 
       {/* Event title — one <text>+<textPath> per rendered line so each line
           has its own typographic context and there is no SVG 2 "continue
-          on the next path" sequencing concern when two lines render. */}
+          on the next path" sequencing concern when two lines render. White
+          fill is intentional: titles render on the vibrant `event.color`
+          arcs where pure white preserves WCAG-AA contrast regardless of the
+          surrounding face color, including when the face is wrapped in a
+          light ThemeScope on a dark page (issue #319). */}
       {showTitle && fit.lines.length > 0 && (
         <g data-testid={`event-title-${id}`}>
           {fit.lines.map((line, i) => (

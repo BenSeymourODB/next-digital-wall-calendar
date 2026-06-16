@@ -8,6 +8,7 @@ import {
   mockSession,
   mockSessionWithError,
 } from "@/lib/auth/__tests__/fixtures";
+import { logger } from "@/lib/logger";
 import {
   type ApiErrorResponse,
   parseResponse,
@@ -310,6 +311,59 @@ describe("/api/calendar/colors", () => {
 
       expect(status).toBe(500);
       expect(data.error).toBe("An unexpected error occurred");
+    });
+
+    describe("Zod validation of Google calendarList responses (#277)", () => {
+      it("returns 502 with structured log when an entry is missing required id", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              items: [{ summary: "no id" }],
+            }),
+        });
+
+        const response = await GET();
+        const { status, data } =
+          await parseResponse<ApiErrorResponse>(response);
+
+        expect(status).toBe(502);
+        expect(data.error).toMatch(/colors/i);
+        expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: "GoogleApiValidationError",
+          }),
+          expect.objectContaining({
+            endpoint: "calendarList.list",
+          })
+        );
+      });
+
+      it("returns 502 when items is the wrong type", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              items: 42,
+            }),
+        });
+
+        const response = await GET();
+        const { status } = await parseResponse<ApiErrorResponse>(response);
+
+        expect(status).toBe(502);
+        expect(vi.mocked(logger.error)).toHaveBeenCalled();
+      });
     });
   });
 });

@@ -5,11 +5,14 @@ import {
   type CreateEventInput,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
+import { computeHiddenEventCounts } from "@/lib/calendar-filter-counts";
 import { TRANSITION_SPEED_TO_MS } from "@/lib/calendar/transition-speed";
-import type { TCalendarAccessRole } from "@/types/calendar";
 import type {
+  ICalendarInfo,
   IEvent,
   IUser,
+  TAgendaGroupBy,
+  TCalendarAccessRole,
   TCalendarView,
   TEventColor,
   TWeekStartDay,
@@ -37,7 +40,7 @@ interface MockCalendarProviderProps {
   /** Which day the visible calendar week starts on (0 = Sunday, 1 = Monday) */
   weekStartDay?: TWeekStartDay;
   /** Initial agenda-mode group-by */
-  agendaModeGroupBy?: "date" | "color";
+  agendaModeGroupBy?: TAgendaGroupBy;
   /** Initial agenda-mode toggle (only meaningful for day/week views). */
   agendaMode?: boolean;
   /** Simulate loading delay in ms */
@@ -46,6 +49,14 @@ interface MockCalendarProviderProps {
   isAuthenticated?: boolean;
   /** Max events rendered per day cell before the "+N more" overflow */
   maxEventsPerDay?: number;
+  /**
+   * Mock calendar list, used by the per-calendar filter (issue #208).
+   * Defaults to a single `primary` entry so existing tests don't need
+   * to wire it up.
+   */
+  calendars?: ICalendarInfo[];
+  /** Initial per-calendar filter selection. Empty = no calendar filter. */
+  initialSelectedCalendarIds?: string[];
   /**
    * Optional per-calendar access roles, used by the read-only delete-button
    * gating (#266). Keys are calendar IDs (matching `IEvent.calendarId`),
@@ -86,6 +97,10 @@ export function MockCalendarProvider({
   loadingDelay = 0,
   isAuthenticated = true,
   maxEventsPerDay = 3,
+  calendars: initialCalendars = [
+    { id: "primary", summary: "Primary", backgroundColor: "" },
+  ],
+  initialSelectedCalendarIds = [],
   accessRolesByCalendarId = {},
   workingHoursStart = 7,
   transitionDurationMs = TRANSITION_SPEED_TO_MS.normal,
@@ -96,9 +111,8 @@ export function MockCalendarProvider({
   const [currentView, setCurrentViewState] = useState<TCalendarView>(view);
   const [use24HourFormat, setUse24HourFormatState] =
     useState<boolean>(initial24Hour);
-  const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
-    "date" | "color"
-  >(initialAgendaGroupBy);
+  const [agendaModeGroupBy, setAgendaModeGroupByState] =
+    useState<TAgendaGroupBy>(initialAgendaGroupBy);
   const [agendaMode, setAgendaModeState] = useState<boolean>(initialAgendaMode);
   const [weekStartDay, setWeekStartDayState] =
     useState<TWeekStartDay>(initialWeekStartDay);
@@ -108,6 +122,10 @@ export function MockCalendarProvider({
     "all"
   );
   const [selectedColors, setSelectedColors] = useState<TEventColor[]>([]);
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>(
+    initialSelectedCalendarIds
+  );
+  const [calendars] = useState<ICalendarInfo[]>(initialCalendars);
 
   const [allEvents, setAllEvents] = useState<IEvent[]>(initialEvents);
   const [isLoading, setIsLoading] = useState(
@@ -136,7 +154,7 @@ export function MockCalendarProvider({
     setUse24HourFormatState(!use24HourFormat);
   };
 
-  const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
+  const setAgendaModeGroupBy = (groupBy: TAgendaGroupBy) => {
     setAgendaModeGroupByState(groupBy);
   };
 
@@ -158,9 +176,18 @@ export function MockCalendarProvider({
     setSelectedUserId(userId);
   };
 
+  const filterEventsBySelectedCalendars = (calendarId: string) => {
+    setSelectedCalendarIds((prev) =>
+      prev.includes(calendarId)
+        ? prev.filter((id) => id !== calendarId)
+        : [...prev, calendarId]
+    );
+  };
+
   const clearFilter = () => {
     setSelectedColors([]);
     setSelectedUserId("all");
+    setSelectedCalendarIds([]);
   };
 
   const addEvent = (event: IEvent) => {
@@ -211,19 +238,28 @@ export function MockCalendarProvider({
   const getAccessRole = (calendarId: string) =>
     accessRolesByCalendarId[calendarId];
 
-  // Derive filtered events at render time. React Compiler memoizes the
-  // result automatically; manual `useMemo` is forbidden by CLAUDE.md.
-  let filteredEvents = allEvents;
+  // Plain render-time derivation of filtered events + hidden counts. Manual
+  // memoization is banned (CLAUDE.md / React Compiler), but a state+effect
+  // bounce here is also overkill — the React Compiler will memoize the
+  // derivation automatically when the inputs are stable.
+  let filtered = allEvents;
   if (selectedUserId !== "all") {
-    filteredEvents = filteredEvents.filter(
-      (event) => event.user.id === selectedUserId
-    );
+    filtered = filtered.filter((event) => event.user.id === selectedUserId);
   }
   if (selectedColors.length > 0) {
-    filteredEvents = filteredEvents.filter((event) =>
-      selectedColors.includes(event.color)
+    filtered = filtered.filter((event) => selectedColors.includes(event.color));
+  }
+  if (selectedCalendarIds.length > 0) {
+    filtered = filtered.filter((event) =>
+      selectedCalendarIds.includes(event.calendarId)
     );
   }
+  const filteredEvents = filtered;
+  const hiddenEventCounts = computeHiddenEventCounts(allEvents, {
+    selectedColors,
+    selectedUserId,
+    selectedCalendarIds,
+  });
 
   // Get unique users from events
   const users = allEvents.reduce((acc, event) => {
@@ -259,6 +295,10 @@ export function MockCalendarProvider({
     selectedColors,
     filterEventsBySelectedColors,
     filterEventsBySelectedUser,
+    calendars,
+    selectedCalendarIds,
+    filterEventsBySelectedCalendars,
+    hiddenEventCounts,
     users,
     events: filteredEvents,
     addEvent,

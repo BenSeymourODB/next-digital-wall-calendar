@@ -114,6 +114,53 @@ export function groupEventsByColor(
 }
 
 /**
+ * Bucket label used for events without an `IEvent.category` (or whose
+ * category trims to the empty string). Kept literal — not localised —
+ * so the grouping logic, sort order, and tests share one source of
+ * truth. See issue #211.
+ */
+export const UNCATEGORISED_LABEL = "Uncategorised";
+
+/**
+ * Group events by `IEvent.category`. Events with a blank or
+ * whitespace-only category land under `UNCATEGORISED_LABEL`. Each
+ * bucket is sorted by start time. Caller is responsible for ordering
+ * the buckets themselves — see `sortCategoryEntries`. Issue #211.
+ */
+export function groupEventsByCategory(events: IEvent[]): Map<string, IEvent[]> {
+  const groups = new Map<string, IEvent[]>();
+
+  events.forEach((event) => {
+    const trimmed = event.category?.trim();
+    const key = trimmed ? trimmed : UNCATEGORISED_LABEL;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(event);
+  });
+
+  groups.forEach((bucket, key) => {
+    groups.set(key, sortEventsByStartTime(bucket));
+  });
+
+  return groups;
+}
+
+/**
+ * Order category bucket entries alphabetically (case-insensitive,
+ * locale-aware) with `UNCATEGORISED_LABEL` pushed to the end. Issue #211.
+ */
+export function sortCategoryEntries(
+  entries: Array<[string, IEvent[]]>
+): Array<[string, IEvent[]]> {
+  return [...entries].sort(([a], [b]) => {
+    if (a === UNCATEGORISED_LABEL) return 1;
+    if (b === UNCATEGORISED_LABEL) return -1;
+    return a.localeCompare(b, undefined, { sensitivity: "base" });
+  });
+}
+
+/**
  * Parse a date key string (yyyy-MM-dd) as local time, not UTC
  * This fixes timezone offset issues where new Date("2026-01-05") is interpreted
  * as UTC midnight, which can shift to the previous day in local timezones
@@ -266,9 +313,12 @@ export function AgendaCalendar() {
   const noMatches = searchActive && agendaEvents.length === 0;
   const resultCount = agendaEvents.length;
 
-  // Build color groups once per render (only used when grouping by color)
   const colorGroups =
     agendaModeGroupBy === "color" ? groupEventsByColor(agendaEvents) : null;
+  const categoryGroups =
+    agendaModeGroupBy === "category"
+      ? groupEventsByCategory(agendaEvents)
+      : null;
 
   return (
     <div className="w-full space-y-4">
@@ -297,6 +347,15 @@ export function AgendaCalendar() {
             aria-pressed={agendaModeGroupBy === "color"}
           >
             Group by color
+          </Button>
+          <Button
+            type="button"
+            variant={agendaModeGroupBy === "category" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setAgendaModeGroupBy("category")}
+            aria-pressed={agendaModeGroupBy === "category"}
+          >
+            Group by category
           </Button>
         </div>
       </div>
@@ -385,6 +444,27 @@ export function AgendaCalendar() {
                   </AgendaGroup>
                 );
               }
+            )}
+          </div>
+        ) : agendaModeGroupBy === "category" && categoryGroups ? (
+          <div className="space-y-6 p-4">
+            {sortCategoryEntries(Array.from(categoryGroups.entries())).map(
+              ([category, categoryEvents]) => (
+                <AgendaGroup
+                  key={category}
+                  headerText={category}
+                  eventCount={categoryEvents.length}
+                >
+                  {categoryEvents.map((event) => (
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      use24HourFormat={use24HourFormat}
+                      onClick={openModal}
+                    />
+                  ))}
+                </AgendaGroup>
+              )
             )}
           </div>
         ) : (

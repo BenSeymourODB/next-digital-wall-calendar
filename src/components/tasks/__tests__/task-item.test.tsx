@@ -1,9 +1,11 @@
 /**
  * Tests for TaskItem component
  */
-import { render, screen } from "@testing-library/react";
+import { type ReactNode } from "react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PointsProvider } from "../../rewards/points-context";
 import { TaskItem } from "../task-item";
 import type { TaskWithMeta } from "../types";
 
@@ -283,6 +285,269 @@ describe("TaskItem", () => {
       // label so screen readers announce who owns the task.
       const region = screen.getByLabelText(/assigned to dad, mom/i);
       expect(region).toBeInTheDocument();
+    });
+  });
+
+  describe("reward-point integration", () => {
+    const mockFetch = vi.fn();
+
+    function withPointsProvider(profileId: string | null) {
+      return function Wrapper({ children }: { children: ReactNode }) {
+        return (
+          <PointsProvider profileId={profileId}>{children}</PointsProvider>
+        );
+      };
+    }
+
+    beforeEach(() => {
+      vi.useRealTimers();
+      mockFetch.mockReset();
+      global.fetch = mockFetch;
+    });
+
+    it("awards points and shows the animation on first-time completion when rewards are enabled", async () => {
+      mockFetch
+        // GET /api/points (provider mount)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              totalPoints: 50,
+              enabled: true,
+              defaultTaskPoints: 10,
+              showPointsOnCompletion: true,
+            }),
+        })
+        // POST /api/points/award
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              newTotal: 60,
+              alreadyAwarded: false,
+            }),
+        });
+
+      const onToggle = vi.fn();
+      const user = userEvent.setup();
+
+      render(
+        <TaskItem
+          task={createTask({ status: "needsAction", id: "task-xyz" })}
+          onToggle={onToggle}
+        />,
+        { wrapper: withPointsProvider("profile-1") }
+      );
+
+      // Give the GET fetch a tick to settle so the provider state is hot
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/points?profileId=profile-1",
+          expect.objectContaining({ signal: expect.any(AbortSignal) })
+        );
+      });
+
+      const checkbox = screen.getByRole("checkbox");
+      await user.click(checkbox);
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/points/award",
+          expect.objectContaining({ method: "POST" })
+        );
+      });
+
+      // Animation banner appears with the configured default points
+      expect(await screen.findByText(/\+10 points!/)).toBeInTheDocument();
+      expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT award points when rewards are disabled at the account level", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            totalPoints: 0,
+            enabled: false,
+            defaultTaskPoints: 10,
+            showPointsOnCompletion: true,
+          }),
+      });
+
+      const onToggle = vi.fn();
+      const user = userEvent.setup();
+
+      render(
+        <TaskItem
+          task={createTask({ status: "needsAction" })}
+          onToggle={onToggle}
+        />,
+        { wrapper: withPointsProvider("profile-1") }
+      );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+
+      await user.click(screen.getByRole("checkbox"));
+
+      // No POST should fire when rewards are disabled.
+      await new Promise((r) => setTimeout(r, 0));
+      const calls = mockFetch.mock.calls.filter(
+        ([url]) => typeof url === "string" && url.includes("/api/points/award")
+      );
+      expect(calls).toHaveLength(0);
+      expect(screen.queryByText(/\+10 points!/)).not.toBeInTheDocument();
+      expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT award points on un-completing a task (completed → needsAction)", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            totalPoints: 50,
+            enabled: true,
+            defaultTaskPoints: 10,
+            showPointsOnCompletion: true,
+          }),
+      });
+
+      const onToggle = vi.fn();
+      const user = userEvent.setup();
+
+      render(
+        <TaskItem
+          task={createTask({ status: "completed" })}
+          onToggle={onToggle}
+        />,
+        { wrapper: withPointsProvider("profile-1") }
+      );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+
+      await user.click(screen.getByRole("checkbox"));
+
+      await new Promise((r) => setTimeout(r, 0));
+      const calls = mockFetch.mock.calls.filter(
+        ([url]) => typeof url === "string" && url.includes("/api/points/award")
+      );
+      expect(calls).toHaveLength(0);
+      expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT show the animation when alreadyAwarded is true (idempotency hit)", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              totalPoints: 50,
+              enabled: true,
+              defaultTaskPoints: 10,
+              showPointsOnCompletion: true,
+            }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              newTotal: 50,
+              alreadyAwarded: true,
+            }),
+        });
+
+      const onToggle = vi.fn();
+      const user = userEvent.setup();
+
+      render(
+        <TaskItem
+          task={createTask({ status: "needsAction" })}
+          onToggle={onToggle}
+        />,
+        { wrapper: withPointsProvider("profile-1") }
+      );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+
+      await user.click(screen.getByRole("checkbox"));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      });
+
+      // No animation when the server reported an idempotency hit.
+      expect(screen.queryByText(/\+10 points!/)).not.toBeInTheDocument();
+    });
+
+    it("does NOT show the animation when showPointsOnCompletion is false", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              totalPoints: 50,
+              enabled: true,
+              defaultTaskPoints: 10,
+              showPointsOnCompletion: false,
+            }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              newTotal: 60,
+              alreadyAwarded: false,
+            }),
+        });
+
+      const onToggle = vi.fn();
+      const user = userEvent.setup();
+
+      render(
+        <TaskItem
+          task={createTask({ status: "needsAction" })}
+          onToggle={onToggle}
+        />,
+        { wrapper: withPointsProvider("profile-1") }
+      );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+
+      await user.click(screen.getByRole("checkbox"));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      });
+
+      expect(screen.queryByText(/\+10 points!/)).not.toBeInTheDocument();
+    });
+
+    it("renders without errors when no PointsProvider is mounted", async () => {
+      const onToggle = vi.fn();
+      const user = userEvent.setup();
+
+      render(
+        <TaskItem
+          task={createTask({ status: "needsAction" })}
+          onToggle={onToggle}
+        />
+      );
+
+      await act(async () => {
+        await user.click(screen.getByRole("checkbox"));
+      });
+
+      expect(onToggle).toHaveBeenCalledTimes(1);
     });
   });
 });
