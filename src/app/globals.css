@@ -12,16 +12,19 @@
  * Why: `ThemeScope` (src/components/theme/theme-scope.tsx) re-declares all
  * shadcn/ui semantic tokens within `[data-theme-scope]`, but it cannot by
  * itself reverse the `dark:` variant on Tailwind utilities. shadcn ships
- * `dark:` overrides on ~19 components in `src/components/ui/` (e.g. Button's
+ * `dark:` overrides on 19 components in `src/components/ui/` (e.g. Button's
  * outline variant, Switch thumb, Badge destructive). Tightening the variant
  * here neutralizes the leakage centrally — durable across `pnpm bump-ui`,
- * which overwrites `src/components/ui/`. Issue: #324.
+ * which overwrites `src/components/ui/`. The audit list lives in
+ * `docs/styling.md`; re-run `grep -rln 'dark:' src/components/ui/` after
+ * `pnpm bump-ui` to refresh it. Issue: #324.
  *
  * Limitation: re-nesting (light scope inside dark inside light) is not
- * handled — the outermost light scope always wins the `:not()` exclusion.
- * The token blocks themselves DO re-nest via CSS custom-property inheritance,
- * but `dark:` utilities will be stuck off inside the innermost re-entered
- * dark island. No current consumer re-nests; documented in
+ * handled — any `[data-theme-scope="light"]` ancestor anywhere in the tree
+ * suppresses `dark:` for all of its descendants, including a re-entered
+ * dark island nested inside it. The token blocks themselves DO re-nest via
+ * CSS custom-property inheritance, but `dark:` utilities are stuck off in
+ * the re-entered dark island. No current consumer re-nests; documented in
  * `src/components/theme/theme-scope.tsx`.
  *
  * NB: Tailwind requires `@custom-variant` on a single line — do not break it.

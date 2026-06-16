@@ -119,6 +119,15 @@ describe("ThemeScope", () => {
   });
 
   describe("dark variant tightening (#324)", () => {
+    // The probe sets `--dark-variant-active: 1` directly on matched elements,
+    // so `getComputedStyle().getPropertyValue()` here is a direct match (not
+    // a cascade lookup) — that path is reliable in jsdom even where its
+    // `var(...)` resolution historically isn't.
+    //
+    // The `activates …` cases (toBe(true)) double as a parser smoke-test:
+    // if jsdom ever drops the `:not(:where(...))` rule entirely as unparseable,
+    // those would fail too, so the `suppresses …` cases (toBe(false)) cannot
+    // pass vacuously.
     function withProbeStylesheet<T>(run: () => T): T {
       const style = document.createElement("style");
       style.textContent = darkVariantProbeRule();
@@ -199,6 +208,19 @@ describe("ThemeScope", () => {
         const probe = getByTestId("probe");
         expect(probeActive(probe)).toBe(true);
         expect(probeActive(probe.parentElement as Element)).toBe(true);
+      });
+    });
+
+    it("activates dark variant on the .dark element itself (self-match)", () => {
+      // Symmetric with the [data-theme-scope="dark"] self-match above — the
+      // element carrying the dark class matches the positive arm directly.
+      withProbeStylesheet(() => {
+        const { getByTestId } = render(
+          <div className="dark" data-testid="dark-root">
+            <span>x</span>
+          </div>
+        );
+        expect(probeActive(getByTestId("dark-root"))).toBe(true);
       });
     });
   });
