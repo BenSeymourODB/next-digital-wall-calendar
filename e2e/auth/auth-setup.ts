@@ -281,9 +281,18 @@ export async function withAuthenticatedPage<T>(
 }
 
 /**
- * Disconnect database pool (call in afterAll)
+ * Disconnect database pool (call in afterAll).
+ *
+ * Idempotent: the pool is a module-level singleton shared by every spec in a
+ * worker, so with Playwright's `workers: 1` (CI) more than one spec file's
+ * `afterAll` ends up calling this against the same pool. `pg`'s `pool.end()`
+ * throws "Called end on pool more than once" on the second call, so we guard
+ * with a flag and only end the pool the first time.
  */
+let poolEnded = false;
 export async function disconnectDatabase(): Promise<void> {
+  if (poolEnded) return;
+  poolEnded = true;
   await pool.end();
 }
 

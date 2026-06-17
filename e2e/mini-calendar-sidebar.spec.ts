@@ -112,7 +112,9 @@ test.describe("MiniCalendarSidebar", () => {
   }) => {
     // The `overflow` mock set puts 10 events on today, cycling through
     // blue/green/red/yellow/purple/orange — at least 6 distinct colors.
-    await page.goto("/test/calendar?events=overflow&view=month&sidebar=true");
+    // Use an agenda view: the mini-calendar sidebar is intentionally hidden in
+    // month view (it would duplicate the main grid — #146/#214).
+    await page.goto("/test/calendar?events=overflow&view=agenda&sidebar=true");
 
     const todayCell = page
       .getByTestId("mini-calendar-sidebar")
