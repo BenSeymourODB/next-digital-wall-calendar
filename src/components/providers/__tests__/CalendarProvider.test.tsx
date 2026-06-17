@@ -1771,6 +1771,13 @@ describe("CalendarProvider", () => {
   });
 
   describe("editEvent (#265)", () => {
+    // Clear filter state persisted by PR #318 (`calendar-filter-state` keys)
+    // so the post-edit row isn't accidentally hidden by a stale colour or
+    // calendar selection inherited from another test.
+    beforeEach(() => {
+      window.localStorage.clear();
+    });
+
     /**
      * Probe that exposes `editEvent` and the current event list. The probe
      * patches the seeded event (id `evt-1`) with a new title/colour so each
