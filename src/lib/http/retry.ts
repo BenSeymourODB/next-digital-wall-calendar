@@ -282,11 +282,16 @@ export async function withRetry<T>(
  * contract. If `init.signal` is absent and `options.signal` is provided, the
  * outer signal is threaded through.
  *
- * The signal that `withRetry` observes for its inter-attempt sleep is derived
- * from the same precedence: `options.signal` if set, otherwise `init.signal`.
+ * The signal that `withRetry` observes for its inter-attempt sleep follows
+ * the *opposite* precedence: `options.signal` if set, otherwise `init.signal`.
  * This makes the per-flight `AbortSignal.timeout(N)` that callers pass via
  * `init` bound the *entire* retry loop's wall time, not just each individual
- * fetch attempt (issue #434).
+ * fetch attempt (issue #434). When both signals are set the two contracts
+ * become asymmetric: each `fetch()` call observes `init.signal`, while the
+ * inter-attempt sleep observes `options.signal`. That's an artefact of the
+ * "caller signal wins" rule for fetch; merging the two via `AbortSignal.any`
+ * is the natural next step but is intentionally deferred to keep this change
+ * minimal.
  */
 export async function fetchWithRetry(
   input: Parameters<typeof fetch>[0],
