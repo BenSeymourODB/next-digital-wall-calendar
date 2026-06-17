@@ -212,6 +212,12 @@ export function useUserSettings(): UseUserSettingsResult {
       // already moved local state past our optimistic value; reverting it
       // to our pre-call snapshot would stomp on the most-recent truth and
       // re-broadcast a stale value to every other in-tab subscriber.
+      //
+      // `settingsRef.current` is updated post-commit via `useEffect`; UI-
+      // driven mutates always have an event-loop tick between them, so the
+      // ref reflects every preceding optimistic write by the time a
+      // concurrent rejection lands. `Object.is` is the right comparator
+      // for the all-primitive `UserCalendarSettings` shape today.
       if (snapshot && Object.keys(snapshot).length > 0) {
         const live = settingsRef.current;
         const liveRollback: Partial<UserCalendarSettings> = {};

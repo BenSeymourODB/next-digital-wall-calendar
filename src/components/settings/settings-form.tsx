@@ -83,6 +83,14 @@ export function SettingsForm({
   // render commits (#420). Reading the live state outside the `setSettings`
   // functional callback lets us compare-and-swap per-key without emitting
   // from inside the setter (which double-fires under StrictMode).
+  //
+  // The ref is updated in a `useEffect`, which runs after commit but before
+  // the next render. UI-triggered `updateSettings` calls are always separated
+  // by at least one event-loop tick (the user clicks again after the previous
+  // click's handler returns), so by the time a concurrent `catch` fires the
+  // ref reflects every preceding optimistic write. A synchronous same-tick
+  // race (e.g. programmatic rapid-fire) would not be guarded — see the
+  // analogous pattern at `useUserSettings.ts:104`.
   const settingsRef = useRef(settings);
   useEffect(() => {
     settingsRef.current = settings;
@@ -170,6 +178,12 @@ export function SettingsForm({
       // (its PUT succeeded after we snapshotted but before we failed) must
       // not be regressed to our stale snapshot. Reads through `settingsRef`
       // so the comparison sees the truly-current state, post-render.
+      //
+      // `Object.is` is the correct comparator for the current all-primitive
+      // shape of `UserSettingsData`. If a future field becomes an array or
+      // object reference, the comparison would degenerate to reference
+      // equality and the guard would never fire — switch to a structural
+      // comparator at that point.
       const live = settingsRef.current;
       const liveRevert: Partial<UserSettingsData> = {};
       for (const key of Object.keys(revert) as Array<keyof UserSettingsData>) {
