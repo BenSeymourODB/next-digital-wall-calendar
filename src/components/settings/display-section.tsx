@@ -3,6 +3,7 @@
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Slider } from "@/components/ui/slider";
+import type { TDateFormat } from "@/lib/format-date";
 import type { TWeekStartDay } from "@/types/calendar";
 import { useTheme } from "next-themes";
 import { SettingsSection } from "./settings-section";
@@ -10,7 +11,7 @@ import { SettingsSection } from "./settings-section";
 interface DisplayValues {
   theme: string;
   timeFormat: string;
-  dateFormat: string;
+  dateFormat: TDateFormat;
   defaultZoomLevel: number;
   weekStartDay: TWeekStartDay;
 }
