@@ -9,7 +9,10 @@ import { VALID_DATE_FORMATS } from "@/lib/format-date";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
-const VALID_THEMES = ["light", "dark", "auto", "system"];
+// Keep in sync with `THEMES` in `src/components/providers/ThemeProvider.tsx`
+// and `THEME_OPTIONS` in `src/components/settings/display-section.tsx`.
+// `auto` is a legacy alias for `system` (display-section maps it on display).
+const VALID_THEMES = ["light", "dark", "auto", "system", "wall-projector"];
 const VALID_TIME_FORMATS = ["12h", "24h"];
 
 /**

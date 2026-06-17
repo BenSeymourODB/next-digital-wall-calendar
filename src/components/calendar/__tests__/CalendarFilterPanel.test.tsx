@@ -9,17 +9,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { CalendarFilterPanel } from "../CalendarFilterPanel";
 
-function createMockContext(
-  overrides: Partial<ICalendarContext> = {}
-): ICalendarContext {
-  return makeCalendarContext({
-    view: "month",
-    ...overrides,
-  });
-}
-
 function renderPanel(overrides: Partial<ICalendarContext> = {}) {
-  const contextValue = createMockContext(overrides);
+  // Single-source-of-truth pattern from #371: every test in this file
+  // delegates context construction to the shared `makeCalendarContext`
+  // factory in `src/test/fixtures/calendar-context.ts`. Adding a new
+  // context field becomes one edit in the factory — every test picks up
+  // the sensible default automatically. The factory's `view: "month"`
+  // default already matches what this panel needs.
+  const contextValue = makeCalendarContext(overrides);
   return {
     ...render(
       <CalendarContext.Provider value={contextValue}>
@@ -257,6 +254,195 @@ describe("CalendarFilterPanel", () => {
       await user.click(screen.getByTestId("filter-panel-clear"));
 
       expect(contextValue.clearFilter).toHaveBeenCalledTimes(1);
+    });
+
+    // Issue #208 Phase 2 — clear should also reset the calendar selection.
+    it("renders the Clear filters button when a calendar filter is active", () => {
+      renderPanel({
+        calendars: [{ id: "primary", summary: "Primary", backgroundColor: "" }],
+        selectedCalendarIds: ["primary"],
+      });
+      expect(screen.getByTestId("filter-panel-clear")).toBeInTheDocument();
+    });
+  });
+
+  // Issue #208 Phase 2 — per-calendar filter popover.
+  describe("calendar filter", () => {
+    const primary = {
+      id: "primary",
+      summary: "Primary",
+      backgroundColor: "#4285f4",
+    };
+    const work = {
+      id: "work",
+      summary: "Work",
+      backgroundColor: "#16a765",
+    };
+
+    it("renders the Calendars trigger by default", () => {
+      renderPanel();
+      expect(
+        screen.getByTestId("filter-panel-calendar-trigger")
+      ).toBeInTheDocument();
+    });
+
+    it("lists each calendar in the popover", async () => {
+      const user = userEvent.setup();
+      renderPanel({ calendars: [primary, work] });
+
+      await user.click(screen.getByTestId("filter-panel-calendar-trigger"));
+      const popover = await screen.findByTestId(
+        "filter-panel-calendar-popover"
+      );
+
+      expect(
+        within(popover).getByTestId(
+          `filter-panel-calendar-option-${primary.id}`
+        )
+      ).toHaveTextContent(primary.summary);
+      expect(
+        within(popover).getByTestId(`filter-panel-calendar-option-${work.id}`)
+      ).toHaveTextContent(work.summary);
+    });
+
+    it("shows the empty-state message when no calendars are loaded", async () => {
+      const user = userEvent.setup();
+      renderPanel({ calendars: [] });
+
+      await user.click(screen.getByTestId("filter-panel-calendar-trigger"));
+      const popover = await screen.findByTestId(
+        "filter-panel-calendar-popover"
+      );
+
+      expect(
+        within(popover).getByTestId("filter-panel-calendar-empty")
+      ).toBeInTheDocument();
+    });
+
+    it("calls filterEventsBySelectedCalendars when an option is clicked", async () => {
+      const user = userEvent.setup();
+      const { contextValue } = renderPanel({ calendars: [primary, work] });
+
+      await user.click(screen.getByTestId("filter-panel-calendar-trigger"));
+      const popover = await screen.findByTestId(
+        "filter-panel-calendar-popover"
+      );
+
+      await user.click(
+        within(popover).getByTestId(`filter-panel-calendar-option-${work.id}`)
+      );
+
+      expect(contextValue.filterEventsBySelectedCalendars).toHaveBeenCalledWith(
+        work.id
+      );
+    });
+
+    it("marks selected calendars as checked in the popover", async () => {
+      const user = userEvent.setup();
+      renderPanel({
+        calendars: [primary, work],
+        selectedCalendarIds: [primary.id],
+      });
+
+      await user.click(screen.getByTestId("filter-panel-calendar-trigger"));
+      const popover = await screen.findByTestId(
+        "filter-panel-calendar-popover"
+      );
+
+      expect(
+        within(popover).getByTestId(
+          `filter-panel-calendar-checkbox-${primary.id}`
+        )
+      ).toHaveAttribute("data-state", "checked");
+      expect(
+        within(popover).getByTestId(`filter-panel-calendar-checkbox-${work.id}`)
+      ).toHaveAttribute("data-state", "unchecked");
+    });
+
+    it("shows an active-count badge when calendars are selected", () => {
+      renderPanel({
+        calendars: [primary, work],
+        selectedCalendarIds: [primary.id, work.id],
+      });
+      expect(
+        screen.getByTestId("filter-panel-calendar-count")
+      ).toHaveTextContent("2");
+    });
+
+    it("does not show the active-count badge when no calendars are selected", () => {
+      renderPanel({ calendars: [primary, work] });
+      expect(
+        screen.queryByTestId("filter-panel-calendar-count")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  // Issue #208 Phase 3 — hidden-events chips. Each trigger shows a
+  // "{n} hidden" chip when its dimension hides at least one event.
+  describe("hidden-events chips", () => {
+    it("renders no chips when nothing is hidden", () => {
+      renderPanel({
+        hiddenEventCounts: { color: 0, user: 0, calendar: 0 },
+      });
+      expect(
+        screen.queryByTestId("filter-panel-color-hidden")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("filter-panel-user-hidden")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("filter-panel-calendar-hidden")
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows the color hidden chip with the count when color filter hides events", () => {
+      renderPanel({
+        selectedColors: ["red"],
+        hiddenEventCounts: { color: 3, user: 0, calendar: 0 },
+      });
+      const chip = screen.getByTestId("filter-panel-color-hidden");
+      expect(chip).toHaveTextContent("3 hidden");
+      expect(
+        screen.queryByTestId("filter-panel-user-hidden")
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows the user hidden chip independently from color", () => {
+      renderPanel({
+        users: [{ id: "u1", name: "Mom", picturePath: null }],
+        selectedUserId: "u1",
+        hiddenEventCounts: { color: 0, user: 5, calendar: 0 },
+      });
+      const chip = screen.getByTestId("filter-panel-user-hidden");
+      expect(chip).toHaveTextContent("5 hidden");
+      expect(
+        screen.queryByTestId("filter-panel-color-hidden")
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows the calendar hidden chip when calendar filter hides events", () => {
+      renderPanel({
+        calendars: [{ id: "primary", summary: "Primary", backgroundColor: "" }],
+        selectedCalendarIds: ["primary"],
+        hiddenEventCounts: { color: 0, user: 0, calendar: 2 },
+      });
+      const chip = screen.getByTestId("filter-panel-calendar-hidden");
+      expect(chip).toHaveTextContent("2 hidden");
+    });
+
+    it("renders chips on multiple triggers when multiple dimensions hide events", () => {
+      renderPanel({
+        selectedColors: ["red"],
+        users: [{ id: "u1", name: "Mom", picturePath: null }],
+        selectedUserId: "u1",
+        hiddenEventCounts: { color: 4, user: 1, calendar: 0 },
+      });
+      expect(screen.getByTestId("filter-panel-color-hidden")).toHaveTextContent(
+        "4 hidden"
+      );
+      expect(screen.getByTestId("filter-panel-user-hidden")).toHaveTextContent(
+        "1 hidden"
+      );
     });
   });
 });

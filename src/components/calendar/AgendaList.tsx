@@ -4,6 +4,7 @@ import { useCalendar } from "@/components/providers/CalendarProvider";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useRef, useState } from "react";
 import { format, isAfter, isBefore } from "date-fns";
+import { groupEventsByCategory, sortCategoryEntries } from "./AgendaCalendar";
 import { EventDetailModal } from "./EventDetailModal";
 
 /**
@@ -217,6 +218,8 @@ export function AgendaList({
 
   const colorGroups =
     agendaModeGroupBy === "color" ? groupByColor(windowed) : null;
+  const categoryGroups =
+    agendaModeGroupBy === "category" ? groupEventsByCategory(windowed) : null;
 
   return (
     <div
@@ -245,6 +248,27 @@ export function AgendaList({
                 </AgendaGroup>
               );
             }
+          )}
+        </div>
+      ) : agendaModeGroupBy === "category" && categoryGroups ? (
+        <div className="space-y-6 p-4">
+          {sortCategoryEntries(Array.from(categoryGroups.entries())).map(
+            ([category, categoryEvents]) => (
+              <AgendaGroup
+                key={category}
+                headerText={category}
+                eventCount={categoryEvents.length}
+              >
+                {categoryEvents.map((event) => (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    use24HourFormat={use24HourFormat}
+                    onClick={openModal}
+                  />
+                ))}
+              </AgendaGroup>
+            )
           )}
         </div>
       ) : (

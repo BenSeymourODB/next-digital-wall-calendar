@@ -10,7 +10,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { IUser, TEventColor } from "@/types/calendar";
-import { Check, Filter, X } from "lucide-react";
+import { CalendarRange, Check, Filter, X } from "lucide-react";
 
 const ALL_COLORS: TEventColor[] = [
   "blue",
@@ -56,6 +56,24 @@ function UserAvatar({ user, className }: UserAvatarProps) {
   );
 }
 
+interface HiddenChipProps {
+  count: number;
+  testId: string;
+}
+
+function HiddenChip({ count, testId }: HiddenChipProps) {
+  if (count <= 0) return null;
+  return (
+    <Badge
+      variant="outline"
+      className="text-muted-foreground ml-1 h-5 px-1.5 text-xs font-normal"
+      data-testid={testId}
+    >
+      {count} hidden
+    </Badge>
+  );
+}
+
 export function CalendarFilterPanel() {
   const {
     selectedColors,
@@ -63,11 +81,17 @@ export function CalendarFilterPanel() {
     users,
     selectedUserId,
     setSelectedUserId,
+    calendars,
+    selectedCalendarIds,
+    filterEventsBySelectedCalendars,
+    hiddenEventCounts,
     clearFilter,
   } = useCalendar();
 
   const colorCount = selectedColors.length;
-  const hasActiveFilters = colorCount > 0 || selectedUserId !== "all";
+  const calendarCount = selectedCalendarIds.length;
+  const hasActiveFilters =
+    colorCount > 0 || selectedUserId !== "all" || calendarCount > 0;
 
   const selectedUser =
     selectedUserId === "all"
@@ -100,6 +124,10 @@ export function CalendarFilterPanel() {
                 {colorCount}
               </Badge>
             ) : null}
+            <HiddenChip
+              count={hiddenEventCounts.color}
+              testId="filter-panel-color-hidden"
+            />
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -169,6 +197,10 @@ export function CalendarFilterPanel() {
               </div>
             ) : null}
             <span>{selectedUser ? selectedUser.name : "All"}</span>
+            <HiddenChip
+              count={hiddenEventCounts.user}
+              testId="filter-panel-user-hidden"
+            />
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -240,6 +272,94 @@ export function CalendarFilterPanel() {
               })
             )}
           </ul>
+        </PopoverContent>
+      </Popover>
+
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="relative gap-2"
+            aria-label="Filter events by calendar"
+            data-testid="filter-panel-calendar-trigger"
+          >
+            <CalendarRange className="h-4 w-4" aria-hidden="true" />
+            <span>Calendars</span>
+            {calendarCount > 0 ? (
+              <Badge
+                variant="secondary"
+                className="ml-1 h-5 min-w-5 px-1.5 text-xs"
+                data-testid="filter-panel-calendar-count"
+              >
+                {calendarCount}
+              </Badge>
+            ) : null}
+            <HiddenChip
+              count={hiddenEventCounts.calendar}
+              testId="filter-panel-calendar-hidden"
+            />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-64 p-2"
+          data-testid="filter-panel-calendar-popover"
+        >
+          <p className="text-muted-foreground px-2 pt-1 pb-2 text-xs font-medium uppercase">
+            Filter by calendar
+          </p>
+          {calendars.length === 0 ? (
+            <p
+              className="text-muted-foreground px-2 py-2 text-xs"
+              data-testid="filter-panel-calendar-empty"
+            >
+              No calendars available yet. They&apos;ll appear here once events
+              load.
+            </p>
+          ) : (
+            <ul className="flex flex-col">
+              {calendars.map((cal) => {
+                const checked = selectedCalendarIds.includes(cal.id);
+                return (
+                  <li key={cal.id}>
+                    <button
+                      type="button"
+                      onClick={() => filterEventsBySelectedCalendars(cal.id)}
+                      className="hover:bg-accent flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left"
+                      data-testid={`filter-panel-calendar-option-${cal.id}`}
+                      aria-pressed={checked}
+                    >
+                      <span
+                        aria-hidden="true"
+                        data-state={checked ? "checked" : "unchecked"}
+                        data-testid={`filter-panel-calendar-checkbox-${cal.id}`}
+                        className="border-input data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=checked]:border-primary flex size-4 shrink-0 items-center justify-center rounded-[4px] border shadow-xs"
+                      >
+                        {checked ? <Check className="size-3.5" /> : null}
+                      </span>
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        // The backgroundColor comes straight from the
+                        // Google Calendar API per-calendar setting and is
+                        // user-controlled in the source app, so we render
+                        // it inline rather than mapping into the Tailwind
+                        // palette.
+                        style={
+                          cal.backgroundColor
+                            ? { backgroundColor: cal.backgroundColor }
+                            : undefined
+                        }
+                        aria-hidden="true"
+                      />
+                      <span className="truncate text-sm">{cal.summary}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </PopoverContent>
       </Popover>
 

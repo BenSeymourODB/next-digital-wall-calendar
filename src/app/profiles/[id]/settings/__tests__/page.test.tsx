@@ -1,7 +1,7 @@
 /**
  * Tests for /profiles/[id]/settings page
  */
-import type { Profile } from "@/components/profiles/profile-context";
+import { makeProfile } from "@/test/fixtures/profile";
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 // Import after mocks
@@ -12,36 +12,23 @@ const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 // Mock profile data
-const mockAdminProfile: Profile = {
+const mockAdminProfile = makeProfile({
   id: "profile-admin",
   userId: "user-1",
   name: "Admin User",
-  type: "admin",
-  ageGroup: "adult",
-  color: "#3b82f6",
-  avatar: {
-    type: "initials",
-    value: "AU",
-    backgroundColor: "#3b82f6",
-  },
+  avatar: { type: "initials", value: "AU", backgroundColor: "#3b82f6" },
   pinEnabled: true,
-  isActive: true,
-};
+});
 
-const mockStandardProfile: Profile = {
+const mockStandardProfile = makeProfile({
   id: "profile-standard",
   userId: "user-1",
   name: "Child User",
   type: "standard",
   ageGroup: "child",
   color: "#22c55e",
-  avatar: {
-    type: "emoji",
-    value: "👦",
-  },
-  pinEnabled: false,
-  isActive: true,
-};
+  avatar: { type: "emoji", value: "👦" },
+});
 
 const mockProfiles = [mockAdminProfile, mockStandardProfile];
 

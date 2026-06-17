@@ -20,6 +20,10 @@ import type { TWeekStartDay } from "@/types/calendar";
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 
+// TODO(#328): rename to UserClientSettings (or split per-feature) once the
+// app-wide settings consolidation lands. The "Calendar" prefix is no longer
+// accurate now that non-calendar fields (e.g. defaultZoomLevel) flow through
+// this hook.
 export type TTimeFormat = "12h" | "24h";
 
 const VALID_TIME_FORMATS: readonly TTimeFormat[] = ["12h", "24h"] as const;
@@ -29,6 +33,7 @@ export interface UserCalendarSettings {
   calendarFetchMonthsAhead: number;
   calendarFetchMonthsBehind: number;
   calendarMaxEventsPerDay: number;
+  defaultZoomLevel: number;
   /**
    * App-wide time format (#337). The single source of truth replacing the
    * standalone `CalendarProvider.use24HourFormat` localStorage key.
@@ -54,6 +59,7 @@ export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
   calendarFetchMonthsAhead: 6,
   calendarFetchMonthsBehind: 1,
   calendarMaxEventsPerDay: 3,
+  defaultZoomLevel: 1.0,
   timeFormat: "12h",
   dateFormat: DEFAULT_DATE_FORMAT,
   weekStartDay: 0,
@@ -242,6 +248,12 @@ function pickCalendarFields(
   }
   if (typeof data.calendarMaxEventsPerDay === "number") {
     picked.calendarMaxEventsPerDay = data.calendarMaxEventsPerDay;
+  }
+  if (
+    typeof data.defaultZoomLevel === "number" &&
+    Number.isFinite(data.defaultZoomLevel)
+  ) {
+    picked.defaultZoomLevel = data.defaultZoomLevel;
   }
   if (
     typeof data.timeFormat === "string" &&

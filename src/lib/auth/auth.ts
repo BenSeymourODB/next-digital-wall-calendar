@@ -10,8 +10,8 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { encryptLinkedAccount } from "./link-account";
 import { refreshGoogleAccessToken } from "./refresh-google-token";
-import { refreshGoogleSessionTokensIfNeeded } from "./refresh-session-tokens";
 import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
+import { getOrStartSessionRefresh } from "./token-refresh-singleflight";
 
 // Fail fast on a missing / misconfigured encryption key. Without this, the
 // per-request `encryptToken` call in the session callback throws, gets caught,
@@ -113,19 +113,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Returns a terminal-error outcome only for genuine Google revocation /
       // missing refresh-token / undecryptable ciphertext — transient failures
       // leave the session untouched so the next callback retries (#315).
-      const outcome = await refreshGoogleSessionTokensIfNeeded(
-        user.id,
-        googleAccount,
-        {
-          prisma,
-          refreshGoogleAccessToken,
-          encryptToken,
-          decryptToken,
-          logger,
-          googleClientId: process.env.GOOGLE_CLIENT_ID!,
-          googleClientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-        }
-      );
+      //
+      // Wrapped in the singleflight cache (#216) so concurrent session
+      // callbacks for the same account collapse onto one OAuth round-trip and
+      // one DB write instead of racing each other's `prisma.account.update`.
+      const outcome = await getOrStartSessionRefresh(user.id, googleAccount, {
+        prisma,
+        refreshGoogleAccessToken,
+        encryptToken,
+        decryptToken,
+        logger,
+        googleClientId: process.env.GOOGLE_CLIENT_ID!,
+        googleClientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      });
 
       if (outcome.kind === "terminal-error") {
         session.error = "RefreshTokenError";
