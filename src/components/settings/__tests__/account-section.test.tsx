@@ -172,10 +172,13 @@ describe("AccountSection", () => {
   });
 
   describe("dateFormat (#339)", () => {
-    // Use a local-noon ISO so the rendered numeric date is the same
-    // calendar day regardless of which TZ the test harness runs in
-    // (a 00:00:00Z timestamp shifts a day in negative-offset zones).
-    const ISO = "2026-03-05T12:00:00Z";
+    // Build the timestamp from local calendar fields, then serialise. The
+    // earlier `"2026-03-05T12:00:00Z"` literal looked TZ-safe but rolled
+    // forward a day in UTC+14 / +13 zones (e.g. Pacific/Kiritimati,
+    // Pacific/Auckland during DST), since `date-fns`'s `format()` reads
+    // local fields. Constructing the Date locally pins the rendered
+    // glyphs to March 5 in every host TZ.
+    const ISO = new Date(2026, 2, 5, 12, 0, 0).toISOString();
 
     it("renders the createdAt date in MM/DD/YYYY by default", () => {
       render(

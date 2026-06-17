@@ -2,9 +2,9 @@
 
 import { useUserSettings } from "@/hooks/useUserSettings";
 import {
-  type TDateFormat,
   VALID_DATE_FORMATS,
   formatUserDate,
+  isDateFormat,
 } from "@/lib/format-date";
 import { Toaster } from "sonner";
 
@@ -123,7 +123,15 @@ function DateFormatWriter() {
         className="border-border bg-background text-foreground mt-1 rounded-md border px-3 py-2"
         value={settings.dateFormat}
         onChange={(e) => {
-          void mutate({ dateFormat: e.target.value as TDateFormat });
+          // The select is populated from `VALID_DATE_FORMATS`, but route
+          // unknown values through the same `isDateFormat` guard the rest
+          // of the PR uses rather than bypassing the type system with a
+          // cast — keeps the test fixture honest about the production
+          // pattern it models.
+          const next = e.target.value;
+          if (isDateFormat(next)) {
+            void mutate({ dateFormat: next });
+          }
         }}
       >
         {VALID_DATE_FORMATS.map((fmt) => (
