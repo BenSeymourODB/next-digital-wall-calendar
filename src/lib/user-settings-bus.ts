@@ -15,39 +15,23 @@
  * Server-safe: `window` is guarded so the module can be imported from
  * places that load on the server (e.g. shared hooks).
  */
+import type { UserSettingsData } from "@/types/user-settings";
 
 const EVENT_NAME = "user-settings-changed";
 
 /**
- * Closed payload type for bus events. Listing every column in the
- * `UserSettings` Prisma model that any in-tab consumer might care about
- * lets typo'd keys (`timeformat` instead of `timeFormat`) fail at
- * compile time rather than silently no-op at runtime. Add new fields
- * here as additional `UserSettings` columns get wired through to live
- * UI sync.
+ * Payload type for bus events: any partial of the settings shape the form
+ * can write. Derived from the shared `UserSettingsData` so the bus can
+ * never silently drift from the form — adding a column to
+ * `UserSettingsData` automatically extends the bus contract (#419).
  *
- * Value types intentionally mirror the existing `SettingsForm`
- * `UserSettingsData` shape (`string` for the literal-union columns
- * `timeFormat` / `dateFormat` / `theme`); subscribers validate the
- * values via `pickCalendarFields` or equivalent at the consumer
- * boundary. Tightening is a follow-up once `SettingsForm` adopts the
- * stronger types end-to-end.
+ * Subscribers validate individual keys at the consumer boundary
+ * (`pickCalendarFields` in `useUserSettings`); the bus itself does not
+ * narrow values. Typo'd keys (`timeformat` instead of `timeFormat`)
+ * continue to fail at compile time because `Partial<UserSettingsData>`
+ * is a closed key set.
  */
-export interface UserSettingsBusPayload {
-  timeFormat?: string;
-  dateFormat?: string;
-  theme?: string;
-  defaultZoomLevel?: number;
-  defaultTaskPoints?: number;
-  rewardSystemEnabled?: boolean;
-  showPointsOnCompletion?: boolean;
-  schedulerIntervalSeconds?: number;
-  schedulerPauseOnInteractionSeconds?: number;
-  calendarRefreshIntervalMinutes?: number;
-  calendarFetchMonthsAhead?: number;
-  calendarFetchMonthsBehind?: number;
-  calendarMaxEventsPerDay?: number;
-}
+export type UserSettingsBusPayload = Partial<UserSettingsData>;
 
 export type UserSettingsPartial = UserSettingsBusPayload;
 
