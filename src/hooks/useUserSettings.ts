@@ -206,12 +206,28 @@ export function useUserSettings(): UseUserSettingsResult {
         throw new Error(`Failed to update user settings (${response.status})`);
       }
     } catch (error) {
-      // Roll back the optimistic write. Re-emit the snapshot to revert
-      // every other in-tab subscriber too.
+      // #420 — compare-and-swap rollback. Only restore the snapshot for
+      // keys whose live value still matches what *this* mutate set. A
+      // concurrent successful mutate (or bus event) on the same key has
+      // already moved local state past our optimistic value; reverting it
+      // to our pre-call snapshot would stomp on the most-recent truth and
+      // re-broadcast a stale value to every other in-tab subscriber.
       if (snapshot && Object.keys(snapshot).length > 0) {
-        const rollback = snapshot;
-        setSettings((prev) => ({ ...prev, ...rollback }));
-        emitUserSettingsChange(rollback as UserSettingsPartial);
+        const live = settingsRef.current;
+        const liveRollback: Partial<UserCalendarSettings> = {};
+        for (const key of Object.keys(snapshot) as Array<
+          keyof UserCalendarSettings
+        >) {
+          if (Object.is(live[key], (picked as Record<string, unknown>)[key])) {
+            (liveRollback as Record<string, unknown>)[key] = (
+              snapshot as Record<string, unknown>
+            )[key];
+          }
+        }
+        if (Object.keys(liveRollback).length > 0) {
+          setSettings((prev) => ({ ...prev, ...liveRollback }));
+          emitUserSettingsChange(liveRollback as UserSettingsPartial);
+        }
       }
       throw error;
     }

@@ -10,7 +10,7 @@ import {
 } from "@/lib/scheduler/schedule-storage";
 import { emitUserSettingsChange } from "@/lib/user-settings-bus";
 import type { TWeekStartDay } from "@/types/calendar";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AccountSection } from "./account-section";
 import { CalendarSection } from "./calendar-section";
@@ -78,6 +78,15 @@ export function SettingsForm({
   const [transitionConfig, setTransitionConfig] = useState<TransitionConfig>(
     () => DEFAULT_TRANSITION_CONFIG
   );
+
+  // Mirror of `settings` for the rollback path to read after the optimistic
+  // render commits (#420). Reading the live state outside the `setSettings`
+  // functional callback lets us compare-and-swap per-key without emitting
+  // from inside the setter (which double-fires under StrictMode).
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   // Load transition config from localStorage on mount
   useEffect(() => {
@@ -153,14 +162,30 @@ export function SettingsForm({
     } catch {
       toast.error("Failed to save settings");
       const revert = previousPartial;
-      if (revert) {
-        setSettings((curr) => ({ ...curr, ...revert }));
-        // #414 — pair the local rollback with a bus emit so in-tab
-        // subscribers (e.g. `CalendarProvider` via `useUserSettings`)
-        // converge on the rolled-back value rather than holding any
-        // earlier optimistic value they may have consumed.
-        emitUserSettingsChange(revert);
+      if (!revert) return;
+
+      // #420 — compare-and-swap rollback. For each key in `revert`, only
+      // restore the pre-call value if the live state still matches this
+      // call's optimistic value. A later call that overwrote the same key
+      // (its PUT succeeded after we snapshotted but before we failed) must
+      // not be regressed to our stale snapshot. Reads through `settingsRef`
+      // so the comparison sees the truly-current state, post-render.
+      const live = settingsRef.current;
+      const liveRevert: Partial<UserSettingsData> = {};
+      for (const key of Object.keys(revert) as Array<keyof UserSettingsData>) {
+        if (Object.is(live[key], partial[key])) {
+          (liveRevert as Record<string, unknown>)[key] = revert[key];
+        }
       }
+
+      if (Object.keys(liveRevert).length === 0) return;
+
+      setSettings((curr) => ({ ...curr, ...liveRevert }));
+      // #414 — pair the local rollback with a bus emit so in-tab
+      // subscribers (e.g. `CalendarProvider` via `useUserSettings`)
+      // converge on the rolled-back value rather than holding any
+      // earlier optimistic value they may have consumed.
+      emitUserSettingsChange(liveRevert);
     }
   };
 

@@ -2,7 +2,10 @@
  * Tests for useUserSettings hook
  * Following TDD - tests written before implementation
  */
-import { emitUserSettingsChange } from "@/lib/user-settings-bus";
+import {
+  emitUserSettingsChange,
+  subscribeUserSettings,
+} from "@/lib/user-settings-bus";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -631,6 +634,66 @@ describe("useUserSettings", () => {
 
       // Local state is rolled back to the pre-mutate value.
       expect(result.current.settings.timeFormat).toBe("12h");
+    });
+  });
+
+  describe("same-key rollback race (#420)", () => {
+    it("does not roll back when the current state no longer matches this mutate's optimistic value", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      // Initial GET — server says 12h.
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "12h" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+      await waitFor(() => {
+        expect(result.current.settings.timeFormat).toBe("12h");
+      });
+
+      // A: kick off a mutate to "24h" with a PUT that will be rejected later.
+      let rejectA: (reason?: unknown) => void = () => {};
+      const aPromise = new Promise<Response>((_resolve, reject) => {
+        rejectA = reject;
+      });
+      vi.mocked(global.fetch).mockImplementationOnce(() => aPromise);
+
+      let aMutate: Promise<void> | undefined;
+      await act(async () => {
+        aMutate = result.current.mutate({ timeFormat: "24h" }).catch(() => {});
+        // Let the optimistic setSettings + bus emit run.
+        await Promise.resolve();
+      });
+      expect(result.current.settings.timeFormat).toBe("24h");
+
+      // Simulate B's success — a later same-key bus event overrides to "12h",
+      // standing in for a parallel `mutate({ timeFormat: "12h" })` whose PUT
+      // resolved before A's.
+      await act(async () => {
+        emitUserSettingsChange({ timeFormat: "12h" });
+      });
+      expect(result.current.settings.timeFormat).toBe("12h");
+
+      // Subscribe AFTER B's emit so we only observe whether A's rollback
+      // path re-emits the stale snapshot.
+      const busHandler = vi.fn();
+      const unsubscribe = subscribeUserSettings(busHandler);
+
+      // Reject A — the catch should compare the current state ("12h") to
+      // this call's optimistic value ("24h"). They differ, so the rollback
+      // and emit should be suppressed.
+      await act(async () => {
+        rejectA(new Error("boom"));
+        await aMutate;
+      });
+
+      expect(busHandler).not.toHaveBeenCalled();
+      expect(result.current.settings.timeFormat).toBe("12h");
+
+      unsubscribe();
     });
   });
 
