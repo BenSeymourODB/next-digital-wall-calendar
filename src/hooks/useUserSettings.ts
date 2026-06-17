@@ -28,6 +28,13 @@ export type TTimeFormat = "12h" | "24h";
 
 const VALID_TIME_FORMATS: readonly TTimeFormat[] = ["12h", "24h"] as const;
 
+export function isTimeFormat(value: unknown): value is TTimeFormat {
+  return (
+    typeof value === "string" &&
+    (VALID_TIME_FORMATS as readonly string[]).includes(value)
+  );
+}
+
 export interface UserCalendarSettings {
   calendarRefreshIntervalMinutes: number;
   calendarFetchMonthsAhead: number;
@@ -255,11 +262,8 @@ function pickCalendarFields(
   ) {
     picked.defaultZoomLevel = data.defaultZoomLevel;
   }
-  if (
-    typeof data.timeFormat === "string" &&
-    (VALID_TIME_FORMATS as readonly string[]).includes(data.timeFormat)
-  ) {
-    picked.timeFormat = data.timeFormat as TTimeFormat;
+  if (isTimeFormat(data.timeFormat)) {
+    picked.timeFormat = data.timeFormat;
   }
   // Same defensive contract as `timeFormat`: unknown values are dropped so a
   // stale DB row or a typo'd bus emit doesn't poison `formatUserDate` with a

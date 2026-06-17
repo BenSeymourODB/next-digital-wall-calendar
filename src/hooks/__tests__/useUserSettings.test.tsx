@@ -7,6 +7,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_USER_CALENDAR_SETTINGS,
+  isTimeFormat,
   useUserSettings,
 } from "../useUserSettings";
 
@@ -734,5 +735,26 @@ describe("useUserSettings", () => {
       ).not.toThrow();
       expect(result.current.settings.timeFormat).toBe("12h");
     });
+  });
+});
+
+describe("isTimeFormat", () => {
+  it("accepts the two valid literal values", () => {
+    expect(isTimeFormat("12h")).toBe(true);
+    expect(isTimeFormat("24h")).toBe(true);
+  });
+
+  it("rejects similar-looking strings outside the allow-list", () => {
+    expect(isTimeFormat("13h")).toBe(false);
+    expect(isTimeFormat("12H")).toBe(false);
+    expect(isTimeFormat("12")).toBe(false);
+    expect(isTimeFormat("")).toBe(false);
+  });
+
+  it("rejects non-string inputs", () => {
+    expect(isTimeFormat(null)).toBe(false);
+    expect(isTimeFormat(undefined)).toBe(false);
+    expect(isTimeFormat(12)).toBe(false);
+    expect(isTimeFormat({})).toBe(false);
   });
 });
