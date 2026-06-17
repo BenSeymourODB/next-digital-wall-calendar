@@ -200,6 +200,31 @@ describe("getOrStartSessionRefresh (singleflight #216)", () => {
     expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(2);
   });
 
+  it("releases the slot after a hung refresh times out so a later call starts a fresh flight (#404)", async () => {
+    // Simulates the failure mode #404 fixes: the Google token endpoint
+    // hangs, the per-flight AbortSignal fires, and `refreshGoogleAccessToken`
+    // rejects with a TimeoutError. The singleflight slot must purge in the
+    // `.finally()` so a subsequent caller is not pinned to the dead flight.
+    const timeoutErr = Object.assign(new Error("signal timed out"), {
+      name: "TimeoutError",
+    });
+    const refreshGoogleAccessToken = vi
+      .fn()
+      .mockRejectedValueOnce(timeoutErr)
+      .mockResolvedValueOnce({ access_token: "recovered", expires_in: 3600 });
+    const deps = makeDeps({ refreshGoogleAccessToken });
+    const account = makeAccount();
+
+    const first = await getOrStartSessionRefresh(USER_ID, account, deps);
+    expect(first).toEqual({ kind: "transient-error", error: timeoutErr });
+
+    const second = await getOrStartSessionRefresh(USER_ID, account, deps);
+    expect(second).toEqual({ kind: "refreshed" });
+    // Two distinct round-trips — the second is not awaiting the first's
+    // long-dead promise.
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(2);
+  });
+
   it("does not pollute the cache when the account has no refresh_token", async () => {
     const deps = makeDeps();
 

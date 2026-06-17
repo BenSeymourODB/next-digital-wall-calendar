@@ -97,6 +97,19 @@ describe("classifyTokenRefreshError", () => {
       expect(classifyTokenRefreshError(err)).toBe("transient");
     });
 
+    it("classifies a TimeoutError DOMException (fetch timeout, #404) as transient", () => {
+      // `AbortSignal.timeout(...).reason` surfaces as a DOMException with
+      // name="TimeoutError"; once fetch propagates that out of
+      // `refreshGoogleAccessToken`, the session-refresh path must classify
+      // it as transient so the singleflight slot is released and the next
+      // callback retries — not as terminal, which would dump the user to
+      // a sign-in screen for a single hung connection.
+      const err = Object.assign(new Error("signal timed out"), {
+        name: "TimeoutError",
+      });
+      expect(classifyTokenRefreshError(err)).toBe("transient");
+    });
+
     it("classifies a decrypt failure as transient", () => {
       const err = new Error(
         "Failed to decrypt stored refresh token (possible key rotation or tampering)"

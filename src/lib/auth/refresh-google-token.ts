@@ -15,6 +15,37 @@ import { fetchWithRetry } from "@/lib/http/retry";
 export const GOOGLE_OAUTH_TOKEN_ENDPOINT =
   "https://oauth2.googleapis.com/token";
 
+/**
+ * Per-flight timeout for Google's OAuth token endpoint. 10 s is a generous
+ * upper bound for a single `client_credentials`-shaped exchange; tune via
+ * `GOOGLE_TOKEN_REFRESH_TIMEOUT_MS` if Google's tail latency shifts.
+ *
+ * Without this bound, a TCP connect that hangs with no RST would wait
+ * forever inside `undici`'s default fetch and — under the #216 singleflight
+ * — pin the in-flight slot for every concurrent caller until the Node
+ * process restarts. See #404.
+ */
+export const DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS = 10_000;
+const TIMEOUT_ENV_KEY = "GOOGLE_TOKEN_REFRESH_TIMEOUT_MS";
+
+/**
+ * Resolve the per-flight timeout in ms. Strict integer parsing: anything
+ * fractional, non-numeric, zero, or negative falls back to the default so
+ * a misconfigured env value can't accidentally configure a zero-budget
+ * timeout that instantly aborts every refresh.
+ */
+export function getRefreshTimeoutMs(
+  env: NodeJS.ProcessEnv = process.env
+): number {
+  const raw = env[TIMEOUT_ENV_KEY];
+  if (raw == null || !/^\d+$/.test(raw)) {
+    return DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (parsed <= 0) return DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS;
+  return parsed;
+}
+
 export interface GoogleRefreshedTokens {
   access_token: string;
   expires_in: number;
@@ -65,6 +96,12 @@ export async function refreshGoogleAccessToken(
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }),
+    // Bound the total flight (including retry sleeps). A timeout surfaces
+    // as DOMException("TimeoutError"); `isTransientHttpError` excludes
+    // TimeoutError from retry so we don't burn the budget retrying a hang,
+    // and `classifyTokenRefreshError` defaults unknown errors to
+    // `transient` so the singleflight slot releases for the next caller.
+    signal: AbortSignal.timeout(getRefreshTimeoutMs()),
   });
 
   const tokensOrError = await response.json();
