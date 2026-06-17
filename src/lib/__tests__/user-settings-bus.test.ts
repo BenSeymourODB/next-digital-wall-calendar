@@ -86,10 +86,12 @@ describe("user-settings-bus", () => {
    * not part of the bus contract — leaving `Partial<UserSettingsData>`
    * call sites to widen structurally.
    *
-   * Compile-time assertion: this file would not type-check on `main` before
-   * the bus payload was widened. If the type drifts back to a narrower
-   * subset, `pnpm check-types` flags the literals below as excess
-   * properties.
+   * The real regression gate is `pnpm check-types`: the literals below
+   * fail TS excess-property checking if `UserSettingsBusPayload` ever
+   * drifts back to a narrower subset. The runtime `expect` assertions
+   * are belt-and-braces — `CustomEvent` carries any payload regardless
+   * of type, so they catch only the orthogonal case where the bus
+   * starts mutating its payload (which would be a different regression).
    */
   it("round-trips weekStartDay / calendarWorkingHoursStart / calendarTransitionSpeed", () => {
     const handler = vi.fn();

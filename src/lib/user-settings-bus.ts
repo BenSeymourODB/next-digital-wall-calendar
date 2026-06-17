@@ -25,6 +25,11 @@ const EVENT_NAME = "user-settings-changed";
  * never silently drift from the form — adding a column to
  * `UserSettingsData` automatically extends the bus contract (#419).
  *
+ * The Prisma → `UserSettingsData` step remains manual: a new column on
+ * the `UserSettings` model must be added to `UserSettingsData` for it to
+ * flow through the bus. Only the `UserSettingsData` → bus link is
+ * type-enforced.
+ *
  * Subscribers validate individual keys at the consumer boundary
  * (`pickCalendarFields` in `useUserSettings`); the bus itself does not
  * narrow values. Typo'd keys (`timeformat` instead of `timeFormat`)
