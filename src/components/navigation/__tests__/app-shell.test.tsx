@@ -106,4 +106,22 @@ describe("AppShell", () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId("screen-transition")).toBeInTheDocument();
   });
+
+  // Issue #398 — /clock is a chrome-free wall display target. It must render
+  // without SideNavigation, ScreenTransition, or PointsBadge so the analog
+  // clock fills the whole screen.
+  it("renders children plainly on /clock for the chrome-free wall display", () => {
+    mockPathname = "/clock";
+    render(
+      <AppShell>
+        <div data-testid="page-content">Clock</div>
+      </AppShell>
+    );
+
+    expect(
+      screen.queryByRole("navigation", { name: /main navigation/i })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("screen-transition")).not.toBeInTheDocument();
+    expect(screen.getByTestId("page-content")).toBeInTheDocument();
+  });
 });
