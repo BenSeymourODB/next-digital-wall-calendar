@@ -5,7 +5,7 @@ import {
 import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   addDays,
@@ -582,6 +582,71 @@ describe("WeekCalendar", () => {
 
       await user.click(screen.getByTestId("week-calendar-next"));
       expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
+    });
+
+    // Keying AgendaList on the week start forces a remount on week
+    // navigation, clearing the local search query so it doesn't carry
+    // silently into the next week.
+    it("clears the AgendaList search query when the selected week changes", async () => {
+      const userEv = userEvent.setup();
+      const dateInWeekA = new Date(2026, 3, 15); // Wed
+      const dateInWeekB = new Date(2026, 3, 22); // Wed, +1 week
+      const weekAStart = startOfWeek(dateInWeekA, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const weekBStart = startOfWeek(dateInWeekB, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const eventA = createMockEvent({
+        id: "a",
+        title: "SoccerPractice",
+        startDate: midday(addDays(weekAStart, 1)).toISOString(),
+        endDate: midday(addDays(weekAStart, 1)).toISOString(),
+      });
+      const eventB = createMockEvent({
+        id: "b",
+        title: "OtherEvent",
+        startDate: midday(addDays(weekBStart, 1)).toISOString(),
+        endDate: midday(addDays(weekBStart, 1)).toISOString(),
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider
+          value={createMockContext({
+            agendaMode: true,
+            selectedDate: dateInWeekA,
+            events: [eventA, eventB],
+          })}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+      await userEv.type(
+        screen.getByTestId("agenda-list-search-input"),
+        "soccer"
+      );
+      expect(screen.getByTestId("agenda-list-search-input")).toHaveValue(
+        "soccer"
+      );
+
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({
+            agendaMode: true,
+            selectedDate: dateInWeekB,
+            events: [eventA, eventB],
+          })}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+
+      // The intra-view slide animation keeps the previous AgendaList in the
+      // DOM as `animated-swap-outgoing` while `animated-swap-incoming` holds
+      // the new one. The remount we care about lives in incoming.
+      const incoming = within(screen.getByTestId("animated-swap-incoming"));
+      expect(incoming.getByTestId("agenda-list-search-input")).toHaveValue("");
+      expect(incoming.getByText("OtherEvent")).toBeInTheDocument();
     });
   });
 
