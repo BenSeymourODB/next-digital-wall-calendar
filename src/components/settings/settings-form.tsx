@@ -117,8 +117,23 @@ export function SettingsForm({
   }, [activeProfileId]);
 
   const updateSettings = async (partial: Partial<UserSettingsData>) => {
-    const updated = { ...settings, ...partial };
-    setSettings(updated);
+    // Capture the pre-call value of *only* the keys we're about to overwrite,
+    // read from the functional setter's current state (not a stale closure).
+    // On rollback, merge those keys back so any concurrent successful PUT
+    // to other keys is preserved (#363).
+    let previousPartial: Partial<UserSettingsData> | undefined;
+    setSettings((curr) => {
+      // The cast is sound because `Object.keys(partial)` is bounded by
+      // `partial`'s `Partial<UserSettingsData>` type — no extraneous keys
+      // can enter the snapshot.
+      previousPartial = Object.fromEntries(
+        (Object.keys(partial) as Array<keyof UserSettingsData>).map((key) => [
+          key,
+          curr[key],
+        ])
+      ) as Partial<UserSettingsData>;
+      return { ...curr, ...partial };
+    });
 
     try {
       const response = await fetch("/api/settings", {
@@ -137,7 +152,15 @@ export function SettingsForm({
       emitUserSettingsChange(partial);
     } catch {
       toast.error("Failed to save settings");
-      setSettings(settings);
+      const revert = previousPartial;
+      if (revert) {
+        setSettings((curr) => ({ ...curr, ...revert }));
+        // #414 — pair the local rollback with a bus emit so in-tab
+        // subscribers (e.g. `CalendarProvider` via `useUserSettings`)
+        // converge on the rolled-back value rather than holding any
+        // earlier optimistic value they may have consumed.
+        emitUserSettingsChange(revert);
+      }
     }
   };
 

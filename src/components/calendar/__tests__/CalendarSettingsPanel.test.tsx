@@ -16,7 +16,7 @@ interface ProviderOpts {
   badge?: "dot" | "colored";
   use24HourFormat?: boolean;
   weekStartDay?: TWeekStartDay;
-  agendaModeGroupBy?: "date" | "color";
+  agendaModeGroupBy?: "date" | "color" | "category";
 }
 
 function renderPanel(opts: ProviderOpts = {}) {
@@ -145,5 +145,19 @@ describe("CalendarSettingsPanel", () => {
     await user.click(byColor);
 
     expect(byColor).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("switches agenda group-by to category when the category option is selected (#211)", async () => {
+    renderPanel({ agendaModeGroupBy: "date" });
+    const { user, panel } = await openPanel();
+
+    const byCategory = within(panel).getByTestId(
+      "setting-agenda-group-by-category"
+    );
+    expect(byCategory).toHaveAttribute("aria-checked", "false");
+
+    await user.click(byCategory);
+
+    expect(byCategory).toHaveAttribute("aria-checked", "true");
   });
 });

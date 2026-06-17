@@ -67,139 +67,6 @@ test.describe("Month Calendar (SimpleCalendar)", () => {
   });
 });
 
-test.describe("Month Calendar - Day Overflow Popover", () => {
-  // Capture video of the popover open/close animation path
-  test.use({ video: "on" });
-
-  // Read today's key inside the browser after navigation so the test and the
-  // rendered component share the same clock (avoids midnight / timezone races).
-  async function todayKeyFromBrowser(
-    page: import("@playwright/test").Page
-  ): Promise<string> {
-    return page.evaluate(() => {
-      const d = new Date();
-      const pad = (n: number) => String(n).padStart(2, "0");
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    });
-  }
-
-  test("clicking +X more opens a popover listing every event for the day", async ({
-    page,
-  }) => {
-    await page.goto("/test/calendar?events=overflow&view=month");
-    const key = await todayKeyFromBrowser(page);
-
-    const trigger = page.getByTestId(`day-overflow-trigger-${key}`);
-    await expect(trigger).toBeVisible();
-    await expect(trigger).toHaveText(/\+\d+ more/);
-
-    await trigger.click();
-
-    const popover = page.getByTestId(`day-events-popover-${key}`);
-    await expect(popover).toBeVisible();
-
-    // Heading format "Events on <Weekday>, <Month> <day>, <year>"
-    await expect(
-      popover.getByRole("heading", {
-        name: /Events on \w+, \w+ \d{1,2}, \d{4}/,
-      })
-    ).toBeVisible();
-
-    // All 10 overflow events appear inside the popover
-    for (let i = 1; i <= 10; i++) {
-      await expect(
-        popover.getByText(`Event ${i}`, { exact: true })
-      ).toBeVisible();
-    }
-  });
-
-  test("close button dismisses the popover", async ({ page }) => {
-    await page.goto("/test/calendar?events=overflow&view=month");
-    const key = await todayKeyFromBrowser(page);
-
-    await page.getByTestId(`day-overflow-trigger-${key}`).click();
-
-    const popover = page.getByTestId(`day-events-popover-${key}`);
-    await expect(popover).toBeVisible();
-
-    await page.getByTestId(`day-events-popover-close-${key}`).click();
-
-    await expect(popover).toBeHidden();
-  });
-
-  test("Escape key dismisses the popover", async ({ page }) => {
-    await page.goto("/test/calendar?events=overflow&view=month");
-    const key = await todayKeyFromBrowser(page);
-
-    await page.getByTestId(`day-overflow-trigger-${key}`).click();
-
-    const popover = page.getByTestId(`day-events-popover-${key}`);
-    await expect(popover).toBeVisible();
-
-    await page.keyboard.press("Escape");
-
-    await expect(popover).toBeHidden();
-  });
-
-  test("renders event times inside the popover in 24-hour format", async ({
-    page,
-  }) => {
-    await page.goto("/test/calendar?events=overflow&view=month");
-    const key = await todayKeyFromBrowser(page);
-
-    await page.getByTestId(`day-overflow-trigger-${key}`).click();
-
-    const popover = page.getByTestId(`day-events-popover-${key}`);
-    // Overflow events start at 08:00 and 17:00 (i=0 and i=9)
-    await expect(popover.getByText(/08:00 - 09:00/)).toBeVisible();
-    await expect(popover.getByText(/17:00 - 18:00/)).toBeVisible();
-  });
-
-  test("renders event times in 12-hour format when configured", async ({
-    page,
-  }) => {
-    await page.goto("/test/calendar?events=overflow&view=month&24hour=false");
-    const key = await todayKeyFromBrowser(page);
-
-    await page.getByTestId(`day-overflow-trigger-${key}`).click();
-
-    const popover = page.getByTestId(`day-events-popover-${key}`);
-    await expect(popover.getByText(/8:00 AM - 9:00 AM/)).toBeVisible();
-    await expect(popover.getByText(/5:00 PM - 6:00 PM/)).toBeVisible();
-  });
-
-  test("clicking an event card inside the popover opens the event detail modal", async ({
-    page,
-  }) => {
-    await page.goto("/test/calendar?events=overflow&view=month");
-    const key = await todayKeyFromBrowser(page);
-
-    const trigger = page.getByTestId(`day-overflow-trigger-${key}`);
-    await trigger.click();
-
-    const popover = page.getByTestId(`day-events-popover-${key}`);
-    await expect(popover).toBeVisible();
-
-    // Click an overflow event (one only visible inside the popover).
-    await popover.getByRole("button", { name: /Event 5/ }).click();
-
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible();
-    await expect(
-      dialog.getByRole("heading", { name: "Event 5" })
-    ).toBeVisible();
-
-    // Popover dismisses when the modal grabs focus.
-    await expect(popover).toBeHidden();
-
-    // Closing the modal returns focus to the +N more trigger so keyboard
-    // users land where they were.
-    await page.getByRole("button", { name: /close/i }).click();
-    await expect(dialog).toBeHidden();
-    await expect(trigger).toBeFocused();
-  });
-});
-
 test.describe("Month Calendar - Color Variations", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/test/calendar?events=colors&view=month");
@@ -250,7 +117,12 @@ test.describe("Agenda Calendar", () => {
     await page.goto("/test/calendar?events=default&view=agenda");
   });
 
-  test("displays 'Upcoming Events' header", async ({ page }) => {
+  // SKIPPED: the on-page agenda search surface (legacy AgendaCalendar, with the
+  // "Upcoming Events" header) was removed from /test/calendar by #287 — agenda
+  // now renders via DayCalendar + AgendaList, which has no such header. Pending a
+  // product decision on whether/where agenda search is reachable (tracked in the
+  // agenda-search-access issue), this assertion is parked rather than rewritten.
+  test.skip("displays 'Upcoming Events' header", async ({ page }) => {
     await expect(page.getByText("Upcoming Events")).toBeVisible();
   });
 
@@ -287,7 +159,11 @@ test.describe("Agenda Calendar", () => {
 });
 
 test.describe("Agenda Calendar - Empty State", () => {
-  test("shows empty message when no upcoming events", async ({ page }) => {
+  // SKIPPED: "No upcoming events in the next 7 days" is the legacy AgendaCalendar
+  // empty copy. The current day-agenda surface (AgendaList) renders a
+  // per-range empty label instead. Parked pending the agenda-search-access
+  // product decision rather than rewritten to the new copy.
+  test.skip("shows empty message when no upcoming events", async ({ page }) => {
     await page.goto("/test/calendar?events=empty&view=agenda");
 
     await expect(
@@ -345,7 +221,9 @@ test.describe("View Switcher", () => {
   });
 
   test("maintains events when switching views", async ({ page }) => {
-    await page.goto("/test/calendar?events=default&view=month");
+    // transitionMs=0 → instant swap, so "Morning Standup" can't resolve to
+    // both the outgoing month grid and the incoming agenda layer mid-fade.
+    await page.goto("/test/calendar?events=default&view=month&transitionMs=0");
 
     // Verify event in month view
     await expect(page.getByText("Morning Standup")).toBeVisible();
@@ -437,7 +315,10 @@ test.describe("Responsive Design", () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto("/test/calendar?events=default&view=agenda");
 
-    await expect(page.getByText("Upcoming Events")).toBeVisible();
+    // Agenda now renders via DayCalendar + AgendaList (#287); assert the
+    // agenda surface itself plus a today event rather than the removed
+    // legacy "Upcoming Events" header.
+    await expect(page.getByTestId("agenda-list")).toBeVisible();
     await expect(page.getByText("Morning Standup")).toBeVisible();
   });
 

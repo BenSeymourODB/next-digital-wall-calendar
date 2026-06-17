@@ -629,4 +629,94 @@ describe("WeekCalendar", () => {
       expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("Slide animation on week navigation (#207)", () => {
+    function installMatchMediaMock(reducedMotion: boolean) {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: reducedMotion && query === "(prefers-reduced-motion: reduce)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+    }
+
+    beforeEach(() => {
+      installMatchMediaMock(false);
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function rerenderOn(
+      selectedDate: Date,
+      ctx: Partial<ICalendarContext>,
+      rerender: ReturnType<typeof renderWithContext>["rerender"]
+    ) {
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...createMockContext(ctx), selectedDate }}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+    }
+
+    it("wraps the week body in an AnimatedSwap container", () => {
+      renderWithContext({ selectedDate: new Date(2026, 3, 15) });
+      expect(screen.getByTestId("animated-swap")).toBeInTheDocument();
+    });
+
+    it("slides the outgoing body left (translateX(-100%)) on next-week", () => {
+      const initial = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(addDays(initial, 7), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(-100%)");
+    });
+
+    it("slides the outgoing body right (translateX(100%)) on prev-week", () => {
+      const initial = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(subWeeks(initial, 1), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(100%)");
+    });
+
+    it("does not animate when selectedDate moves within the same week", () => {
+      // Mon → Wed in the same week: weekStart unchanged, no slide.
+      const monday = new Date(2026, 3, 13); // Apr 13 2026 (Mon)
+      const wednesday = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: monday };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(wednesday, baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders no outgoing snapshot when prefers-reduced-motion is set", () => {
+      installMatchMediaMock(true);
+
+      const initial = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+      rerenderOn(addDays(initial, 7), baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
+    });
+  });
 });

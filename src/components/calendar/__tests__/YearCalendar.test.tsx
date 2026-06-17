@@ -7,7 +7,7 @@ import { createMockEvent } from "@/test/fixtures/calendar-event";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { YearCalendar, bucketEventColorsByDayKey } from "../YearCalendar";
 
 function createMockContext(
@@ -565,6 +565,90 @@ describe("YearCalendar", () => {
       expect(
         within(previousCell).queryAllByTestId("year-calendar-dot")
       ).toHaveLength(0);
+    });
+  });
+
+  describe("Slide animation on year navigation (#207)", () => {
+    function installMatchMediaMock(reducedMotion: boolean) {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: reducedMotion && query === "(prefers-reduced-motion: reduce)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+    }
+
+    beforeEach(() => {
+      installMatchMediaMock(false);
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function rerenderOn(
+      selectedDate: Date,
+      ctx: Partial<ICalendarContext>,
+      rerender: ReturnType<typeof renderWithContext>["rerender"]
+    ) {
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...createMockContext(ctx), selectedDate }}
+        >
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+    }
+
+    it("wraps the months grid in an AnimatedSwap container", () => {
+      renderWithContext({ selectedDate: new Date(2026, 3, 15) });
+      expect(screen.getByTestId("animated-swap")).toBeInTheDocument();
+    });
+
+    it("slides the outgoing months grid left on next-year", () => {
+      const baseCtx = { selectedDate: new Date(2026, 3, 15) };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(new Date(2027, 3, 15), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(-100%)");
+    });
+
+    it("slides the outgoing months grid right on prev-year", () => {
+      const baseCtx = { selectedDate: new Date(2026, 3, 15) };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(new Date(2025, 3, 15), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(100%)");
+    });
+
+    it("does not animate when selectedDate moves within the same year", () => {
+      const baseCtx = { selectedDate: new Date(2026, 1, 1) };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(new Date(2026, 11, 1), baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders no outgoing snapshot when prefers-reduced-motion is set", () => {
+      installMatchMediaMock(true);
+
+      const baseCtx = { selectedDate: new Date(2026, 3, 15) };
+      const { rerender } = renderWithContext(baseCtx);
+      rerenderOn(new Date(2027, 3, 15), baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
     });
   });
 });

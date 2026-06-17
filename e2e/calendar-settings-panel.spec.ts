@@ -13,7 +13,9 @@ import { expect, test } from "@playwright/test";
 
 test.describe("CalendarSettingsPanel", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/test/calendar?events=default&view=month&sidebar=true");
+    await page.goto(
+      "/test/calendar?events=default&view=month&sidebar=true&transitionMs=0"
+    );
   });
 
   test("opens the settings panel from the gear trigger and exposes all four controls", async ({
@@ -33,11 +35,14 @@ test.describe("CalendarSettingsPanel", () => {
   test("switching week start to Monday reorders both calendar grids", async ({
     page,
   }) => {
-    const miniDow = page.getByTestId("mini-calendar-dow");
+    // The main month grid and the mini-calendar sidebar are never visible at
+    // the same time (the sidebar is hidden in month view — #146/#214), so we
+    // verify the main grid in month view, then switch to day view — which
+    // preserves the week-start setting in provider state — to verify the
+    // mini-calendar reorders too.
     const mainDow = page.getByTestId("calendar-dow");
 
-    // Default Sunday-first ordering in both grids
-    await expect(miniDow.first()).toHaveText("S");
+    // Default Sunday-first ordering in the main month grid.
     await expect(mainDow.first()).toHaveText("Sun");
 
     await page.getByTestId("calendar-settings-trigger").click();
@@ -46,13 +51,19 @@ test.describe("CalendarSettingsPanel", () => {
       .getByTestId("setting-week-start-day-monday")
       .click();
 
-    // Close the popover so the assertion targets the underlying grids.
+    // Close the popover so the assertion targets the underlying grid.
     await page.keyboard.press("Escape");
 
-    await expect(miniDow.first()).toHaveText("M");
-    await expect(miniDow.nth(6)).toHaveText("S");
     await expect(mainDow.first()).toHaveText("Mon");
     await expect(mainDow.nth(6)).toHaveText("Sun");
+
+    // Switch to day view (primary button preserves the setting) — the
+    // mini-calendar sidebar is now visible and must honour Monday-first too.
+    await page.getByTestId("view-switcher-day").click();
+
+    const miniDow = page.getByTestId("mini-calendar-dow");
+    await expect(miniDow.first()).toHaveText("M");
+    await expect(miniDow.nth(6)).toHaveText("S");
   });
 
   test("week view also honours the Monday-first setting (#205)", async ({
