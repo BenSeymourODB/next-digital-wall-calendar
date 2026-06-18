@@ -2,15 +2,13 @@
 
 import { useProfile } from "@/components/profiles/profile-context";
 import type { TransitionConfig } from "@/components/scheduler/types";
-import type { CalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
-import type { TDateFormat } from "@/lib/format-date";
 import { DEFAULT_TRANSITION_CONFIG } from "@/lib/scheduler/schedule-config";
 import {
   loadScheduleConfig,
   saveScheduleConfig,
 } from "@/lib/scheduler/schedule-storage";
 import { emitUserSettingsChange } from "@/lib/user-settings-bus";
-import type { TWeekStartDay } from "@/types/calendar";
+import type { UserSettingsData } from "@/types/user-settings";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AccountSection } from "./account-section";
@@ -32,25 +30,6 @@ const DEFAULT_TASK_SETTINGS: ProfileTaskSettings = {
   taskSortOrder: "dueDate",
   showCompletedTasks: false,
 };
-
-interface UserSettingsData {
-  theme: string;
-  timeFormat: string;
-  dateFormat: TDateFormat;
-  defaultZoomLevel: number;
-  weekStartDay: TWeekStartDay;
-  rewardSystemEnabled: boolean;
-  defaultTaskPoints: number;
-  showPointsOnCompletion: boolean;
-  schedulerIntervalSeconds: number;
-  schedulerPauseOnInteractionSeconds: number;
-  calendarRefreshIntervalMinutes: number;
-  calendarFetchMonthsAhead: number;
-  calendarFetchMonthsBehind: number;
-  calendarMaxEventsPerDay: number;
-  calendarWorkingHoursStart: number;
-  calendarTransitionSpeed: CalendarTransitionSpeed;
-}
 
 interface SettingsFormProps {
   user: {
