@@ -35,6 +35,36 @@ import {
 
 const FORMAT_STRING = "MMM d, yyyy";
 
+const BARE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function parseEventDateField(value: string): Date {
+  const m = BARE_DATE_RE.exec(value);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return parseISO(value);
+}
+
+/**
+ * Parse `event.startDate` into a `Date`. Bare `YYYY-MM-DD` values — which
+ * arrive from non-canonical sources like the `MockCalendarProvider`,
+ * `/test/calendar` fixtures, and non-Google integrations — are treated as
+ * the local calendar day. `parseISO` would parse them as UTC midnight,
+ * which slips them to the previous local day in negative-offset zones
+ * and silently undercounts bare-date events in the `getEventsForX`
+ * overlap helpers (issue #375). Full ISO timestamps fall through to
+ * `parseISO` unchanged.
+ */
+export function parseEventStart(event: IEvent): Date {
+  return parseEventDateField(event.startDate);
+}
+
+/**
+ * Parse `event.endDate`. Same bare-date local-parsing semantics as
+ * `parseEventStart` — see its docblock.
+ */
+export function parseEventEnd(event: IEvent): Date {
+  return parseEventDateField(event.endDate);
+}
+
 /**
  * Project-wide default for which day a calendar week begins on.
  *
@@ -351,8 +381,11 @@ export const getEventsForDay = (
   const targetDate = startOfDay(date);
   return events
     .filter((event) => {
-      const startOfDayForEventStart = startOfDay(parseISO(event.startDate));
-      const startOfDayForEventEnd = startOfDay(parseISO(event.endDate));
+      const eventStart = parseEventStart(event);
+      const eventEnd = parseEventEnd(event);
+      if (!isValid(eventStart) || !isValid(eventEnd)) return false;
+      const startOfDayForEventStart = startOfDay(eventStart);
+      const startOfDayForEventEnd = startOfDay(eventEnd);
       if (isWeek) {
         return (
           event.startDate !== event.endDate &&
@@ -366,8 +399,8 @@ export const getEventsForDay = (
       );
     })
     .map((event) => {
-      const eventStart = startOfDay(parseISO(event.startDate));
-      const eventEnd = startOfDay(parseISO(event.endDate));
+      const eventStart = startOfDay(parseEventStart(event));
+      const eventEnd = startOfDay(parseEventEnd(event));
       let point: "start" | "end" | "none" | undefined;
 
       if (isSameDay(eventStart, eventEnd)) {
@@ -402,8 +435,8 @@ export const getEventsForWeek = (
   const endOfWeekDate = endOfWeek(date, { weekStartsOn });
 
   return events.filter((event) => {
-    const eventStart = parseISO(event.startDate);
-    const eventEnd = parseISO(event.endDate);
+    const eventStart = parseEventStart(event);
+    const eventEnd = parseEventEnd(event);
     return (
       isValid(eventStart) &&
       isValid(eventEnd) &&
@@ -418,8 +451,8 @@ export const getEventsForMonth = (events: IEvent[], date: Date): IEvent[] => {
   const endOfMonthDate = endOfMonth(date);
 
   return events.filter((event) => {
-    const eventStart = parseISO(event.startDate);
-    const eventEnd = parseISO(event.endDate);
+    const eventStart = parseEventStart(event);
+    const eventEnd = parseEventEnd(event);
     return (
       isValid(eventStart) &&
       isValid(eventEnd) &&
@@ -436,8 +469,8 @@ export const getEventsForYear = (events: IEvent[], date: Date): IEvent[] => {
   const endOfYearDate = endOfYear(date);
 
   return events.filter((event) => {
-    const eventStart = parseISO(event.startDate);
-    const eventEnd = parseISO(event.endDate);
+    const eventStart = parseEventStart(event);
+    const eventEnd = parseEventEnd(event);
     return (
       isValid(eventStart) &&
       isValid(eventEnd) &&
