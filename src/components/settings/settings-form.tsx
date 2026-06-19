@@ -8,6 +8,7 @@ import {
   saveScheduleConfig,
 } from "@/lib/scheduler/schedule-storage";
 import { emitUserSettingsChange } from "@/lib/user-settings-bus";
+import type { UserSettingsData } from "@/types/user-settings";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AccountSection } from "./account-section";
