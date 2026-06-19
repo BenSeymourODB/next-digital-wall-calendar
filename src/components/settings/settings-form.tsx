@@ -8,9 +8,7 @@ import {
   saveScheduleConfig,
 } from "@/lib/scheduler/schedule-storage";
 import { emitUserSettingsChange } from "@/lib/user-settings-bus";
-import type { TWeekStartDay } from "@/types/calendar";
 import { useEffect, useRef, useState } from "react";
-import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AccountSection } from "./account-section";
 import { CalendarSection } from "./calendar-section";
