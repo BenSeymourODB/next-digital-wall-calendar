@@ -1,11 +1,8 @@
 "use client";
 
 import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
-<<<<<<< claude/ecstatic-mayer-64A3Z
 import { useEventCacheVisibilitySweep } from "@/hooks/useEventCacheVisibilitySweep";
-=======
 import { useProfileOptional } from "@/components/profiles/profile-context";
->>>>>>> main
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { type TTimeFormat, useUserSettings } from "@/hooks/useUserSettings";
 import {
