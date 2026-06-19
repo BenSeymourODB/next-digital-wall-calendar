@@ -5,6 +5,11 @@ import {
   DEFAULT_CALENDAR_TRANSITION_SPEED,
   isCalendarTransitionSpeed,
 } from "@/lib/calendar/transition-speed";
+import {
+  DEFAULT_DATE_FORMAT,
+  type TDateFormat,
+  isDateFormat,
+} from "@/lib/format-date";
 import { logger } from "@/lib/logger";
 import {
   type UserSettingsPartial,
@@ -23,6 +28,13 @@ export type TTimeFormat = "12h" | "24h";
 
 const VALID_TIME_FORMATS: readonly TTimeFormat[] = ["12h", "24h"] as const;
 
+export function isTimeFormat(value: unknown): value is TTimeFormat {
+  return (
+    typeof value === "string" &&
+    (VALID_TIME_FORMATS as readonly string[]).includes(value)
+  );
+}
+
 export interface UserCalendarSettings {
   calendarRefreshIntervalMinutes: number;
   calendarFetchMonthsAhead: number;
@@ -36,6 +48,13 @@ export interface UserCalendarSettings {
    * matches the Prisma schema default.
    */
   timeFormat: TTimeFormat;
+  /**
+   * App-wide numeric date format (#339). Mirrors `UserSettings.dateFormat`
+   * in the database; default `"MM/DD/YYYY"` matches the Prisma schema
+   * default. Consumed via the `formatUserDate` helper in
+   * `src/lib/format-date.ts`.
+   */
+  dateFormat: TDateFormat;
   weekStartDay: TWeekStartDay;
   /** Hour (0–23) the Day/Week grids auto-scroll to on first render (#288). */
   calendarWorkingHoursStart: number;
@@ -49,6 +68,7 @@ export const DEFAULT_USER_CALENDAR_SETTINGS: UserCalendarSettings = {
   calendarMaxEventsPerDay: 3,
   defaultZoomLevel: 1.0,
   timeFormat: "12h",
+  dateFormat: DEFAULT_DATE_FORMAT,
   weekStartDay: 0,
   calendarWorkingHoursStart: 7,
   calendarTransitionSpeed: DEFAULT_CALENDAR_TRANSITION_SPEED,
@@ -264,11 +284,14 @@ function pickCalendarFields(
   ) {
     picked.defaultZoomLevel = data.defaultZoomLevel;
   }
-  if (
-    typeof data.timeFormat === "string" &&
-    (VALID_TIME_FORMATS as readonly string[]).includes(data.timeFormat)
-  ) {
-    picked.timeFormat = data.timeFormat as TTimeFormat;
+  if (isTimeFormat(data.timeFormat)) {
+    picked.timeFormat = data.timeFormat;
+  }
+  // Same defensive contract as `timeFormat`: unknown values are dropped so a
+  // stale DB row or a typo'd bus emit doesn't poison `formatUserDate` with a
+  // string it can't map to a date-fns pattern.
+  if (isDateFormat(data.dateFormat)) {
+    picked.dateFormat = data.dateFormat;
   }
   // Discard rogue values: a manually-edited DB row of `5` would silently
   // poison every `weekStartsOn` parameter we feed into date-fns, so reject

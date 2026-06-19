@@ -170,4 +170,59 @@ describe("AccountSection", () => {
 
     expect(screen.getByText(/member since/i)).toBeInTheDocument();
   });
+
+  describe("dateFormat (#339)", () => {
+    // Build the timestamp from local calendar fields, then serialise. The
+    // earlier `"2026-03-05T12:00:00Z"` literal looked TZ-safe but rolled
+    // forward a day in UTC+14 / +13 zones (e.g. Pacific/Kiritimati,
+    // Pacific/Auckland during DST), since `date-fns`'s `format()` reads
+    // local fields. Constructing the Date locally pins the rendered
+    // glyphs to March 5 in every host TZ.
+    const ISO = new Date(2026, 2, 5, 12, 0, 0).toISOString();
+
+    it("renders the createdAt date in MM/DD/YYYY by default", () => {
+      render(
+        <AccountSection
+          user={mockUser}
+          createdAt={ISO}
+          providers={["google"]}
+          onDeleteAccount={mockOnDeleteAccount}
+        />
+      );
+
+      expect(
+        screen.getByText(/member since 03\/05\/2026/i)
+      ).toBeInTheDocument();
+    });
+
+    it("renders the createdAt date in DD/MM/YYYY when requested", () => {
+      render(
+        <AccountSection
+          user={mockUser}
+          createdAt={ISO}
+          providers={["google"]}
+          onDeleteAccount={mockOnDeleteAccount}
+          dateFormat="DD/MM/YYYY"
+        />
+      );
+
+      expect(
+        screen.getByText(/member since 05\/03\/2026/i)
+      ).toBeInTheDocument();
+    });
+
+    it("renders the createdAt date in YYYY-MM-DD when requested", () => {
+      render(
+        <AccountSection
+          user={mockUser}
+          createdAt={ISO}
+          providers={["google"]}
+          onDeleteAccount={mockOnDeleteAccount}
+          dateFormat="YYYY-MM-DD"
+        />
+      );
+
+      expect(screen.getByText(/member since 2026-03-05/i)).toBeInTheDocument();
+    });
+  });
 });

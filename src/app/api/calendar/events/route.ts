@@ -14,6 +14,8 @@ import {
   GoogleEventSchema,
   type GoogleEventsListResponse,
   GoogleEventsListResponseSchema,
+  VALIDATION_ISSUES_SUMMARY_COUNT,
+  parseGoogleErrorBody,
   parseGoogleResponse,
 } from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
@@ -75,6 +77,20 @@ function toWireFetchError(e: InternalCalendarFetchError): CalendarFetchError {
 }
 
 /**
+ * Pick the HTTP status to return when every calendar in a multi-calendar
+ * GET failed. If all per-calendar statuses agree, bubble that status. On
+ * mixed statuses, collapse to a 502 — proxy-style "upstream failures" that
+ * signals the overall request couldn't be served without claiming any
+ * single upstream status as canonical. Auth (401) errors short-circuit the
+ * outer handler so they never reach this function. The caller's guard
+ * (`errors.length === calendarIds.length`) ensures `errors` is non-empty.
+ */
+function resolveAllFailStatus(errors: InternalCalendarFetchError[]): number {
+  const first = errors[0].status ?? 500;
+  return errors.every((e) => (e.status ?? 500) === first) ? first : 502;
+}
+
+/**
  * Fetch events from a single calendar
  */
 async function fetchEventsFromCalendar(
@@ -107,12 +123,14 @@ async function fetchEventsFromCalendar(
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorBody = parseGoogleErrorBody(
+      await response.json().catch(() => ({}))
+    );
     return {
       events: [],
       error: {
         calendarId,
-        error: errorData.error?.message || "Failed to fetch events",
+        error: errorBody.error?.message || "Failed to fetch events",
         status: response.status,
       },
     };
@@ -131,7 +149,7 @@ async function fetchEventsFromCalendar(
         endpoint: error.endpoint,
         ...(error.calendarId ? { calendarId: error.calendarId } : {}),
         validationIssues: error.issues
-          .slice(0, 5)
+          .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
           .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
           .join("; "),
       });
@@ -259,11 +277,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // If ALL calendars failed (and not auth errors), return error
-    if (errors.length === calendarIds.length && calendarIds.length === 1) {
+    // If ALL calendars failed (and not auth errors — those early-returned
+    // above), surface an error status so the UI can react to the top-level
+    // status without inspecting `errors[]`. Pre-#386 this was gated on
+    // `calendarIds.length === 1` and multi-calendar all-fail leaked a 200
+    // with an empty events array.
+    if (errors.length === calendarIds.length) {
       return NextResponse.json(
-        { error: "Failed to fetch calendar events" },
-        { status: errors[0].status || 500 }
+        {
+          error: "Failed to fetch calendar events",
+          events: [],
+          errors: errors.map(toWireFetchError),
+        },
+        { status: resolveAllFailStatus(errors) }
       );
     }
 
@@ -606,7 +632,7 @@ export async function POST(request: NextRequest) {
               : {}),
             userId: session.user.id,
             validationIssues: validationError.issues
-              .slice(0, 5)
+              .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
               .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
               .join("; "),
           });
@@ -668,12 +694,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const errorBody = await response.json().catch(() => ({}));
+    const errorBody = parseGoogleErrorBody(
+      await response.json().catch(() => ({}))
+    );
     logger.error(new Error("Google Calendar create failed"), {
       userId: session.user.id,
       calendarId: event.calendarId,
       googleStatus: response.status,
-      googleError: errorBody?.error?.message ?? "unknown",
+      googleError: errorBody.error?.message ?? "unknown",
     });
 
     return NextResponse.json(
