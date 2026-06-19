@@ -35,6 +35,36 @@ import {
 
 const FORMAT_STRING = "MMM d, yyyy";
 
+const BARE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function parseEventDateField(value: string): Date {
+  const m = BARE_DATE_RE.exec(value);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return parseISO(value);
+}
+
+/**
+ * Parse `event.startDate` into a `Date`. Bare `YYYY-MM-DD` values — which
+ * arrive from non-canonical sources like the `MockCalendarProvider`,
+ * `/test/calendar` fixtures, and non-Google integrations — are treated as
+ * the local calendar day. `parseISO` would parse them as UTC midnight,
+ * which slips them to the previous local day in negative-offset zones
+ * and silently undercounts bare-date events in the `getEventsForX`
+ * overlap helpers (issue #375). Full ISO timestamps fall through to
+ * `parseISO` unchanged.
+ */
+export function parseEventStart(event: IEvent): Date {
+  return parseEventDateField(event.startDate);
+}
+
+/**
+ * Parse `event.endDate`. Same bare-date local-parsing semantics as
+ * `parseEventStart` — see its docblock.
+ */
+export function parseEventEnd(event: IEvent): Date {
+  return parseEventDateField(event.endDate);
+}
+
 /**
  * Project-wide default for which day a calendar week begins on.
  *
@@ -97,7 +127,11 @@ export const getShortWeekdayLabels = (
   ...SHORT_WEEKDAY_LABELS.slice(0, weekStartsOn),
 ];
 
-export function rangeText(view: TCalendarView, date: Date): string {
+export function rangeText(
+  view: TCalendarView,
+  date: Date,
+  weekStartsOn: Day = WEEK_STARTS_ON
+): string {
   let start: Date;
   let end: Date;
 
@@ -107,8 +141,8 @@ export function rangeText(view: TCalendarView, date: Date): string {
       end = endOfMonth(date);
       break;
     case "week":
-      start = startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
-      end = endOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
+      start = startOfWeek(date, { weekStartsOn });
+      end = endOfWeek(date, { weekStartsOn });
       break;
     case "day":
     case "clock":
@@ -143,11 +177,12 @@ export function navigateDate(
 export function getEventsCount(
   events: IEvent[],
   date: Date,
-  view: TCalendarView
+  view: TCalendarView,
+  weekStartsOn: Day = WEEK_STARTS_ON
 ): number {
   const compareFns: Record<TCalendarView, (d1: Date, d2: Date) => boolean> = {
     day: isSameDay,
-    week: (d1, d2) => isSameWeek(d1, d2, { weekStartsOn: WEEK_STARTS_ON }),
+    week: (d1, d2) => isSameWeek(d1, d2, { weekStartsOn }),
     month: isSameMonth,
     year: isSameYear,
     clock: isSameDay,
@@ -185,14 +220,17 @@ export function groupEvents(dayEvents: IEvent[]): IEvent[][] {
   return groups;
 }
 
-export function getCalendarCells(selectedDate: Date): ICalendarCell[] {
+export function getCalendarCells(
+  selectedDate: Date,
+  weekStartsOn: Day = WEEK_STARTS_ON
+): ICalendarCell[] {
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth();
 
   const daysInMonth = endOfMonth(selectedDate).getDate(); // Faster than new Date(year, month + 1, 0)
-  // Offset of the 1st relative to WEEK_STARTS_ON (0..6).
+  // Offset of the 1st relative to weekStartsOn (0..6).
   const firstDayOffset =
-    (startOfMonth(selectedDate).getDay() - WEEK_STARTS_ON + 7) % 7;
+    (startOfMonth(selectedDate).getDay() - weekStartsOn + 7) % 7;
   const daysInPrevMonth = endOfMonth(new Date(year, month - 1)).getDate();
   const totalDays = firstDayOffset + daysInMonth;
 
@@ -343,8 +381,11 @@ export const getEventsForDay = (
   const targetDate = startOfDay(date);
   return events
     .filter((event) => {
-      const startOfDayForEventStart = startOfDay(parseISO(event.startDate));
-      const startOfDayForEventEnd = startOfDay(parseISO(event.endDate));
+      const eventStart = parseEventStart(event);
+      const eventEnd = parseEventEnd(event);
+      if (!isValid(eventStart) || !isValid(eventEnd)) return false;
+      const startOfDayForEventStart = startOfDay(eventStart);
+      const startOfDayForEventEnd = startOfDay(eventEnd);
       if (isWeek) {
         return (
           event.startDate !== event.endDate &&
@@ -358,8 +399,8 @@ export const getEventsForDay = (
       );
     })
     .map((event) => {
-      const eventStart = startOfDay(parseISO(event.startDate));
-      const eventEnd = startOfDay(parseISO(event.endDate));
+      const eventStart = startOfDay(parseEventStart(event));
+      const eventEnd = startOfDay(parseEventEnd(event));
       let point: "start" | "end" | "none" | undefined;
 
       if (isSameDay(eventStart, eventEnd)) {
@@ -374,23 +415,28 @@ export const getEventsForDay = (
     });
 };
 
-export const getWeekDates = (date: Date): Date[] => {
-  const startDate = startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
+export const getWeekDates = (
+  date: Date,
+  weekStartsOn: Day = WEEK_STARTS_ON
+): Date[] => {
+  const startDate = startOfWeek(date, { weekStartsOn });
   return Array.from({ length: 7 }, (_, i) => addDays(startDate, i));
 };
 
-export const getEventsForWeek = (events: IEvent[], date: Date): IEvent[] => {
-  // Mirror the semantics of `getEventsForMonth`/`getEventsForYear`:
-  // bounds run from the first millisecond of the first day to the last
-  // millisecond of the last day. Using `endOfWeek` (rather than indexing
-  // into `getWeekDates`) keeps the bounds explicit and removes a
-  // previous off-by-one where the upper bound was start-of-Saturday.
-  const startOfWeekDate = startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
-  const endOfWeekDate = endOfWeek(date, { weekStartsOn: WEEK_STARTS_ON });
+export const getEventsForWeek = (
+  events: IEvent[],
+  date: Date,
+  weekStartsOn: Day = WEEK_STARTS_ON
+): IEvent[] => {
+  // Use startOfWeek/endOfWeek so the upper bound covers the last
+  // millisecond of the last day (fix from PR #228 / issue #201). Indexing
+  // into `getWeekDates` would give the start-of-Saturday off-by-one again.
+  const startOfWeekDate = startOfWeek(date, { weekStartsOn });
+  const endOfWeekDate = endOfWeek(date, { weekStartsOn });
 
   return events.filter((event) => {
-    const eventStart = parseISO(event.startDate);
-    const eventEnd = parseISO(event.endDate);
+    const eventStart = parseEventStart(event);
+    const eventEnd = parseEventEnd(event);
     return (
       isValid(eventStart) &&
       isValid(eventEnd) &&
@@ -405,8 +451,8 @@ export const getEventsForMonth = (events: IEvent[], date: Date): IEvent[] => {
   const endOfMonthDate = endOfMonth(date);
 
   return events.filter((event) => {
-    const eventStart = parseISO(event.startDate);
-    const eventEnd = parseISO(event.endDate);
+    const eventStart = parseEventStart(event);
+    const eventEnd = parseEventEnd(event);
     return (
       isValid(eventStart) &&
       isValid(eventEnd) &&
@@ -423,8 +469,8 @@ export const getEventsForYear = (events: IEvent[], date: Date): IEvent[] => {
   const endOfYearDate = endOfYear(date);
 
   return events.filter((event) => {
-    const eventStart = parseISO(event.startDate);
-    const eventEnd = parseISO(event.endDate);
+    const eventStart = parseEventStart(event);
+    const eventEnd = parseEventEnd(event);
     return (
       isValid(eventStart) &&
       isValid(eventEnd) &&
@@ -465,14 +511,15 @@ export const getBgColor = (color: string): string => {
 export const getEventsByMode = (
   events: IEvent[],
   view: TCalendarView,
-  selectedDate: Date
+  selectedDate: Date,
+  weekStartsOn: Day = WEEK_STARTS_ON
 ) => {
   switch (view) {
     case "day":
     case "clock":
       return getEventsForDay(events, selectedDate);
     case "week":
-      return getEventsForWeek(events, selectedDate);
+      return getEventsForWeek(events, selectedDate, weekStartsOn);
     case "month":
       return getEventsForMonth(events, selectedDate);
     case "year":

@@ -8,6 +8,16 @@ import {
   type GoogleCalendarEvent,
   normalizeFetchedEvent,
 } from "@/lib/google-calendar-mappers";
+import {
+  GoogleApiValidationError,
+  type GoogleEventPayload,
+  GoogleEventSchema,
+  type GoogleEventsListResponse,
+  GoogleEventsListResponseSchema,
+  VALIDATION_ISSUES_SUMMARY_COUNT,
+  parseGoogleErrorBody,
+  parseGoogleResponse,
+} from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import type { TEventColor } from "@/types/calendar";
@@ -34,10 +44,50 @@ const SUPPORTED_COLORS = Object.keys(
   TAILWIND_TO_GOOGLE_COLOR_ID
 ) as TEventColor[];
 
+/**
+ * Wire shape for per-calendar errors surfaced in the partial-failure response.
+ * Mirrors {@link InternalCalendarFetchError} minus the internal `logged` flag,
+ * which is a server-side dedupe guard and must not leak to clients.
+ */
 interface CalendarFetchError {
   calendarId: string;
   error: string;
   status?: number;
+}
+
+interface InternalCalendarFetchError extends CalendarFetchError {
+  /**
+   * `true` when the producer has already logged a structured `logger.error`
+   * for this failure (e.g. validation errors from `parseGoogleResponse`).
+   * The outer aggregation loop honours this to avoid double-logging the same
+   * failure with a generic "Calendar fetch error" envelope on top of the
+   * rich validation entry. Internal-only — stripped before serialisation.
+   */
+  logged?: boolean;
+}
+
+/**
+ * Project an internal per-calendar error onto its public wire shape, dropping
+ * the server-only `logged` dedupe flag.
+ */
+function toWireFetchError(e: InternalCalendarFetchError): CalendarFetchError {
+  const wire: CalendarFetchError = { calendarId: e.calendarId, error: e.error };
+  if (e.status !== undefined) wire.status = e.status;
+  return wire;
+}
+
+/**
+ * Pick the HTTP status to return when every calendar in a multi-calendar
+ * GET failed. If all per-calendar statuses agree, bubble that status. On
+ * mixed statuses, collapse to a 502 — proxy-style "upstream failures" that
+ * signals the overall request couldn't be served without claiming any
+ * single upstream status as canonical. Auth (401) errors short-circuit the
+ * outer handler so they never reach this function. The caller's guard
+ * (`errors.length === calendarIds.length`) ensures `errors` is non-empty.
+ */
+function resolveAllFailStatus(errors: InternalCalendarFetchError[]): number {
+  const first = errors[0].status ?? 500;
+  return errors.every((e) => (e.status ?? 500) === first) ? first : 502;
 }
 
 /**
@@ -52,7 +102,7 @@ async function fetchEventsFromCalendar(
   singleEvents: boolean
 ): Promise<{
   events: GoogleCalendarEvent[];
-  error?: CalendarFetchError;
+  error?: InternalCalendarFetchError;
   summary?: string;
   timeZone?: string;
 }> {
@@ -73,27 +123,62 @@ async function fetchEventsFromCalendar(
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorBody = parseGoogleErrorBody(
+      await response.json().catch(() => ({}))
+    );
     return {
       events: [],
       error: {
         calendarId,
-        error: errorData.error?.message || "Failed to fetch events",
+        error: errorBody.error?.message || "Failed to fetch events",
         status: response.status,
       },
     };
   }
 
-  const data = await response.json();
-  const events: GoogleCalendarEvent[] = (data.items || []).map(
-    (event: gapi.client.calendar.Event) =>
-      normalizeFetchedEvent(event, calendarId)
+  const rawData: unknown = await response.json();
+  let parsed: GoogleEventsListResponse;
+  try {
+    parsed = parseGoogleResponse(rawData, GoogleEventsListResponseSchema, {
+      endpoint: "events.list",
+      calendarId,
+    });
+  } catch (error) {
+    if (error instanceof GoogleApiValidationError) {
+      logger.error(error, {
+        endpoint: error.endpoint,
+        ...(error.calendarId ? { calendarId: error.calendarId } : {}),
+        validationIssues: error.issues
+          .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
+          .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+          .join("; "),
+      });
+      return {
+        events: [],
+        error: {
+          calendarId,
+          error: "Google Calendar response failed validation",
+          status: 502,
+          logged: true,
+        },
+      };
+    }
+    throw error;
+  }
+
+  // The mappers spread `{ ...event }` so unknown Google fields pass through
+  // unchanged (the Zod schema is `.loose()` for the same reason). The cast
+  // is safe because the schema requires `id` — the contract our mapper relies
+  // on — and treats every other field as optional, matching the Google API.
+  const events: GoogleCalendarEvent[] = (parsed.items ?? []).map(
+    (event: GoogleEventPayload) =>
+      normalizeFetchedEvent(event as gapi.client.calendar.Event, calendarId)
   );
 
   return {
     events,
-    summary: data.summary,
-    timeZone: data.timeZone,
+    summary: parsed.summary,
+    timeZone: parsed.timeZone,
   };
 }
 
@@ -149,7 +234,7 @@ export async function GET(request: NextRequest) {
 
     // Collect events and errors
     const allEvents: GoogleCalendarEvent[] = [];
-    const errors: CalendarFetchError[] = [];
+    const errors: InternalCalendarFetchError[] = [];
     let summary: string | undefined;
     let timeZone: string | undefined;
 
@@ -171,12 +256,19 @@ export async function GET(request: NextRequest) {
           );
         }
         errors.push(result.error);
-        logger.error(new Error("Calendar fetch error"), {
-          calendarId: result.error.calendarId,
-          errorMessage: result.error.error,
-          errorStatus: result.error.status || 0,
-          userId: session.user.id,
-        });
+        // Skip the generic envelope when the producer already logged a
+        // richer entry (e.g. `GoogleApiValidationError` from
+        // `parseGoogleResponse`). Otherwise we'd emit a bare
+        // "Calendar fetch error" alongside the structured one and degrade
+        // the signal in Application Insights.
+        if (!result.error.logged) {
+          logger.error(new Error("Calendar fetch error"), {
+            calendarId: result.error.calendarId,
+            errorMessage: result.error.error,
+            errorStatus: result.error.status || 0,
+            userId: session.user.id,
+          });
+        }
       }
       // Use summary/timezone from first successful calendar
       if (!summary && result.summary) {
@@ -185,11 +277,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // If ALL calendars failed (and not auth errors), return error
-    if (errors.length === calendarIds.length && calendarIds.length === 1) {
+    // If ALL calendars failed (and not auth errors — those early-returned
+    // above), surface an error status so the UI can react to the top-level
+    // status without inspecting `errors[]`. Pre-#386 this was gated on
+    // `calendarIds.length === 1` and multi-calendar all-fail leaked a 200
+    // with an empty events array.
+    if (errors.length === calendarIds.length) {
       return NextResponse.json(
-        { error: "Failed to fetch calendar events" },
-        { status: errors[0].status || 500 }
+        {
+          error: "Failed to fetch calendar events",
+          events: [],
+          errors: errors.map(toWireFetchError),
+        },
+        { status: resolveAllFailStatus(errors) }
       );
     }
 
@@ -212,9 +312,11 @@ export async function GET(request: NextRequest) {
       timeZone,
     };
 
-    // Include errors array if there were partial failures
+    // Include errors array if there were partial failures. Strip the
+    // server-only `logged` flag so the internal dedupe guard does not leak
+    // onto the wire — clients should see only the public error shape.
     if (errors.length > 0) {
-      response.errors = errors;
+      response.errors = errors.map(toWireFetchError);
     }
 
     return NextResponse.json(response);
@@ -514,8 +616,38 @@ export async function POST(request: NextRequest) {
     });
 
     if (response.ok) {
-      const created = (await response.json()) as gapi.client.calendar.Event;
-      const normalized = normalizeFetchedEvent(created, event.calendarId);
+      const rawCreated: unknown = await response.json();
+      let created: GoogleEventPayload;
+      try {
+        created = parseGoogleResponse(rawCreated, GoogleEventSchema, {
+          endpoint: "events.insert",
+          calendarId: event.calendarId,
+        });
+      } catch (validationError) {
+        if (validationError instanceof GoogleApiValidationError) {
+          logger.error(validationError, {
+            endpoint: validationError.endpoint,
+            ...(validationError.calendarId
+              ? { calendarId: validationError.calendarId }
+              : {}),
+            userId: session.user.id,
+            validationIssues: validationError.issues
+              .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
+              .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+              .join("; "),
+          });
+          return NextResponse.json(
+            { error: "Failed to create calendar event" },
+            { status: 502 }
+          );
+        }
+        throw validationError;
+      }
+
+      const normalized = normalizeFetchedEvent(
+        created as gapi.client.calendar.Event,
+        event.calendarId
+      );
 
       logger.event("CalendarEventCreated", {
         userId: session.user.id,
@@ -562,12 +694,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const errorBody = await response.json().catch(() => ({}));
+    const errorBody = parseGoogleErrorBody(
+      await response.json().catch(() => ({}))
+    );
     logger.error(new Error("Google Calendar create failed"), {
       userId: session.user.id,
       calendarId: event.calendarId,
       googleStatus: response.status,
-      googleError: errorBody?.error?.message ?? "unknown",
+      googleError: errorBody.error?.message ?? "unknown",
     });
 
     return NextResponse.json(

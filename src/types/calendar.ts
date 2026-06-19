@@ -27,6 +27,27 @@ export type TEventColor =
   | "orange";
 
 /**
+ * How `AgendaCalendar` (and `AgendaList` when `agendaMode` is on) buckets
+ * the events inside the current window. `"category"` was added with #211
+ * to surface the user-supplied `IEvent.category` label as a third
+ * grouping. Persists to `calendar-settings` localStorage; pre-#211
+ * payloads holding only `"date"` or `"color"` still satisfy this union
+ * (type-only widening, no runtime decoder).
+ */
+export type TAgendaGroupBy = "date" | "color" | "category";
+
+const AGENDA_GROUP_BY_VALUES: readonly TAgendaGroupBy[] = [
+  "date",
+  "color",
+  "category",
+] as const;
+
+/** Narrow an unchecked string (e.g. from a `RadioGroup.onValueChange`) onto `TAgendaGroupBy`. */
+export function isAgendaGroupBy(value: string): value is TAgendaGroupBy {
+  return (AGENDA_GROUP_BY_VALUES as readonly string[]).includes(value);
+}
+
+/**
  * Per-calendar permission level reported by Google's `CalendarList.list`.
  * Mirrors `gapi.client.calendar.CalendarListEntry.accessRole`. Lives here
  * (rather than in `CalendarProvider`) so server-only modules — the
@@ -39,6 +60,35 @@ export type TCalendarAccessRole =
   | "reader"
   | "writer"
   | "owner";
+
+// Typed as `Record<TCalendarAccessRole, true>` so adding a new role to the
+// union above forces a compile error here until the lookup is updated. A
+// plain Set would silently miss the new value and downgrade legitimate
+// access to "reader" — unacceptable for a fail-closed trust boundary.
+const VALID_ACCESS_ROLES: Record<TCalendarAccessRole, true> = {
+  freeBusyReader: true,
+  reader: true,
+  writer: true,
+  owner: true,
+};
+
+/**
+ * Narrow Google's `accessRole` string (or `undefined`) into the canonical
+ * {@link TCalendarAccessRole} union, failing closed to `"reader"` for
+ * missing or unrecognised values. The Zod schema in
+ * `lib/google-calendar-schemas.ts` keeps `accessRole` as a loose `string`
+ * (#277) so future Google additions pass validation; this helper is the
+ * route's trust boundary that picks a safe default for anything we don't
+ * recognise.
+ */
+export function narrowAccessRole(
+  value: string | undefined
+): TCalendarAccessRole {
+  return value !== undefined &&
+    Object.prototype.hasOwnProperty.call(VALID_ACCESS_ROLES, value)
+    ? (value as TCalendarAccessRole)
+    : "reader";
+}
 
 export interface IUser {
   id: string;
@@ -56,6 +106,26 @@ export interface IEvent {
   user: IUser;
   isAllDay: boolean;
   calendarId: string;
+  /**
+   * User-supplied category label sourced from Google Calendar's
+   * `extendedProperties.shared.category` (preferred) or
+   * `.private.category` (fallback). Optional because Google does not
+   * expose a first-class category field — events created from clients
+   * that don't stamp this property carry no category. See issue #211.
+   */
+  category?: string;
+}
+
+/**
+ * Lightweight calendar metadata used by the filter panel and any other
+ * surface that needs to render a list of the user's calendars. Sourced
+ * from `/api/calendar/calendars` (see `CalendarInfo` in that route for the
+ * full schema). We keep only the fields the client UI actually uses.
+ */
+export interface ICalendarInfo {
+  id: string;
+  summary: string;
+  backgroundColor: string;
 }
 
 export interface ICalendarCell {

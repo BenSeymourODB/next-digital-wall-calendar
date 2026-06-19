@@ -2,6 +2,8 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { useSlideDirection } from "@/hooks/use-slide-direction";
+import { getEventsForYear, parseEventStart } from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useRef } from "react";
@@ -17,6 +19,9 @@ import {
   startOfYear,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AnimatedSwap } from "./animated-swap";
+
+const INTRA_VIEW_SLIDE_DURATION_MS = 300;
 
 const DOT_COLOR_CLASS: Record<TEventColor, string> = {
   blue: "bg-blue-500",
@@ -47,20 +52,45 @@ function formatDayKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function getUniqueColorsForDay(events: IEvent[], day: Date): TEventColor[] {
-  const colors = new Set<TEventColor>();
+// Pre-bucket events into a Map<dayKey, Set<TEventColor>> so each day cell
+// reduces to an O(1) lookup instead of scanning the whole event array.
+// Drops the year-grid render from O(events × cells) to O(events + cells).
+// Exported for unit testing — the map shape is the contract that lets
+// MonthPanel render dots without ever touching the raw event list.
+//
+// Uses the shared `parseEventStart` so the dot path and the
+// `getEventsForX` count path agree on bare-date semantics (issue #375).
+export function bucketEventColorsByDayKey(
+  events: IEvent[]
+): Map<string, Set<TEventColor>> {
+  const map = new Map<string, Set<TEventColor>>();
   for (const event of events) {
-    if (isSameDay(new Date(event.startDate), day)) {
-      colors.add(event.color);
+    const key = formatDayKey(parseEventStart(event));
+    let colors = map.get(key);
+    if (!colors) {
+      colors = new Set<TEventColor>();
+      map.set(key, colors);
     }
+    colors.add(event.color);
   }
+  return map;
+}
+
+const EMPTY_COLORS: ReadonlySet<TEventColor> = new Set();
+
+function orderedColorsForDay(
+  colorsByDayKey: Map<string, Set<TEventColor>>,
+  dayKey: string
+): TEventColor[] {
+  const colors = colorsByDayKey.get(dayKey) ?? EMPTY_COLORS;
+  if (colors.size === 0) return [];
   return COLOR_DISPLAY_ORDER.filter((c) => colors.has(c));
 }
 
 interface MonthPanelProps {
   monthDate: Date;
   today: Date;
-  events: IEvent[];
+  colorsByDayKey: Map<string, Set<TEventColor>>;
   onDayClick: (date: Date) => void;
   onMonthClick: (monthDate: Date) => void;
 }
@@ -68,7 +98,7 @@ interface MonthPanelProps {
 function MonthPanel({
   monthDate,
   today,
-  events,
+  colorsByDayKey,
   onDayClick,
   onMonthClick,
 }: MonthPanelProps) {
@@ -107,10 +137,10 @@ function MonthPanel({
         ))}
 
         {days.map((day) => {
-          const colors = getUniqueColorsForDay(events, day);
+          const key = formatDayKey(day);
+          const colors = orderedColorsForDay(colorsByDayKey, key);
           const visibleDots = colors.slice(0, MAX_DOTS_PER_DAY);
           const isToday = isSameDay(day, today);
-          const key = formatDayKey(day);
 
           return (
             <button
@@ -183,16 +213,26 @@ export function YearCalendar() {
 
   const months = Array.from({ length: 12 }, (_, i) => new Date(year, i, 1));
 
-  const yearEventCount = events.filter((event) =>
-    isSameYear(new Date(event.startDate), selectedDate)
-  ).length;
+  // Bucket once per render: each day cell then resolves its dots via an
+  // O(1) Map.get instead of scanning the full event array (was up to
+  // 366 cells × N events). React Compiler memoises identity automatically.
+  const colorsByDayKey = bucketEventColorsByDayKey(events);
 
+  // Use overlap logic so an event spanning Dec → Jan is counted in both
+  // years. Filtering only by `startDate` would drop the Dec 30 → Jan 2
+  // case from the Jan-side year's count.
+  const yearEventCount = getEventsForYear(events, selectedDate).length;
+
+  // Prev/next-year nav lands on Jan 1 of the target year so the destination
+  // doesn't depend on the month the user happened to be viewing. Issue #203
+  // bug 4: previously preserved `selectedDate.getMonth()`, which made the
+  // semantics "go to April 1 of the next year" rather than "go to next year".
   const previousYear = () => {
-    setSelectedDate(new Date(year - 1, selectedDate.getMonth(), 1));
+    setSelectedDate(new Date(year - 1, 0, 1));
   };
 
   const nextYear = () => {
-    setSelectedDate(new Date(year + 1, selectedDate.getMonth(), 1));
+    setSelectedDate(new Date(year + 1, 0, 1));
   };
 
   const goToToday = () => {
@@ -208,6 +248,8 @@ export function YearCalendar() {
     setSelectedDate(new Date(monthDate.getFullYear(), monthDate.getMonth(), 1));
     setView("month");
   };
+
+  const slideDirection = useSlideDirection(year);
 
   return (
     <div className="w-full space-y-4">
@@ -271,21 +313,28 @@ export function YearCalendar() {
         </div>
       )}
 
-      <div
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-        data-testid="year-calendar-grid"
+      <AnimatedSwap
+        swapKey={String(year)}
+        type="slide"
+        direction={slideDirection}
+        durationMs={INTRA_VIEW_SLIDE_DURATION_MS}
       >
-        {months.map((monthDate) => (
-          <MonthPanel
-            key={monthDate.getMonth()}
-            monthDate={monthDate}
-            today={today}
-            events={events}
-            onDayClick={handleDayClick}
-            onMonthClick={handleMonthClick}
-          />
-        ))}
-      </div>
+        <div
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          data-testid="year-calendar-grid"
+        >
+          {months.map((monthDate) => (
+            <MonthPanel
+              key={monthDate.getMonth()}
+              monthDate={monthDate}
+              today={today}
+              colorsByDayKey={colorsByDayKey}
+              onDayClick={handleDayClick}
+              onMonthClick={handleMonthClick}
+            />
+          ))}
+        </div>
+      </AnimatedSwap>
     </div>
   );
 }

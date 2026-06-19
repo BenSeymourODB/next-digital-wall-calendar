@@ -1,9 +1,23 @@
 "use client";
 
 import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
+<<<<<<< claude/ecstatic-mayer-64A3Z
 import { useEventCacheVisibilitySweep } from "@/hooks/useEventCacheVisibilitySweep";
+=======
+import { useProfileOptional } from "@/components/profiles/profile-context";
+>>>>>>> main
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { type TTimeFormat, useUserSettings } from "@/hooks/useUserSettings";
+import {
+  type HiddenEventCounts,
+  ZERO_HIDDEN_COUNTS,
+  computeHiddenEventCounts,
+} from "@/lib/calendar-filter-counts";
+import {
+  getActiveProfileId,
+  loadFilterState,
+  saveFilterState,
+} from "@/lib/calendar-filter-storage";
 import {
   type CalendarColorMapping,
   eventCache,
@@ -19,8 +33,10 @@ import { resolveTransitionDurationMs } from "@/lib/calendar/transition-speed";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { logger } from "@/lib/logger";
 import type {
+  ICalendarInfo,
   IEvent,
   IUser,
+  TAgendaGroupBy,
   TCalendarAccessRole,
   TCalendarView,
   TEventColor,
@@ -65,8 +81,8 @@ export interface ICalendarContext {
    */
   agendaMode: boolean;
   setAgendaMode: (enabled: boolean) => void;
-  agendaModeGroupBy: "date" | "color";
-  setAgendaModeGroupBy: (groupBy: "date" | "color") => void;
+  agendaModeGroupBy: TAgendaGroupBy;
+  setAgendaModeGroupBy: (groupBy: TAgendaGroupBy) => void;
   use24HourFormat: boolean;
   toggleTimeFormat: () => void;
   weekStartDay: TWeekStartDay;
@@ -79,6 +95,31 @@ export interface ICalendarContext {
   selectedColors: TEventColor[];
   filterEventsBySelectedColors: (colors: TEventColor) => void;
   filterEventsBySelectedUser: (userId: IUser["id"] | "all") => void;
+  /**
+   * Issue #208 — list of the user's Google Calendars, sourced from
+   * `/api/calendar/calendars`. Empty until the first refresh fires (or
+   * when running unauthenticated).
+   */
+  calendars: ICalendarInfo[];
+  /**
+   * Calendars whose events should pass the filter. Empty array means "no
+   * calendar filter active" (all calendars pass), matching the same
+   * convention `selectedColors` uses.
+   */
+  selectedCalendarIds: string[];
+  /**
+   * Toggle a calendar in/out of the active set. Mirrors the
+   * color/user toggle ergonomics.
+   */
+  filterEventsBySelectedCalendars: (calendarId: string) => void;
+  /**
+   * Issue #208 Phase 3 — count of events hidden by each filter
+   * dimension. For dimension D, this is the number of events that pass
+   * every other dimension's filter but fail D's. When D has no active
+   * filter, the count is necessarily 0, so consumers can use
+   * `count > 0` as the render condition for a "N hidden" chip.
+   */
+  hiddenEventCounts: HiddenEventCounts;
   users: IUser[];
   events: IEvent[];
   addEvent: (event: IEvent) => void;
@@ -136,7 +177,7 @@ interface CalendarSettings {
   badgeVariant: "dot" | "colored";
   view: TCalendarView;
   agendaMode: boolean;
-  agendaModeGroupBy: "date" | "color";
+  agendaModeGroupBy: TAgendaGroupBy;
   weekStartDay: TWeekStartDay;
 }
 
@@ -262,9 +303,10 @@ export function CalendarProvider({
   const [agendaMode, setAgendaModeState] = useState<boolean>(
     initialAgendaMode ?? settings.agendaMode ?? DEFAULT_SETTINGS.agendaMode
   );
-  const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
-    "date" | "color"
-  >(settings.agendaModeGroupBy ?? DEFAULT_SETTINGS.agendaModeGroupBy);
+  const [agendaModeGroupBy, setAgendaModeGroupByState] =
+    useState<TAgendaGroupBy>(
+      settings.agendaModeGroupBy ?? DEFAULT_SETTINGS.agendaModeGroupBy
+    );
   // Initialize from localStorage so we have a sensible value before the
   // server's UserSettings.weekStartDay arrives. Once authenticated, the
   // effect below promotes the server value to the source of truth and the
@@ -384,10 +426,105 @@ export function CalendarProvider({
   }, [isAuthenticated, userSettingsLoaded, userTimeFormat]);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedUserId, setSelectedUserId] = useState<IUser["id"] | "all">(
-    "all"
+
+  // Issue #208 — filter state is persisted per-profile. The active profile
+  // id has two channels:
+  //  • Same-tab switches (the common `ProfileSwitcher` dropdown case): the
+  //    `useProfileOptional()` hook gives us the live id from React state, so
+  //    `<ProfileProvider>` → `<CalendarProvider>` re-renders propagate
+  //    immediately. `Optional` because some tests mount `CalendarProvider`
+  //    without `ProfileProvider`; in that case we fall back to localStorage.
+  //  • Cross-tab switches: same-tab `localStorage.setItem` calls do NOT
+  //    fire `storage` events in the same tab (MDN spec), so we still need
+  //    the `storage` listener as the cross-tab signal.
+  const profileContext = useProfileOptional();
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(() => {
+    if (profileContext?.activeProfile) return profileContext.activeProfile.id;
+    return getActiveProfileId();
+  });
+
+  // Same-tab signal: `ProfileProvider` re-renders with the new
+  // `activeProfile`, mirror it into our local state so the re-hydration
+  // effect below kicks in.
+  useEffect(() => {
+    if (!profileContext) return;
+    const id = profileContext.activeProfile?.id ?? null;
+    if (id !== activeProfileId) {
+      setActiveProfileId(id);
+    }
+  }, [profileContext, profileContext?.activeProfile?.id, activeProfileId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (e: StorageEvent) => {
+      if (e.key === "activeProfileId") {
+        setActiveProfileId(e.newValue);
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, []);
+
+  // Read once at construction so the three filter-state initialisers below
+  // share a single localStorage round-trip with the activeProfileId hook.
+  // Wrapped in a lazy `useState` initialiser so `loadFilterState` (which
+  // hits localStorage) doesn't run on every re-render; the seed is only
+  // used by the three `useState` calls below.
+  const [initialFilterState] = useState(() => loadFilterState(activeProfileId));
+  const [selectedUserId, setSelectedUserIdState] = useState<
+    IUser["id"] | "all"
+  >(initialFilterState.selectedUserId);
+  const [selectedColors, setSelectedColors] = useState<TEventColor[]>(
+    initialFilterState.selectedColors
   );
-  const [selectedColors, setSelectedColors] = useState<TEventColor[]>([]);
+  const [selectedCalendarIds, setSelectedCalendarIdsState] = useState<string[]>(
+    initialFilterState.selectedCalendarIds
+  );
+
+  // Track the profile id whose filter state currently lives in
+  // `selectedColors` / `selectedUserId` / `selectedCalendarIds`. Used both
+  // to detect mid-session profile changes (so we can re-hydrate) AND to
+  // gate the persistence effect below: any user-driven write that lands
+  // before the re-hydration effect has finished is dropped — the new
+  // profile's hydrated state will overwrite it anyway.
+  const hydratedProfileRef = useRef(activeProfileId);
+
+  // Set by filter-setter handlers; consumed by the persistence effect.
+  // Tracks "the most recent change came from a user action, not from
+  // re-hydration". The re-hydration effect resets this so a profile
+  // switch can't inadvertently persist the previous profile's state
+  // under the new profile's key.
+  const pendingUserUpdateRef = useRef(false);
+
+  useEffect(() => {
+    if (hydratedProfileRef.current === activeProfileId) return;
+    const next = loadFilterState(activeProfileId);
+    setSelectedColors(next.selectedColors);
+    setSelectedUserIdState(next.selectedUserId);
+    setSelectedCalendarIdsState(next.selectedCalendarIds);
+    hydratedProfileRef.current = activeProfileId;
+    // Discard any in-flight user-driven update — the user clicked during
+    // the profile switch, and the new profile's hydrated values are now
+    // the source of truth.
+    pendingUserUpdateRef.current = false;
+  }, [activeProfileId]);
+
+  // Persistence effect: fires after user-driven state changes commit, with
+  // the LATEST values (never closure-stale). Gated by
+  // `pendingUserUpdateRef` so the re-hydration effect's state changes
+  // don't trigger a redundant write-back, and by `hydratedProfileRef ===
+  // activeProfileId` so a write that lands in the gap between the profile
+  // changing and re-hydration completing is dropped.
+  useEffect(() => {
+    if (!pendingUserUpdateRef.current) return;
+    if (hydratedProfileRef.current !== activeProfileId) return;
+    pendingUserUpdateRef.current = false;
+    saveFilterState(activeProfileId, {
+      selectedColors,
+      selectedUserId,
+      selectedCalendarIds,
+    });
+  }, [selectedColors, selectedUserId, selectedCalendarIds, activeProfileId]);
 
   const [allEvents, setAllEvents] = useState<IEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<IEvent[]>([]);
@@ -398,6 +535,11 @@ export function CalendarProvider({
       return loadColorMappings();
     }
   );
+  // Rich calendar metadata (id + summary + backgroundColor) used by the
+  // CalendarFilterPanel's per-calendar dropdown (#208). Populated from the
+  // same `/api/calendar/calendars` payload that produces `calendarIds`,
+  // `accessRoles`, and `calendarMetadata` below.
+  const [calendars, setCalendars] = useState<ICalendarInfo[]>([]);
   const [calendarIds, setCalendarIds] = useState<string[]>([]);
   // Per-calendar accessRole map used by `getAccessRole` so consumers can
   // gate mutating UI on read-only calendars (#266). Populated from the
@@ -457,7 +599,7 @@ export function CalendarProvider({
     });
   };
 
-  const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
+  const setAgendaModeGroupBy = (groupBy: TAgendaGroupBy) => {
     setAgendaModeGroupByState(groupBy);
     updateSettings({ agendaModeGroupBy: groupBy });
   };
@@ -571,19 +713,43 @@ export function CalendarProvider({
     setWeekStartDayState(safe);
   }, [status, userSettings.weekStartDay]);
 
+  // The four filter setters share a common shape: use the functional
+  // form of `setState` so the new value is computed from the LATEST
+  // committed state (not the closure-captured value, which can be stale
+  // when a click handler from an earlier render fires after a profile
+  // switch). Mark `pendingUserUpdateRef` so the persistence effect knows
+  // to write — the actual `saveFilterState` call happens in the effect
+  // above, with the latest values and matching `activeProfileId`.
   const filterEventsBySelectedColors = (color: TEventColor) => {
     setSelectedColors((prev) =>
       prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color]
     );
+    pendingUserUpdateRef.current = true;
+  };
+
+  const setSelectedUserId = (userId: IUser["id"] | "all") => {
+    setSelectedUserIdState(userId);
+    pendingUserUpdateRef.current = true;
   };
 
   const filterEventsBySelectedUser = (userId: IUser["id"] | "all") => {
     setSelectedUserId(userId);
   };
 
+  const filterEventsBySelectedCalendars = (calendarId: string) => {
+    setSelectedCalendarIdsState((prev) =>
+      prev.includes(calendarId)
+        ? prev.filter((id) => id !== calendarId)
+        : [...prev, calendarId]
+    );
+    pendingUserUpdateRef.current = true;
+  };
+
   const clearFilter = () => {
     setSelectedColors([]);
-    setSelectedUserId("all");
+    setSelectedUserIdState("all");
+    setSelectedCalendarIdsState([]);
+    pendingUserUpdateRef.current = true;
   };
 
   const addEvent = (event: IEvent) => {
@@ -755,24 +921,40 @@ export function CalendarProvider({
   };
 
   /**
-   * Fetch the user's calendar list and return both the IDs (for downstream
-   * `/api/calendar/events` queries) and a metadata map keyed by id (for the
-   * `transformGoogleEvent` user-attribution fallback ladder, #307 Bug B).
+   * Fetch the user's calendar list. Returns the IDs (for downstream
+   * `/api/calendar/events` queries), the rich `ICalendarInfo` list
+   * (id + summary + backgroundColor — consumed by `CalendarFilterPanel`'s
+   * per-calendar dropdown, #208), and a metadata map keyed by id (for
+   * the `transformGoogleEvent` user-attribution fallback ladder, #307
+   * Bug B).
    *
-   * Side-effect: also populates `accessRoles` from the same payload so
-   * `getAccessRole` can hand out per-calendar permission roles to the UI
-   * (#266) without an extra round-trip. The route falls `accessRole` back
-   * to `"reader"` when Google omits it, so every entry has a role.
+   * Side-effects: populates both `calendars` (filter panel) and
+   * `accessRoles` (read-only delete gating, #266) from the same payload
+   * so a single `/api/calendar/calendars` round-trip serves three
+   * consumers.
+   *
+   * On API failure / zero-calendar accounts, returns `calendars: []` so
+   * the filter panel renders its empty-state cleanly (avoids the
+   * synthetic "Primary" row #318's review flagged), but returns
+   * `ids: ["primary"]` so the events fetch URL stays valid for the
+   * legacy single-calendar path.
    */
   const fetchCalendarList = async (): Promise<{
     ids: string[];
     metadata: CalendarMetadataMap;
+    calendars: ICalendarInfo[];
   }> => {
     try {
       const response = await fetch("/api/calendar/calendars");
       if (!response.ok) {
         logger.log("Failed to fetch calendar list, using primary only");
-        return { ids: ["primary"], metadata: new Map() };
+        // Clear `accessRoles` alongside `calendars` so consumers don't see
+        // a stale role map after the list itself goes empty (otherwise
+        // `getAccessRole` would still hand out roles for calendars the
+        // provider no longer considers current).
+        setAccessRoles({});
+        setCalendars([]);
+        return { ids: ["primary"], metadata: new Map(), calendars: [] };
       }
 
       const data = (await response.json()) as CalendarsResponse;
@@ -792,13 +974,21 @@ export function CalendarProvider({
           roles[cal.id] = cal.accessRole;
         }
         setAccessRoles(roles);
+        const calendarsList: ICalendarInfo[] = data.calendars.map((cal) => ({
+          id: cal.id,
+          summary: cal.summary ?? cal.id,
+          backgroundColor: cal.backgroundColor ?? "",
+        }));
+        setCalendars(calendarsList);
         logger.log("Fetched calendar list", { count: ids.length });
-        return { ids, metadata };
+        return { ids, metadata, calendars: calendarsList };
       }
     } catch {
       logger.log("Could not fetch calendar list, using primary only");
     }
-    return { ids: ["primary"], metadata: new Map() };
+    setAccessRoles({});
+    setCalendars([]);
+    return { ids: ["primary"], metadata: new Map(), calendars: [] };
   };
 
   // Refresh events from server-side API. React Compiler memoizes this and
@@ -831,7 +1021,9 @@ export function CalendarProvider({
       // calendar accessRoles map (#266) fresh, so a permission change in
       // Google is reflected on the next refresh without restarting the
       // session. The same staleness reasoning drives the unconditional
-      // color refresh below.
+      // color refresh below. `fetchCalendarList` also populates the rich
+      // `calendars` list used by the filter panel (#208) as a side
+      // effect.
       const list = await fetchCalendarList();
       const calIds = list.ids;
       const currentMetadata = list.metadata;
@@ -882,7 +1074,9 @@ export function CalendarProvider({
         0
       );
 
-      // Fetch events from all calendars
+      // Fetch events from all calendars. If `fetchCalendarList` came back
+      // empty (unauthenticated, API failure, or zero-calendar account),
+      // fall back to `["primary"]` so the events fetch URL stays valid.
       const transformedEvents = await fetchEventsForRange(
         timeMin,
         timeMax,
@@ -1180,7 +1374,13 @@ export function CalendarProvider({
     return () => clearInterval(interval);
   }, [status, userSettings.calendarRefreshIntervalMinutes]);
 
-  // Filter events
+  // Filter events. The three dimensions (user, color, calendar) intersect:
+  // an event must pass every active filter to remain in `filteredEvents`.
+  // An empty `selectedColors` / `selectedCalendarIds` means "no constraint
+  // on that dimension" — same convention as `selectedUserId === "all"`.
+  const [hiddenEventCounts, setHiddenEventCounts] =
+    useState<HiddenEventCounts>(ZERO_HIDDEN_COUNTS);
+
   useEffect(() => {
     let filtered = allEvents;
 
@@ -1194,8 +1394,21 @@ export function CalendarProvider({
       );
     }
 
+    if (selectedCalendarIds.length > 0) {
+      filtered = filtered.filter((event) =>
+        selectedCalendarIds.includes(event.calendarId)
+      );
+    }
+
     setFilteredEvents(filtered);
-  }, [allEvents, selectedUserId, selectedColors]);
+    setHiddenEventCounts(
+      computeHiddenEventCounts(allEvents, {
+        selectedColors,
+        selectedUserId,
+        selectedCalendarIds,
+      })
+    );
+  }, [allEvents, selectedUserId, selectedColors, selectedCalendarIds]);
 
   // Get unique users from events
   const users = allEvents.reduce((acc, event) => {
@@ -1233,6 +1446,10 @@ export function CalendarProvider({
     selectedColors,
     filterEventsBySelectedColors,
     filterEventsBySelectedUser,
+    calendars,
+    selectedCalendarIds,
+    filterEventsBySelectedCalendars,
+    hiddenEventCounts,
     users,
     events: filteredEvents,
     addEvent,

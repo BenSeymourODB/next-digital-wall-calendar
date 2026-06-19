@@ -2,6 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { useSlideDirection } from "@/hooks/use-slide-direction";
 import {
   computeEventColumns,
   formatTime,
@@ -23,6 +24,15 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AgendaList } from "./AgendaList";
+import { AnimatedSwap } from "./animated-swap";
+
+const INTRA_VIEW_SLIDE_DURATION_MS = 300;
+
+/** Stable absolute day index used for slide-direction tracking; ordering is
+ * what matters, not absolute count, so flooring UTC ms is DST-safe. */
+function absoluteDayIndex(date: Date): number {
+  return Math.floor(startOfDay(date).getTime() / 86_400_000);
+}
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 48;
@@ -147,6 +157,8 @@ export function DayCalendar() {
   const nextDay = () => setSelectedDate(addDays(selectedDate, 1));
   const goToToday = () => setSelectedDate(new Date());
 
+  const slideDirection = useSlideDirection(absoluteDayIndex(selectedDate));
+
   return (
     <div className="w-full space-y-4">
       <div className="flex items-center justify-between">
@@ -217,24 +229,35 @@ export function DayCalendar() {
         </div>
       )}
 
-      {agendaMode ? (
-        <AgendaList
-          events={dayEvents}
-          rangeStart={startOfDay(selectedDate)}
-          rangeEnd={endOfDay(selectedDate)}
-          emptyLabel={`No events on ${format(selectedDate, "EEEE, MMMM d")}`}
-        />
-      ) : (
-        <DayGridView
-          allDayEvents={allDayEvents}
-          timedEvents={timedEvents}
-          eventColumn={eventColumn}
-          selectedDate={selectedDate}
-          use24HourFormat={use24HourFormat}
-          isLoading={isLoading}
-          workingHoursStart={workingHoursStart}
-        />
-      )}
+      <AnimatedSwap
+        swapKey={format(selectedDate, "yyyy-MM-dd")}
+        type="slide"
+        direction={slideDirection}
+        durationMs={INTRA_VIEW_SLIDE_DURATION_MS}
+      >
+        {agendaMode ? (
+          // Key on the day boundary so React remounts AgendaList on prev/next
+          // navigation. Without this, AgendaList's local searchQuery state
+          // would silently carry over from one day to the next.
+          <AgendaList
+            key={startOfDay(selectedDate).toISOString()}
+            events={dayEvents}
+            rangeStart={startOfDay(selectedDate)}
+            rangeEnd={endOfDay(selectedDate)}
+            emptyLabel={`No events on ${format(selectedDate, "EEEE, MMMM d")}`}
+          />
+        ) : (
+          <DayGridView
+            allDayEvents={allDayEvents}
+            timedEvents={timedEvents}
+            eventColumn={eventColumn}
+            selectedDate={selectedDate}
+            use24HourFormat={use24HourFormat}
+            isLoading={isLoading}
+            workingHoursStart={workingHoursStart}
+          />
+        )}
+      </AnimatedSwap>
     </div>
   );
 }

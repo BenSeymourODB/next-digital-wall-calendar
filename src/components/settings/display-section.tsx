@@ -1,15 +1,18 @@
 "use client";
 
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Slider } from "@/components/ui/slider";
+import { type TTimeFormat, isTimeFormat } from "@/hooks/useUserSettings";
+import type { TDateFormat } from "@/lib/format-date";
 import type { TWeekStartDay } from "@/types/calendar";
 import { useTheme } from "next-themes";
 import { SettingsSection } from "./settings-section";
 
 interface DisplayValues {
   theme: string;
-  timeFormat: string;
-  dateFormat: string;
+  timeFormat: TTimeFormat;
+  dateFormat: TDateFormat;
   defaultZoomLevel: number;
   weekStartDay: TWeekStartDay;
 }
@@ -19,7 +22,16 @@ interface DisplaySectionProps {
   onChange: (values: Partial<DisplayValues>) => void;
 }
 
-const THEME_OPTIONS = ["light", "dark", "system"] as const;
+// Keep in sync with `THEMES` in `src/components/providers/ThemeProvider.tsx`
+// and `VALID_THEMES` in `src/app/api/settings/route.ts`.
+const THEME_OPTIONS = ["light", "dark", "wall-projector", "system"] as const;
+
+const THEME_LABELS: Record<(typeof THEME_OPTIONS)[number], string> = {
+  light: "Light",
+  dark: "Dark",
+  "wall-projector": "Wall-Projector",
+  system: "System",
+};
 
 export function DisplaySection({ values, onChange }: DisplaySectionProps) {
   const { setTheme } = useTheme();
@@ -42,21 +54,21 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
         {/* Theme selection */}
         <fieldset>
           <legend className="text-foreground text-sm font-medium">Theme</legend>
-          <div className="mt-2 flex gap-4">
+          <RadioGroup
+            value={currentTheme}
+            onValueChange={handleThemeChange}
+            className="mt-2 flex gap-4"
+          >
             {THEME_OPTIONS.map((theme) => (
               <Label key={theme} className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="theme"
+                <RadioGroupItem
                   value={theme}
-                  checked={currentTheme === theme}
-                  onChange={() => handleThemeChange(theme)}
-                  className="text-blue-600"
+                  data-testid={`display-theme-${theme}`}
                 />
-                <span className="capitalize">{theme}</span>
+                <span>{THEME_LABELS[theme]}</span>
               </Label>
             ))}
-          </div>
+          </RadioGroup>
         </fieldset>
 
         {/* Time format */}
@@ -64,30 +76,35 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
           <legend className="text-foreground text-sm font-medium">
             Time Format
           </legend>
-          <div className="mt-2 flex gap-4">
+          <RadioGroup
+            value={values.timeFormat}
+            onValueChange={(timeFormat) => {
+              // Radix forwards the raw string of the selected radio item.
+              // Both items below render values in the TTimeFormat union, so
+              // this branch only filters out theoretical garbage from
+              // future DOM tampering — TypeScript no longer accepts a
+              // widened string at the callsite.
+              if (isTimeFormat(timeFormat)) {
+                onChange({ timeFormat });
+              }
+            }}
+            className="mt-2 flex gap-4"
+          >
             <Label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="timeFormat"
+              <RadioGroupItem
                 value="12h"
-                checked={values.timeFormat === "12h"}
-                onChange={() => onChange({ timeFormat: "12h" })}
-                className="text-blue-600"
+                data-testid="display-time-format-12h"
               />
               12-hour
             </Label>
             <Label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="timeFormat"
+              <RadioGroupItem
                 value="24h"
-                checked={values.timeFormat === "24h"}
-                onChange={() => onChange({ timeFormat: "24h" })}
-                className="text-blue-600"
+                data-testid="display-time-format-24h"
               />
               24-hour
             </Label>
-          </div>
+          </RadioGroup>
         </fieldset>
 
         {/* Week start day */}
@@ -95,30 +112,28 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
           <legend className="text-foreground text-sm font-medium">
             Week starts on
           </legend>
-          <div className="mt-2 flex gap-4">
+          <RadioGroup
+            value={String(values.weekStartDay)}
+            onValueChange={(value) =>
+              onChange({ weekStartDay: Number(value) as TWeekStartDay })
+            }
+            className="mt-2 flex gap-4"
+          >
             <Label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="weekStartDay"
+              <RadioGroupItem
                 value="0"
-                checked={values.weekStartDay === 0}
-                onChange={() => onChange({ weekStartDay: 0 })}
-                className="accent-blue-600"
+                data-testid="display-week-start-day-sunday"
               />
               Sunday
             </Label>
             <Label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="weekStartDay"
+              <RadioGroupItem
                 value="1"
-                checked={values.weekStartDay === 1}
-                onChange={() => onChange({ weekStartDay: 1 })}
-                className="accent-blue-600"
+                data-testid="display-week-start-day-monday"
               />
               Monday
             </Label>
-          </div>
+          </RadioGroup>
         </fieldset>
 
         {/* Zoom level */}

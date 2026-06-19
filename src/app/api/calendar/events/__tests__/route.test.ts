@@ -8,6 +8,7 @@ import {
   mockSession,
   mockSessionWithError,
 } from "@/lib/auth/__tests__/fixtures";
+import { logger } from "@/lib/logger";
 import {
   type ApiErrorResponse,
   createMockRequest,
@@ -540,6 +541,135 @@ describe("/api/calendar/events", () => {
         );
       });
 
+      // #386 item 2 — when every calendar in a multi-calendar request fails
+      // (non-auth), the route used to return 200 with `events: []` and a
+      // populated `errors[]` because the all-fail short-circuit was gated on
+      // `calendarIds.length === 1`. Dropping that guard means a UI consumer
+      // can key off the top-level status without inspecting `errors[]`.
+      it("returns the shared per-calendar status when every calendar fails with the same status", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        // Both calendars 404 — the wire response should be 404, not 200.
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            json: () =>
+              Promise.resolve({ error: { message: "Calendar not found" } }),
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            json: () =>
+              Promise.resolve({ error: { message: "Calendar not found" } }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=missing-1%40group.calendar.google.com,missing-2%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: unknown[];
+          errors?: Array<{ calendarId: string; status?: number }>;
+          error?: string;
+        }>(response);
+
+        expect(status).toBe(404);
+        expect(data.error).toMatch(/calendar/i);
+        expect(data.events).toEqual([]);
+        // The all-fail body still lists per-calendar context so the UI can
+        // show which calendars failed and why.
+        expect(data.errors).toHaveLength(2);
+        expect(data.errors![0].calendarId).toBe(
+          "missing-1@group.calendar.google.com"
+        );
+        expect(data.errors![1].calendarId).toBe(
+          "missing-2@group.calendar.google.com"
+        );
+      });
+
+      it("returns 502 when multi-calendar failures have mixed statuses", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        // One 404, one 403 — both non-transient (so `fetchWithRetry` won't
+        // consume extra mocks). Mixed statuses collapse to a 502 "upstream
+        // failures" status (proxy-style) rather than picking one arbitrarily.
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            json: () =>
+              Promise.resolve({ error: { message: "Calendar not found" } }),
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 403,
+            json: () => Promise.resolve({ error: { message: "Forbidden" } }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=cal-a%40group.calendar.google.com,cal-b%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: unknown[];
+          errors?: Array<{ calendarId: string; status?: number }>;
+          error?: string;
+        }>(response);
+
+        expect(status).toBe(502);
+        expect(data.events).toEqual([]);
+        expect(data.errors).toHaveLength(2);
+      });
+
+      it("keeps 200 partial-failure semantics when one calendar succeeds and another fails", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "evt-1",
+                    summary: "Good event",
+                    start: { dateTime: "2026-05-01T14:00:00Z" },
+                    end: { dateTime: "2026-05-01T15:00:00Z" },
+                  },
+                ],
+              }),
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            json: () =>
+              Promise.resolve({ error: { message: "Calendar not found" } }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=primary,missing%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: Array<{ id: string }>;
+          errors?: Array<{ calendarId: string }>;
+        }>(response);
+
+        expect(status).toBe(200);
+        expect(data.events).toHaveLength(1);
+        expect(data.errors).toHaveLength(1);
+      });
+
       it("falls back to single calendarId when calendarIds not provided", async () => {
         vi.mocked(getSession).mockResolvedValue(mockSession);
         vi.mocked(getAccessToken).mockResolvedValue(
@@ -596,6 +726,195 @@ describe("/api/calendar/events", () => {
 
         expect(status).toBe(200);
         expect(data.events[0].calendarId).toBe("primary");
+      });
+    });
+
+    describe("Zod validation of Google list responses (#277)", () => {
+      // Issue #277 — every server-side Google Calendar route now validates the
+      // Google response with Zod at the boundary. Malformed payloads (e.g. an
+      // event item missing the required `id`) become a 502 plus a structured
+      // `logger.error` rather than crashing later in the mapper layer.
+      it("returns 502 with structured log when an item is missing required id", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        // `id` is the only required field on `GoogleEventSchema`. Drop it and
+        // the Zod parse fails — the route must surface a 502.
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              items: [{ summary: "no id" }],
+              summary: "Primary Calendar",
+            }),
+        });
+
+        const request = createMockRequest("/api/calendar/events");
+        const response = await GET(request);
+        const { status, data } =
+          await parseResponse<ApiErrorResponse>(response);
+
+        expect(status).toBe(502);
+        expect(data.error).toMatch(/calendar/i);
+        expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: "GoogleApiValidationError",
+          }),
+          expect.objectContaining({
+            endpoint: "events.list",
+            calendarId: "primary",
+          })
+        );
+      });
+
+      it("returns 502 when the items array is itself the wrong shape", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        // `items` must be an array per the schema; a string trips it.
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              items: "definitely not an array",
+            }),
+        });
+
+        const request = createMockRequest("/api/calendar/events");
+        const response = await GET(request);
+        const { status } = await parseResponse<ApiErrorResponse>(response);
+
+        expect(status).toBe(502);
+        expect(vi.mocked(logger.error)).toHaveBeenCalled();
+      });
+
+      it("treats a malformed response on one of two calendars as a per-calendar error", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        const goodEvent = {
+          id: "evt-good",
+          summary: "Good event",
+          start: { dateTime: "2026-05-01T14:00:00Z" },
+          end: { dateTime: "2026-05-01T15:00:00Z" },
+        };
+
+        // First calendar: well-formed. Second calendar: malformed (no id).
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: [goodEvent],
+                summary: "Primary Calendar",
+              }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: [{ summary: "no id" }],
+                summary: "Family Calendar",
+              }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=primary,family%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: Array<{ id: string; calendarId: string }>;
+          errors?: Array<{ calendarId: string; status?: number }>;
+        }>(response);
+
+        // Multi-calendar partial failure: still 200 overall, the bad calendar
+        // surfaces in `errors[]` with status 502.
+        expect(status).toBe(200);
+        expect(data.events).toHaveLength(1);
+        expect(data.events[0].id).toBe("evt-good");
+        expect(data.errors).toHaveLength(1);
+        expect(data.errors![0].calendarId).toBe(
+          "family@group.calendar.google.com"
+        );
+        expect(data.errors![0].status).toBe(502);
+        expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: "GoogleApiValidationError",
+          }),
+          expect.objectContaining({
+            endpoint: "events.list",
+            calendarId: "family@group.calendar.google.com",
+          })
+        );
+        // Validation failures self-log inside `fetchEventsFromCalendar` with
+        // a rich `GoogleApiValidationError` + `validationIssues`. The outer
+        // GET aggregation loop must NOT also fire its generic
+        // `"Calendar fetch error"` log for the same failure — that would
+        // double-log and dilute the structured signal.
+        expect(vi.mocked(logger.error)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(logger.error)).not.toHaveBeenCalledWith(
+          expect.objectContaining({ message: "Calendar fetch error" }),
+          expect.anything()
+        );
+
+        // The internal `logged` dedupe flag must not leak onto the wire.
+        // Public callers should see only the documented error shape.
+        expect(data.errors![0]).not.toHaveProperty("logged");
+      });
+
+      it("strips the internal logged flag from partial-failure errors[]", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        // Two calendars: one succeeds, the other returns a validation failure
+        // (no `id`) so its CalendarFetchError carries `logged: true` server-side.
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "evt-good",
+                    summary: "Good event",
+                    start: { dateTime: "2026-05-01T14:00:00Z" },
+                    end: { dateTime: "2026-05-01T15:00:00Z" },
+                  },
+                ],
+              }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: [{ summary: "no id" }],
+              }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=primary,family%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: Array<{ id: string }>;
+          errors?: Array<Record<string, unknown>>;
+        }>(response);
+
+        expect(status).toBe(200);
+        expect(data.errors).toHaveLength(1);
+        const wireError = data.errors![0];
+        expect(wireError).not.toHaveProperty("logged");
+        expect(Object.keys(wireError).sort()).toEqual(
+          ["calendarId", "error", "status"].sort()
+        );
       });
     });
 
@@ -1178,6 +1497,70 @@ describe("/api/calendar/events", () => {
 
       expect(status).toBe(500);
       expect(data.error).toBe("An unexpected error occurred");
+    });
+
+    describe("Zod validation of Google insert response (#277)", () => {
+      it("returns 502 with structured log when Google's create response is missing the required id", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        // 200 from Google but the body fails `GoogleEventSchema` — no `id`.
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              summary: "Team offsite",
+              start: { dateTime: "2026-05-01T14:00:00.000Z" },
+              end: { dateTime: "2026-05-01T15:00:00.000Z" },
+            }),
+        });
+
+        const request = createMockRequest("/api/calendar/events", {
+          method: "POST",
+          body: makeBody(),
+        });
+        const response = await POST(request);
+        const { status, data } =
+          await parseResponse<ApiErrorResponse>(response);
+
+        expect(status).toBe(502);
+        expect(data.error).toMatch(/failed/i);
+        expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: "GoogleApiValidationError",
+          }),
+          expect.objectContaining({
+            endpoint: "events.insert",
+            calendarId: "primary",
+          })
+        );
+      });
+
+      it("returns 502 when Google's create response is the wrong type (array instead of object)", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(["not", "an", "object"]),
+        });
+
+        const request = createMockRequest("/api/calendar/events", {
+          method: "POST",
+          body: makeBody(),
+        });
+        const response = await POST(request);
+        const { status } = await parseResponse<ApiErrorResponse>(response);
+
+        expect(status).toBe(502);
+        expect(vi.mocked(logger.error)).toHaveBeenCalled();
+      });
     });
 
     /**

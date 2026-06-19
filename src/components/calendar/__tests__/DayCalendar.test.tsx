@@ -4,10 +4,10 @@ import {
 } from "@/components/providers/CalendarProvider";
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { addDays, format, isSameDay, startOfDay, subDays } from "date-fns";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DayCalendar } from "../DayCalendar";
 
 /**
@@ -551,6 +551,144 @@ describe("DayCalendar", () => {
 
       await user.click(screen.getByTestId("day-calendar-next"));
       expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
+    });
+
+    // The AgendaList stays mounted as the same component instance when the
+    // user navigates day-by-day; without a remount, a search query typed on
+    // one day would silently carry over to the next. Keying AgendaList on
+    // the day forces a remount and clears search state.
+    it("clears the AgendaList search query when the selected day changes", async () => {
+      const userEv = userEvent.setup();
+      const dayA = startOfDay(new Date(2026, 3, 15));
+      const dayB = startOfDay(new Date(2026, 3, 16));
+      const eventA = createMockEvent({
+        id: "a",
+        title: "SoccerPractice",
+        startDate: at(dayA, 10),
+        endDate: at(dayA, 11),
+      });
+      const eventB = createMockEvent({
+        id: "b",
+        title: "OtherEvent",
+        startDate: at(dayB, 10),
+        endDate: at(dayB, 11),
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider
+          value={createMockContext({
+            agendaMode: true,
+            selectedDate: dayA,
+            events: [eventA, eventB],
+          })}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+      await userEv.type(
+        screen.getByTestId("agenda-list-search-input"),
+        "soccer"
+      );
+      expect(screen.getByTestId("agenda-list-search-input")).toHaveValue(
+        "soccer"
+      );
+
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({
+            agendaMode: true,
+            selectedDate: dayB,
+            events: [eventA, eventB],
+          })}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+
+      // The intra-view slide animation keeps the previous AgendaList in the
+      // DOM as `animated-swap-outgoing` while `animated-swap-incoming` holds
+      // the new one. The remount we care about lives in incoming.
+      const incoming = within(screen.getByTestId("animated-swap-incoming"));
+      expect(incoming.getByTestId("agenda-list-search-input")).toHaveValue("");
+      expect(incoming.getByText("OtherEvent")).toBeInTheDocument();
+    });
+  });
+
+  describe("Slide animation on day navigation (#207)", () => {
+    function installMatchMediaMock(reducedMotion: boolean) {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: reducedMotion && query === "(prefers-reduced-motion: reduce)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+    }
+
+    beforeEach(() => {
+      installMatchMediaMock(false);
+    });
+
+    afterEach(() => {
+      // Restore between tests so the rest of the file isn't affected.
+      vi.restoreAllMocks();
+    });
+
+    function rerenderOn(
+      selectedDate: Date,
+      ctx: Partial<ICalendarContext>,
+      rerender: ReturnType<typeof renderWithContext>["rerender"]
+    ) {
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...createMockContext(ctx), selectedDate }}
+        >
+          <DayCalendar />
+        </CalendarContext.Provider>
+      );
+    }
+
+    it("wraps the day body in an AnimatedSwap container", () => {
+      const selectedDate = startOfDay(new Date(2026, 3, 15));
+      renderWithContext({ selectedDate });
+      expect(screen.getByTestId("animated-swap")).toBeInTheDocument();
+    });
+
+    it("slides the outgoing body left (translateX(-100%)) on next-day", () => {
+      const initial = startOfDay(new Date(2026, 3, 15));
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(addDays(initial, 1), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(-100%)");
+    });
+
+    it("slides the outgoing body right (translateX(100%)) on prev-day", () => {
+      const initial = startOfDay(new Date(2026, 3, 15));
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(subDays(initial, 1), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(100%)");
+    });
+
+    it("renders no outgoing snapshot when prefers-reduced-motion is set", () => {
+      installMatchMediaMock(true);
+
+      const initial = startOfDay(new Date(2026, 3, 15));
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+      rerenderOn(addDays(initial, 1), baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
     });
   });
 });

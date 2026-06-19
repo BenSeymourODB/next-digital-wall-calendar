@@ -36,7 +36,7 @@ vi.mock("next-auth/react", async () => {
   };
 });
 
-const { colorMappingsToLoad } = vi.hoisted(() => ({
+const { colorMappingsToLoad, profileMock } = vi.hoisted(() => ({
   colorMappingsToLoad: {
     current: [] as Array<{
       calendarId: string;
@@ -45,7 +45,24 @@ const { colorMappingsToLoad } = vi.hoisted(() => ({
       tailwindColor: string;
     }>,
   },
+  // Mutable handle so tests can simulate same-tab profile switches by
+  // flipping `profileMock.current` and re-rendering. `null` keeps every
+  // existing test behaving as if `ProfileProvider` were absent (the
+  // pre-fix fallback path through localStorage / storage events).
+  profileMock: {
+    current: null as { activeProfile: { id: string } | null } | null,
+  },
 }));
+
+vi.mock("@/components/profiles/profile-context", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/components/profiles/profile-context")
+  >("@/components/profiles/profile-context");
+  return {
+    ...actual,
+    useProfileOptional: () => profileMock.current,
+  };
+});
 
 vi.mock("@/lib/calendar-storage", () => ({
   loadColorMappings: () => colorMappingsToLoad.current,
@@ -89,6 +106,9 @@ function SettingsProbe() {
       </button>
       <button type="button" onClick={() => setAgendaModeGroupBy("color")}>
         group-color
+      </button>
+      <button type="button" onClick={() => setAgendaModeGroupBy("category")}>
+        group-category
       </button>
       <button type="button" onClick={() => setWeekStartDay(1)}>
         week-monday
@@ -156,6 +176,44 @@ describe("CalendarProvider — settings state", () => {
     expect(stored).not.toBeNull();
     const parsed = JSON.parse(stored!);
     expect(parsed.weekStartDay).toBe(1);
+  });
+
+  it("persists agendaModeGroupBy=category round-trip (#211)", async () => {
+    const user = userEvent.setup();
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("group")).toHaveTextContent("date");
+    });
+
+    await user.click(screen.getByText("group-category"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("group")).toHaveTextContent("category");
+    });
+
+    const parsed = JSON.parse(
+      window.localStorage.getItem("calendar-settings") ?? "{}"
+    );
+    expect(parsed.agendaModeGroupBy).toBe("category");
+  });
+
+  it("rehydrates agendaModeGroupBy=category from localStorage on mount (#211)", async () => {
+    window.localStorage.setItem(
+      "calendar-settings",
+      JSON.stringify({
+        badgeVariant: "colored",
+        view: "month",
+        agendaModeGroupBy: "category",
+        weekStartDay: 0,
+      })
+    );
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("group")).toHaveTextContent("category");
+    });
   });
 
   it("persists agenda group-by and badge changes alongside weekStartDay", async () => {
@@ -2196,6 +2254,776 @@ describe("CalendarProvider — weekStartDay server migration (#338)", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("week-start")).toHaveTextContent("0");
+    });
+  });
+});
+
+// Issue #208 Phase 1 — filter persistence (per-profile localStorage).
+// These tests don't need network access; the unauthenticated session keeps
+// the API code paths dormant so we can focus on the storage round-trip.
+describe("CalendarProvider — filter persistence (#208 Phase 1)", () => {
+  function FilterProbe() {
+    const {
+      selectedColors,
+      selectedUserId,
+      filterEventsBySelectedColors,
+      setSelectedUserId,
+      clearFilter,
+    } = useCalendar();
+    return (
+      <div>
+        <span data-testid="probe-colors">{selectedColors.join(",")}</span>
+        <span data-testid="probe-user">{selectedUserId}</span>
+        <button
+          type="button"
+          onClick={() => filterEventsBySelectedColors("red")}
+        >
+          toggle-red
+        </button>
+        <button
+          type="button"
+          onClick={() => filterEventsBySelectedColors("blue")}
+        >
+          toggle-blue
+        </button>
+        <button type="button" onClick={() => setSelectedUserId("user-1")}>
+          select-user-1
+        </button>
+        <button type="button" onClick={() => clearFilter()}>
+          clear
+        </button>
+      </div>
+    );
+  }
+
+  function renderProbe() {
+    return render(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <FilterProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+  }
+
+  beforeEach(() => {
+    mockSessionState.current = { data: null, status: "unauthenticated" };
+    window.localStorage.clear();
+    profileMock.current = null;
+  });
+
+  it("starts with empty filters when nothing is persisted", async () => {
+    renderProbe();
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("");
+    });
+    expect(screen.getByTestId("probe-user")).toHaveTextContent("all");
+  });
+
+  it("persists color toggles to per-profile storage under the active profile id", async () => {
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    const user = userEvent.setup();
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("");
+    });
+
+    await user.click(screen.getByText("toggle-red"));
+    await user.click(screen.getByText("toggle-blue"));
+
+    await waitFor(() => {
+      const stored = window.localStorage.getItem("calendar-filters:profile-a");
+      expect(stored).not.toBeNull();
+      const parsed = JSON.parse(stored!);
+      expect(parsed.selectedColors).toEqual(["red", "blue"]);
+    });
+  });
+
+  it("persists user selection to per-profile storage", async () => {
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    const user = userEvent.setup();
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-user")).toHaveTextContent("all");
+    });
+
+    await user.click(screen.getByText("select-user-1"));
+
+    await waitFor(() => {
+      const stored = window.localStorage.getItem("calendar-filters:profile-a");
+      expect(stored).not.toBeNull();
+      expect(JSON.parse(stored!).selectedUserId).toBe("user-1");
+    });
+  });
+
+  it("hydrates filter state on mount from per-profile storage", async () => {
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red", "green"],
+        selectedUserId: "user-2",
+        selectedCalendarIds: [],
+      })
+    );
+
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red,green");
+    });
+    expect(screen.getByTestId("probe-user")).toHaveTextContent("user-2");
+  });
+
+  it("uses the default bucket when no active profile id is set", async () => {
+    window.localStorage.setItem(
+      "calendar-filters:default",
+      JSON.stringify({
+        selectedColors: ["yellow"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("yellow");
+    });
+  });
+
+  it("isolates filter state across profiles", async () => {
+    // Profile A and Profile B each have their own stored filter state.
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+    window.localStorage.setItem(
+      "calendar-filters:profile-b",
+      JSON.stringify({
+        selectedColors: ["blue"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+
+    // Mount with profile A active.
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    const { unmount } = renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red");
+    });
+
+    unmount();
+
+    // Switch profiles by editing storage and remounting (the realistic flow
+    // since profile switches happen on a different route).
+    window.localStorage.setItem("activeProfileId", "profile-b");
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("blue");
+    });
+  });
+
+  it("re-hydrates when the active profile id changes mid-session via storage event", async () => {
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+    window.localStorage.setItem(
+      "calendar-filters:profile-b",
+      JSON.stringify({
+        selectedColors: ["green"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+    window.localStorage.setItem("activeProfileId", "profile-a");
+
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red");
+    });
+
+    // Simulate ProfileProvider switching the active profile in another tab.
+    window.localStorage.setItem("activeProfileId", "profile-b");
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "activeProfileId",
+        newValue: "profile-b",
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("green");
+    });
+  });
+
+  it("re-hydrates when the active profile changes in the SAME tab via useProfile (no storage event fires)", async () => {
+    // Same-tab regression: `localStorage.setItem` does NOT fire a
+    // `storage` event in the originating tab (MDN spec), so the
+    // cross-tab listener never sees `ProfileSwitcher` dropdown clicks.
+    // The fix subscribes to `useProfileOptional()` directly so React
+    // re-renders propagate the new active profile id.
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+    window.localStorage.setItem(
+      "calendar-filters:profile-b",
+      JSON.stringify({
+        selectedColors: ["green"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+    profileMock.current = { activeProfile: { id: "profile-a" } };
+
+    const { rerender } = renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red");
+    });
+
+    // Same-tab switch: `ProfileProvider` re-renders with a new
+    // `activeProfile` but does NOT fire a `storage` event. The new
+    // profile id must still flow through.
+    profileMock.current = { activeProfile: { id: "profile-b" } };
+    rerender(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <FilterProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("green");
+    });
+  });
+
+  it("clearFilter resets in-memory state and persists the empty state", async () => {
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red", "blue"],
+        selectedUserId: "user-1",
+        selectedCalendarIds: [],
+      })
+    );
+
+    const user = userEvent.setup();
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red,blue");
+    });
+    expect(screen.getByTestId("probe-user")).toHaveTextContent("user-1");
+
+    await user.click(screen.getByText("clear"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("");
+    });
+    expect(screen.getByTestId("probe-user")).toHaveTextContent("all");
+
+    const stored = window.localStorage.getItem("calendar-filters:profile-a");
+    expect(stored).not.toBeNull();
+    const parsed = JSON.parse(stored!);
+    expect(parsed.selectedColors).toEqual([]);
+    expect(parsed.selectedUserId).toBe("all");
+  });
+
+  // Issue #208 Phase 2 — per-calendar filter
+  it("hydrates selectedCalendarIds from per-profile storage", async () => {
+    function CalendarProbe() {
+      const { selectedCalendarIds } = useCalendar();
+      return (
+        <span data-testid="probe-cal-ids">{selectedCalendarIds.join(",")}</span>
+      );
+    }
+
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: [],
+        selectedUserId: "all",
+        selectedCalendarIds: ["cal-1", "cal-2"],
+      })
+    );
+
+    render(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <CalendarProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent(
+        "cal-1,cal-2"
+      );
+    });
+  });
+
+  it("toggles selectedCalendarIds and persists each change", async () => {
+    function CalendarProbe() {
+      const { selectedCalendarIds, filterEventsBySelectedCalendars } =
+        useCalendar();
+      return (
+        <div>
+          <span data-testid="probe-cal-ids">
+            {selectedCalendarIds.join(",")}
+          </span>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedCalendars("cal-1")}
+          >
+            toggle-cal-1
+          </button>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedCalendars("cal-2")}
+          >
+            toggle-cal-2
+          </button>
+        </div>
+      );
+    }
+
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    const user = userEvent.setup();
+
+    render(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <CalendarProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent("");
+    });
+
+    await user.click(screen.getByText("toggle-cal-1"));
+    await user.click(screen.getByText("toggle-cal-2"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent(
+        "cal-1,cal-2"
+      );
+    });
+
+    const stored = JSON.parse(
+      window.localStorage.getItem("calendar-filters:profile-a") ?? "{}"
+    );
+    expect(stored.selectedCalendarIds).toEqual(["cal-1", "cal-2"]);
+
+    // Toggle off cal-1
+    await user.click(screen.getByText("toggle-cal-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent("cal-2");
+    });
+
+    const stored2 = JSON.parse(
+      window.localStorage.getItem("calendar-filters:profile-a") ?? "{}"
+    );
+    expect(stored2.selectedCalendarIds).toEqual(["cal-2"]);
+  });
+
+  it("clearFilter resets all three dimensions including selectedCalendarIds", async () => {
+    function ClearProbe() {
+      const {
+        selectedColors,
+        selectedUserId,
+        selectedCalendarIds,
+        filterEventsBySelectedColors,
+        setSelectedUserId,
+        filterEventsBySelectedCalendars,
+        clearFilter,
+      } = useCalendar();
+      return (
+        <div>
+          <span data-testid="probe-colors">{selectedColors.join(",")}</span>
+          <span data-testid="probe-user">{selectedUserId}</span>
+          <span data-testid="probe-cal-ids">
+            {selectedCalendarIds.join(",")}
+          </span>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedColors("red")}
+          >
+            toggle-red
+          </button>
+          <button type="button" onClick={() => setSelectedUserId("user-1")}>
+            select-user-1
+          </button>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedCalendars("cal-1")}
+          >
+            toggle-cal-1
+          </button>
+          <button type="button" onClick={() => clearFilter()}>
+            clear
+          </button>
+        </div>
+      );
+    }
+
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    const user = userEvent.setup();
+
+    render(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <ClearProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("");
+    });
+
+    await user.click(screen.getByText("toggle-red"));
+    await user.click(screen.getByText("select-user-1"));
+    await user.click(screen.getByText("toggle-cal-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent("cal-1");
+    });
+
+    await user.click(screen.getByText("clear"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("");
+    });
+    expect(screen.getByTestId("probe-user")).toHaveTextContent("all");
+    expect(screen.getByTestId("probe-cal-ids")).toHaveTextContent("");
+
+    const stored = JSON.parse(
+      window.localStorage.getItem("calendar-filters:profile-a") ?? "{}"
+    );
+    expect(stored.selectedColors).toEqual([]);
+    expect(stored.selectedUserId).toBe("all");
+    expect(stored.selectedCalendarIds).toEqual([]);
+  });
+
+  // Review feedback — persistFilters must not corrupt the new profile's
+  // stored state when a user-driven filter change races with a cross-tab
+  // profile switch. Before the guard, a click between `setActiveProfileId`
+  // landing and the re-hydration effect catching up would write the old
+  // profile's in-memory values under the new profile's key.
+  it("does not persist old-profile filter values to the new profile during an in-flight switch", async () => {
+    function FilterProbe() {
+      const { filterEventsBySelectedColors } = useCalendar();
+      return (
+        <button
+          type="button"
+          onClick={() => filterEventsBySelectedColors("yellow")}
+        >
+          toggle-yellow
+        </button>
+      );
+    }
+
+    // Profile A starts with red selected; profile B has nothing stored.
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red"],
+        selectedUserId: "all",
+        selectedCalendarIds: [],
+      })
+    );
+
+    const user = userEvent.setup();
+    render(
+      <SessionProvider session={null}>
+        <CalendarProvider>
+          <FilterProbe />
+        </CalendarProvider>
+      </SessionProvider>
+    );
+
+    // Simulate a cross-tab profile switch by mutating storage and firing
+    // the storage event WITHOUT yielding back to React. Then immediately
+    // (in the same tick) click the toggle. The click handler is from the
+    // pre-switch render, so its closure still sees `["red"]` as
+    // `selectedColors`. With the guard in place, persistFilters should
+    // bail (hydratedProfileRef still holds "profile-a", activeProfileId
+    // is now "profile-b"), so profile B's storage stays clean.
+    window.localStorage.setItem("activeProfileId", "profile-b");
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "activeProfileId",
+        newValue: "profile-b",
+      })
+    );
+    await user.click(screen.getByText("toggle-yellow"));
+
+    // Wait for the post-switch render to commit so any spurious writes
+    // would have happened by now.
+    await waitFor(() => {
+      const stored = window.localStorage.getItem("calendar-filters:profile-b");
+      // Either no entry (preferred — guard dropped the write) or, if
+      // some edge of React batching writes anyway, the stored entry must
+      // not contain "red" (profile A's value).
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        expect(parsed.selectedColors).not.toContain("red");
+      } else {
+        expect(stored).toBeNull();
+      }
+    });
+  });
+
+  it("only persists changes made in the active session, not the initial hydration", async () => {
+    // Pre-seed storage so the provider hydrates from it.
+    window.localStorage.setItem("activeProfileId", "profile-a");
+    window.localStorage.setItem(
+      "calendar-filters:profile-a",
+      JSON.stringify({
+        selectedColors: ["red", "green"],
+        selectedUserId: "user-x",
+        selectedCalendarIds: [],
+      })
+    );
+
+    // Spy on setItem so we can prove we don't write back during hydration.
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    setItemSpy.mockClear();
+
+    renderProbe();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("probe-colors")).toHaveTextContent("red,green");
+    });
+
+    // No write to the calendar-filters key happened during hydration.
+    const filterWrites = setItemSpy.mock.calls.filter(
+      ([key]) => key === "calendar-filters:profile-a"
+    );
+    expect(filterWrites).toHaveLength(0);
+
+    setItemSpy.mockRestore();
+  });
+});
+
+// Issue #208 Phase 2 — calendar list + filter-by-calendar end-to-end with
+// network-backed event load. Mirrors the existing color-filter smoke test.
+describe("CalendarProvider — calendar filter (#208 Phase 2)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    mockSessionState.current = {
+      data: {
+        user: { name: "Test", email: "test@test.test" },
+        expires: new Date(Date.now() + 86_400_000).toISOString(),
+      },
+      status: "authenticated",
+    };
+    fetchMock = vi.fn().mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(
+          fetchOk({
+            calendars: [
+              {
+                id: "primary",
+                summary: "Primary",
+                backgroundColor: "#4285f4",
+              },
+              { id: "work", summary: "Work", backgroundColor: "#16a765" },
+            ],
+          })
+        );
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(fetchOk({ events: [] }));
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("exposes the fetched calendar metadata via context", async () => {
+    function CalendarsProbe() {
+      const { calendars } = useCalendar();
+      return (
+        <ul data-testid="probe-calendars">
+          {calendars.map((c) => (
+            <li key={c.id}>
+              {c.id}:{c.summary}:{c.backgroundColor}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
+    render(
+      <CalendarProvider>
+        <CalendarsProbe />
+      </CalendarProvider>
+    );
+
+    await waitFor(() => {
+      const items = screen.getByTestId("probe-calendars").textContent ?? "";
+      expect(items).toContain("primary:Primary:#4285f4");
+      expect(items).toContain("work:Work:#16a765");
+    });
+  });
+
+  // Issue #208 Phase 2 review feedback — fetchCalendarList no longer
+  // injects a synthetic "primary" entry, so the panel UI's empty state
+  // can render correctly for unauthenticated/zero-calendar accounts.
+  it("does not surface a synthetic 'primary' calendar when the API returns no calendars", async () => {
+    function CalendarsProbe() {
+      const { calendars } = useCalendar();
+      return <span data-testid="probe-calendars-len">{calendars.length}</span>;
+    }
+
+    fetchMock.mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(fetchOk({ calendars: [] }));
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(fetchOk({ events: [] }));
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+
+    render(
+      <CalendarProvider>
+        <CalendarsProbe />
+      </CalendarProvider>
+    );
+
+    // Wait for the events fetch (proves the refresh ran end-to-end), then
+    // assert the calendar list stays empty rather than getting a synthetic
+    // entry that would render as a real selectable row in the filter UI.
+    await waitFor(() => {
+      const eventCalls = fetchMock.mock.calls
+        .map((c) => String(c[0]))
+        .filter((u) => u.includes("/api/calendar/events"));
+      expect(eventCalls.length).toBeGreaterThan(0);
+    });
+    expect(screen.getByTestId("probe-calendars-len")).toHaveTextContent("0");
+
+    // Even though calendars is empty, the events fetch URL still falls
+    // back to the primary calendar so we don't end up with no events at
+    // all when the calendar list comes back empty.
+    const eventUrl = fetchMock.mock.calls
+      .map((c) => String(c[0]))
+      .find((u) => u.includes("/api/calendar/events"));
+    expect(eventUrl).toContain("calendarIds=primary");
+  });
+
+  it("filters events by selectedCalendarIds and intersects with color filter", async () => {
+    function CalendarFilterProbe() {
+      const { events, filterEventsBySelectedCalendars } = useCalendar();
+      return (
+        <div>
+          <button
+            type="button"
+            onClick={() => filterEventsBySelectedCalendars("work")}
+          >
+            only-work
+          </button>
+          <ul data-testid="probe-events">
+            {events.map((e) => (
+              <li key={e.id}>{e.title}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    fetchMock.mockImplementation((input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/api/calendar/calendars")) {
+        return Promise.resolve(
+          fetchOk({
+            calendars: [
+              { id: "primary", summary: "Primary" },
+              { id: "work", summary: "Work" },
+            ],
+          })
+        );
+      }
+      if (url.includes("/api/calendar/colors")) {
+        return Promise.resolve(fetchOk({ colorMappings: [] }));
+      }
+      if (url.includes("/api/calendar/events")) {
+        return Promise.resolve(
+          fetchOk({
+            events: [
+              {
+                id: "primary-evt",
+                summary: "Primary Event",
+                start: { dateTime: new Date().toISOString() },
+                end: { dateTime: new Date().toISOString() },
+              },
+            ],
+          })
+        );
+      }
+      return Promise.resolve(fetchOk({}));
+    });
+
+    render(
+      <CalendarProvider>
+        <CalendarFilterProbe />
+      </CalendarProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Primary Event")).toBeInTheDocument();
+    });
+
+    // Selecting only "work" should drop the primary event since the mock
+    // transformer assigns calendarId: "primary".
+    await userEvent.setup().click(screen.getByText("only-work"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Primary Event")).not.toBeInTheDocument();
     });
   });
 });

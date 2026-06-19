@@ -1,4 +1,57 @@
-import { expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
+
+/**
+ * Task settings ("Show completed tasks", "Default sort order") persist per
+ * profile via `/api/profiles/:id/settings`, and the form silently no-ops them
+ * when there is no active profile. The /test/settings harness has no real
+ * session, so without these mocks the root-layout ProfileProvider fetches an
+ * empty profile list and those controls never apply. Seed one profile and a
+ * stateful settings endpoint so the task controls behave like a signed-in user.
+ */
+async function mockActiveProfile(page: Page): Promise<void> {
+  const profile = {
+    id: "test-profile-1",
+    userId: "test-user-1",
+    name: "Admin",
+    type: "admin",
+    ageGroup: "adult",
+    color: "#3b82f6",
+    avatar: { type: "initials", value: "A" },
+    pinEnabled: false,
+    isActive: true,
+  };
+  await page.route("**/api/profiles", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([profile]),
+    })
+  );
+  const taskSettings: Record<string, unknown> = {
+    taskSortOrder: "dueDate",
+    showCompletedTasks: false,
+  };
+  await page.route("**/api/profiles/*/settings", async (route) => {
+    if (route.request().method() === "PUT") {
+      Object.assign(taskSettings, route.request().postDataJSON() ?? {});
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(taskSettings),
+    });
+  });
+}
+
+/** Re-load /test/settings with profile mocks active and wait for the profile's
+ *  task settings to load, so the task controls are interactive. */
+async function gotoSettingsWithProfile(page: Page): Promise<void> {
+  await mockActiveProfile(page);
+  await page.goto("/test/settings");
+  await page.waitForResponse((r) =>
+    /\/api\/profiles\/[^/]+\/settings/.test(r.url())
+  );
+}
 
 test.describe("Settings Page (/test/settings)", () => {
   test.beforeEach(async ({ page }) => {
@@ -225,6 +278,12 @@ test.describe("Settings Page (/test/settings)", () => {
   });
 
   test.describe("Tasks Section", () => {
+    // Task settings persist per profile; re-load with an active profile so the
+    // sort-order select and show-completed toggle actually apply.
+    test.beforeEach(async ({ page }) => {
+      await gotoSettingsWithProfile(page);
+    });
+
     test("shows section description", async ({ page }) => {
       await expect(
         page.getByText("Configure task list defaults")
@@ -258,8 +317,9 @@ test.describe("Settings Page (/test/settings)", () => {
     });
 
     test("can open sort order dropdown and see options", async ({ page }) => {
-      // Click the select trigger to open dropdown
-      await page.getByRole("combobox").click();
+      // Scope to the sort-order select by its label — the calendar transition
+      // speed setting (#283) adds a second combobox to this page.
+      await page.getByRole("combobox", { name: /default sort order/i }).click();
 
       await expect(
         page.getByRole("option", { name: "Due Date" })
@@ -274,11 +334,14 @@ test.describe("Settings Page (/test/settings)", () => {
     });
 
     test("can change sort order", async ({ page }) => {
-      await page.getByRole("combobox").click();
+      const sortSelect = page.getByRole("combobox", {
+        name: /default sort order/i,
+      });
+      await sortSelect.click();
       await page.getByRole("option", { name: "Title" }).click();
 
       // The trigger should now show "Title"
-      await expect(page.getByRole("combobox")).toHaveText("Title");
+      await expect(sortSelect).toHaveText("Title");
     });
   });
 
@@ -338,6 +401,9 @@ test.describe("Settings Page (/test/settings)", () => {
       await page.route("**/api/settings", (route) =>
         route.fulfill({ status: 200, body: "{}" })
       );
+      // Show-completed-tasks is a per-profile task setting, so load with an
+      // active profile (and its mocked settings endpoint) too.
+      await gotoSettingsWithProfile(page);
 
       const radio24h = page.locator('input[name="timeFormat"][value="24h"]');
 

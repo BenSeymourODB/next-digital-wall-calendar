@@ -1,49 +1,40 @@
 /**
  * Tests for PinSettings component
  */
+import { makeProfile } from "@/test/fixtures/profile";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PinSettings, type PinSettingsProfile } from "../pin-settings";
+import { PinSettings } from "../pin-settings";
 
 // Mock fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-// Mock profiles
-const standardProfileWithoutPin: PinSettingsProfile = {
+// Mock profiles. PinSettings accepts the narrower PinSettingsProfile shape;
+// the full Profile from makeProfile() is structurally assignable.
+const standardProfileWithoutPin = makeProfile({
   id: "profile-standard-1",
   name: "Child User",
   type: "standard",
-  pinEnabled: false,
   color: "#22c55e",
   avatar: { type: "emoji", value: "👦" },
-};
+});
 
-const standardProfileWithPin: PinSettingsProfile = {
+const standardProfileWithPin = makeProfile({
   id: "profile-standard-2",
   name: "Teen User",
   type: "standard",
   pinEnabled: true,
   color: "#a855f7",
-  avatar: {
-    type: "initials",
-    value: "TU",
-    backgroundColor: "#a855f7",
-  },
-};
+  avatar: { type: "initials", value: "TU", backgroundColor: "#a855f7" },
+});
 
-const adminProfile: PinSettingsProfile = {
+const adminProfile = makeProfile({
   id: "profile-admin-1",
   name: "Admin User",
-  type: "admin",
   pinEnabled: true,
-  color: "#3b82f6",
-  avatar: {
-    type: "initials",
-    value: "AU",
-    backgroundColor: "#3b82f6",
-  },
-};
+  avatar: { type: "initials", value: "AU", backgroundColor: "#3b82f6" },
+});
 
 describe("PinSettings", () => {
   const mockOnPinChange = vi.fn();

@@ -5,11 +5,18 @@
  *   profileId (required) — the profile to fetch points for.
  *
  * Response:
- *   { totalPoints: number, enabled: boolean }
+ *   {
+ *     totalPoints: number,
+ *     enabled: boolean,
+ *     defaultTaskPoints: number,         // points-per-task setting
+ *     showPointsOnCompletion: boolean,   // whether to show the +N animation
+ *   }
  *
  * `enabled` reflects the account-level `UserSettings.rewardSystemEnabled`
- * flag. When rewards are disabled the response always reports
- * `totalPoints: 0` so disabled users do not see stale point totals.
+ * flag. When rewards are disabled the response reports `totalPoints: 0`
+ * (so disabled users do not see stale point totals leaking through) and
+ * still surfaces the configured `defaultTaskPoints` /
+ * `showPointsOnCompletion` so the client can render preview UI.
  */
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -48,11 +55,25 @@ export async function GET(request: NextRequest) {
 
     const settings = await prisma.userSettings.findUnique({
       where: { userId: session.user.id },
-      select: { rewardSystemEnabled: true },
+      select: {
+        rewardSystemEnabled: true,
+        defaultTaskPoints: true,
+        showPointsOnCompletion: true,
+      },
     });
 
+    // Mirror the Prisma defaults from `UserSettings` so the response
+    // shape is stable even when no settings row exists yet.
+    const defaultTaskPoints = settings?.defaultTaskPoints ?? 10;
+    const showPointsOnCompletion = settings?.showPointsOnCompletion ?? true;
+
     if (!settings?.rewardSystemEnabled) {
-      return NextResponse.json({ totalPoints: 0, enabled: false });
+      return NextResponse.json({
+        totalPoints: 0,
+        enabled: false,
+        defaultTaskPoints,
+        showPointsOnCompletion,
+      });
     }
 
     const rewardPoints = await prisma.profileRewardPoints.findUnique({
@@ -63,6 +84,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       totalPoints: rewardPoints?.totalPoints ?? 0,
       enabled: true,
+      defaultTaskPoints,
+      showPointsOnCompletion,
     });
   } catch (error) {
     logger.error(error as Error, {

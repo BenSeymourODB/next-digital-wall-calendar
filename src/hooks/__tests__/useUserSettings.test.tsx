@@ -7,6 +7,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_USER_CALENDAR_SETTINGS,
+  isTimeFormat,
   useUserSettings,
 } from "../useUserSettings";
 
@@ -56,6 +57,7 @@ describe("useUserSettings", () => {
       calendarFetchMonthsAhead: 4,
       calendarFetchMonthsBehind: 2,
       calendarMaxEventsPerDay: 5,
+      defaultZoomLevel: 1.5,
       timeFormat: "24h" as const,
       weekStartDay: 1,
       calendarWorkingHoursStart: 9,
@@ -79,6 +81,70 @@ describe("useUserSettings", () => {
       ...DEFAULT_USER_CALENDAR_SETTINGS,
       ...mockSettings,
     });
+  });
+
+  it("surfaces defaultZoomLevel from /api/settings", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ defaultZoomLevel: 1.75 }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.defaultZoomLevel).toBe(1.75);
+  });
+
+  it("ignores non-numeric defaultZoomLevel and keeps the default", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ defaultZoomLevel: "1.5" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.defaultZoomLevel).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.defaultZoomLevel
+    );
+  });
+
+  it("ignores non-finite defaultZoomLevel (NaN, Infinity) and keeps the default", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ defaultZoomLevel: Number.NaN }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.defaultZoomLevel).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.defaultZoomLevel
+    );
+    expect(Number.isFinite(result.current.settings.defaultZoomLevel)).toBe(
+      true
+    );
   });
 
   it("falls back to defaults when the API returns an error", async () => {
@@ -211,6 +277,59 @@ describe("useUserSettings", () => {
     expect(result.current.settings.calendarTransitionSpeed).toBe(
       DEFAULT_USER_CALENDAR_SETTINGS.calendarTransitionSpeed
     );
+  });
+
+  it("surfaces dateFormat when the server provides a documented value", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ dateFormat: "DD/MM/YYYY" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.dateFormat).toBe("DD/MM/YYYY");
+  });
+
+  it("rejects unknown dateFormat values and keeps the default", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ dateFormat: "YYYY/MM/DD" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.dateFormat).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.dateFormat
+    );
+  });
+
+  it("propagates a dateFormat bus event to a second hook instance", async () => {
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+    const { result } = renderHook(() => useUserSettings());
+
+    act(() => {
+      emitUserSettingsChange({ dateFormat: "YYYY-MM-DD" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.settings.dateFormat).toBe("YYYY-MM-DD");
+    });
   });
 
   it("merges partial server values over defaults", async () => {
@@ -616,5 +735,26 @@ describe("useUserSettings", () => {
       ).not.toThrow();
       expect(result.current.settings.timeFormat).toBe("12h");
     });
+  });
+});
+
+describe("isTimeFormat", () => {
+  it("accepts the two valid literal values", () => {
+    expect(isTimeFormat("12h")).toBe(true);
+    expect(isTimeFormat("24h")).toBe(true);
+  });
+
+  it("rejects similar-looking strings outside the allow-list", () => {
+    expect(isTimeFormat("13h")).toBe(false);
+    expect(isTimeFormat("12H")).toBe(false);
+    expect(isTimeFormat("12")).toBe(false);
+    expect(isTimeFormat("")).toBe(false);
+  });
+
+  it("rejects non-string inputs", () => {
+    expect(isTimeFormat(null)).toBe(false);
+    expect(isTimeFormat(undefined)).toBe(false);
+    expect(isTimeFormat(12)).toBe(false);
+    expect(isTimeFormat({})).toBe(false);
   });
 });

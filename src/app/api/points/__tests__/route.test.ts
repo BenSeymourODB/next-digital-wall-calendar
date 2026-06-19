@@ -57,6 +57,8 @@ const mockPrisma = prisma as unknown as {
 interface PointsResponse {
   totalPoints: number;
   enabled: boolean;
+  defaultTaskPoints: number;
+  showPointsOnCompletion: boolean;
 }
 
 describe("GET /api/points", () => {
@@ -117,6 +119,8 @@ describe("GET /api/points", () => {
     });
     mockPrisma.userSettings.findUnique.mockResolvedValue({
       rewardSystemEnabled: false,
+      defaultTaskPoints: 10,
+      showPointsOnCompletion: true,
     });
 
     const request = createMockRequest(
@@ -126,11 +130,16 @@ describe("GET /api/points", () => {
     const { status, data } = await parseResponse<PointsResponse>(response);
 
     expect(status).toBe(200);
-    expect(data).toEqual({ totalPoints: 0, enabled: false });
+    expect(data).toEqual({
+      totalPoints: 0,
+      enabled: false,
+      defaultTaskPoints: 10,
+      showPointsOnCompletion: true,
+    });
     expect(mockPrisma.profileRewardPoints.findUnique).not.toHaveBeenCalled();
   });
 
-  it("returns zero points and enabled=false when no UserSettings row exists", async () => {
+  it("returns zero points and enabled=false (with schema defaults) when no UserSettings row exists", async () => {
     vi.mocked(getSession).mockResolvedValue(mockSession);
     mockPrisma.profile.findFirst.mockResolvedValue({
       id: mockStandardProfile.id,
@@ -144,16 +153,23 @@ describe("GET /api/points", () => {
     const { status, data } = await parseResponse<PointsResponse>(response);
 
     expect(status).toBe(200);
-    expect(data).toEqual({ totalPoints: 0, enabled: false });
+    expect(data).toEqual({
+      totalPoints: 0,
+      enabled: false,
+      defaultTaskPoints: 10,
+      showPointsOnCompletion: true,
+    });
   });
 
-  it("returns the profile's total points when rewards are enabled", async () => {
+  it("returns the profile's total points and configured reward settings when rewards are enabled", async () => {
     vi.mocked(getSession).mockResolvedValue(mockSession);
     mockPrisma.profile.findFirst.mockResolvedValue({
       id: mockStandardProfile.id,
     });
     mockPrisma.userSettings.findUnique.mockResolvedValue({
       rewardSystemEnabled: true,
+      defaultTaskPoints: 25,
+      showPointsOnCompletion: false,
     });
     mockPrisma.profileRewardPoints.findUnique.mockResolvedValue({
       totalPoints: 1250,
@@ -166,7 +182,12 @@ describe("GET /api/points", () => {
     const { status, data } = await parseResponse<PointsResponse>(response);
 
     expect(status).toBe(200);
-    expect(data).toEqual({ totalPoints: 1250, enabled: true });
+    expect(data).toEqual({
+      totalPoints: 1250,
+      enabled: true,
+      defaultTaskPoints: 25,
+      showPointsOnCompletion: false,
+    });
     expect(mockPrisma.profileRewardPoints.findUnique).toHaveBeenCalledWith({
       where: { profileId: mockStandardProfile.id },
       select: { totalPoints: true },
@@ -180,6 +201,8 @@ describe("GET /api/points", () => {
     });
     mockPrisma.userSettings.findUnique.mockResolvedValue({
       rewardSystemEnabled: true,
+      defaultTaskPoints: 10,
+      showPointsOnCompletion: true,
     });
     mockPrisma.profileRewardPoints.findUnique.mockResolvedValue(null);
 
@@ -190,7 +213,12 @@ describe("GET /api/points", () => {
     const { status, data } = await parseResponse<PointsResponse>(response);
 
     expect(status).toBe(200);
-    expect(data).toEqual({ totalPoints: 0, enabled: true });
+    expect(data).toEqual({
+      totalPoints: 0,
+      enabled: true,
+      defaultTaskPoints: 10,
+      showPointsOnCompletion: true,
+    });
   });
 
   it("returns 500 on unexpected errors", async () => {

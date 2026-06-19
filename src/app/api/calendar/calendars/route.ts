@@ -3,9 +3,17 @@
  * Returns all calendars with their color information
  */
 import { AuthError, getAccessToken, getSession } from "@/lib/auth";
+import {
+  GoogleApiValidationError,
+  type GoogleCalendarListEntry,
+  type GoogleCalendarListResponse,
+  GoogleCalendarListResponseSchema,
+  VALIDATION_ISSUES_SUMMARY_COUNT,
+  parseGoogleResponse,
+} from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
-import type { TCalendarAccessRole } from "@/types/calendar";
+import { type TCalendarAccessRole, narrowAccessRole } from "@/types/calendar";
 import { NextResponse } from "next/server";
 
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
@@ -115,27 +123,55 @@ export async function GET() {
       );
     }
 
-    const data = await response.json();
-    const items: gapi.client.calendar.CalendarListEntry[] = data.items || [];
+    const rawData: unknown = await response.json();
+    let parsed: GoogleCalendarListResponse;
+    try {
+      parsed = parseGoogleResponse(rawData, GoogleCalendarListResponseSchema, {
+        endpoint: "calendarList.list",
+      });
+    } catch (validationError) {
+      if (validationError instanceof GoogleApiValidationError) {
+        logger.error(validationError, {
+          endpoint: validationError.endpoint,
+          userId: session.user.id,
+          validationIssues: validationError.issues
+            .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
+            .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+            .join("; "),
+        });
+        return NextResponse.json(
+          { error: "Failed to fetch calendar list" },
+          { status: 502 }
+        );
+      }
+      throw validationError;
+    }
 
     // Transform to our CalendarInfo format. `summary` is optional per the
     // Google schema — fall back to empty string so downstream UI code can
     // treat it as a plain string.
-    const calendars: CalendarInfo[] = items.map((item) => ({
-      id: item.id,
-      summary: item.summary ?? "",
-      summaryOverride: item.summaryOverride,
-      description: item.description,
-      backgroundColor: item.backgroundColor || "#4285f4", // Default Google blue
-      foregroundColor: item.foregroundColor || "#ffffff",
-      primary: item.primary || false,
-      selected: item.selected || false,
-      // Default to "reader" when Google omits accessRole — fail-closed so the
-      // event-create picker (#268) never offers a calendar we can't write to,
-      // and so the EventDetailModal delete gating (#266) hides the button on
-      // unknown-role calendars rather than allowing a doomed mutation.
-      accessRole: item.accessRole ?? "reader",
-    }));
+    const calendars: CalendarInfo[] = (parsed.items ?? []).map(
+      (item: GoogleCalendarListEntry): CalendarInfo => ({
+        id: item.id,
+        summary: item.summary ?? "",
+        summaryOverride: item.summaryOverride,
+        description: item.description,
+        backgroundColor: item.backgroundColor || "#4285f4", // Default Google blue
+        foregroundColor: item.foregroundColor || "#ffffff",
+        primary: item.primary || false,
+        selected: item.selected || false,
+        // Default to "reader" when Google omits accessRole or sends an
+        // unknown value — fail-closed so the event-create picker (#268)
+        // never offers a calendar we can't write to, and so the
+        // EventDetailModal delete gating (#266) hides the button on
+        // unknown-role calendars rather than allowing a doomed mutation.
+        // The Zod schema keeps `accessRole` as a loose `string` (#277) to
+        // forward future Google additions unchanged; this narrow is the
+        // closing trust boundary that picks a safe default for anything
+        // we don't recognise.
+        accessRole: narrowAccessRole(item.accessRole),
+      })
+    );
 
     logger.log("Calendar list fetched", {
       calendarCount: calendars.length,
