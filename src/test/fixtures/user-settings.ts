@@ -16,6 +16,7 @@
  * supplied, and every consuming test inherits it for free.
  */
 import type { UserSettings } from "@/generated/prisma/client";
+import type { TTimeFormat } from "@/hooks/useUserSettings";
 import type { CalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
 import type { TDateFormat } from "@/lib/format-date";
 import type { TWeekStartDay } from "@/types/calendar";
@@ -29,11 +30,12 @@ import type { TWeekStartDay } from "@/types/calendar";
  */
 export type MockUserSettings = Omit<
   UserSettings,
-  "weekStartDay" | "calendarTransitionSpeed" | "dateFormat"
+  "weekStartDay" | "calendarTransitionSpeed" | "dateFormat" | "timeFormat"
 > & {
   weekStartDay: TWeekStartDay;
   calendarTransitionSpeed: CalendarTransitionSpeed;
   dateFormat: TDateFormat;
+  timeFormat: TTimeFormat;
 };
 
 /**

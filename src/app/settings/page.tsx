@@ -1,4 +1,5 @@
 import { SettingsForm } from "@/components/settings/settings-form";
+import { isTimeFormat } from "@/hooks/useUserSettings";
 import { getSession } from "@/lib/auth";
 import {
   DEFAULT_CALENDAR_TRANSITION_SPEED,
@@ -48,7 +49,13 @@ export default async function SettingsPage() {
         providers={providers}
         initialSettings={{
           theme: settings.theme,
-          timeFormat: settings.timeFormat,
+          // Coerce the Prisma `string` to the application-level `TTimeFormat`
+          // union; fall back to the schema default if a manually-edited row
+          // ever contains a non-allow-listed value. Parallel to the
+          // `calendarTransitionSpeed` shape below.
+          timeFormat: isTimeFormat(settings.timeFormat)
+            ? settings.timeFormat
+            : "12h",
           // Narrow at the boundary so the form's `UserSettingsData` can
           // carry the strong `TDateFormat` type — a stale DB row with an
           // unknown value falls back to the schema default.

@@ -1,3 +1,4 @@
+import type { TTimeFormat } from "@/hooks/useUserSettings";
 import type { CalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
 import type { TDateFormat } from "@/lib/format-date";
 import type { TWeekStartDay } from "@/types/calendar";
@@ -7,7 +8,7 @@ import type { TWeekStartDay } from "@/types/calendar";
  *
  * Mirrors the columns on the Prisma `UserSettings` model that the settings
  * UI can mutate, with the narrow-union columns retyped to their
- * application-level unions (`dateFormat`, `weekStartDay`, and
+ * application-level unions (`timeFormat`, `dateFormat`, `weekStartDay`, and
  * `calendarTransitionSpeed`).
  *
  * Lives in `src/types/` because more than one module needs the shape:
@@ -18,7 +19,7 @@ import type { TWeekStartDay } from "@/types/calendar";
  */
 export interface UserSettingsData {
   theme: string;
-  timeFormat: string;
+  timeFormat: TTimeFormat;
   dateFormat: TDateFormat;
   defaultZoomLevel: number;
   weekStartDay: TWeekStartDay;
