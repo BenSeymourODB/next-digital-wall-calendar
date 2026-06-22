@@ -25,6 +25,8 @@ import {
   getWeekDates,
   groupEvents,
   navigateDate,
+  parseEventEnd,
+  parseEventStart,
   rangeText,
   toCapitalize,
 } from "../calendar-helpers";
@@ -43,12 +45,12 @@ describe("rangeText", () => {
   const testDate = new Date(2024, 2, 15); // March 15, 2024
 
   it("returns correct range for month view", () => {
-    const result = rangeText("month", testDate);
+    const result = rangeText("month", testDate, WEEK_STARTS_ON);
     expect(result).toBe("Mar 1, 2024 - Mar 31, 2024");
   });
 
   it("returns correct range for week view", () => {
-    const result = rangeText("week", testDate);
+    const result = rangeText("week", testDate, WEEK_STARTS_ON);
     // March 15, 2024 is a Friday; Sunday-first week is Mar 10 – Mar 16.
     expect(result).toBe("Mar 10, 2024 - Mar 16, 2024");
   });
@@ -60,22 +62,26 @@ describe("rangeText", () => {
   });
 
   it("returns single date for day view", () => {
-    const result = rangeText("day", testDate);
+    const result = rangeText("day", testDate, WEEK_STARTS_ON);
     expect(result).toBe("Mar 15, 2024");
   });
 
   it("returns correct range for year view", () => {
-    const result = rangeText("year", testDate);
+    const result = rangeText("year", testDate, WEEK_STARTS_ON);
     expect(result).toBe("Jan 1, 2024 - Dec 31, 2024");
   });
 
   it("returns single date for clock view (12-hour period of selected day)", () => {
-    const result = rangeText("clock", testDate);
+    const result = rangeText("clock", testDate, WEEK_STARTS_ON);
     expect(result).toBe("Mar 15, 2024");
   });
 
   it("returns error for unknown view", () => {
-    const result = rangeText("unknown" as TCalendarView, testDate);
+    const result = rangeText(
+      "unknown" as TCalendarView,
+      testDate,
+      WEEK_STARTS_ON
+    );
     expect(result).toBe("Error while formatting");
   });
 });
@@ -143,17 +149,17 @@ describe("getEventsCount", () => {
   ];
 
   it("counts events for the same day", () => {
-    const count = getEventsCount(events, testDate, "day");
+    const count = getEventsCount(events, testDate, "day", WEEK_STARTS_ON);
     expect(count).toBe(2);
   });
 
   it("counts events for the same month", () => {
-    const count = getEventsCount(events, testDate, "month");
+    const count = getEventsCount(events, testDate, "month", WEEK_STARTS_ON);
     expect(count).toBe(3);
   });
 
   it("counts events for the same day in clock view", () => {
-    const count = getEventsCount(events, testDate, "clock");
+    const count = getEventsCount(events, testDate, "clock", WEEK_STARTS_ON);
     expect(count).toBe(2);
   });
 
@@ -164,7 +170,9 @@ describe("getEventsCount", () => {
       createMockEvent({ id: "same-week", startDate: "2024-03-10T10:00:00" }),
       createMockEvent({ id: "next-week", startDate: "2024-03-17T10:00:00" }),
     ];
-    expect(getEventsCount(weekEvents, testDate, "week")).toBe(1);
+    expect(getEventsCount(weekEvents, testDate, "week", WEEK_STARTS_ON)).toBe(
+      1
+    );
   });
 
   it("counts events for the same week with Monday-first weekStartsOn=1", () => {
@@ -229,7 +237,7 @@ describe("groupEvents", () => {
 describe("getCalendarCells", () => {
   it("returns cells for a full month grid", () => {
     const date = new Date(2024, 2, 15); // March 2024
-    const cells = getCalendarCells(date);
+    const cells = getCalendarCells(date, WEEK_STARTS_ON);
 
     // Should always be a complete grid (multiple of 7)
     expect(cells.length % 7).toBe(0);
@@ -241,7 +249,7 @@ describe("getCalendarCells", () => {
 
   it("marks current month cells correctly", () => {
     const date = new Date(2024, 2, 15);
-    const cells = getCalendarCells(date);
+    const cells = getCalendarCells(date, WEEK_STARTS_ON);
 
     const currentMonthCells = cells.filter((c) => c.currentMonth);
     currentMonthCells.forEach((cell) => {
@@ -251,7 +259,7 @@ describe("getCalendarCells", () => {
 
   it("includes previous month cells", () => {
     const date = new Date(2024, 2, 1); // March 2024 starts on Friday
-    const cells = getCalendarCells(date);
+    const cells = getCalendarCells(date, WEEK_STARTS_ON);
 
     // First cell should be from previous month (if March doesn't start on WEEK_STARTS_ON)
     const prevMonthCells = cells.filter(
@@ -262,7 +270,7 @@ describe("getCalendarCells", () => {
 
   it("starts the grid on WEEK_STARTS_ON", () => {
     const date = new Date(2024, 2, 15); // March 2024
-    const cells = getCalendarCells(date);
+    const cells = getCalendarCells(date, WEEK_STARTS_ON);
     expect(cells[0].date.getDay()).toBe(WEEK_STARTS_ON);
   });
 
@@ -395,7 +403,11 @@ describe("getEventsForWeek", () => {
       }),
     ];
 
-    const result = getEventsForWeek(events, new Date(2024, 2, 13));
+    const result = getEventsForWeek(
+      events,
+      new Date(2024, 2, 13),
+      WEEK_STARTS_ON
+    );
     expect(result.length).toBe(2);
   });
 
@@ -456,7 +468,8 @@ describe("getEventsForWeek", () => {
 
     const result = getEventsForWeek(
       [saturdayMorning, saturdayAfternoon, saturdayLateNight],
-      new Date(2024, 2, 13)
+      new Date(2024, 2, 13),
+      WEEK_STARTS_ON
     );
     const ids = result.map((e) => e.id).sort();
     expect(ids).toEqual(["sat-afternoon", "sat-late", "sat-morning"]);
@@ -472,7 +485,8 @@ describe("getEventsForWeek", () => {
     });
     const result = getEventsForWeek(
       [nextSundayMidnight],
-      new Date(2024, 2, 13)
+      new Date(2024, 2, 13),
+      WEEK_STARTS_ON
     );
     expect(result).toEqual([]);
   });
@@ -485,7 +499,11 @@ describe("getEventsForWeek", () => {
       startDate: "2024-03-09T23:30:00",
       endDate: "2024-03-09T23:59:00",
     });
-    const result = getEventsForWeek([priorSaturdayLate], new Date(2024, 2, 13));
+    const result = getEventsForWeek(
+      [priorSaturdayLate],
+      new Date(2024, 2, 13),
+      WEEK_STARTS_ON
+    );
     expect(result).toEqual([]);
   });
 
@@ -497,7 +515,11 @@ describe("getEventsForWeek", () => {
       startDate: "2024-03-14T22:00:00",
       endDate: "2024-03-16T15:00:00",
     });
-    const result = getEventsForWeek([spanning], new Date(2024, 2, 13));
+    const result = getEventsForWeek(
+      [spanning],
+      new Date(2024, 2, 13),
+      WEEK_STARTS_ON
+    );
     expect(result.map((e) => e.id)).toEqual(["span"]);
   });
 
@@ -511,7 +533,11 @@ describe("getEventsForWeek", () => {
       startDate: "2024-03-16T14:00:00",
       endDate: "2024-03-18T09:00:00",
     });
-    const result = getEventsForWeek([spanningOut], new Date(2024, 2, 13));
+    const result = getEventsForWeek(
+      [spanningOut],
+      new Date(2024, 2, 13),
+      WEEK_STARTS_ON
+    );
     expect(result.map((e) => e.id)).toEqual(["span-out"]);
   });
 
@@ -541,7 +567,7 @@ describe("getEventsForWeek", () => {
       }),
     ];
 
-    const result = getEventsForWeek(events, referenceDate);
+    const result = getEventsForWeek(events, referenceDate, WEEK_STARTS_ON);
     expect(result.map((e) => e.id).sort()).toEqual([
       "sat-afternoon",
       "sat-late-night",
@@ -569,7 +595,7 @@ describe("getEventsForWeek", () => {
       }),
     ];
 
-    const result = getEventsForWeek(events, referenceDate);
+    const result = getEventsForWeek(events, referenceDate, WEEK_STARTS_ON);
     expect(result).toEqual([]);
   });
 });
@@ -628,21 +654,211 @@ describe("getEventsForYear", () => {
   });
 });
 
+describe("parseEventStart / parseEventEnd (#375)", () => {
+  // The bug surface: `parseISO("YYYY-MM-DD")` returns UTC midnight, so in a
+  // negative-offset zone the resulting Date displays as the previous day.
+  // `parseEventStart` / `parseEventEnd` must return a local-midnight Date
+  // for bare-date input — semantics identical to the `parseEventStartLocal`
+  // helper PR #251 introduced inside YearCalendar.tsx. Full ISO timestamps
+  // must keep parsing through `parseISO` so existing callers don't shift.
+
+  it("parseEventStart returns local-midnight Date for bare YYYY-MM-DD startDate", () => {
+    const event = createMockEvent({
+      startDate: "2026-01-01",
+      endDate: "2026-01-01",
+      isAllDay: true,
+    });
+
+    const result = parseEventStart(event);
+
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(0);
+    expect(result.getDate()).toBe(1);
+    expect(result.getHours()).toBe(0);
+    expect(result.getMinutes()).toBe(0);
+    expect(result.getSeconds()).toBe(0);
+    expect(result.getTime()).toBe(new Date(2026, 0, 1).getTime());
+  });
+
+  it("parseEventEnd returns local-midnight Date for bare YYYY-MM-DD endDate", () => {
+    const event = createMockEvent({
+      startDate: "2026-12-31",
+      endDate: "2026-12-31",
+      isAllDay: true,
+    });
+
+    const result = parseEventEnd(event);
+
+    expect(result.getTime()).toBe(new Date(2026, 11, 31).getTime());
+  });
+
+  it("parseEventStart falls through to parseISO for full ISO timestamps", () => {
+    const event = createMockEvent({
+      startDate: "2026-03-15T10:30:00",
+      endDate: "2026-03-15T11:30:00",
+    });
+
+    // Equivalent to date-fns `parseISO` — both produce the same instant.
+    expect(parseEventStart(event).getTime()).toBe(
+      parseISO(event.startDate).getTime()
+    );
+  });
+
+  it("parseEventEnd falls through to parseISO for full ISO timestamps", () => {
+    const event = createMockEvent({
+      startDate: "2026-03-15T10:30:00",
+      endDate: "2026-03-15T11:30:00",
+    });
+
+    expect(parseEventEnd(event).getTime()).toBe(
+      parseISO(event.endDate).getTime()
+    );
+  });
+
+  it("parseEventStart treats a Z-suffixed timestamp as UTC (not bare-date)", () => {
+    // Sanity: only the bare `YYYY-MM-DD` regex shape opts into local parsing.
+    // A Z-suffixed timestamp must still parse as UTC via parseISO.
+    const event = createMockEvent({
+      startDate: "2026-01-01T00:00:00Z",
+      endDate: "2026-01-01T00:00:00Z",
+    });
+
+    expect(parseEventStart(event).getTime()).toBe(
+      parseISO(event.startDate).getTime()
+    );
+  });
+});
+
+describe("getEventsForX bare-date inclusion (#375)", () => {
+  // Bare-date all-day events from non-canonical sources (MockCalendarProvider,
+  // /test/calendar fixtures, non-Google integrations) must be included in the
+  // overlap result for the day/week/month/year they fall on. The buggy
+  // `parseISO` path returns UTC midnight, which slips them to the previous
+  // local day in negative-offset zones — the bug from issue #375.
+
+  it("includes a bare-date Jan-1 event in getEventsForYear for that year", () => {
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-jan-1",
+        startDate: "2026-01-01",
+        endDate: "2026-01-01",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForYear(events, new Date(2026, 0, 1));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-jan-1");
+  });
+
+  it("includes a bare-date Dec-31 event in getEventsForYear for that year", () => {
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-dec-31",
+        startDate: "2026-12-31",
+        endDate: "2026-12-31",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForYear(events, new Date(2026, 5, 15));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-dec-31");
+  });
+
+  it("includes a bare-date first-of-month event in getEventsForMonth", () => {
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-mar-1",
+        startDate: "2026-03-01",
+        endDate: "2026-03-01",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForMonth(events, new Date(2026, 2, 15));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-mar-1");
+  });
+
+  it("includes a bare-date last-of-month event in getEventsForMonth", () => {
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-mar-31",
+        startDate: "2026-03-31",
+        endDate: "2026-03-31",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForMonth(events, new Date(2026, 2, 1));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-mar-31");
+  });
+
+  it("includes a bare-date first-of-week event in getEventsForWeek", () => {
+    // Mar 8 2026 is a Sunday — start of a Sunday-first week (WEEK_STARTS_ON=0).
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-week-start",
+        startDate: "2026-03-08",
+        endDate: "2026-03-08",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForWeek(events, new Date(2026, 2, 10));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-week-start");
+  });
+
+  it("includes a bare-date last-of-week event in getEventsForWeek", () => {
+    // Mar 14 2026 is a Saturday — end of a Sunday-first week.
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-week-end",
+        startDate: "2026-03-14",
+        endDate: "2026-03-14",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForWeek(events, new Date(2026, 2, 10));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-week-end");
+  });
+
+  it("includes a bare-date event in getEventsForDay for that day", () => {
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-mar-15",
+        startDate: "2026-03-15",
+        endDate: "2026-03-15",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForDay(events, new Date(2026, 2, 15));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-mar-15");
+  });
+});
+
 describe("getWeekDates", () => {
   it("returns 7 dates for a week", () => {
-    const result = getWeekDates(new Date(2024, 2, 15));
+    const result = getWeekDates(new Date(2024, 2, 15), WEEK_STARTS_ON);
     expect(result.length).toBe(7);
   });
 
   it("starts week on WEEK_STARTS_ON", () => {
-    const result = getWeekDates(new Date(2024, 2, 15));
+    const result = getWeekDates(new Date(2024, 2, 15), WEEK_STARTS_ON);
     expect(result[0].getDay()).toBe(WEEK_STARTS_ON);
   });
 
   it("returns consecutive days covering a full week", () => {
     // March 15, 2024 is a Friday. With Sunday-first (WEEK_STARTS_ON = 0),
     // the week runs from Sun Mar 10 through Sat Mar 16.
-    const result = getWeekDates(new Date(2024, 2, 15));
+    const result = getWeekDates(new Date(2024, 2, 15), WEEK_STARTS_ON);
     const isoDates = result.map((d) => d.toISOString().slice(0, 10));
     expect(isoDates).toEqual([
       "2024-03-10",
@@ -675,7 +891,7 @@ describe("getShortWeekdayLabels", () => {
   it("returns labels in correct rotation order", () => {
     // Documents expected output for WEEK_STARTS_ON = 0 (Sunday-first).
     // Update this alongside WEEK_STARTS_ON if the default ever changes.
-    expect(getShortWeekdayLabels()).toEqual([
+    expect(getShortWeekdayLabels(WEEK_STARTS_ON)).toEqual([
       "Sun",
       "Mon",
       "Tue",
@@ -748,7 +964,7 @@ describe("getEventsByMode (clock)", () => {
   ];
 
   it("returns events for the selected day in clock view", () => {
-    const result = getEventsByMode(events, "clock", testDate);
+    const result = getEventsByMode(events, "clock", testDate, WEEK_STARTS_ON);
     const ids = result.map((e) => e.id).sort();
     expect(ids).toEqual(["today-1", "today-2"]);
   });

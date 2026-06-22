@@ -9,6 +9,7 @@ import { useRef, useState } from "react";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";
 import { Search, X } from "lucide-react";
 import { EventDetailModal } from "./EventDetailModal";
+import { filterEventsBySearch } from "./agenda-helpers";
 
 /**
  * Filter events for the next N days from today
@@ -29,23 +30,10 @@ function filterEventsForNextNDays(events: IEvent[], days: number): IEvent[] {
   });
 }
 
-/**
- * Filter events whose title, description, or attendee name contains the
- * query (case-insensitive). An empty/whitespace-only query returns the
- * list unchanged.
- */
-export function filterEventsBySearch(
-  events: IEvent[],
-  query: string
-): IEvent[] {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return events;
-  return events.filter((event) => {
-    const haystack =
-      `${event.title} ${event.description ?? ""} ${event.user?.name ?? ""}`.toLowerCase();
-    return haystack.includes(normalized);
-  });
-}
+// `filterEventsBySearch` lives in ./agenda-helpers so AgendaList can share it.
+// Re-exported here so `agenda-helpers.test.ts` (and any historical importer)
+// keeps working through this module.
+export { filterEventsBySearch } from "./agenda-helpers";
 
 /**
  * Sort events by start time

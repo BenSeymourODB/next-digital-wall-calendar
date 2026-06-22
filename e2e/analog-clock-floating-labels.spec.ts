@@ -49,8 +49,10 @@ test.describe("Analog Clock — floating off-arc labels (#311)", () => {
     await page.goto("/test/analog-clock?scenario=default&hour=10&min=10");
     const connector = page.getByTestId("floating-label-connector-d3");
     await expect(connector).toBeAttached();
-    // d3 is the blue Team Standup event.
-    await expect(connector).toHaveAttribute("stroke", "#3B82F6");
+    // d3 is the blue Team Standup event. The DOM serializes the stroke in
+    // lower-case (#3b82f6); match case-insensitively so the assertion doesn't
+    // depend on hex casing.
+    await expect(connector).toHaveAttribute("stroke", /^#3b82f6$/i);
   });
 
   test("the analog clock SVG carries overflow='visible' so labels can paint outside the viewBox", async ({

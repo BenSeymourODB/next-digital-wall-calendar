@@ -97,6 +97,12 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
       return;
     }
     const controller = new AbortController();
+    const resetToDefaults = () => {
+      setFetchedTotal(0);
+      setFetchedEnabled(false);
+      setFetchedDefaultTaskPoints(DEFAULT_TASK_POINTS);
+      setFetchedShowPointsOnCompletion(DEFAULT_SHOW_POINTS_ON_COMPLETION);
+    };
     const run = async () => {
       try {
         const response = await fetch(
@@ -105,8 +111,7 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
         );
         if (controller.signal.aborted) return;
         if (!response.ok) {
-          setFetchedTotal(0);
-          setFetchedEnabled(false);
+          resetToDefaults();
           return;
         }
         const data = (await response.json()) as PointsApiResponse;
@@ -122,8 +127,7 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
       } catch (error) {
         if ((error as Error).name === "AbortError") return;
         logger.error(error as Error, { context: "FetchPointsFailed" });
-        setFetchedTotal(0);
-        setFetchedEnabled(false);
+        resetToDefaults();
       }
     };
     run();
@@ -137,14 +141,19 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
     if (!profileId) {
       return;
     }
+    const resetToDefaults = () => {
+      setFetchedTotal(0);
+      setFetchedEnabled(false);
+      setFetchedDefaultTaskPoints(DEFAULT_TASK_POINTS);
+      setFetchedShowPointsOnCompletion(DEFAULT_SHOW_POINTS_ON_COMPLETION);
+    };
     try {
       const response = await fetch(
         `/api/points?profileId=${encodeURIComponent(profileId)}`
       );
       if (activeProfileIdRef.current !== profileId) return;
       if (!response.ok) {
-        setFetchedTotal(0);
-        setFetchedEnabled(false);
+        resetToDefaults();
         return;
       }
       const data = (await response.json()) as PointsApiResponse;
@@ -160,8 +169,7 @@ export function PointsProvider({ profileId, children }: PointsProviderProps) {
     } catch (error) {
       logger.error(error as Error, { context: "FetchPointsFailed" });
       if (activeProfileIdRef.current !== profileId) return;
-      setFetchedTotal(0);
-      setFetchedEnabled(false);
+      resetToDefaults();
     }
   };
 

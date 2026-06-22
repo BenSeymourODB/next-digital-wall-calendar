@@ -117,7 +117,12 @@ test.describe("Agenda Calendar", () => {
     await page.goto("/test/calendar?events=default&view=agenda");
   });
 
-  test("displays 'Upcoming Events' header", async ({ page }) => {
+  // SKIPPED: the on-page agenda search surface (legacy AgendaCalendar, with the
+  // "Upcoming Events" header) was removed from /test/calendar by #287 — agenda
+  // now renders via DayCalendar + AgendaList, which has no such header. Pending a
+  // product decision on whether/where agenda search is reachable (tracked in the
+  // agenda-search-access issue), this assertion is parked rather than rewritten.
+  test.skip("displays 'Upcoming Events' header", async ({ page }) => {
     await expect(page.getByText("Upcoming Events")).toBeVisible();
   });
 
@@ -154,7 +159,11 @@ test.describe("Agenda Calendar", () => {
 });
 
 test.describe("Agenda Calendar - Empty State", () => {
-  test("shows empty message when no upcoming events", async ({ page }) => {
+  // SKIPPED: "No upcoming events in the next 7 days" is the legacy AgendaCalendar
+  // empty copy. The current day-agenda surface (AgendaList) renders a
+  // per-range empty label instead. Parked pending the agenda-search-access
+  // product decision rather than rewritten to the new copy.
+  test.skip("shows empty message when no upcoming events", async ({ page }) => {
     await page.goto("/test/calendar?events=empty&view=agenda");
 
     await expect(
@@ -212,7 +221,9 @@ test.describe("View Switcher", () => {
   });
 
   test("maintains events when switching views", async ({ page }) => {
-    await page.goto("/test/calendar?events=default&view=month");
+    // transitionMs=0 → instant swap, so "Morning Standup" can't resolve to
+    // both the outgoing month grid and the incoming agenda layer mid-fade.
+    await page.goto("/test/calendar?events=default&view=month&transitionMs=0");
 
     // Verify event in month view
     await expect(page.getByText("Morning Standup")).toBeVisible();
@@ -304,7 +315,10 @@ test.describe("Responsive Design", () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto("/test/calendar?events=default&view=agenda");
 
-    await expect(page.getByText("Upcoming Events")).toBeVisible();
+    // Agenda now renders via DayCalendar + AgendaList (#287); assert the
+    // agenda surface itself plus a today event rather than the removed
+    // legacy "Upcoming Events" header.
+    await expect(page.getByTestId("agenda-list")).toBeVisible();
     await expect(page.getByText("Morning Standup")).toBeVisible();
   });
 

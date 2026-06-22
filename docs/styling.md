@@ -112,14 +112,70 @@ className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3"; // Responsive grid
 className = "p-4 md:p-6 lg:p-8"; // Responsive spacing
 ```
 
-## Dark Mode (Future)
+## Dark Mode & Theme Scopes
 
-This template currently doesn't include dark mode, but Tailwind's color system is designed to support it. When implementing:
+The app ships three themes (`light`, `dark`, `wall-projector`), wired via
+`next-themes`. The `dark:` Tailwind variant fires for descendants of `.dark`
+and `.wall-projector`. CSS variables for shadcn/ui tokens are declared in
+`src/app/globals.css` for each theme.
 
-1. Add dark mode variants to all components
-2. Use `dark:` prefix for dark mode styles
-3. Ensure proper contrast in both modes
-4. Test all interactive states
+### ThemeScope islands
+
+`ThemeScope` (`src/components/theme/theme-scope.tsx`) wraps a subtree in
+`[data-theme-scope="light" | "dark"]`. Inside the wrapper, `globals.css`
+re-declares every semantic token (`--background`, `--card`, …) to the chosen
+scheme, so token-driven utilities flip regardless of the outer theme.
+
+### `dark:` variant tightening (#324)
+
+The `@custom-variant dark` selector in `globals.css` is tightened so that the
+variant does **not** fire on descendants of `[data-theme-scope="light"]`, and
+**does** fire on descendants of `[data-theme-scope="dark"]` (even under a
+light outer theme). This neutralises a leakage problem with the shadcn
+components that ship `dark:` overrides — see the audit log below.
+
+Because `src/components/ui/**` is overwritten by `pnpm bump-ui`, fixing the
+leakage per-component would not survive an upgrade. The central variant
+tightening is the durable solution.
+
+#### `dark:` audit (src/components/ui/)
+
+The components below ship one or more `dark:` overrides. With the tightened
+variant in place, all of these are safe to wrap in a `ThemeScope` — no
+per-component cleanup is required.
+
+- `badge.tsx`
+- `button.tsx`
+- `calendar.tsx`
+- `chart.tsx`
+- `checkbox.tsx`
+- `context-menu.tsx`
+- `dropdown-menu.tsx`
+- `field.tsx`
+- `input-group.tsx`
+- `input-otp.tsx`
+- `input.tsx`
+- `kbd.tsx`
+- `menubar.tsx`
+- `radio-group.tsx`
+- `select.tsx`
+- `switch.tsx`
+- `tabs.tsx`
+- `textarea.tsx`
+- `toggle.tsx`
+
+Re-run `grep -rln 'dark:' src/components/ui/` after a `pnpm bump-ui` to
+refresh the list.
+
+### Authoring new themed components
+
+1. Prefer **semantic tokens** (`bg-background`, `text-foreground`,
+   `border-border`, etc.) — they flip automatically inside any
+   `ThemeScope`.
+2. Reach for `dark:` overrides only when you need a value that differs from
+   the semantic token in dark mode. They are leak-safe across `ThemeScope`
+   thanks to the tightened variant.
+3. Ensure proper contrast in all three themes; test interactive states.
 
 ## Best Practices
 
