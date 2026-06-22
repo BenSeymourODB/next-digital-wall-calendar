@@ -1,8 +1,8 @@
 "use client";
 
 import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
-import { useEventCacheVisibilitySweep } from "@/hooks/useEventCacheVisibilitySweep";
 import { useProfileOptional } from "@/components/profiles/profile-context";
+import { useEventCacheVisibilitySweep } from "@/hooks/useEventCacheVisibilitySweep";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { type TTimeFormat, useUserSettings } from "@/hooks/useUserSettings";
 import {

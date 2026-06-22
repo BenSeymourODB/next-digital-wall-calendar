@@ -115,11 +115,18 @@ export async function refreshGoogleAccessToken(
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }),
-    // Bound the total flight (including retry sleeps). A timeout surfaces
-    // as DOMException("TimeoutError"); `isTransientHttpError` excludes
-    // TimeoutError from retry so we don't burn the budget retrying a hang,
-    // and `classifyTokenRefreshError` defaults unknown errors to
-    // `transient` so the singleflight slot releases for the next caller.
+    // Bound each fetch attempt with a per-flight timeout. On timeout, fetch
+    // rejects with a DOMException(name="TimeoutError"); `isTransientHttpError`
+    // treats that as NON-retryable (returns false) so the retry budget is
+    // not burned hammering a hung endpoint, and `classifyTokenRefreshError`
+    // then maps the error to outcome `transient` (not `terminal`) — the
+    // singleflight slot releases in `.finally()` and the next caller starts
+    // a fresh flight rather than the user being kicked to re-auth.
+    //
+    // Note on scope: the signal aborts active fetch calls but not
+    // `withRetry`'s inter-attempt sleep — actual worst-case wall time on a
+    // 503 → hang sequence is `timeout + one backoff` (~15 s with defaults).
+    // Tightening that to the bare timeout is tracked in #434.
     signal: AbortSignal.timeout(getRefreshTimeoutMs()),
   });
 

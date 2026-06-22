@@ -9,11 +9,7 @@
  * failures are retried instead of bubbling to the caller.
  */
 import { jsonResponse } from "@/lib/test-utils/api-test-helpers";
-<<<<<<< claude/elegant-newton-rktroe
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-=======
-import { beforeEach, describe, expect, it, vi } from "vitest";
->>>>>>> main
 import { classifyTokenRefreshError } from "../refresh-error-classifier";
 import {
   DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS,
@@ -28,6 +24,13 @@ global.fetch = mockFetch;
 describe("refreshGoogleAccessToken", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Restore method spies (e.g. `vi.spyOn(AbortSignal, "timeout")`) so a
+    // `mockReturnValue` in one test cannot leak into the next and serve a
+    // pre-aborted or otherwise mismatched signal to unrelated assertions.
+    vi.restoreAllMocks();
   });
 
   it("POSTs the URL-encoded refresh-token body to Google's OAuth endpoint", async () => {

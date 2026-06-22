@@ -19,10 +19,14 @@ next call retries.
 
 1. **Per-flight timeout via `AbortSignal.timeout(ms)`.** Passed as
    `init.signal` to `fetchWithRetry`, threaded into every `fetch` attempt
-   by the existing init pass-through. A single overall budget (10 s
-   default) is the simplest model: a hung attempt aborts; backoff sleeps
-   between retries cut into the budget, which is fine for a 3-attempt
-   budget against a 10 s ceiling.
+   by the existing init pass-through. The signal bounds each individual
+   fetch call: a hung attempt aborts and surfaces as
+   `DOMException("TimeoutError")`. **Scope note:** `withRetry`'s
+   inter-attempt sleep is not signal-aware, so the actual worst-case wall
+   time on a 503 → hang sequence is `timeout + one backoff` (~15 s with
+   defaults), not the bare timeout value. Promoting the retry sleep to
+   signal-aware is tracked separately (#434); bounding the fetch attempts
+   is what #404 needs and is the right granularity here.
 
 2. **Env-tuneable default.** New env var `GOOGLE_TOKEN_REFRESH_TIMEOUT_MS`.
    Parsed per-call so tests can override via `process.env`. Invalid values
@@ -66,7 +70,9 @@ next call retries.
 ## Out of scope
 
 - Cross-process dedupe (#286) — orthogonal.
-- Per-attempt timeout (vs. overall budget) — not required by the issue;
-  current overall budget is sufficient given the small retry budget.
-- Promoting `fetchWithRetry` to accept an `AbortSignal.any` merge of init
-  - outer signals (would need Node ≥ 20 confirmation; not needed here).
+- Signal-aware inter-attempt sleep inside `withRetry` — would tighten the
+  worst-case wall time from `timeout + one backoff` to the bare timeout
+  itself. Filed as #434; landed independently in PR #435.
+- Promoting `fetchWithRetry` to accept an `AbortSignal.any`-merged signal
+  combining `init.signal` and an outer `options.signal` (would need Node
+  ≥ 20 confirmation; not needed here).
