@@ -1,15 +1,22 @@
 name: E2E
 
+# E2E runs on merges to main only (plus manual dispatch) — not on PRs. The
+# suite drives a production build under workers:1 and takes several minutes;
+# running it post-merge keeps the PR feedback loop short. Failures are surfaced
+# as GitHub issues (see the "Open an issue on failure" step) so regressions get
+# triaged in the normal dev cycle instead of silently going red.
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
   group: e2e-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   e2e:
@@ -44,10 +51,11 @@ jobs:
       AUTH_SECRET: e2e-test-secret-not-used-in-production
       GOOGLE_CLIENT_ID: e2e-dummy-client-id
       GOOGLE_CLIENT_SECRET: e2e-dummy-client-secret
-      # TOKEN_ENCRYPTION_KEY intentionally omitted: src/lib/crypto/token-cipher.ts
-      # falls back to an HKDF-derived key from NEXTAUTH_SECRET in non-production
-      # builds, which is sufficient for E2E. If a future workflow runs the app
-      # with NODE_ENV=production, this var must be set explicitly.
+      # The E2E suite runs a production build (`next start`, NODE_ENV=production),
+      # so token-cipher's dev-only HKDF fallback is disabled and an explicit
+      # 32-byte key is required. This is a throwaway key for CI only — it never
+      # decrypts real tokens (no real Google session exists in E2E).
+      TOKEN_ENCRYPTION_KEY: 9uYnwF24I0vZllDPVV6Da+KAcbtQxnDex/3zZhFrSnQ=
 
     steps:
       - uses: actions/checkout@v6
@@ -87,12 +95,18 @@ jobs:
       - name: Apply Prisma migrations
         run: pnpm db:migrate:deploy
 
+      # Build once here so Playwright's webServer (`pnpm start`) serves a
+      # prebuilt production app. Running against `next start` instead of the
+      # Turbopack dev server avoids on-demand route compilation and the memory
+      # growth that starved late-running specs under workers:1.
+      - name: Build production app
+        run: pnpm build
+
       - name: Run Playwright tests (chromium)
-        # Playwright treats `--` as a positional test-filter (no Unix-style
-        # end-of-options convention), so `pnpm test:e2e -- --project=chromium`
-        # expands to `playwright test -- --project=chromium` and matches zero
-        # tests ("No tests found."). pnpm 10 forwards trailing args to script
-        # commands without an explicit separator — just append the flag.
+        # CI=true makes playwright.config start `pnpm start` (the build above)
+        # rather than `pnpm dev`. Playwright treats `--` as a positional test
+        # filter, so the flag is appended directly (pnpm 10 forwards trailing
+        # args without an explicit separator).
         run: pnpm test:e2e --project=chromium
 
       - name: Upload Playwright report
@@ -112,3 +126,66 @@ jobs:
           path: test-results/
           retention-days: 14
           if-no-files-found: ignore
+
+      # Surface post-merge E2E regressions as a tracked issue. Since this runs
+      # on main only, a failure means main is red — file (or update) an issue so
+      # it lands in the normal triage flow instead of going unnoticed.
+      - name: Open an issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const sha = context.sha.slice(0, 7);
+            const label = "e2e-failure";
+
+            // Ensure the label exists (ignore "already exists").
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label,
+                color: "b60205",
+                description: "Automated: E2E suite failed on main",
+              });
+            } catch (e) {
+              if (e.status !== 422) throw e;
+            }
+
+            // Reuse a single open rolling issue if one exists, so a string of
+            // red runs comments on one thread instead of spamming new issues.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: label,
+              per_page: 1,
+            });
+
+            const body = [
+              `E2E suite failed on \`main\`.`,
+              ``,
+              `- Commit: ${context.sha}`,
+              `- Run: ${runUrl}`,
+              `- Triggered by: @${context.actor}`,
+              ``,
+              `Download the \`playwright-report\` / \`playwright-test-results\` artifacts from the run for traces, screenshots, and the HTML report.`,
+            ].join("\n");
+
+            if (existing.data.length > 0) {
+              const number = existing.data[0].number;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                body: `Another failed run (\`${sha}\`).\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `E2E failing on main (${sha})`,
+                labels: [label],
+                body,
+              });
+            }

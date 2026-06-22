@@ -117,7 +117,11 @@ test.describe("NewTaskModal launched from TaskList", () => {
     await page.getByRole("button", { name: /add task/i }).click();
     const dialog = page.getByRole("dialog");
 
+    // The List select is labelled only once the task lists have loaded; wait
+    // for it to be present before asserting the smart-default value so the
+    // check doesn't race the async lists fetch.
     const listSelect = dialog.getByLabel(/^list/i);
+    await expect(listSelect).toBeVisible();
     await expect(listSelect).toHaveValue("list-groceries");
   });
 
@@ -130,7 +134,10 @@ test.describe("NewTaskModal launched from TaskList", () => {
     await page.getByRole("button", { name: /add task/i }).click();
     const dialog = page.getByRole("dialog");
 
+    // Wait for the dialog's List select to mount before asserting its value so
+    // the check doesn't race the modal's open transition.
     const listSelect = dialog.getByLabel(/^list/i);
+    await expect(listSelect).toBeVisible();
     await expect(listSelect).toHaveValue("");
   });
 

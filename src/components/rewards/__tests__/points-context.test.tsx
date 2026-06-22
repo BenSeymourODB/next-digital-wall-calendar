@@ -111,6 +111,174 @@ describe("usePoints", () => {
     expect(result.current.totalPoints).toBe(0);
   });
 
+  it("resets all fetched fields to defaults when refreshPoints non-OK response follows a successful fetch", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            totalPoints: 50,
+            enabled: true,
+            defaultTaskPoints: 25,
+            showPointsOnCompletion: false,
+          }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 500 });
+
+    const { result } = renderHook(() => usePoints(), {
+      wrapper: makeWrapper("profile-1"),
+    });
+
+    await waitFor(() => {
+      expect(result.current.totalPoints).toBe(50);
+      expect(result.current.isEnabled).toBe(true);
+      expect(result.current.defaultTaskPoints).toBe(25);
+      expect(result.current.showPointsOnCompletion).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.refreshPoints();
+    });
+
+    expect(result.current.totalPoints).toBe(0);
+    expect(result.current.isEnabled).toBe(false);
+    expect(result.current.defaultTaskPoints).toBe(10);
+    expect(result.current.showPointsOnCompletion).toBe(true);
+  });
+
+  it("resets all fetched fields to defaults when refreshPoints throws after a successful fetch", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            totalPoints: 50,
+            enabled: true,
+            defaultTaskPoints: 25,
+            showPointsOnCompletion: false,
+          }),
+      })
+      .mockRejectedValueOnce(new Error("network down"));
+
+    const { result } = renderHook(() => usePoints(), {
+      wrapper: makeWrapper("profile-1"),
+    });
+
+    await waitFor(() => {
+      expect(result.current.defaultTaskPoints).toBe(25);
+      expect(result.current.showPointsOnCompletion).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.refreshPoints();
+    });
+
+    expect(result.current.totalPoints).toBe(0);
+    expect(result.current.isEnabled).toBe(false);
+    expect(result.current.defaultTaskPoints).toBe(10);
+    expect(result.current.showPointsOnCompletion).toBe(true);
+  });
+
+  it("resets all fetched fields to defaults when a profile-switch GET returns non-OK", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            totalPoints: 50,
+            enabled: true,
+            defaultTaskPoints: 25,
+            showPointsOnCompletion: false,
+          }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 500 });
+
+    function Probe() {
+      const { defaultTaskPoints, showPointsOnCompletion, totalPoints } =
+        usePoints();
+      return (
+        <div>
+          <div data-testid="total">{totalPoints}</div>
+          <div data-testid="dtp">{defaultTaskPoints}</div>
+          <div data-testid="spoc">{String(showPointsOnCompletion)}</div>
+        </div>
+      );
+    }
+
+    const { rerender, getByTestId } = render(
+      <PointsProvider profileId="profile-1">
+        <Probe />
+      </PointsProvider>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("dtp").textContent).toBe("25");
+      expect(getByTestId("spoc").textContent).toBe("false");
+    });
+
+    rerender(
+      <PointsProvider profileId="profile-2">
+        <Probe />
+      </PointsProvider>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("total").textContent).toBe("0");
+      expect(getByTestId("dtp").textContent).toBe("10");
+      expect(getByTestId("spoc").textContent).toBe("true");
+    });
+  });
+
+  it("resets all fetched fields to defaults when a profile-switch GET throws", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            totalPoints: 50,
+            enabled: true,
+            defaultTaskPoints: 25,
+            showPointsOnCompletion: false,
+          }),
+      })
+      .mockRejectedValueOnce(new Error("network down"));
+
+    function Probe() {
+      const { defaultTaskPoints, showPointsOnCompletion, totalPoints } =
+        usePoints();
+      return (
+        <div>
+          <div data-testid="total">{totalPoints}</div>
+          <div data-testid="dtp">{defaultTaskPoints}</div>
+          <div data-testid="spoc">{String(showPointsOnCompletion)}</div>
+        </div>
+      );
+    }
+
+    const { rerender, getByTestId } = render(
+      <PointsProvider profileId="profile-1">
+        <Probe />
+      </PointsProvider>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("dtp").textContent).toBe("25");
+      expect(getByTestId("spoc").textContent).toBe("false");
+    });
+
+    rerender(
+      <PointsProvider profileId="profile-2">
+        <Probe />
+      </PointsProvider>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("total").textContent).toBe("0");
+      expect(getByTestId("dtp").textContent).toBe("10");
+      expect(getByTestId("spoc").textContent).toBe("true");
+    });
+  });
+
   it("awardPoints POSTs the payload and updates totalPoints from the response", async () => {
     mockFetch
       .mockResolvedValueOnce({

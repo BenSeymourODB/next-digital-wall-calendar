@@ -12,8 +12,13 @@ test.use({ video: "on" });
 
 test.describe("CalendarFilterPanel", () => {
   test.beforeEach(async ({ page }) => {
+    // Week-agenda (not day-agenda) so the whole family event set — which spans
+    // today..+3 days — falls inside the visible window. `anchor` pins "today"
+    // to a Monday so every relative event lands in the same Sun–Sat week
+    // regardless of the day the suite runs. transitionMs=0 avoids transient
+    // AnimatedSwap duplicates when the filtered list re-renders.
     await page.goto(
-      "/test/calendar?events=family&filters=true&view=agenda&controls=false"
+      "/test/calendar?events=family&filters=true&view=week&agendaMode=true&controls=false&anchor=2026-06-15&transitionMs=0"
     );
   });
 

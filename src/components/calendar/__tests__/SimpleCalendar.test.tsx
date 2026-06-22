@@ -2,7 +2,7 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
-import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
 import type { IEvent } from "@/types/calendar";
@@ -228,7 +228,7 @@ describe("SimpleCalendar", () => {
   describe("Weekday headers", () => {
     it("renders weekday headers in WEEK_STARTS_ON order", () => {
       renderWithContext();
-      const labels = getShortWeekdayLabels();
+      const labels = getShortWeekdayLabels(WEEK_STARTS_ON);
       const rendered = labels.map((label) => screen.getByText(label));
       // Each label should appear, in document order matching the array.
       rendered.forEach((el, i) => {
@@ -337,7 +337,7 @@ describe("SimpleCalendar", () => {
       renderWithContext();
       const headers = screen.getAllByRole("columnheader");
       expect(headers).toHaveLength(7);
-      const labels = getShortWeekdayLabels();
+      const labels = getShortWeekdayLabels(WEEK_STARTS_ON);
       headers.forEach((header, i) => {
         expect(header).toHaveTextContent(labels[i]);
       });

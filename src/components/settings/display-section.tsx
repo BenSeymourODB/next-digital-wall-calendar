@@ -3,14 +3,16 @@
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Slider } from "@/components/ui/slider";
+import { type TTimeFormat, isTimeFormat } from "@/hooks/useUserSettings";
+import type { TDateFormat } from "@/lib/format-date";
 import type { TWeekStartDay } from "@/types/calendar";
 import { useTheme } from "next-themes";
 import { SettingsSection } from "./settings-section";
 
 interface DisplayValues {
   theme: string;
-  timeFormat: string;
-  dateFormat: string;
+  timeFormat: TTimeFormat;
+  dateFormat: TDateFormat;
   defaultZoomLevel: number;
   weekStartDay: TWeekStartDay;
 }
@@ -76,7 +78,16 @@ export function DisplaySection({ values, onChange }: DisplaySectionProps) {
           </legend>
           <RadioGroup
             value={values.timeFormat}
-            onValueChange={(timeFormat) => onChange({ timeFormat })}
+            onValueChange={(timeFormat) => {
+              // Radix forwards the raw string of the selected radio item.
+              // Both items below render values in the TTimeFormat union, so
+              // this branch only filters out theoretical garbage from
+              // future DOM tampering — TypeScript no longer accepts a
+              // widened string at the callsite.
+              if (isTimeFormat(timeFormat)) {
+                onChange({ timeFormat });
+              }
+            }}
             className="mt-2 flex gap-4"
           >
             <Label className="flex items-center gap-2">

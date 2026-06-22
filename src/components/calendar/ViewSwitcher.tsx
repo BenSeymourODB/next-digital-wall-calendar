@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { TCalendarView } from "@/types/calendar";
+import { useState } from "react";
 import {
   Calendar,
   CalendarDays,
@@ -155,6 +156,12 @@ function SplitViewControl({
   const currentValue = active && agendaMode ? "agenda" : "grid";
   const variant = active ? "default" : "ghost";
 
+  // Control the menu's open state so it closes after a sub-mode is picked.
+  // With the uncontrolled default + `modal={false}`, the menu lingered open
+  // after a selection, so reopening the same caret toggled it shut instead of
+  // re-opening it.
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <div
       role="group"
@@ -176,7 +183,7 @@ function SplitViewControl({
       {/* `modal={false}` prevents Radix from installing the body-level
           overlay that previously left sibling buttons unclickable after
           dismissal (issue #235). */}
-      <DropdownMenu modal={false}>
+      <DropdownMenu modal={false} open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
@@ -192,7 +199,10 @@ function SplitViewControl({
         <DropdownMenuContent align="start">
           <DropdownMenuRadioGroup
             value={currentValue}
-            onValueChange={(value) => onSelectMode(value as "grid" | "agenda")}
+            onValueChange={(value) => {
+              onSelectMode(value as "grid" | "agenda");
+              setMenuOpen(false);
+            }}
           >
             <DropdownMenuRadioItem value="grid">Grid</DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="agenda">Agenda</DropdownMenuRadioItem>

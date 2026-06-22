@@ -12,6 +12,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DEFAULT_DATE_FORMAT,
+  type TDateFormat,
+  formatUserDate,
+} from "@/lib/format-date";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { SettingsSection } from "./settings-section";
@@ -27,6 +32,12 @@ interface AccountSectionProps {
   createdAt: string;
   providers: string[];
   onDeleteAccount: () => Promise<void>;
+  /**
+   * The user's preferred numeric date format (#339). Defaults to
+   * `MM/DD/YYYY` so existing call sites that haven't been threaded yet
+   * keep rendering a valid date instead of an empty string.
+   */
+  dateFormat?: TDateFormat;
 }
 
 export function AccountSection({
@@ -34,6 +45,7 @@ export function AccountSection({
   createdAt,
   providers,
   onDeleteAccount,
+  dateFormat = DEFAULT_DATE_FORMAT,
 }: AccountSectionProps) {
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -46,11 +58,7 @@ export function AccountSection({
     }
   };
 
-  const formattedDate = new Date(createdAt).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatUserDate(createdAt, dateFormat);
 
   return (
     <SettingsSection title="Account" description="Manage your account settings">

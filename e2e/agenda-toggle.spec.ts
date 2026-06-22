@@ -12,22 +12,41 @@
  * Month round-trip so the grid ↔ agenda fade and the new split-button UX
  * can be reviewed as part of the PR.
  */
-import { expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 
 test.use({ video: "on", viewport: { width: 1280, height: 720 } });
+
+/** Open a split-view caret menu and pick a sub-mode, waiting for the menu to
+ *  fully open before selecting and fully close afterwards. The close wait keeps
+ *  the next caret interaction from overlapping a still-exit-animating menu (two
+ *  matching menuitemradios → strict-mode violation) or being swallowed by
+ *  Radix's post-close guard. */
+async function pickSubMode(
+  page: Page,
+  view: "day" | "week",
+  mode: "grid" | "agenda"
+) {
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await page.getByTestId(`view-switcher-${view}-mode`).click();
+  const item = page.getByRole("menuitemradio", {
+    name: new RegExp(mode, "i"),
+  });
+  await expect(item).toBeVisible();
+  await item.click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+}
 
 test.describe("Agenda toggle inside Day and Week views (#150 + #235)", () => {
   test("Day → Day+Agenda → Week+Agenda → Week → Month round-trip", async ({
     page,
   }) => {
     // Start in Day view (grid).
-    await page.goto("/test/calendar?events=default&view=day");
+    await page.goto("/test/calendar?events=default&view=day&transitionMs=0");
     await expect(page.getByTestId("day-calendar-grid")).toBeVisible();
     await expect(page.getByTestId("agenda-list")).toHaveCount(0);
 
     // Day → Day+Agenda via the Day caret.
-    await page.getByTestId("view-switcher-day-mode").click();
-    await page.getByRole("menuitemradio", { name: /agenda/i }).click();
+    await pickSubMode(page, "day", "agenda");
 
     // The grid is gone, AgendaList is in. Day header is still visible.
     await expect(page.getByTestId("day-calendar-grid")).toHaveCount(0);
@@ -36,16 +55,14 @@ test.describe("Agenda toggle inside Day and Week views (#150 + #235)", () => {
 
     // Switching to Week + Agenda from Day+Agenda commits both a view change
     // and keeps agenda mode on via the Week caret's Agenda sub-option.
-    await page.getByTestId("view-switcher-week-mode").click();
-    await page.getByRole("menuitemradio", { name: /agenda/i }).click();
+    await pickSubMode(page, "week", "agenda");
 
     // Week range header replaces Day header; AgendaList stays.
     await expect(page.getByTestId("agenda-list")).toBeVisible();
     await expect(page.getByTestId("week-calendar-range")).toBeVisible();
 
     // Week+Agenda → Week (grid) via the Grid sub-option.
-    await page.getByTestId("view-switcher-week-mode").click();
-    await page.getByRole("menuitemradio", { name: /grid/i }).click();
+    await pickSubMode(page, "week", "grid");
 
     // Week time-grid is back, AgendaList is gone.
     await expect(page.getByTestId("agenda-list")).toHaveCount(0);
@@ -62,7 +79,7 @@ test.describe("Agenda toggle inside Day and Week views (#150 + #235)", () => {
     page,
   }) => {
     // Start in Month so the primary Day click is a real view change.
-    await page.goto("/test/calendar?events=default&view=month");
+    await page.goto("/test/calendar?events=default&view=month&transitionMs=0");
 
     // Click the primary Day button — should land in Day grid view, no menu.
     await page.getByTestId("view-switcher-day").click();
@@ -73,7 +90,7 @@ test.describe("Agenda toggle inside Day and Week views (#150 + #235)", () => {
 
   test("primary Week button preserves agenda mode — #235", async ({ page }) => {
     // Pre-toggle Day+Agenda via the Day caret.
-    await page.goto("/test/calendar?events=default&view=day");
+    await page.goto("/test/calendar?events=default&view=day&transitionMs=0");
     await page.getByTestId("view-switcher-day-mode").click();
     await page.getByRole("menuitemradio", { name: /agenda/i }).click();
     await expect(page.getByTestId("agenda-list")).toBeVisible();
@@ -88,7 +105,7 @@ test.describe("Agenda toggle inside Day and Week views (#150 + #235)", () => {
   test("agenda mode preserves the selected date when toggled", async ({
     page,
   }) => {
-    await page.goto("/test/calendar?events=default&view=day");
+    await page.goto("/test/calendar?events=default&view=day&transitionMs=0");
     const heading = page.getByTestId("day-calendar-heading");
     const startingHeading = await heading.textContent();
 
@@ -107,7 +124,7 @@ test.describe("Agenda toggle inside Day and Week views (#150 + #235)", () => {
   });
 
   test("primary Day label reflects the current sub-mode", async ({ page }) => {
-    await page.goto("/test/calendar?events=default&view=day");
+    await page.goto("/test/calendar?events=default&view=day&transitionMs=0");
     const dayBtn = page.getByTestId("view-switcher-day");
 
     // Initially in grid mode — the primary reads just "Day".
@@ -126,7 +143,7 @@ test.describe("Agenda toggle inside Day and Week views (#150 + #235)", () => {
     // clicks on sibling buttons after the dropdown closed. With
     // `modal={false}` the overlay is gone and Year click should land
     // immediately.
-    await page.goto("/test/calendar?events=default&view=month");
+    await page.goto("/test/calendar?events=default&view=month&transitionMs=0");
 
     // Open the Week caret menu, then dismiss without picking anything.
     await page.getByTestId("view-switcher-week-mode").click();
@@ -145,7 +162,7 @@ test.describe("Agenda toggle inside Day and Week views (#150 + #235)", () => {
 
   test("Month is unaffected by the agenda mode setting", async ({ page }) => {
     // Pre-toggle agenda mode via the Day caret.
-    await page.goto("/test/calendar?events=default&view=day");
+    await page.goto("/test/calendar?events=default&view=day&transitionMs=0");
     await page.getByTestId("view-switcher-day-mode").click();
     await page.getByRole("menuitemradio", { name: /agenda/i }).click();
     await expect(page.getByTestId("agenda-list")).toBeVisible();
