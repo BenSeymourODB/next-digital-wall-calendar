@@ -1,6 +1,7 @@
 "use client";
 
 import type { CalendarsResponse } from "@/app/api/calendar/calendars/route";
+import { useEventCacheVisibilitySweep } from "@/hooks/useEventCacheVisibilitySweep";
 import { useProfileOptional } from "@/components/profiles/profile-context";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { type TTimeFormat, useUserSettings } from "@/hooks/useUserSettings";
@@ -32,6 +33,7 @@ import type {
   ICalendarInfo,
   IEvent,
   IUser,
+  TAgendaGroupBy,
   TCalendarAccessRole,
   TCalendarView,
   TEventColor,
@@ -76,8 +78,8 @@ export interface ICalendarContext {
    */
   agendaMode: boolean;
   setAgendaMode: (enabled: boolean) => void;
-  agendaModeGroupBy: "date" | "color";
-  setAgendaModeGroupBy: (groupBy: "date" | "color") => void;
+  agendaModeGroupBy: TAgendaGroupBy;
+  setAgendaModeGroupBy: (groupBy: TAgendaGroupBy) => void;
   use24HourFormat: boolean;
   toggleTimeFormat: () => void;
   weekStartDay: TWeekStartDay;
@@ -172,7 +174,7 @@ interface CalendarSettings {
   badgeVariant: "dot" | "colored";
   view: TCalendarView;
   agendaMode: boolean;
-  agendaModeGroupBy: "date" | "color";
+  agendaModeGroupBy: TAgendaGroupBy;
   weekStartDay: TWeekStartDay;
 }
 
@@ -251,6 +253,11 @@ export function CalendarProvider({
    */
   initialAgendaMode?: boolean;
 }) {
+  // Sweep expired IndexedDB cache rows on tab return to visible (#290
+  // sub-task 2). Lives at provider scope so the cleanup follows the
+  // calendar lifecycle, not any single view.
+  useEventCacheVisibilitySweep();
+
   // Use NextAuth session for authentication
   const { data: session, status } = useSession();
   const isAuthenticated = status === "authenticated";
@@ -293,9 +300,10 @@ export function CalendarProvider({
   const [agendaMode, setAgendaModeState] = useState<boolean>(
     initialAgendaMode ?? settings.agendaMode ?? DEFAULT_SETTINGS.agendaMode
   );
-  const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
-    "date" | "color"
-  >(settings.agendaModeGroupBy ?? DEFAULT_SETTINGS.agendaModeGroupBy);
+  const [agendaModeGroupBy, setAgendaModeGroupByState] =
+    useState<TAgendaGroupBy>(
+      settings.agendaModeGroupBy ?? DEFAULT_SETTINGS.agendaModeGroupBy
+    );
   // Initialize from localStorage so we have a sensible value before the
   // server's UserSettings.weekStartDay arrives. Once authenticated, the
   // effect below promotes the server value to the source of truth and the
@@ -588,7 +596,7 @@ export function CalendarProvider({
     });
   };
 
-  const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
+  const setAgendaModeGroupBy = (groupBy: TAgendaGroupBy) => {
     setAgendaModeGroupByState(groupBy);
     updateSettings({ agendaModeGroupBy: groupBy });
   };

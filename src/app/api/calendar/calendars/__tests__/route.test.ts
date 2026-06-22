@@ -42,19 +42,6 @@ vi.mock("@/lib/logger", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-// Type definitions for calendar list response
-interface CalendarInfo {
-  id: string;
-  summary: string;
-  summaryOverride?: string;
-  description?: string;
-  backgroundColor: string;
-  foregroundColor: string;
-  primary: boolean;
-  selected: boolean;
-  accessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
-}
-
 describe("/api/calendar/calendars", () => {
   beforeEach(() => {
     vi.clearAllMocks();

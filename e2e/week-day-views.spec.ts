@@ -149,7 +149,11 @@ test.describe("View switcher navigation", () => {
   test("cycles Month → Week → Day → Day+Agenda and back to Month", async ({
     page,
   }) => {
-    await page.goto("/test/calendar?events=default&view=month");
+    // transitionMs=0 makes view swaps instant so a testid like `agenda-list`
+    // never resolves to both the incoming and outgoing AnimatedSwap layers
+    // mid-fade (strict-mode violation). View-switch animation itself is
+    // covered by calendar-transition-speed.spec.ts.
+    await page.goto("/test/calendar?events=default&view=month&transitionMs=0");
     await expect(page.getByText("Sun", { exact: true }).first()).toBeVisible();
 
     // After #235, Day and Week are split buttons — primary click switches

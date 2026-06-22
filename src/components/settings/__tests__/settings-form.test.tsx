@@ -5,6 +5,8 @@
  * for the active profile.
  */
 import { useProfile } from "@/components/profiles/profile-context";
+import { subscribeUserSettings } from "@/lib/user-settings-bus";
+import { makeProfile } from "@/test/fixtures/profile";
 import { makeUserSettings } from "@/test/fixtures/user-settings";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -41,17 +43,12 @@ const ACTIVE_PROFILE_ID = "profile-active-1";
 function mockActiveProfile(id: string | null) {
   vi.mocked(useProfile).mockReturnValue({
     activeProfile: id
-      ? {
+      ? makeProfile({
           id,
           userId: "user-1",
           name: "Active",
-          type: "admin",
-          ageGroup: "adult",
-          color: "#3b82f6",
           avatar: { type: "initials", value: "A" },
-          pinEnabled: false,
-          isActive: true,
-        }
+        })
       : null,
     allProfiles: [],
     viewMode: "profile",
@@ -361,5 +358,277 @@ describe("SettingsForm — Tasks settings wiring (#334)", () => {
     await waitFor(() =>
       expect(switchEl).toHaveAttribute("data-state", "checked")
     );
+  });
+});
+
+/**
+ * Tests for SettingsForm optimistic-update rollback semantics (#363).
+ *
+ * The rollback path must restore the pre-call value of *only* the fields
+ * being updated, read from the truly-current state via the functional
+ * setter — not a stale closure of the entire settings object. Without
+ * this, an overlapping successful PUT to a different key loses its
+ * optimistic state when an earlier PUT to a different key fails.
+ */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe("SettingsForm — updateSettings rollback", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockActiveProfile(ACTIVE_PROFILE_ID);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("rolls back to the pre-call value when a single PUT fails", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (typeof url === "string" && url.startsWith("/api/profiles/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              taskSortOrder: "dueDate",
+              showCompletedTasks: false,
+            }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({ ok: false } as Response);
+      })
+    );
+
+    renderSettings();
+
+    const lightRadio = screen.getByLabelText(/^light$/i);
+    const darkRadio = screen.getByLabelText(/^dark$/i);
+    expect(lightRadio).toBeChecked();
+
+    await user.click(darkRadio);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to save settings");
+    });
+
+    expect(lightRadio).toBeChecked();
+    expect(darkRadio).not.toBeChecked();
+  });
+
+  it("preserves a concurrent successful PUT when an earlier PUT fails", async () => {
+    const user = userEvent.setup();
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    let userSettingsCallIndex = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        // The profile-settings GET fires on mount; let it resolve immediately
+        // so the form is fully wired before we click. Only the two /api/settings
+        // PUTs are the ones under test.
+        if (typeof url === "string" && url.startsWith("/api/profiles/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              taskSortOrder: "dueDate",
+              showCompletedTasks: false,
+            }),
+          } as unknown as Response);
+        }
+        userSettingsCallIndex += 1;
+        return userSettingsCallIndex === 1 ? first.promise : second.promise;
+      })
+    );
+
+    renderSettings();
+
+    const lightRadio = screen.getByLabelText(/^light$/i);
+    const darkRadio = screen.getByLabelText(/^dark$/i);
+    const twelveHourRadio = screen.getByLabelText(/12-hour/i);
+    const twentyFourHourRadio = screen.getByLabelText(/24-hour/i);
+
+    await user.click(darkRadio);
+    await user.click(twentyFourHourRadio);
+
+    expect(darkRadio).toBeChecked();
+    expect(twentyFourHourRadio).toBeChecked();
+
+    second.resolve({ ok: true } as Response);
+    first.reject(new Error("network failure"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to save settings");
+    });
+
+    // Theme reverts (its PUT failed)…
+    expect(lightRadio).toBeChecked();
+    expect(darkRadio).not.toBeChecked();
+    // …but the time-format change must NOT be wiped by the failed theme PUT's
+    // rollback — its own PUT succeeded.
+    expect(twentyFourHourRadio).toBeChecked();
+    expect(twelveHourRadio).not.toBeChecked();
+  });
+
+  it("does not roll back when the PUT succeeds", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn((url: string) => {
+      if (typeof url === "string" && url.startsWith("/api/profiles/")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            taskSortOrder: "dueDate",
+            showCompletedTasks: false,
+          }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({ ok: true } as Response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSettings();
+
+    const darkRadio = screen.getByLabelText(/^dark$/i);
+    await user.click(darkRadio);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/settings",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ theme: "dark" }),
+        })
+      );
+    });
+
+    expect(darkRadio).toBeChecked();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Tests for SettingsForm — bus-rollback semantics (#414).
+ *
+ * `emitUserSettingsChange` fires on PUT success so in-tab subscribers (e.g.
+ * `CalendarProvider` via `useUserSettings`) stay in sync. The catch path
+ * must mirror that emit with the *reverted* partial — without it, any
+ * subscriber that consumed an earlier optimistic emit (e.g. via a
+ * preceding successful PUT to the same key, or a future move of the emit
+ * to the optimistic path) would be left holding a stale value until the
+ * next refresh.
+ */
+describe("SettingsForm — bus rollback on PUT failure (#414)", () => {
+  // Hold the per-test bus unsubscribe so afterEach can run it unconditionally
+  // even if a test throws before reaching its own teardown line. Without this,
+  // an aborted test's subscriber would leak into the next case and start
+  // receiving its emits.
+  let unsubscribeBus: (() => void) | undefined;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockActiveProfile(ACTIVE_PROFILE_ID);
+    unsubscribeBus = undefined;
+  });
+
+  afterEach(() => {
+    unsubscribeBus?.();
+    unsubscribeBus = undefined;
+    vi.unstubAllGlobals();
+  });
+
+  it("emits the reverted partial on the user-settings bus when a PUT fails", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (typeof url === "string" && url.startsWith("/api/profiles/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              taskSortOrder: "dueDate",
+              showCompletedTasks: false,
+            }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({ ok: false } as Response);
+      })
+    );
+
+    const busHandler = vi.fn();
+    unsubscribeBus = subscribeUserSettings(busHandler);
+
+    renderSettings();
+
+    // Wait for the profile-settings GET to settle so the form is fully
+    // wired before driving the theme change.
+    await screen.findByRole("switch", { name: /show completed tasks/i });
+
+    const darkRadio = screen.getByLabelText(/^dark$/i);
+    await user.click(darkRadio);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to save settings");
+    });
+
+    // The bus subscriber must observe the rollback: the pre-call
+    // theme ("light"), not the optimistic value ("dark"). Asserting on the
+    // exact call count guards against a future refactor that emits
+    // optimistically before the PUT — that would still satisfy a bare
+    // `toHaveBeenCalledWith(...)` matcher.
+    expect(busHandler).toHaveBeenCalledTimes(1);
+    expect(busHandler).toHaveBeenCalledWith({ theme: "light" });
+  });
+
+  it("emits exactly once (the optimistic partial) when the PUT succeeds", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (typeof url === "string" && url.startsWith("/api/profiles/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              taskSortOrder: "dueDate",
+              showCompletedTasks: false,
+            }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({ ok: true } as Response);
+      })
+    );
+
+    const busHandler = vi.fn();
+    unsubscribeBus = subscribeUserSettings(busHandler);
+
+    renderSettings();
+
+    await screen.findByRole("switch", { name: /show completed tasks/i });
+
+    const darkRadio = screen.getByLabelText(/^dark$/i);
+    await user.click(darkRadio);
+
+    await waitFor(() => {
+      expect(busHandler).toHaveBeenCalledWith({ theme: "dark" });
+    });
+
+    // A single microtask flush is sufficient here because the failure path
+    // throws synchronously off the `response.ok` check and the catch fires
+    // in the same microtask chain — no awaited steps between throw and
+    // `emitUserSettingsChange`. If a future refactor inserts an `await`
+    // between them, this flush would need to grow.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(busHandler).toHaveBeenCalledTimes(1);
+    expect(busHandler).not.toHaveBeenCalledWith({ theme: "light" });
   });
 });

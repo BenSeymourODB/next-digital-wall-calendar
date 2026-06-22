@@ -153,6 +153,86 @@ describe("InMemoryEventStore", () => {
       expect(await store.evictOldest(5)).toBe(0);
     });
   });
+
+  describe("sweepExpired (#290 — visibility-sweep support)", () => {
+    it("removes only rows whose cachedAt is past the TTL", async () => {
+      const now = 10_000_000;
+      const stale = now - EVENT_CACHE_TTL_MS - 1;
+      const fresh = now - 1_000;
+      await store.put([makeEvent("stale1"), makeEvent("stale2")], stale);
+      await store.put([makeEvent("fresh1")], fresh);
+
+      const evicted = await store.sweepExpired(now);
+
+      expect(evicted).toBe(2);
+      // Confirm the underlying map dropped the stale rows: peek with a `now`
+      // close to their original cachedAt — only fresh1 should remain.
+      const remaining = await store.getAll(stale + 10);
+      expect(remaining.map((e) => e.id)).toEqual(["fresh1"]);
+    });
+
+    it("treats a row whose age is exactly the TTL as expired (matches getAll)", async () => {
+      const now = 10_000_000;
+      // getAll's predicate is `now - cachedAt < TTL`, so a row at exactly
+      // `now - TTL` falls out. sweepExpired must agree to stay idempotent
+      // with read-time eviction.
+      await store.put([makeEvent("edge")], now - EVENT_CACHE_TTL_MS);
+
+      const evicted = await store.sweepExpired(now);
+
+      expect(evicted).toBe(1);
+      expect(await store.getAll(now)).toEqual([]);
+    });
+
+    it("is a no-op (returns 0) when no rows are stale", async () => {
+      const now = 10_000_000;
+      await store.put([makeEvent("a"), makeEvent("b")], now - 1_000);
+
+      expect(await store.sweepExpired(now)).toBe(0);
+
+      const remaining = await store.getAll(now);
+      expect(remaining.map((e) => e.id).sort()).toEqual(["a", "b"]);
+    });
+
+    it("returns 0 when the store is empty", async () => {
+      expect(await store.sweepExpired(10_000_000)).toBe(0);
+    });
+
+    it("is idempotent with a follow-up getAll — no double-eviction", async () => {
+      const now = 10_000_000;
+      const stale = now - EVENT_CACHE_TTL_MS - 1;
+      await store.put([makeEvent("stale")], stale);
+      await store.put([makeEvent("fresh")], now - 1_000);
+
+      const sweptCount = await store.sweepExpired(now);
+      // The stale row is already gone — getAll has nothing more to evict.
+      // Asserting on the returned event ids is the strongest observable
+      // signal we can get without poking the internal map.
+      const visible = await store.getAll(now);
+
+      expect(sweptCount).toBe(1);
+      expect(visible.map((e) => e.id)).toEqual(["fresh"]);
+    });
+
+    it("co-exists with evictOldest — sweep first leaves fewer rows for evictOldest", async () => {
+      // Spec'd in `.claude/plans/event-cache-visibility-sweep-290.md` (Phase 1
+      // Tests): a row swept for expiry should not also be counted by a later
+      // `evictOldest(N)` call. Catches a future regression that re-adds rows
+      // to the recency index after sweep, or vice versa.
+      const now = 10_000_000;
+      await store.put([makeEvent("stale")], now - EVENT_CACHE_TTL_MS - 1);
+      await store.put([makeEvent("fresh1")], now - 2_000);
+      await store.put([makeEvent("fresh2")], now - 1_000);
+
+      const swept = await store.sweepExpired(now);
+      const evicted = await store.evictOldest(5);
+
+      expect(swept).toBe(1);
+      // Only the two fresh rows remain, so evictOldest can only take 2,
+      // not 3 (which it would if the swept row were still in the store).
+      expect(evicted).toBe(2);
+    });
+  });
 });
 
 describe("EventCache facade", () => {
@@ -209,6 +289,7 @@ describe("EventCache facade", () => {
       getAll: vi.fn(async () => []),
       clear: vi.fn(async () => {}),
       evictOldest: vi.fn(async () => 0),
+      sweepExpired: vi.fn(async () => 0),
     };
     const flakyCache = new EventCache(flaky);
 
@@ -244,6 +325,7 @@ describe("EventCache facade", () => {
           }
           return count;
         }),
+        sweepExpired: vi.fn(async () => 0),
       };
 
       const c = new EventCache(store);
@@ -269,6 +351,7 @@ describe("EventCache facade", () => {
         getAll: vi.fn(async () => []),
         clear: vi.fn(async () => {}),
         evictOldest: vi.fn(async (count: number) => count),
+        sweepExpired: vi.fn(async () => 0),
       };
 
       const c = new EventCache(store);
@@ -295,6 +378,7 @@ describe("EventCache facade", () => {
         getAll: vi.fn(async () => []),
         clear: vi.fn(async () => {}),
         evictOldest: vi.fn(async (count: number) => count),
+        sweepExpired: vi.fn(async () => 0),
       };
 
       const c = new EventCache(store);
@@ -323,6 +407,7 @@ describe("EventCache facade", () => {
         getAll: vi.fn(async () => []),
         clear: vi.fn(async () => {}),
         evictOldest: vi.fn(async () => 0),
+        sweepExpired: vi.fn(async () => 0),
       };
 
       const c = new EventCache(store);
@@ -356,6 +441,7 @@ describe("EventCache facade", () => {
         getAll: vi.fn(async () => []),
         clear: vi.fn(async () => {}),
         evictOldest: vi.fn(async (count: number) => count),
+        sweepExpired: vi.fn(async () => 0),
       };
 
       const c = new EventCache(store);
@@ -378,6 +464,7 @@ describe("EventCache facade", () => {
         getAll: vi.fn(async () => []),
         clear: vi.fn(async () => {}),
         evictOldest: vi.fn(async () => 0),
+        sweepExpired: vi.fn(async () => 0),
       };
 
       const c = new EventCache(store);
@@ -385,6 +472,92 @@ describe("EventCache facade", () => {
 
       // Goes straight to the in-memory fallback path; no eviction attempted.
       expect(store.evictOldest).not.toHaveBeenCalled();
+      expect((c as unknown as { hasFallenBack: boolean }).hasFallenBack).toBe(
+        true
+      );
+    });
+  });
+
+  describe("visibility sweep (#290 sub-task 2)", () => {
+    beforeEach(() => {
+      vi.mocked(logger.event).mockClear();
+    });
+
+    it("delegates sweepExpired to the active store with the current time", async () => {
+      const sweepSpy = vi.spyOn(store, "sweepExpired");
+      await cache.sweepExpired();
+
+      expect(sweepSpy).toHaveBeenCalledOnce();
+      const [now] = sweepSpy.mock.calls[0]!;
+      expect(now).toBeTypeOf("number");
+      expect(now).toBeGreaterThan(0);
+    });
+
+    it("returns the count of rows the store actually evicted", async () => {
+      const swept: EventStore = {
+        put: vi.fn(async () => {}),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async () => 0),
+        sweepExpired: vi.fn(async () => 7),
+      };
+      const c = new EventCache(swept);
+      expect(await c.sweepExpired()).toBe(7);
+    });
+
+    it("emits a structured logger.event when rows were swept", async () => {
+      const swept: EventStore = {
+        put: vi.fn(async () => {}),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async () => 0),
+        sweepExpired: vi.fn(async () => 3),
+      };
+      const c = new EventCache(swept);
+      await c.sweepExpired();
+
+      // Pin the measurements bucket to the third positional arg, the way
+      // sub-task 1's `event-cache.lru-evicted` does. A future refactor that
+      // swaps properties and measurements around will fail this test.
+      expect(logger.event).toHaveBeenCalledWith(
+        "event-cache.visibility-swept",
+        { context: "EventCache.sweepExpired" },
+        { evicted: 3 }
+      );
+    });
+
+    it("does NOT emit logger.event when zero rows were swept", async () => {
+      // A zero-row sweep on every visibility transition would be unmissable
+      // noise on a wall-mounted calendar (which goes hidden/visible many
+      // times a day). The contract is: log only when there is signal.
+      const swept: EventStore = {
+        put: vi.fn(async () => {}),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async () => 0),
+        sweepExpired: vi.fn(async () => 0),
+      };
+      const c = new EventCache(swept);
+      await c.sweepExpired();
+
+      expect(logger.event).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the in-memory store when the active store rejects", async () => {
+      const flaky: EventStore = {
+        put: vi.fn(async () => {}),
+        getAll: vi.fn(async () => []),
+        clear: vi.fn(async () => {}),
+        evictOldest: vi.fn(async () => 0),
+        sweepExpired: vi.fn(async () => {
+          throw new Error("idb dead");
+        }),
+      };
+      const c = new EventCache(flaky);
+      // The InMemoryEventStore the facade swaps in has nothing to sweep, so
+      // the resolved count is 0 — the assertion that matters is that the
+      // call did not surface the error.
+      await expect(c.sweepExpired()).resolves.toBe(0);
       expect((c as unknown as { hasFallenBack: boolean }).hasFallenBack).toBe(
         true
       );
@@ -399,6 +572,7 @@ describe("EventCache facade", () => {
       getAll: vi.fn(),
       clear: vi.fn(),
       evictOldest: vi.fn(async () => 0),
+      sweepExpired: vi.fn(async () => 0),
     };
     const deadCache = new EventCache(new InMemoryEventStore());
     // Force the cache into a state where the active store is the failing one.

@@ -76,4 +76,40 @@ describe("user-settings-bus", () => {
 
     globalThis.window = original;
   });
+
+  /**
+   * Regression coverage for #419. Before tightening, `UserSettingsBusPayload`
+   * was a hand-maintained subset that omitted `weekStartDay`,
+   * `calendarWorkingHoursStart`, and `calendarTransitionSpeed`. The values
+   * still flowed through `CustomEvent.detail` at runtime (and were silently
+   * discarded by `pickCalendarFields`), but the *type* claimed they were
+   * not part of the bus contract — leaving `Partial<UserSettingsData>`
+   * call sites to widen structurally.
+   *
+   * The real regression gate is `pnpm check-types`: the literals below
+   * fail TS excess-property checking if `UserSettingsBusPayload` ever
+   * drifts back to a narrower subset. The runtime `expect` assertions
+   * are belt-and-braces — `CustomEvent` carries any payload regardless
+   * of type, so they catch only the orthogonal case where the bus
+   * starts mutating its payload (which would be a different regression).
+   */
+  it("round-trips weekStartDay / calendarWorkingHoursStart / calendarTransitionSpeed", () => {
+    const handler = vi.fn();
+    const unsubscribe = subscribeUserSettings(handler);
+
+    emitUserSettingsChange({
+      weekStartDay: 1,
+      calendarWorkingHoursStart: 8,
+      calendarTransitionSpeed: "slow",
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith({
+      weekStartDay: 1,
+      calendarWorkingHoursStart: 8,
+      calendarTransitionSpeed: "slow",
+    });
+
+    unsubscribe();
+  });
 });

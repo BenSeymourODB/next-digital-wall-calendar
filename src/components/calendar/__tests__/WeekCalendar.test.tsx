@@ -7,9 +7,10 @@ import {
   getShortWeekdayLabels,
   rangeText,
 } from "@/lib/calendar-helpers";
+import { __resetUseDateNowForTests } from "@/lib/hooks/use-date-now";
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   addDays,
@@ -19,7 +20,7 @@ import {
   startOfWeek,
   subWeeks,
 } from "date-fns";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WeekCalendar } from "../WeekCalendar";
 
 /**
@@ -161,6 +162,50 @@ describe("WeekCalendar", () => {
     });
   });
 
+  describe("current-week predicate respects weekStartDay", () => {
+    // Regression: #352. WeekCalendar.isCurrentWeek must use the user's
+    // weekStartDay so the Today button toggles enabled/disabled on the
+    // Sun→Mon (or Sat→Sun) boundary, not on a hard-coded WEEK_STARTS_ON.
+    //
+    // `useTodayStartOfDay` caches the day at module load, so each test
+    // resets the cache after `vi.setSystemTime` to pull the fake clock —
+    // same pattern as `midnight-rollover.test.tsx`.
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      __resetUseDateNowForTests();
+      vi.useRealTimers();
+    });
+
+    it("disables Today when today and selectedDate share a Monday-first week but not a Sunday-first one", () => {
+      // Today = Sun Apr 19 2026, selectedDate = Fri Apr 17 2026.
+      // - Sunday-first: today ∈ [Sun Apr 19 – Sat Apr 25]; selectedDate ∈ [Sun Apr 12 – Sat Apr 18] → different weeks.
+      // - Monday-first: today ∈ [Mon Apr 13 – Sun Apr 19]; selectedDate ∈ same week → same week.
+      vi.setSystemTime(new Date(2026, 3, 19, 12, 0, 0));
+      __resetUseDateNowForTests();
+      const selectedDate = new Date(2026, 3, 17, 12, 0, 0);
+
+      renderWithContext({ selectedDate, weekStartDay: 1 });
+
+      expect(screen.getByTestId("week-calendar-today-btn")).toBeDisabled();
+    });
+
+    it("enables Today when today and selectedDate share a Sunday-first week but fall in different Monday-first weeks", () => {
+      // Today = Sat Apr 18 2026, selectedDate = Sun Apr 12 2026.
+      // - Sunday-first: today ∈ [Sun Apr 12 – Sat Apr 18]; selectedDate ∈ same week → same week.
+      // - Monday-first: today ∈ [Mon Apr 13 – Sun Apr 19]; selectedDate ∈ [Mon Apr 6 – Sun Apr 12] → different weeks.
+      vi.setSystemTime(new Date(2026, 3, 18, 12, 0, 0));
+      __resetUseDateNowForTests();
+      const selectedDate = new Date(2026, 3, 12, 12, 0, 0);
+
+      renderWithContext({ selectedDate, weekStartDay: 1 });
+
+      expect(screen.getByTestId("week-calendar-today-btn")).toBeEnabled();
+    });
+  });
+
   describe("Navigation", () => {
     it("navigates to previous week", async () => {
       const selectedDate = midday(new Date(2026, 3, 15));
@@ -196,7 +241,7 @@ describe("WeekCalendar", () => {
   describe("Weekday grid", () => {
     it("renders 7 day columns with weekday labels in WEEK_STARTS_ON order", () => {
       renderWithContext();
-      for (const label of getShortWeekdayLabels()) {
+      for (const label of getShortWeekdayLabels(WEEK_STARTS_ON)) {
         expect(
           screen.getAllByText(label, { exact: true }).length
         ).toBeGreaterThan(0);
@@ -584,6 +629,161 @@ describe("WeekCalendar", () => {
 
       await user.click(screen.getByTestId("week-calendar-next"));
       expect(contextValue.setSelectedDate).toHaveBeenCalledTimes(1);
+    });
+
+    // Keying AgendaList on the week start forces a remount on week
+    // navigation, clearing the local search query so it doesn't carry
+    // silently into the next week.
+    it("clears the AgendaList search query when the selected week changes", async () => {
+      const userEv = userEvent.setup();
+      const dateInWeekA = new Date(2026, 3, 15); // Wed
+      const dateInWeekB = new Date(2026, 3, 22); // Wed, +1 week
+      const weekAStart = startOfWeek(dateInWeekA, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const weekBStart = startOfWeek(dateInWeekB, {
+        weekStartsOn: WEEK_STARTS_ON,
+      });
+      const eventA = createMockEvent({
+        id: "a",
+        title: "SoccerPractice",
+        startDate: midday(addDays(weekAStart, 1)).toISOString(),
+        endDate: midday(addDays(weekAStart, 1)).toISOString(),
+      });
+      const eventB = createMockEvent({
+        id: "b",
+        title: "OtherEvent",
+        startDate: midday(addDays(weekBStart, 1)).toISOString(),
+        endDate: midday(addDays(weekBStart, 1)).toISOString(),
+      });
+
+      const { rerender } = render(
+        <CalendarContext.Provider
+          value={createMockContext({
+            agendaMode: true,
+            selectedDate: dateInWeekA,
+            events: [eventA, eventB],
+          })}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+      await userEv.type(
+        screen.getByTestId("agenda-list-search-input"),
+        "soccer"
+      );
+      expect(screen.getByTestId("agenda-list-search-input")).toHaveValue(
+        "soccer"
+      );
+
+      rerender(
+        <CalendarContext.Provider
+          value={createMockContext({
+            agendaMode: true,
+            selectedDate: dateInWeekB,
+            events: [eventA, eventB],
+          })}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+
+      // The intra-view slide animation keeps the previous AgendaList in the
+      // DOM as `animated-swap-outgoing` while `animated-swap-incoming` holds
+      // the new one. The remount we care about lives in incoming.
+      const incoming = within(screen.getByTestId("animated-swap-incoming"));
+      expect(incoming.getByTestId("agenda-list-search-input")).toHaveValue("");
+      expect(incoming.getByText("OtherEvent")).toBeInTheDocument();
+    });
+  });
+
+  describe("Slide animation on week navigation (#207)", () => {
+    function installMatchMediaMock(reducedMotion: boolean) {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: reducedMotion && query === "(prefers-reduced-motion: reduce)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+    }
+
+    beforeEach(() => {
+      installMatchMediaMock(false);
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function rerenderOn(
+      selectedDate: Date,
+      ctx: Partial<ICalendarContext>,
+      rerender: ReturnType<typeof renderWithContext>["rerender"]
+    ) {
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...createMockContext(ctx), selectedDate }}
+        >
+          <WeekCalendar />
+        </CalendarContext.Provider>
+      );
+    }
+
+    it("wraps the week body in an AnimatedSwap container", () => {
+      renderWithContext({ selectedDate: new Date(2026, 3, 15) });
+      expect(screen.getByTestId("animated-swap")).toBeInTheDocument();
+    });
+
+    it("slides the outgoing body left (translateX(-100%)) on next-week", () => {
+      const initial = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(addDays(initial, 7), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(-100%)");
+    });
+
+    it("slides the outgoing body right (translateX(100%)) on prev-week", () => {
+      const initial = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(subWeeks(initial, 1), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(100%)");
+    });
+
+    it("does not animate when selectedDate moves within the same week", () => {
+      // Mon → Wed in the same week: weekStart unchanged, no slide.
+      const monday = new Date(2026, 3, 13); // Apr 13 2026 (Mon)
+      const wednesday = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: monday };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(wednesday, baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders no outgoing snapshot when prefers-reduced-motion is set", () => {
+      installMatchMediaMock(true);
+
+      const initial = new Date(2026, 3, 15);
+      const baseCtx = { selectedDate: initial };
+      const { rerender } = renderWithContext(baseCtx);
+      rerenderOn(addDays(initial, 7), baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
     });
   });
 });
