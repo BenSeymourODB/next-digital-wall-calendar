@@ -106,4 +106,24 @@ describe("AppShell", () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId("screen-transition")).toBeInTheDocument();
   });
+
+  // Issue #398 — /clock is a chrome-free wall display target. When the
+  // shell does not wrap a path, the early return drops `SideNavigation`,
+  // `ScreenTransition`, AND the `PointsBadge` (they all live under the
+  // `shouldWrap` branch of the same component), so the two negative
+  // assertions below transitively cover the badge as well.
+  it("renders children plainly on /clock for the chrome-free wall display", () => {
+    mockPathname = "/clock";
+    render(
+      <AppShell>
+        <div data-testid="page-content">Clock</div>
+      </AppShell>
+    );
+
+    expect(
+      screen.queryByRole("navigation", { name: /main navigation/i })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("screen-transition")).not.toBeInTheDocument();
+    expect(screen.getByTestId("page-content")).toBeInTheDocument();
+  });
 });
