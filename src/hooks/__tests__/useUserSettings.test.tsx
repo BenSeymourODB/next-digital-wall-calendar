@@ -7,6 +7,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_USER_CALENDAR_SETTINGS,
+  isTimeFormat,
   useUserSettings,
 } from "../useUserSettings";
 
@@ -276,6 +277,59 @@ describe("useUserSettings", () => {
     expect(result.current.settings.calendarTransitionSpeed).toBe(
       DEFAULT_USER_CALENDAR_SETTINGS.calendarTransitionSpeed
     );
+  });
+
+  it("surfaces dateFormat when the server provides a documented value", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ dateFormat: "DD/MM/YYYY" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.dateFormat).toBe("DD/MM/YYYY");
+  });
+
+  it("rejects unknown dateFormat values and keeps the default", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ dateFormat: "YYYY/MM/DD" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.dateFormat).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.dateFormat
+    );
+  });
+
+  it("propagates a dateFormat bus event to a second hook instance", async () => {
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+    const { result } = renderHook(() => useUserSettings());
+
+    act(() => {
+      emitUserSettingsChange({ dateFormat: "YYYY-MM-DD" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.settings.dateFormat).toBe("YYYY-MM-DD");
+    });
   });
 
   it("merges partial server values over defaults", async () => {
@@ -681,5 +735,26 @@ describe("useUserSettings", () => {
       ).not.toThrow();
       expect(result.current.settings.timeFormat).toBe("12h");
     });
+  });
+});
+
+describe("isTimeFormat", () => {
+  it("accepts the two valid literal values", () => {
+    expect(isTimeFormat("12h")).toBe(true);
+    expect(isTimeFormat("24h")).toBe(true);
+  });
+
+  it("rejects similar-looking strings outside the allow-list", () => {
+    expect(isTimeFormat("13h")).toBe(false);
+    expect(isTimeFormat("12H")).toBe(false);
+    expect(isTimeFormat("12")).toBe(false);
+    expect(isTimeFormat("")).toBe(false);
+  });
+
+  it("rejects non-string inputs", () => {
+    expect(isTimeFormat(null)).toBe(false);
+    expect(isTimeFormat(undefined)).toBe(false);
+    expect(isTimeFormat(12)).toBe(false);
+    expect(isTimeFormat({})).toBe(false);
   });
 });

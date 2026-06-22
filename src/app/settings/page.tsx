@@ -1,10 +1,12 @@
 import { SettingsForm } from "@/components/settings/settings-form";
+import { isTimeFormat } from "@/hooks/useUserSettings";
 import { getSession } from "@/lib/auth";
 import {
   DEFAULT_CALENDAR_TRANSITION_SPEED,
   isCalendarTransitionSpeed,
 } from "@/lib/calendar/transition-speed";
 import { prisma } from "@/lib/db";
+import { DEFAULT_DATE_FORMAT, isDateFormat } from "@/lib/format-date";
 import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
@@ -47,8 +49,19 @@ export default async function SettingsPage() {
         providers={providers}
         initialSettings={{
           theme: settings.theme,
-          timeFormat: settings.timeFormat,
-          dateFormat: settings.dateFormat,
+          // Coerce the Prisma `string` to the application-level `TTimeFormat`
+          // union; fall back to the schema default if a manually-edited row
+          // ever contains a non-allow-listed value. Parallel to the
+          // `calendarTransitionSpeed` shape below.
+          timeFormat: isTimeFormat(settings.timeFormat)
+            ? settings.timeFormat
+            : "12h",
+          // Narrow at the boundary so the form's `UserSettingsData` can
+          // carry the strong `TDateFormat` type — a stale DB row with an
+          // unknown value falls back to the schema default.
+          dateFormat: isDateFormat(settings.dateFormat)
+            ? settings.dateFormat
+            : DEFAULT_DATE_FORMAT,
           defaultZoomLevel: settings.defaultZoomLevel,
           // Clamp defensively so a manually-edited DB row of e.g. 5 doesn't
           // poison every `weekStartsOn` parameter; only 0/1 are valid here.

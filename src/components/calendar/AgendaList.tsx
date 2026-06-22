@@ -1,11 +1,15 @@
 "use client";
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useRef, useState } from "react";
 import { format, isAfter, isBefore } from "date-fns";
+import { Search, X } from "lucide-react";
 import { groupEventsByCategory, sortCategoryEntries } from "./AgendaCalendar";
 import { EventDetailModal } from "./EventDetailModal";
+import { filterEventsBySearch } from "./agenda-helpers";
 
 /**
  * Reusable agenda renderer extracted from AgendaCalendar so the Day and
@@ -194,6 +198,7 @@ export function AgendaList({
 }: AgendaListProps) {
   const { use24HourFormat, agendaModeGroupBy, getAccessRole } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
 
   const openModal = (event: IEvent, trigger: HTMLElement) => {
@@ -216,28 +221,117 @@ export function AgendaList({
     );
   }
 
+  const filtered = filterEventsBySearch(windowed, searchQuery);
+  const searchActive = searchQuery.trim().length > 0;
+  const noMatches = searchActive && filtered.length === 0;
+  const matchCount = filtered.length;
   const colorGroups =
-    agendaModeGroupBy === "color" ? groupByColor(windowed) : null;
+    !noMatches && agendaModeGroupBy === "color" ? groupByColor(filtered) : null;
   const categoryGroups =
-    agendaModeGroupBy === "category" ? groupEventsByCategory(windowed) : null;
+    !noMatches && agendaModeGroupBy === "category"
+      ? groupEventsByCategory(filtered)
+      : null;
 
   return (
-    <div
-      className="border-border bg-card max-h-[calc(100vh-280px)] overflow-y-auto rounded-lg border"
-      data-testid="agenda-list"
-    >
-      {agendaModeGroupBy === "color" && colorGroups ? (
-        <div className="space-y-6 p-4">
-          {COLOR_ORDER.filter((color) => colorGroups.has(color)).map(
-            (color) => {
-              const colorEvents = colorGroups.get(color) ?? [];
-              return (
+    <div className="space-y-3" data-testid="agenda-list-wrapper">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search
+            className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+            aria-hidden="true"
+          />
+          <Input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search events by title, description, or attendee…"
+            aria-label="Search events"
+            data-testid="agenda-list-search-input"
+            className="pr-9 pl-9"
+          />
+          {searchActive && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
+              data-testid="agenda-list-search-clear"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        {searchActive && (
+          <span
+            className="text-muted-foreground shrink-0 text-xs tabular-nums"
+            data-testid="agenda-list-search-match-count"
+            aria-hidden="true"
+          >
+            {matchCount} {matchCount === 1 ? "match" : "matches"}
+          </span>
+        )}
+      </div>
+
+      {/* Live region announces result count while the user types. Visually
+          hidden so it doesn't displace other UI. */}
+      <p
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="agenda-list-search-status"
+      >
+        {searchActive
+          ? `${matchCount} ${matchCount === 1 ? "event matches" : "events match"} "${searchQuery.trim()}"`
+          : ""}
+      </p>
+
+      <div
+        className="border-border bg-card max-h-[calc(100vh-280px)] overflow-y-auto rounded-lg border"
+        data-testid="agenda-list"
+      >
+        {noMatches ? (
+          <div
+            className="text-muted-foreground py-12 text-center"
+            data-testid="agenda-list-search-no-matches"
+          >
+            <p>No events match &ldquo;{searchQuery.trim()}&rdquo;</p>
+          </div>
+        ) : agendaModeGroupBy === "color" && colorGroups ? (
+          <div className="space-y-6 p-4">
+            {COLOR_ORDER.filter((color) => colorGroups.has(color)).map(
+              (color) => {
+                const colorEvents = colorGroups.get(color) ?? [];
+                return (
+                  <AgendaGroup
+                    key={color}
+                    headerText={capitalize(color)}
+                    eventCount={colorEvents.length}
+                  >
+                    {colorEvents.map((event) => (
+                      <EventCard
+                        key={event.id}
+                        event={event}
+                        use24HourFormat={use24HourFormat}
+                        onClick={openModal}
+                      />
+                    ))}
+                  </AgendaGroup>
+                );
+              }
+            )}
+          </div>
+        ) : agendaModeGroupBy === "category" && categoryGroups ? (
+          <div className="space-y-6 p-4">
+            {sortCategoryEntries(Array.from(categoryGroups.entries())).map(
+              ([category, categoryEvents]) => (
                 <AgendaGroup
-                  key={color}
-                  headerText={capitalize(color)}
-                  eventCount={colorEvents.length}
+                  key={category}
+                  headerText={category}
+                  eventCount={categoryEvents.length}
                 >
-                  {colorEvents.map((event) => (
+                  {categoryEvents.map((event) => (
                     <EventCard
                       key={event.id}
                       event={event}
@@ -246,56 +340,35 @@ export function AgendaList({
                     />
                   ))}
                 </AgendaGroup>
-              );
-            }
-          )}
-        </div>
-      ) : agendaModeGroupBy === "category" && categoryGroups ? (
-        <div className="space-y-6 p-4">
-          {sortCategoryEntries(Array.from(categoryGroups.entries())).map(
-            ([category, categoryEvents]) => (
-              <AgendaGroup
-                key={category}
-                headerText={category}
-                eventCount={categoryEvents.length}
-              >
-                {categoryEvents.map((event) => (
-                  <EventCard
-                    key={event.id}
-                    event={event}
-                    use24HourFormat={use24HourFormat}
-                    onClick={openModal}
-                  />
-                ))}
-              </AgendaGroup>
-            )
-          )}
-        </div>
-      ) : (
-        <div className="space-y-6 p-4">
-          {Array.from(groupByDate(windowed).entries())
-            .sort(
-              ([a], [b]) =>
-                parseDateKey(a).getTime() - parseDateKey(b).getTime()
-            )
-            .map(([dateKey, dayEvents]) => (
-              <AgendaGroup
-                key={dateKey}
-                headerText={format(parseDateKey(dateKey), "EEEE, MMMM d")}
-                eventCount={dayEvents.length}
-              >
-                {dayEvents.map((event) => (
-                  <EventCard
-                    key={event.id}
-                    event={event}
-                    use24HourFormat={use24HourFormat}
-                    onClick={openModal}
-                  />
-                ))}
-              </AgendaGroup>
-            ))}
-        </div>
-      )}
+              )
+            )}
+          </div>
+        ) : (
+          <div className="space-y-6 p-4">
+            {Array.from(groupByDate(filtered).entries())
+              .sort(
+                ([a], [b]) =>
+                  parseDateKey(a).getTime() - parseDateKey(b).getTime()
+              )
+              .map(([dateKey, dayEvents]) => (
+                <AgendaGroup
+                  key={dateKey}
+                  headerText={format(parseDateKey(dateKey), "EEEE, MMMM d")}
+                  eventCount={dayEvents.length}
+                >
+                  {dayEvents.map((event) => (
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      use24HourFormat={use24HourFormat}
+                      onClick={openModal}
+                    />
+                  ))}
+                </AgendaGroup>
+              ))}
+          </div>
+        )}
+      </div>
 
       <EventDetailModal
         event={selectedEvent}

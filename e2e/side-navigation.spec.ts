@@ -1,4 +1,11 @@
 import { type Page, expect, test } from "@playwright/test";
+import {
+  type AuthenticatedUser,
+  cleanupTestUser,
+  createTestUser,
+  disconnectDatabase,
+  setAuthCookies,
+} from "./auth/auth-setup";
 
 /**
  * E2E tests for the left-side navigation bar (PR #132).
@@ -37,6 +44,28 @@ async function expectActiveNavLink(page: Page, label: string) {
 }
 
 test.describe("Side navigation bar transitions", () => {
+  // /calendar is auth-gated (unauthenticated requests 307 → /auth/signin), and
+  // the AppShell nav + ScreenTransition only mount on the real app routes. Seed
+  // a DB-backed session so the nav-driven routes render the shell instead of
+  // redirecting to sign-in.
+  let authUser: AuthenticatedUser | null = null;
+
+  test.beforeEach(async ({ context }) => {
+    authUser = await createTestUser();
+    await setAuthCookies(context, authUser.sessionToken);
+  });
+
+  test.afterEach(async () => {
+    if (authUser) {
+      await cleanupTestUser(authUser.userId);
+      authUser = null;
+    }
+  });
+
+  test.afterAll(async () => {
+    await disconnectDatabase();
+  });
+
   test("clicking nav icons slides between screens and highlights active icon", async ({
     page,
   }) => {

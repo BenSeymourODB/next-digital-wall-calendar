@@ -10,14 +10,21 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { encryptLinkedAccount } from "./link-account";
 import { refreshGoogleAccessToken } from "./refresh-google-token";
-import { refreshGoogleSessionTokensIfNeeded } from "./refresh-session-tokens";
 import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
+import { validateGoogleOAuthEnv } from "./validate-google-oauth-env";
+import { getOrStartSessionRefresh } from "./token-refresh-singleflight";
 
-// Fail fast on a missing / misconfigured encryption key. Without this, the
-// per-request `encryptToken` call in the session callback throws, gets caught,
-// and silently degrades to `session.error = "RefreshTokenError"` — which the
-// user sees as "Session expired. Please sign in again." every hour even
-// though the underlying problem is a server-side env-var gap (#315).
+// Fail fast on a missing / misconfigured server-side secret. Without these
+// boot checks the failure manifests later, after a user has signed in, as a
+// silent `session.error = "RefreshTokenError"` that the UI shows as
+// "Session expired. Please sign in again." every hour — even though the
+// underlying problem is a server-side env-var gap:
+//
+//  - `validateEncryptionKey()` (#315): a missing / malformed
+//    `TOKEN_ENCRYPTION_KEY` makes the session-callback `encryptToken` throw.
+//  - `validateGoogleOAuthEnv()` (#379): a missing `GOOGLE_CLIENT_ID` /
+//    `GOOGLE_CLIENT_SECRET` makes Google return `invalid_client`, which the
+//    classifier treats as terminal and force-logs the user out.
 //
 // Skipped during `next build`: page-data collection evaluates this module
 // without runtime env vars and a throw here aborts the build. Production
@@ -25,6 +32,7 @@ import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
 // "phase-production-server").
 if (process.env.NEXT_PHASE !== "phase-production-build") {
   validateEncryptionKey();
+  validateGoogleOAuthEnv();
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -113,19 +121,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Returns a terminal-error outcome only for genuine Google revocation /
       // missing refresh-token / undecryptable ciphertext — transient failures
       // leave the session untouched so the next callback retries (#315).
-      const outcome = await refreshGoogleSessionTokensIfNeeded(
-        user.id,
-        googleAccount,
-        {
-          prisma,
-          refreshGoogleAccessToken,
-          encryptToken,
-          decryptToken,
-          logger,
-          googleClientId: process.env.GOOGLE_CLIENT_ID!,
-          googleClientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-        }
-      );
+      //
+      // Wrapped in the singleflight cache (#216) so concurrent session
+      // callbacks for the same account collapse onto one OAuth round-trip and
+      // one DB write instead of racing each other's `prisma.account.update`.
+      const outcome = await getOrStartSessionRefresh(user.id, googleAccount, {
+        prisma,
+        refreshGoogleAccessToken,
+        encryptToken,
+        decryptToken,
+        logger,
+        googleClientId: process.env.GOOGLE_CLIENT_ID!,
+        googleClientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      });
 
       if (outcome.kind === "terminal-error") {
         session.error = "RefreshTokenError";

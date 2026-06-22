@@ -33,16 +33,14 @@ export class RefreshTokenDecryptError extends Error {
 
 // Closed allow-list of Google OAuth error codes that mean "this refresh token
 // is dead — re-auth is the only path forward". Everything else (network, rate
-// limit, 5xx, decrypt failure, unknown error) is treated as transient so the
-// next session callback can retry. See #315 for the failure mode this is
-// defending against — any transient error silently forcing a 1-hour re-auth.
+// limit, 5xx, decrypt failure, unknown error, and server-side misconfig like
+// `unsupported_grant_type` — see #378) is treated as transient so the next
+// session callback can retry. See #315 for the failure mode this is defending
+// against — any transient error silently forcing a 1-hour re-auth.
 const TERMINAL_GOOGLE_ERROR_CODES: ReadonlySet<string> = new Set([
   "invalid_grant",
   "invalid_client",
   "unauthorized_client",
-  // Misconfiguration on our side — retrying with the same grant_type can never
-  // succeed, so force re-auth rather than silently never refreshing.
-  "unsupported_grant_type",
 ]);
 
 /**

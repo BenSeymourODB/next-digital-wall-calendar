@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { WEEK_STARTS_ON } from "../calendar-helpers";
 import {
   type CalendarKeyboardAction,
   applyCalendarKeyboardAction,
@@ -60,50 +61,74 @@ describe("applyCalendarKeyboardAction", () => {
   const anchor = new Date(2026, 3, 15);
 
   it("PREVIOUS_DAY subtracts one day", () => {
-    const result = applyCalendarKeyboardAction(anchor, {
-      type: "PREVIOUS_DAY",
-    });
+    const result = applyCalendarKeyboardAction(
+      anchor,
+      { type: "PREVIOUS_DAY" },
+      WEEK_STARTS_ON
+    );
     expect(result.toDateString()).toBe(new Date(2026, 3, 14).toDateString());
   });
 
   it("NEXT_DAY adds one day", () => {
-    const result = applyCalendarKeyboardAction(anchor, { type: "NEXT_DAY" });
+    const result = applyCalendarKeyboardAction(
+      anchor,
+      { type: "NEXT_DAY" },
+      WEEK_STARTS_ON
+    );
     expect(result.toDateString()).toBe(new Date(2026, 3, 16).toDateString());
   });
 
   it("PREVIOUS_WEEK subtracts seven days", () => {
-    const result = applyCalendarKeyboardAction(anchor, {
-      type: "PREVIOUS_WEEK",
-    });
+    const result = applyCalendarKeyboardAction(
+      anchor,
+      { type: "PREVIOUS_WEEK" },
+      WEEK_STARTS_ON
+    );
     expect(result.toDateString()).toBe(new Date(2026, 3, 8).toDateString());
   });
 
   it("NEXT_WEEK adds seven days", () => {
-    const result = applyCalendarKeyboardAction(anchor, { type: "NEXT_WEEK" });
+    const result = applyCalendarKeyboardAction(
+      anchor,
+      { type: "NEXT_WEEK" },
+      WEEK_STARTS_ON
+    );
     expect(result.toDateString()).toBe(new Date(2026, 3, 22).toDateString());
   });
 
-  it("WEEK_START defaults to Sunday-start when weekStartsOn is omitted (WEEK_STARTS_ON = 0)", () => {
+  it("WEEK_START with weekStartsOn=0 moves a Wednesday back to the preceding Sunday", () => {
     // Wed Apr 15 → Sun Apr 12
-    const result = applyCalendarKeyboardAction(anchor, { type: "WEEK_START" });
+    const result = applyCalendarKeyboardAction(
+      anchor,
+      { type: "WEEK_START" },
+      0
+    );
     expect(result.toDateString()).toBe(new Date(2026, 3, 12).toDateString());
   });
 
-  it("WEEK_END defaults to Saturday-end when weekStartsOn is omitted", () => {
+  it("WEEK_END with weekStartsOn=0 moves a Wednesday forward to the following Saturday", () => {
     // Wed Apr 15 → Sat Apr 18
-    const result = applyCalendarKeyboardAction(anchor, { type: "WEEK_END" });
+    const result = applyCalendarKeyboardAction(anchor, { type: "WEEK_END" }, 0);
     expect(result.toDateString()).toBe(new Date(2026, 3, 18).toDateString());
   });
 
   it("WEEK_START is idempotent when already on the first day of the week (Sunday-start)", () => {
     const sunday = new Date(2026, 3, 12);
-    const result = applyCalendarKeyboardAction(sunday, { type: "WEEK_START" });
+    const result = applyCalendarKeyboardAction(
+      sunday,
+      { type: "WEEK_START" },
+      0
+    );
     expect(result.toDateString()).toBe(sunday.toDateString());
   });
 
   it("WEEK_END is idempotent when already on the last day of the week (Sunday-start)", () => {
     const saturday = new Date(2026, 3, 18);
-    const result = applyCalendarKeyboardAction(saturday, { type: "WEEK_END" });
+    const result = applyCalendarKeyboardAction(
+      saturday,
+      { type: "WEEK_END" },
+      0
+    );
     expect(result.toDateString()).toBe(saturday.toDateString());
   });
 
@@ -174,47 +199,69 @@ describe("applyCalendarKeyboardAction", () => {
   });
 
   it("PREVIOUS_MONTH subtracts one month", () => {
-    const result = applyCalendarKeyboardAction(anchor, {
-      type: "PREVIOUS_MONTH",
-    });
+    const result = applyCalendarKeyboardAction(
+      anchor,
+      { type: "PREVIOUS_MONTH" },
+      WEEK_STARTS_ON
+    );
     expect(result.toDateString()).toBe(new Date(2026, 2, 15).toDateString());
   });
 
   it("NEXT_MONTH adds one month", () => {
-    const result = applyCalendarKeyboardAction(anchor, { type: "NEXT_MONTH" });
+    const result = applyCalendarKeyboardAction(
+      anchor,
+      { type: "NEXT_MONTH" },
+      WEEK_STARTS_ON
+    );
     expect(result.toDateString()).toBe(new Date(2026, 4, 15).toDateString());
   });
 
   it("PREVIOUS_YEAR subtracts one year", () => {
-    const result = applyCalendarKeyboardAction(anchor, {
-      type: "PREVIOUS_YEAR",
-    });
+    const result = applyCalendarKeyboardAction(
+      anchor,
+      { type: "PREVIOUS_YEAR" },
+      WEEK_STARTS_ON
+    );
     expect(result.toDateString()).toBe(new Date(2025, 3, 15).toDateString());
   });
 
   it("NEXT_YEAR adds one year", () => {
-    const result = applyCalendarKeyboardAction(anchor, { type: "NEXT_YEAR" });
+    const result = applyCalendarKeyboardAction(
+      anchor,
+      { type: "NEXT_YEAR" },
+      WEEK_STARTS_ON
+    );
     expect(result.toDateString()).toBe(new Date(2027, 3, 15).toDateString());
   });
 
   it("PREVIOUS_DAY crosses month boundary at the start of a month", () => {
     const firstOfMonth = new Date(2026, 3, 1);
-    const result = applyCalendarKeyboardAction(firstOfMonth, {
-      type: "PREVIOUS_DAY",
-    });
+    const result = applyCalendarKeyboardAction(
+      firstOfMonth,
+      { type: "PREVIOUS_DAY" },
+      WEEK_STARTS_ON
+    );
     expect(result.toDateString()).toBe(new Date(2026, 2, 31).toDateString());
   });
 
   it("NEXT_MONTH handles the Jan 31 → Feb 28 truncation by clamping to the last valid day", () => {
     const jan31 = new Date(2027, 0, 31);
-    const result = applyCalendarKeyboardAction(jan31, { type: "NEXT_MONTH" });
+    const result = applyCalendarKeyboardAction(
+      jan31,
+      { type: "NEXT_MONTH" },
+      WEEK_STARTS_ON
+    );
     // 2027 is not a leap year → Feb 28
     expect(result.toDateString()).toBe(new Date(2027, 1, 28).toDateString());
   });
 
   it("preserves the hour and minute of the input", () => {
     const withTime = new Date(2026, 3, 15, 14, 30, 0, 0);
-    const result = applyCalendarKeyboardAction(withTime, { type: "NEXT_DAY" });
+    const result = applyCalendarKeyboardAction(
+      withTime,
+      { type: "NEXT_DAY" },
+      WEEK_STARTS_ON
+    );
     expect(result.getHours()).toBe(14);
     expect(result.getMinutes()).toBe(30);
   });
