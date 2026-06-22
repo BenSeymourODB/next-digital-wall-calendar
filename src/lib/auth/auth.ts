@@ -11,8 +11,8 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { encryptLinkedAccount } from "./link-account";
 import { refreshGoogleAccessToken } from "./refresh-google-token";
 import { lastSix, shouldAllowSignIn } from "./sign-in-guard";
-import { validateGoogleOAuthEnv } from "./validate-google-oauth-env";
 import { getOrStartSessionRefresh } from "./token-refresh-singleflight";
+import { validateGoogleOAuthEnv } from "./validate-google-oauth-env";
 
 // Fail fast on a missing / misconfigured server-side secret. Without these
 // boot checks the failure manifests later, after a user has signed in, as a
