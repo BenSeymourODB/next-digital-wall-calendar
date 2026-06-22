@@ -107,9 +107,11 @@ describe("AppShell", () => {
     expect(screen.getByTestId("screen-transition")).toBeInTheDocument();
   });
 
-  // Issue #398 — /clock is a chrome-free wall display target. It must render
-  // without SideNavigation, ScreenTransition, or PointsBadge so the analog
-  // clock fills the whole screen.
+  // Issue #398 — /clock is a chrome-free wall display target. When the
+  // shell does not wrap a path, the early return drops `SideNavigation`,
+  // `ScreenTransition`, AND the `PointsBadge` (they all live under the
+  // `shouldWrap` branch of the same component), so the two negative
+  // assertions below transitively cover the badge as well.
   it("renders children plainly on /clock for the chrome-free wall display", () => {
     mockPathname = "/clock";
     render(

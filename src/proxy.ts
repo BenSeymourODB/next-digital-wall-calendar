@@ -17,7 +17,12 @@ interface MiddlewareDecision {
 /**
  * Routes that require authentication (redirect to sign-in if not authenticated)
  */
-const PROTECTED_PAGE_ROUTES = ["/dashboard", "/settings", "/calendar"];
+const PROTECTED_PAGE_ROUTES = [
+  "/dashboard",
+  "/settings",
+  "/calendar",
+  "/clock",
+];
 
 /**
  * API routes that require authentication (return 401 if not authenticated)

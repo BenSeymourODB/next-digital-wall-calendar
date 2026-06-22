@@ -21,9 +21,9 @@ export default function ClockPage() {
     <CalendarProvider initialView="clock">
       <main
         data-testid="clock-page"
-        className="bg-background flex min-h-screen items-center justify-center p-4 sm:p-8"
+        className="bg-background min-h-screen p-4 sm:p-8"
       >
-        <div className="w-full max-w-7xl">
+        <div className="mx-auto max-w-7xl">
           <AnalogClockView />
         </div>
       </main>

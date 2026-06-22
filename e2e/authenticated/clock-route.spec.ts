@@ -67,7 +67,11 @@ test.describe("/clock standalone wall-display route (#398)", () => {
     await expect(
       page.getByRole("heading", { name: "Wall Calendar" })
     ).toHaveCount(0);
-    await expect(page.getByTestId("view-switcher-clock")).toHaveCount(0);
+    // Use the container testid (`view-switcher`), not an inner button
+    // (`view-switcher-clock`) — the container guard catches a regression
+    // where the whole switcher is imported even if the clock button
+    // happened to be filtered out.
+    await expect(page.getByTestId("view-switcher")).toHaveCount(0);
     await expect(page.getByTestId("calendar-settings-panel")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: /account manager/i })
@@ -96,9 +100,11 @@ test.describe("/clock standalone wall-display route (#398)", () => {
     await expect(page.getByTestId("analog-clock")).toBeVisible();
 
     // Saved to playwright artifacts; the PR body embeds the rendered
-    // image so reviewers can eyeball the chrome-free wall view.
+    // image so reviewers can eyeball the chrome-free wall view. The
+    // `screenshots/` subdir matches the convention used by other specs
+    // (e.g. `e2e/analog-clock.spec.ts`).
     await page.screenshot({
-      path: "test-results/clock-route-wall-display.png",
+      path: "test-results/screenshots/clock-route-wall-display.png",
       fullPage: true,
     });
   });

@@ -5,7 +5,18 @@
  * CalendarProvider — no ViewSwitcher, no page header, no settings or
  * account controls. AppShell-level unwrap is covered separately in
  * `app-shell.test.tsx`.
+ *
+ * The chrome components (`ViewSwitcher`, `CalendarSettingsPanel`,
+ * `AccountManager`) are mocked here so the negative assertions below
+ * would fail loudly if any of them were accidentally imported into the
+ * page — without the mocks, importing the real components would either
+ * throw under the mocked `CalendarProvider` or render their real DOM,
+ * neither of which exercises a meaningful regression guard. (Surfaced
+ * by PR #431 review — the prior `mock-view-switcher` / `mock-calendar-
+ * settings-panel` testids never existed because the mocks were never
+ * declared.)
  */
+import type { TCalendarView } from "@/types/calendar";
 import type { ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -19,7 +30,7 @@ vi.mock("@/components/providers/CalendarProvider", () => ({
     ...props
   }: {
     children: ReactNode;
-    initialView?: string;
+    initialView?: TCalendarView;
   }) => {
     calendarProviderProps(props);
     return <div data-testid="mock-calendar-provider">{children}</div>;
@@ -34,6 +45,23 @@ vi.mock("@/components/ui/sonner", () => ({
   Toaster: () => <div data-testid="mock-toaster" />,
 }));
 
+// Chrome components must NOT appear on /clock. Mock them so the
+// negative assertions below have something to bind to if the page is
+// accidentally regressed.
+vi.mock("@/components/calendar/ViewSwitcher", () => ({
+  ViewSwitcher: () => <div data-testid="mock-view-switcher" />,
+}));
+
+vi.mock("@/components/calendar/CalendarSettingsPanel", () => ({
+  CalendarSettingsPanel: () => (
+    <div data-testid="mock-calendar-settings-panel" />
+  ),
+}));
+
+vi.mock("@/components/calendar/AccountManager", () => ({
+  AccountManager: () => <div data-testid="mock-account-manager" />,
+}));
+
 describe("ClockPage (/clock)", () => {
   it("mounts AnalogClockView inside a CalendarProvider seeded with view=clock", () => {
     render(<ClockPage />);
@@ -41,7 +69,7 @@ describe("ClockPage (/clock)", () => {
     expect(screen.getByTestId("mock-calendar-provider")).toBeInTheDocument();
     expect(screen.getByTestId("mock-analog-clock-view")).toBeInTheDocument();
     expect(calendarProviderProps).toHaveBeenCalledWith(
-      expect.objectContaining({ initialView: "clock" })
+      expect.objectContaining({ initialView: "clock" satisfies TCalendarView })
     );
   });
 
@@ -55,13 +83,15 @@ describe("ClockPage (/clock)", () => {
     ).not.toBeInTheDocument();
 
     // ViewSwitcher / settings / account-manager controls live on /calendar
-    // and must not appear on /clock.
+    // and must not appear on /clock. These assertions are wired to mock
+    // testids declared above so they fail loudly if any of these
+    // components are accidentally imported into the page.
     expect(screen.queryByTestId("mock-view-switcher")).not.toBeInTheDocument();
     expect(
-      screen.queryByTestId("calendar-settings-panel")
+      screen.queryByTestId("mock-calendar-settings-panel")
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /account manager/i })
+      screen.queryByTestId("mock-account-manager")
     ).not.toBeInTheDocument();
   });
 

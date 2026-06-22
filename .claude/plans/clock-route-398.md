@@ -12,25 +12,35 @@ rotation target — this route makes that reference real.
 
 ## Scope (this PR)
 
-- `src/app/clock/page.tsx` — full-bleed page mounting its own
-  `CalendarProvider` seeded with `initialView="clock"` and rendering
-  `AnalogClockView` + `Toaster`. No header, no controls.
+- `src/app/clock/page.tsx` — page mounting its own `CalendarProvider`
+  seeded with `initialView="clock"` and rendering `AnalogClockView` +
+  `Toaster`. No header, no controls. Uses `min-h-screen p-4 sm:p-8` +
+  `mx-auto max-w-7xl` (the same shell `/calendar` uses) so the clock
+  and its all-day aside aren't vertically crushed by `items-center`.
 - `src/components/navigation/app-shell.tsx` — add `/clock` to
   `UNWRAPPED_EXACT` so `AppShell` returns `children` plainly (no nav, no
   badge, no transition).
+- `src/proxy.ts` — add `/clock` to `PROTECTED_PAGE_ROUTES` so the
+  middleware redirects unauthenticated visitors to `/auth/signin` with
+  `?callbackUrl=/clock`, matching `/calendar` / `/settings` /
+  `/dashboard`.
 - Tests:
   - Unit: `AppShell` does not wrap `/clock`.
   - Component: `/clock` page renders `AnalogClockView` inside a
-    `CalendarProvider` and does not render `ViewSwitcher` / page header /
-    settings controls.
-  - E2E (unauthenticated): `/clock` redirects to `/auth/signin` (matches
-    the rest of the calendar surface) — confirms the route exists and is
-    auth-gated.
+    `CalendarProvider` and does not render `ViewSwitcher` /
+    `CalendarSettingsPanel` / `AccountManager` (chrome components are
+    explicitly mocked so the negative assertions bind to real testids
+    that would appear on regression).
+  - E2E (unauthenticated, `e2e/clock-route.spec.ts`): `/clock` redirects
+    to `/auth/signin` with `callbackUrl=%2Fclock`.
   - E2E (authenticated, via shared fixture from #278): visiting `/clock`
-    renders `analog-clock-view` and does **not** render
-    `view-switcher`, `mobile-side-nav-toggle`, or the page header.
+    renders `analog-clock-view`; the `view-switcher` container,
+    `calendar-settings-panel`, and the "Wall Calendar" heading are all
+    absent; `SideNavigation`, `ScreenTransition`, and `PointsBadge` are
+    not rendered.
   - Capture a screenshot of the rendered `/clock` page in the
-    authenticated E2E and embed it in the PR body (per `CLAUDE.md`).
+    authenticated E2E (`test-results/screenshots/clock-route-wall-
+display.png`) and embed it in the PR body (per `CLAUDE.md`).
 
 ## Explicitly out of scope (deferred to existing issues)
 
@@ -68,6 +78,7 @@ behaviour.
 - `src/components/navigation/app-shell.tsx`
 - `src/components/navigation/__tests__/app-shell.test.tsx`
 - `src/app/clock/__tests__/page.test.tsx` (new)
+- `src/proxy.ts` (auth-gate `/clock`)
 - `e2e/clock-route.spec.ts` (new, unauthenticated — redirect assertion)
 - `e2e/authenticated/clock-route.spec.ts` (new — full chrome-free render +
   screenshot)
