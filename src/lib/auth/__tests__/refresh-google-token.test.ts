@@ -9,10 +9,12 @@
  * failures are retried instead of bubbling to the caller.
  */
 import { jsonResponse } from "@/lib/test-utils/api-test-helpers";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { classifyTokenRefreshError } from "../refresh-error-classifier";
 import {
+  DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS,
   GoogleTokenRefreshError,
+  getRefreshTimeoutMs,
   refreshGoogleAccessToken,
 } from "../refresh-google-token";
 
@@ -22,6 +24,13 @@ global.fetch = mockFetch;
 describe("refreshGoogleAccessToken", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Restore method spies (e.g. `vi.spyOn(AbortSignal, "timeout")`) so a
+    // `mockReturnValue` in one test cannot leak into the next and serve a
+    // pre-aborted or otherwise mismatched signal to unrelated assertions.
+    vi.restoreAllMocks();
   });
 
   it("POSTs the URL-encoded refresh-token body to Google's OAuth endpoint", async () => {
@@ -45,6 +54,27 @@ describe("refreshGoogleAccessToken", () => {
     expect(body.get("refresh_token")).toBe("rt-abc");
     expect(body.get("client_id")).toBe("client-id-123");
     expect(body.get("client_secret")).toBe("secret-xyz");
+  });
+
+  it("passes an AbortSignal bound to the configured timeout so a hung connection cannot hold the singleflight slot indefinitely (#404)", async () => {
+    // Spy on AbortSignal.timeout so we can confirm both that one is created
+    // and what timeout value is supplied. We don't intercept the static
+    // method on the AbortSignal type itself — just spy through the global
+    // object so the real timeout is still produced and threaded onto the
+    // fetch init exactly as production would.
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    mockFetch.mockResolvedValue(
+      jsonResponse({ access_token: "x", expires_in: 3600 })
+    );
+
+    await refreshGoogleAccessToken("rt", "cid", "sec");
+
+    expect(timeoutSpy).toHaveBeenCalledTimes(1);
+    expect(timeoutSpy).toHaveBeenCalledWith(
+      DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS
+    );
+    const init = mockFetch.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("returns the parsed tokens on success", async () => {
@@ -247,5 +277,84 @@ describe("refreshGoogleAccessToken", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("rejects with an abort-shaped error when the fetch hangs past the configured timeout, and the classifier marks it transient (#404)", async () => {
+    // Drive the timeout via an AbortController whose signal we substitute
+    // for `AbortSignal.timeout`'s. This is deterministic — fake timers
+    // don't intercept the C++ timer `AbortSignal.timeout` uses internally,
+    // so we abort it ourselves with the same DOMException shape Node
+    // produces when the timeout fires.
+    //
+    // Post-#435 `withRetry` is signal-aware: once the per-flight signal
+    // aborts, withRetry's catch normalises the rejection to `AbortError`
+    // rather than propagating the original `TimeoutError` reason. The
+    // *contract* this test pins down is therefore not the exact `.name`
+    // but the two guarantees that #404 cares about: (a) the flight
+    // terminates with an abort-named error (one of "AbortError" /
+    // "TimeoutError" — accept either so the test survives a future
+    // refactor that re-exposes the original reason), and (b) the error
+    // classifies as `transient` so the singleflight slot releases.
+    const controller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    mockFetch.mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => {
+            reject(init.signal?.reason ?? new Error("aborted"));
+          });
+        })
+    );
+
+    const promise = refreshGoogleAccessToken("rt", "cid", "sec");
+    controller.abort(new DOMException("signal timed out", "TimeoutError"));
+
+    const result = (await promise.catch((e: unknown) => e)) as {
+      name?: string;
+    };
+    expect(result.name).toMatch(/^(AbortError|TimeoutError)$/);
+    // Lock the classification: an aborted refresh must not force re-auth.
+    expect(classifyTokenRefreshError(result)).toBe("transient");
+    // And no retry burn — the abort short-circuits on the first attempt.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getRefreshTimeoutMs", () => {
+  const ENV_KEY = "GOOGLE_TOKEN_REFRESH_TIMEOUT_MS";
+  let originalValue: string | undefined;
+
+  beforeEach(() => {
+    originalValue = process.env[ENV_KEY];
+  });
+
+  afterEach(() => {
+    if (originalValue === undefined) {
+      delete process.env[ENV_KEY];
+    } else {
+      process.env[ENV_KEY] = originalValue;
+    }
+  });
+
+  it("returns the default 10s when the env var is unset", () => {
+    delete process.env[ENV_KEY];
+    expect(getRefreshTimeoutMs()).toBe(DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS);
+    expect(DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS).toBe(10_000);
+  });
+
+  it("honours a positive integer override from the env var", () => {
+    process.env[ENV_KEY] = "5000";
+    expect(getRefreshTimeoutMs()).toBe(5_000);
+  });
+
+  it.each([
+    ["not-a-number", "non-numeric input"],
+    ["", "empty string"],
+    ["0", "zero (no time budget)"],
+    ["-1000", "negative duration"],
+    ["1.5", "fractional ms (rejected; we only accept integers)"],
+  ])("falls back to the default for invalid env value %p (%s)", (raw) => {
+    process.env[ENV_KEY] = raw;
+    expect(getRefreshTimeoutMs()).toBe(DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS);
   });
 });
