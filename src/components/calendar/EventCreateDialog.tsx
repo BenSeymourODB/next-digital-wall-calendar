@@ -24,6 +24,9 @@ import type { WritableCalendar } from "@/hooks/useWritableCalendars";
 import type { TEventColor } from "@/types/calendar";
 import { useId, useState } from "react";
 
+// Google Calendar reserves the literal id "primary" as an alias for the
+// signed-in user's default calendar, so it is the safe target to write to
+// when no explicit calendar is available.
 const FALLBACK_CALENDAR_ID = "primary";
 // Stable empty-list reference for the `calendars` default. A literal `[]`
 // in the destructure would mint a new array every render, defeating the
