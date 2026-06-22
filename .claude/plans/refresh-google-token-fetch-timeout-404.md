@@ -18,15 +18,14 @@ next call retries.
 ## Design
 
 1. **Per-flight timeout via `AbortSignal.timeout(ms)`.** Passed as
-   `init.signal` to `fetchWithRetry`, threaded into every `fetch` attempt
-   by the existing init pass-through. The signal bounds each individual
-   fetch call: a hung attempt aborts and surfaces as
-   `DOMException("TimeoutError")`. **Scope note:** `withRetry`'s
-   inter-attempt sleep is not signal-aware, so the actual worst-case wall
-   time on a 503 → hang sequence is `timeout + one backoff` (~15 s with
-   defaults), not the bare timeout value. Promoting the retry sleep to
-   signal-aware is tracked separately (#434); bounding the fetch attempts
-   is what #404 needs and is the right granularity here.
+   `init.signal` to `fetchWithRetry`, which threads it into every `fetch`
+   attempt by the existing init pass-through. Post-#435 (merged into main)
+   `fetchWithRetry` also copies the signal into `withRetry`'s
+   `options.signal` so the inter-attempt sleep aborts on timeout too:
+   the configured timeout is therefore the hard ceiling on the entire
+   retry flight's wall-clock time, not just each individual fetch
+   attempt. A hung attempt aborts and surfaces as an
+   `Error(name="AbortError")` (withRetry normalises the abort shape).
 
 2. **Env-tuneable default.** New env var `GOOGLE_TOKEN_REFRESH_TIMEOUT_MS`.
    Parsed per-call so tests can override via `process.env`. Invalid values

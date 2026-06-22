@@ -279,12 +279,22 @@ describe("refreshGoogleAccessToken", () => {
     }
   });
 
-  it("rejects with a TimeoutError-shaped error when the fetch hangs past the configured timeout, and the classifier marks it transient (#404)", async () => {
+  it("rejects with an abort-shaped error when the fetch hangs past the configured timeout, and the classifier marks it transient (#404)", async () => {
     // Drive the timeout via an AbortController whose signal we substitute
     // for `AbortSignal.timeout`'s. This is deterministic — fake timers
     // don't intercept the C++ timer `AbortSignal.timeout` uses internally,
     // so we abort it ourselves with the same DOMException shape Node
     // produces when the timeout fires.
+    //
+    // Post-#435 `withRetry` is signal-aware: once the per-flight signal
+    // aborts, withRetry's catch normalises the rejection to `AbortError`
+    // rather than propagating the original `TimeoutError` reason. The
+    // *contract* this test pins down is therefore not the exact `.name`
+    // but the two guarantees that #404 cares about: (a) the flight
+    // terminates with an abort-named error (one of "AbortError" /
+    // "TimeoutError" — accept either so the test survives a future
+    // refactor that re-exposes the original reason), and (b) the error
+    // classifies as `transient` so the singleflight slot releases.
     const controller = new AbortController();
     vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
     mockFetch.mockImplementation(
@@ -302,10 +312,10 @@ describe("refreshGoogleAccessToken", () => {
     const result = (await promise.catch((e: unknown) => e)) as {
       name?: string;
     };
-    expect(result.name).toBe("TimeoutError");
-    // Lock the classification: a TimeoutError must not force re-auth.
+    expect(result.name).toMatch(/^(AbortError|TimeoutError)$/);
+    // Lock the classification: an aborted refresh must not force re-auth.
     expect(classifyTokenRefreshError(result)).toBe("transient");
-    // And `isTransientHttpError` excludes it from retry — only one attempt.
+    // And no retry burn — the abort short-circuits on the first attempt.
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
