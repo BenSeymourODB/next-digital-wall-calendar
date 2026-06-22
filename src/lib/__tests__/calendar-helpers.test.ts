@@ -25,6 +25,8 @@ import {
   getWeekDates,
   groupEvents,
   navigateDate,
+  parseEventEnd,
+  parseEventStart,
   rangeText,
   toCapitalize,
 } from "../calendar-helpers";
@@ -625,6 +627,196 @@ describe("getEventsForYear", () => {
 
   it("handles invalid inputs gracefully", () => {
     expect(getEventsForYear([], new Date(2024, 0, 1))).toEqual([]);
+  });
+});
+
+describe("parseEventStart / parseEventEnd (#375)", () => {
+  // The bug surface: `parseISO("YYYY-MM-DD")` returns UTC midnight, so in a
+  // negative-offset zone the resulting Date displays as the previous day.
+  // `parseEventStart` / `parseEventEnd` must return a local-midnight Date
+  // for bare-date input — semantics identical to the `parseEventStartLocal`
+  // helper PR #251 introduced inside YearCalendar.tsx. Full ISO timestamps
+  // must keep parsing through `parseISO` so existing callers don't shift.
+
+  it("parseEventStart returns local-midnight Date for bare YYYY-MM-DD startDate", () => {
+    const event = createMockEvent({
+      startDate: "2026-01-01",
+      endDate: "2026-01-01",
+      isAllDay: true,
+    });
+
+    const result = parseEventStart(event);
+
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(0);
+    expect(result.getDate()).toBe(1);
+    expect(result.getHours()).toBe(0);
+    expect(result.getMinutes()).toBe(0);
+    expect(result.getSeconds()).toBe(0);
+    expect(result.getTime()).toBe(new Date(2026, 0, 1).getTime());
+  });
+
+  it("parseEventEnd returns local-midnight Date for bare YYYY-MM-DD endDate", () => {
+    const event = createMockEvent({
+      startDate: "2026-12-31",
+      endDate: "2026-12-31",
+      isAllDay: true,
+    });
+
+    const result = parseEventEnd(event);
+
+    expect(result.getTime()).toBe(new Date(2026, 11, 31).getTime());
+  });
+
+  it("parseEventStart falls through to parseISO for full ISO timestamps", () => {
+    const event = createMockEvent({
+      startDate: "2026-03-15T10:30:00",
+      endDate: "2026-03-15T11:30:00",
+    });
+
+    // Equivalent to date-fns `parseISO` — both produce the same instant.
+    expect(parseEventStart(event).getTime()).toBe(
+      parseISO(event.startDate).getTime()
+    );
+  });
+
+  it("parseEventEnd falls through to parseISO for full ISO timestamps", () => {
+    const event = createMockEvent({
+      startDate: "2026-03-15T10:30:00",
+      endDate: "2026-03-15T11:30:00",
+    });
+
+    expect(parseEventEnd(event).getTime()).toBe(
+      parseISO(event.endDate).getTime()
+    );
+  });
+
+  it("parseEventStart treats a Z-suffixed timestamp as UTC (not bare-date)", () => {
+    // Sanity: only the bare `YYYY-MM-DD` regex shape opts into local parsing.
+    // A Z-suffixed timestamp must still parse as UTC via parseISO.
+    const event = createMockEvent({
+      startDate: "2026-01-01T00:00:00Z",
+      endDate: "2026-01-01T00:00:00Z",
+    });
+
+    expect(parseEventStart(event).getTime()).toBe(
+      parseISO(event.startDate).getTime()
+    );
+  });
+});
+
+describe("getEventsForX bare-date inclusion (#375)", () => {
+  // Bare-date all-day events from non-canonical sources (MockCalendarProvider,
+  // /test/calendar fixtures, non-Google integrations) must be included in the
+  // overlap result for the day/week/month/year they fall on. The buggy
+  // `parseISO` path returns UTC midnight, which slips them to the previous
+  // local day in negative-offset zones — the bug from issue #375.
+
+  it("includes a bare-date Jan-1 event in getEventsForYear for that year", () => {
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-jan-1",
+        startDate: "2026-01-01",
+        endDate: "2026-01-01",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForYear(events, new Date(2026, 0, 1));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-jan-1");
+  });
+
+  it("includes a bare-date Dec-31 event in getEventsForYear for that year", () => {
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-dec-31",
+        startDate: "2026-12-31",
+        endDate: "2026-12-31",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForYear(events, new Date(2026, 5, 15));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-dec-31");
+  });
+
+  it("includes a bare-date first-of-month event in getEventsForMonth", () => {
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-mar-1",
+        startDate: "2026-03-01",
+        endDate: "2026-03-01",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForMonth(events, new Date(2026, 2, 15));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-mar-1");
+  });
+
+  it("includes a bare-date last-of-month event in getEventsForMonth", () => {
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-mar-31",
+        startDate: "2026-03-31",
+        endDate: "2026-03-31",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForMonth(events, new Date(2026, 2, 1));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-mar-31");
+  });
+
+  it("includes a bare-date first-of-week event in getEventsForWeek", () => {
+    // Mar 8 2026 is a Sunday — start of a Sunday-first week (WEEK_STARTS_ON=0).
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-week-start",
+        startDate: "2026-03-08",
+        endDate: "2026-03-08",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForWeek(events, new Date(2026, 2, 10));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-week-start");
+  });
+
+  it("includes a bare-date last-of-week event in getEventsForWeek", () => {
+    // Mar 14 2026 is a Saturday — end of a Sunday-first week.
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-week-end",
+        startDate: "2026-03-14",
+        endDate: "2026-03-14",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForWeek(events, new Date(2026, 2, 10));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-week-end");
+  });
+
+  it("includes a bare-date event in getEventsForDay for that day", () => {
+    const events: IEvent[] = [
+      createMockEvent({
+        id: "bare-mar-15",
+        startDate: "2026-03-15",
+        endDate: "2026-03-15",
+        isAllDay: true,
+      }),
+    ];
+
+    const result = getEventsForDay(events, new Date(2026, 2, 15));
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("bare-mar-15");
   });
 });
 

@@ -13,6 +13,7 @@ import {
   GoogleCalendarListResponseSchema,
   GoogleEventSchema,
   GoogleEventsListResponseSchema,
+  parseGoogleErrorBody,
   parseGoogleResponse,
 } from "../google-calendar-schemas";
 
@@ -214,6 +215,60 @@ describe("GoogleApiErrorBodySchema", () => {
       error: { message: "Forbidden" },
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("parseGoogleErrorBody", () => {
+  // #386 item 1 — `GoogleApiErrorBodySchema` was added in PR #233 but no route
+  // wired it in. `parseGoogleErrorBody` closes the success/error validation
+  // asymmetry: it always returns a typed `GoogleApiErrorBody`, falling back to
+  // `{}` so existing `?.error?.message ?? "..."` ladders keep working.
+
+  it("returns the parsed body when it matches the canonical Google envelope", () => {
+    const body = parseGoogleErrorBody({
+      error: {
+        code: 404,
+        message: "Calendar not found",
+        status: "NOT_FOUND",
+      },
+    });
+    expect(body.error?.message).toBe("Calendar not found");
+    expect(body.error?.code).toBe(404);
+  });
+
+  it("returns an empty body when input is null", () => {
+    expect(parseGoogleErrorBody(null)).toEqual({});
+  });
+
+  it("returns an empty body when input is undefined", () => {
+    expect(parseGoogleErrorBody(undefined)).toEqual({});
+  });
+
+  it("returns an empty body when input is a primitive", () => {
+    expect(parseGoogleErrorBody("not an object")).toEqual({});
+    expect(parseGoogleErrorBody(42)).toEqual({});
+    expect(parseGoogleErrorBody(true)).toEqual({});
+  });
+
+  it("returns an empty body when input is an array", () => {
+    expect(parseGoogleErrorBody(["a", "b"])).toEqual({});
+  });
+
+  it("returns an empty body when error is a string (wrong shape)", () => {
+    // Some malformed proxies return `{ error: "not an object" }`. The schema
+    // expects `error` to be an object envelope; on mismatch we want
+    // `parseGoogleErrorBody` to fall back to `{}` rather than surface a typed
+    // `error` field that doesn't match the documented shape.
+    expect(parseGoogleErrorBody({ error: "not an object" })).toEqual({});
+  });
+
+  it("accepts the documented empty fallback shape", () => {
+    expect(parseGoogleErrorBody({})).toEqual({});
+  });
+
+  it("returns the parsed body when only error.message is set", () => {
+    const body = parseGoogleErrorBody({ error: { message: "Forbidden" } });
+    expect(body.error?.message).toBe("Forbidden");
   });
 });
 

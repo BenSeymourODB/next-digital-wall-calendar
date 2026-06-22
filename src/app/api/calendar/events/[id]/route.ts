@@ -19,6 +19,7 @@ import {
   validateEventBody,
 } from "@/lib/calendar/event-body";
 import { normalizeFetchedEvent } from "@/lib/google-calendar-mappers";
+import { parseGoogleErrorBody } from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
@@ -133,13 +134,15 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
-    const errorBody = await response.json().catch(() => ({}));
+    const errorBody = parseGoogleErrorBody(
+      await response.json().catch(() => ({}))
+    );
     logger.error(new Error("Google Calendar delete failed"), {
       userId: session.user.id,
       calendarId,
       eventId,
       googleStatus: response.status,
-      googleError: errorBody?.error?.message ?? "unknown",
+      googleError: errorBody.error?.message ?? "unknown",
     });
 
     return NextResponse.json(

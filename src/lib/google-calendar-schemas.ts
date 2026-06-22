@@ -208,6 +208,14 @@ export type GoogleCalendarListResponse = z.infer<
 >;
 
 /**
+ * Maximum number of Zod issues summarised when reporting validation
+ * failures — used both inside `GoogleApiValidationError`'s human-readable
+ * message and by route-level `logger.error` `validationIssues` payloads.
+ * Single source of truth so the two stay aligned (#386 item 4).
+ */
+export const VALIDATION_ISSUES_SUMMARY_COUNT = 5;
+
+/**
  * Schema for the canonical Google API error envelope. Used to safely pluck
  * `error.message` from a non-2xx response body without trusting an
  * arbitrary cast. The schema accepts an empty `{}` body so existing
@@ -240,6 +248,24 @@ export const GoogleApiErrorBodySchema = z
 export type GoogleApiErrorBody = z.infer<typeof GoogleApiErrorBodySchema>;
 
 /**
+ * Safely parse a non-2xx Google API response body into a typed envelope.
+ *
+ * Closes the success/error validation asymmetry surfaced by #386: the success
+ * paths go through {@link parseGoogleResponse} but every error path used to
+ * read `errorData.error?.message` against a raw `unknown` JSON body. This
+ * helper lets all four sites read the same field through a parsed envelope.
+ *
+ * Failure mode is deliberately quiet — a malformed Google error body is not a
+ * loggable contract break (the canonical envelope is documented but the route
+ * handlers already tolerate missing fields). On parse failure we fall back to
+ * `{}` so callers keep their `?.error?.message ?? "..."` ladder.
+ */
+export function parseGoogleErrorBody(data: unknown): GoogleApiErrorBody {
+  const result = GoogleApiErrorBodySchema.safeParse(data);
+  return result.success ? result.data : {};
+}
+
+/**
  * Context for a {@link GoogleApiValidationError} so route logging has enough
  * information to triage which Google endpoint produced the malformed
  * payload.
@@ -263,7 +289,7 @@ export class GoogleApiValidationError extends Error {
 
   constructor(context: GoogleApiValidationContext, issues: z.core.$ZodIssue[]) {
     const summary = issues
-      .slice(0, 3)
+      .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
       .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
       .join("; ");
     super(

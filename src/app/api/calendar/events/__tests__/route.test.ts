@@ -541,6 +541,135 @@ describe("/api/calendar/events", () => {
         );
       });
 
+      // #386 item 2 — when every calendar in a multi-calendar request fails
+      // (non-auth), the route used to return 200 with `events: []` and a
+      // populated `errors[]` because the all-fail short-circuit was gated on
+      // `calendarIds.length === 1`. Dropping that guard means a UI consumer
+      // can key off the top-level status without inspecting `errors[]`.
+      it("returns the shared per-calendar status when every calendar fails with the same status", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        // Both calendars 404 — the wire response should be 404, not 200.
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            json: () =>
+              Promise.resolve({ error: { message: "Calendar not found" } }),
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            json: () =>
+              Promise.resolve({ error: { message: "Calendar not found" } }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=missing-1%40group.calendar.google.com,missing-2%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: unknown[];
+          errors?: Array<{ calendarId: string; status?: number }>;
+          error?: string;
+        }>(response);
+
+        expect(status).toBe(404);
+        expect(data.error).toMatch(/calendar/i);
+        expect(data.events).toEqual([]);
+        // The all-fail body still lists per-calendar context so the UI can
+        // show which calendars failed and why.
+        expect(data.errors).toHaveLength(2);
+        expect(data.errors![0].calendarId).toBe(
+          "missing-1@group.calendar.google.com"
+        );
+        expect(data.errors![1].calendarId).toBe(
+          "missing-2@group.calendar.google.com"
+        );
+      });
+
+      it("returns 502 when multi-calendar failures have mixed statuses", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        // One 404, one 403 — both non-transient (so `fetchWithRetry` won't
+        // consume extra mocks). Mixed statuses collapse to a 502 "upstream
+        // failures" status (proxy-style) rather than picking one arbitrarily.
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            json: () =>
+              Promise.resolve({ error: { message: "Calendar not found" } }),
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 403,
+            json: () => Promise.resolve({ error: { message: "Forbidden" } }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=cal-a%40group.calendar.google.com,cal-b%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: unknown[];
+          errors?: Array<{ calendarId: string; status?: number }>;
+          error?: string;
+        }>(response);
+
+        expect(status).toBe(502);
+        expect(data.events).toEqual([]);
+        expect(data.errors).toHaveLength(2);
+      });
+
+      it("keeps 200 partial-failure semantics when one calendar succeeds and another fails", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "evt-1",
+                    summary: "Good event",
+                    start: { dateTime: "2026-05-01T14:00:00Z" },
+                    end: { dateTime: "2026-05-01T15:00:00Z" },
+                  },
+                ],
+              }),
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            json: () =>
+              Promise.resolve({ error: { message: "Calendar not found" } }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=primary,missing%40group.calendar.google.com"
+        );
+        const response = await GET(request);
+        const { status, data } = await parseResponse<{
+          events: Array<{ id: string }>;
+          errors?: Array<{ calendarId: string }>;
+        }>(response);
+
+        expect(status).toBe(200);
+        expect(data.events).toHaveLength(1);
+        expect(data.errors).toHaveLength(1);
+      });
+
       it("falls back to single calendarId when calendarIds not provided", async () => {
         vi.mocked(getSession).mockResolvedValue(mockSession);
         vi.mocked(getAccessToken).mockResolvedValue(
