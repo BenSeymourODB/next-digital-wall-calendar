@@ -214,7 +214,46 @@ describe("/api/settings", () => {
       const { status, data } = await parseResponse<ApiErrorResponse>(response);
 
       expect(status).toBe(400);
-      expect(data.error).toContain("Invalid timeFormat");
+      // Locks in the exact error body so the #427 refactor (route ↔
+      // useUserSettings allow-list consolidation) cannot regress the
+      // API surface — the message is part of the wire contract.
+      expect(data.error).toBe("Invalid timeFormat. Must be one of: 12h, 24h");
+    });
+
+    it.each(["12h", "24h"])(
+      "accepts %s as a valid timeFormat",
+      async (timeFormat) => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        const updatedSettings = { ...mockSettings, timeFormat };
+        mockPrisma.userSettings.upsert.mockResolvedValue(updatedSettings);
+
+        const request = createMockRequest("/api/settings", {
+          method: "PUT",
+          body: { timeFormat },
+        });
+
+        const response = await PUT(request);
+        const { status, data } =
+          await parseResponse<typeof updatedSettings>(response);
+
+        expect(status).toBe(200);
+        expect(data.timeFormat).toBe(timeFormat);
+      }
+    );
+
+    it("rejects non-string timeFormat values", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+
+      const request = createMockRequest("/api/settings", {
+        method: "PUT",
+        body: { timeFormat: 24 },
+      });
+
+      const response = await PUT(request);
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(400);
+      expect(data.error).toBe("Invalid timeFormat. Must be one of: 12h, 24h");
     });
 
     it("validates dateFormat value", async () => {

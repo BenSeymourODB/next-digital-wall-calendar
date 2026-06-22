@@ -1,3 +1,4 @@
+import { isTimeFormat } from "@/hooks/useUserSettings";
 import {
   ApiError,
   requireUserSession,
@@ -13,7 +14,6 @@ import { NextRequest, NextResponse } from "next/server";
 // and `THEME_OPTIONS` in `src/components/settings/display-section.tsx`.
 // `auto` is a legacy alias for `system` (display-section maps it on display).
 const VALID_THEMES = ["light", "dark", "auto", "system", "wall-projector"];
-const VALID_TIME_FORMATS = ["12h", "24h"];
 
 /**
  * GET /api/settings - Returns user settings
@@ -91,7 +91,7 @@ export const PUT = withApiHandler(
     }
 
     if (body.timeFormat !== undefined) {
-      if (!VALID_TIME_FORMATS.includes(body.timeFormat as string)) {
+      if (!isTimeFormat(body.timeFormat)) {
         throw new ApiError("Invalid timeFormat. Must be one of: 12h, 24h", 400);
       }
     }
