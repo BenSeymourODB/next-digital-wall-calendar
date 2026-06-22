@@ -807,7 +807,11 @@ describe("getEventsForX bare-date inclusion (#375)", () => {
       }),
     ];
 
-    const result = getEventsForWeek(events, new Date(2026, 2, 10));
+    const result = getEventsForWeek(
+      events,
+      new Date(2026, 2, 10),
+      WEEK_STARTS_ON
+    );
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("bare-week-start");
   });
@@ -823,7 +827,11 @@ describe("getEventsForX bare-date inclusion (#375)", () => {
       }),
     ];
 
-    const result = getEventsForWeek(events, new Date(2026, 2, 10));
+    const result = getEventsForWeek(
+      events,
+      new Date(2026, 2, 10),
+      WEEK_STARTS_ON
+    );
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("bare-week-end");
   });

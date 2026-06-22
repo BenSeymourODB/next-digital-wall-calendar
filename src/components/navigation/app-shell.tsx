@@ -23,8 +23,14 @@ import { NAV_ITEMS, SideNavigation } from "./side-navigation";
 /** Path prefixes that should NOT be wrapped by the AppShell. */
 const UNWRAPPED_PREFIXES = ["/auth", "/test", "/api"] as const;
 
-/** Exact paths that should NOT be wrapped by the AppShell. */
-const UNWRAPPED_EXACT = new Set<string>(["/"]);
+/**
+ * Exact paths that should NOT be wrapped by the AppShell.
+ *
+ * `/clock` is the chrome-free wall-display target (#398) — it deliberately
+ * skips `SideNavigation`, the `PointsBadge`, and `ScreenTransition` so the
+ * analog clock fills the whole screen.
+ */
+const UNWRAPPED_EXACT = new Set<string>(["/", "/clock"]);
 
 function shouldWrap(pathname: string): boolean {
   if (UNWRAPPED_EXACT.has(pathname)) return false;
