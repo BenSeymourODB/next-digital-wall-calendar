@@ -623,6 +623,63 @@ describe("EventDetailModal", () => {
 
       resolveEdit?.();
     });
+
+    // The parents (`SimpleCalendar`, `AgendaCalendar`, `AnalogClockView`) keep
+    // `<EventDetailModal>` mounted permanently and merely flip the `event`
+    // prop between `null` (closed) and an `IEvent` (open). React's state
+    // hooks survive a `null` render, so `isEditing` would carry over to the
+    // next open if we don't reset it on close — the user would land in the
+    // edit form for a different event without ever clicking Edit.
+    it("returns to the read-only view when the modal is re-opened with a new event after the user was editing", async () => {
+      const user = userEvent.setup();
+      const onEdit = vi.fn().mockResolvedValue(undefined);
+
+      const eventA = mockEvent({ id: "evt-A", title: "Event A" });
+      const eventB = mockEvent({ id: "evt-B", title: "Event B" });
+
+      const { rerender } = render(
+        <EventDetailModal
+          event={eventA}
+          onClose={vi.fn()}
+          onEdit={onEdit}
+          use24HourFormat
+        />
+      );
+
+      // Enter edit mode for Event A.
+      await user.click(screen.getByRole("button", { name: /^edit event$/i }));
+      expect(screen.getByTestId("event-edit-form")).toBeInTheDocument();
+
+      // Parent closes the modal (e.g. user navigates away). EventDetailModal
+      // stays mounted but renders nothing while `event` is null.
+      rerender(
+        <EventDetailModal
+          event={null}
+          onClose={vi.fn()}
+          onEdit={onEdit}
+          use24HourFormat
+        />
+      );
+
+      // Parent opens a different event.
+      rerender(
+        <EventDetailModal
+          event={eventB}
+          onClose={vi.fn()}
+          onEdit={onEdit}
+          use24HourFormat
+        />
+      );
+
+      // The new event must open in the read-only view, NOT the edit form.
+      expect(screen.queryByTestId("event-edit-form")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^edit event$/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Event B" })
+      ).toBeInTheDocument();
+    });
   });
 
   describe("accessRole gating (#266)", () => {

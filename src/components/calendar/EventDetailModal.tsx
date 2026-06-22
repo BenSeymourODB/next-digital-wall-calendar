@@ -36,7 +36,7 @@ import type {
   TCalendarAccessRole,
   TEventColor,
 } from "@/types/calendar";
-import { type RefObject, useId, useState } from "react";
+import { type RefObject, useEffect, useId, useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -431,6 +431,18 @@ export function EventDetailModal({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+
+  // The parents keep `<EventDetailModal>` permanently mounted and flip the
+  // `event` prop between `null` (closed) and an `IEvent` (open). React's
+  // state hooks survive the `null` render, so `isEditing` / `confirmingDelete`
+  // would leak across opens — re-opening the modal for a different event
+  // would land the user mid-edit (or in the delete confirmation) without
+  // ever clicking the trigger. Reset both whenever the `event.id` changes
+  // so each open starts in the read-only view.
+  useEffect(() => {
+    setIsEditing(false);
+    setConfirmingDelete(false);
+  }, [event?.id]);
 
   if (!event) return null;
 
