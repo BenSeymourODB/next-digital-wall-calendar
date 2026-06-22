@@ -385,6 +385,120 @@ describe("withRetry", () => {
 
     expect(fn).toHaveBeenCalledTimes(3);
   });
+
+  it("aborts the inter-attempt sleep when the signal fires mid-sleep (#434)", async () => {
+    // Without a signal-aware sleep, an abort that fires while we are between
+    // attempts only takes effect on the next iteration — the sleep runs to
+    // completion first. With the fix, the sleep itself rejects.
+    const controller = new AbortController();
+
+    // Manually-resolved sleep: we never resolve it, so the only way for the
+    // race to settle is via the abort path. If the implementation still
+    // ignores the signal during sleep, the test will time out.
+    let resolveSleep: (() => void) | undefined;
+    const sleep = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSleep = resolve;
+        })
+    );
+
+    const fn = vi.fn().mockRejectedValue(new HttpRetryError(503, null));
+
+    const pending = withRetry(fn, {
+      maxAttempts: 3,
+      baseDelayMs: 1,
+      jitter: "none",
+      sleep,
+      signal: controller.signal,
+      random: midpointRandom,
+    });
+
+    // Wait a microtask so the first attempt runs and the sleep is entered.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    // The second attempt was never reached.
+    expect(fn).toHaveBeenCalledTimes(1);
+    // Defensive: avoid an unresolved-promise leak between tests.
+    resolveSleep?.();
+  });
+
+  it("removes the abort listener after the sleep completes naturally", async () => {
+    // If the listener leaked it would accumulate on every retry across a
+    // long-lived signal (e.g. one tied to a session). Track add/remove to
+    // prove cleanup discipline.
+    const controller = new AbortController();
+    const addSpy = vi.spyOn(controller.signal, "addEventListener");
+    const removeSpy = vi.spyOn(controller.signal, "removeEventListener");
+
+    const { sleep } = createSleep();
+    let callCount = 0;
+    const fn = vi.fn(async () => {
+      callCount += 1;
+      if (callCount < 3) throw new HttpRetryError(503, null);
+      return "ok";
+    });
+
+    const result = await withRetry(fn, {
+      maxAttempts: 3,
+      baseDelayMs: 1,
+      jitter: "none",
+      sleep,
+      signal: controller.signal,
+    });
+
+    expect(result).toBe("ok");
+    // Two sleeps occurred (between attempts 1↔2 and 2↔3); each must add and
+    // remove exactly one abort listener.
+    const abortAdds = addSpy.mock.calls.filter(([type]) => type === "abort");
+    const abortRemoves = removeSpy.mock.calls.filter(
+      ([type]) => type === "abort"
+    );
+    expect(abortAdds.length).toBe(2);
+    expect(abortRemoves.length).toBe(2);
+  });
+
+  it("removes the abort listener when the signal fires during sleep", async () => {
+    // The abort path also has to clean up — `{ once: true }` would do this
+    // implicitly but the implementation uses `finally` for symmetry with
+    // the sleep-wins path, so verify it explicitly.
+    const controller = new AbortController();
+    const addSpy = vi.spyOn(controller.signal, "addEventListener");
+    const removeSpy = vi.spyOn(controller.signal, "removeEventListener");
+
+    const sleep = vi.fn(
+      () => new Promise<void>(() => {}) // never resolves
+    );
+    const fn = vi.fn().mockRejectedValue(new HttpRetryError(503, null));
+
+    const pending = withRetry(fn, {
+      maxAttempts: 3,
+      baseDelayMs: 1,
+      jitter: "none",
+      sleep,
+      signal: controller.signal,
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+
+    const abortAdds = addSpy.mock.calls.filter(([type]) => type === "abort");
+    const abortRemoves = removeSpy.mock.calls.filter(
+      ([type]) => type === "abort"
+    );
+    expect(abortAdds.length).toBe(1);
+    expect(abortRemoves.length).toBe(1);
+  });
 });
 
 describe("fetchWithRetry", () => {
@@ -646,6 +760,46 @@ describe("fetchWithRetry", () => {
       "https://example.com/x",
       expect.objectContaining({ signal: innerController.signal })
     );
+  });
+
+  it("threads init.signal into withRetry's sleep when options.signal is unset (#434)", async () => {
+    // `refreshGoogleAccessToken` passes `AbortSignal.timeout(N)` via
+    // `init.signal`. Without forwarding it to `withRetry`, the inter-attempt
+    // sleep cannot observe the per-flight timeout, so the worst-case wall
+    // time is `timeout + maxDelayMs` instead of `timeout`. Verify the
+    // forwarding by aborting init.signal mid-sleep and asserting that the
+    // retry loop short-circuits with AbortError rather than continuing.
+    mockFetch.mockResolvedValue(errorResponse(503));
+    const controller = new AbortController();
+
+    let resolveSleep: (() => void) | undefined;
+    const sleep = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSleep = resolve;
+        })
+    );
+
+    const pending = fetchWithRetry(
+      "https://example.com/x",
+      { method: "GET", signal: controller.signal },
+      { sleep, random: midpointRandom, maxAttempts: 3, baseDelayMs: 1 }
+    );
+
+    // Let the first fetch and the sleep entry run.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    // The second fetch was never issued.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    resolveSleep?.();
   });
 });
 
