@@ -1,4 +1,3 @@
-import { isTimeFormat } from "@/hooks/useUserSettings";
 import {
   ApiError,
   requireUserSession,
@@ -8,6 +7,7 @@ import { isCalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
 import { prisma } from "@/lib/db";
 import { VALID_DATE_FORMATS } from "@/lib/format-date";
 import { logger } from "@/lib/logger";
+import { isTimeFormat } from "@/lib/time-format";
 import { NextRequest, NextResponse } from "next/server";
 
 // Keep in sync with `THEMES` in `src/components/providers/ThemeProvider.tsx`

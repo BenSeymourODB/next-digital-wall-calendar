@@ -16,9 +16,9 @@
  * supplied, and every consuming test inherits it for free.
  */
 import type { UserSettings } from "@/generated/prisma/client";
-import type { TTimeFormat } from "@/hooks/useUserSettings";
 import type { CalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
 import type { TDateFormat } from "@/lib/format-date";
+import type { TTimeFormat } from "@/lib/time-format";
 import type { TWeekStartDay } from "@/types/calendar";
 
 /**

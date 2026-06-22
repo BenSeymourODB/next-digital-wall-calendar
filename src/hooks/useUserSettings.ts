@@ -11,6 +11,7 @@ import {
   isDateFormat,
 } from "@/lib/format-date";
 import { logger } from "@/lib/logger";
+import { type TTimeFormat, isTimeFormat } from "@/lib/time-format";
 import {
   type UserSettingsPartial,
   emitUserSettingsChange,
@@ -24,16 +25,6 @@ import { useSession } from "next-auth/react";
 // app-wide settings consolidation lands. The "Calendar" prefix is no longer
 // accurate now that non-calendar fields (e.g. defaultZoomLevel) flow through
 // this hook.
-export type TTimeFormat = "12h" | "24h";
-
-const VALID_TIME_FORMATS: readonly TTimeFormat[] = ["12h", "24h"] as const;
-
-export function isTimeFormat(value: unknown): value is TTimeFormat {
-  return (
-    typeof value === "string" &&
-    (VALID_TIME_FORMATS as readonly string[]).includes(value)
-  );
-}
 
 export interface UserCalendarSettings {
   calendarRefreshIntervalMinutes: number;
