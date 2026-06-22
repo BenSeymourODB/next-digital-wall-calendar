@@ -18,6 +18,11 @@
  * tests can exercise every branch deterministically without real timers.
  */
 
+// Exponential-backoff defaults tuned for Google API transients: start at
+// 300ms (long enough to clear a brief blip, short enough to stay invisible),
+// double each attempt (300 → 600 → 1200ms), and hard-cap any single wait at
+// 5s so a `Retry-After` or runaway exponent can't stall a request handler.
+// Three total attempts keeps worst-case added latency around ~1s with jitter.
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 300;
 const DEFAULT_MAX_DELAY_MS = 5_000;

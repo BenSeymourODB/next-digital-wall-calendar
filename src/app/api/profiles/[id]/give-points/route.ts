@@ -37,6 +37,11 @@ interface GivePointsRequest {
  * - Creates PointTransaction record
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  // Resolve route params once, up front, so the catch block can reference `id`
+  // without re-awaiting `params` (a rejected promise there would mask the
+  // original error being logged).
+  const { id } = await params;
+
   try {
     const session = await getSession();
 
@@ -44,7 +49,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
     const body = (await request.json()) as GivePointsRequest;
     const { points, awardedByProfileId, note } = body;
 
@@ -127,7 +131,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       newTotal: totalPoints,
     });
   } catch (error) {
-    const { id } = await params;
     logger.error(error as Error, {
       endpoint: `/api/profiles/${id}/give-points`,
       method: "POST",
