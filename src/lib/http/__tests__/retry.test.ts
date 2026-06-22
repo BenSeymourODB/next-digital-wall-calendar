@@ -766,8 +766,36 @@ describe("fetchWithRetry", () => {
     expect(passedSignal).not.toBe(outerController.signal);
     expect(passedSignal!.aborted).toBe(false);
 
-    // Firing either source signal aborts the merged signal.
+    // Firing either source signal aborts the merged signal — outer side.
     outerController.abort();
+    expect(passedSignal!.aborted).toBe(true);
+  });
+
+  it("merges init.signal and options.signal so init.signal also aborts the merged signal (#436)", async () => {
+    // Mirror of the previous test that fires the inner signal instead. Both
+    // directions are guaranteed by AbortSignal.any's contract, but exercising
+    // each input independently guards against a future regressor where the
+    // order of inputs to AbortSignal.any matters.
+    mockFetch.mockResolvedValueOnce(okResponse());
+    const innerController = new AbortController();
+    const outerController = new AbortController();
+    const { sleep } = createSleep();
+
+    await fetchWithRetry(
+      "https://example.com/x",
+      { method: "GET", signal: innerController.signal },
+      {
+        signal: outerController.signal,
+        sleep,
+        random: midpointRandom,
+      }
+    );
+
+    const callInit = mockFetch.mock.calls[0]![1] as RequestInit;
+    const passedSignal = callInit.signal;
+    expect(passedSignal!.aborted).toBe(false);
+
+    innerController.abort();
     expect(passedSignal!.aborted).toBe(true);
   });
 
