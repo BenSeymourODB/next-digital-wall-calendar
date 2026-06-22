@@ -21,6 +21,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { WritableCalendar } from "@/hooks/useWritableCalendars";
+import {
+  parseDateOnly,
+  parseDateTimeLocal,
+  toDateOnly,
+  toDateTimeLocal,
+} from "@/lib/calendar/date-input";
 import type { TEventColor } from "@/types/calendar";
 import { useId, useState } from "react";
 
@@ -142,16 +148,6 @@ function roundToNextHalfHour(input: Date): Date {
   return d;
 }
 
-function toDateTimeLocal(d: Date): string {
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function toDateOnly(d: Date): string {
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 function buildInitialState(
   defaultDate: Date | undefined,
   initialCalendarId: string
@@ -170,31 +166,6 @@ function buildInitialState(
     endAllDay: toDateOnly(base),
     calendarId: initialCalendarId,
   };
-}
-
-/**
- * Parse the input value from a date-only input as a local midnight date,
- * not UTC midnight (which is what `new Date("2026-04-20")` would give).
- */
-function parseDateOnly(value: string): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return null;
-  return new Date(
-    parseInt(match[1], 10),
-    parseInt(match[2], 10) - 1,
-    parseInt(match[3], 10),
-    0,
-    0,
-    0,
-    0
-  );
-}
-
-function parseDateTimeLocal(value: string): Date | null {
-  // `new Date(value)` interprets `YYYY-MM-DDTHH:mm` as local time, which is
-  // what we want for a datetime-local input.
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function resolveDates(state: DialogState): {

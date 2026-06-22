@@ -222,6 +222,38 @@ export function MockCalendarProvider({
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
+  // Mock editEvent (#265): hermetic local merge so UI flows resolve without
+  // mocking fetch. Tests that need failure behaviour should override this
+  // in their own provider wrapper.
+  //
+  // Reads from the closure `allEvents` rather than the setState callback so
+  // we don't depend on React running the updater synchronously — concurrent
+  // mode can invoke the updater more than once, and capturing the merged
+  // event from an updater callback that may be replayed is a foot-gun. The
+  // mock has no real concurrency, so the closure value is the source of
+  // truth.
+  const editEvent = async (
+    eventId: string,
+    _calendarId: string,
+    input: CreateEventInput
+  ): Promise<IEvent> => {
+    const existing = allEvents.find((e) => e.id === eventId);
+    if (!existing) {
+      throw new Error(`Event ${eventId} not found in mock list`);
+    }
+    const updated: IEvent = {
+      ...existing,
+      title: input.title,
+      description: input.description,
+      color: input.color,
+      isAllDay: input.isAllDay,
+      startDate: input.startDate,
+      endDate: input.endDate,
+    };
+    setAllEvents((prev) => prev.map((e) => (e.id === eventId ? updated : e)));
+    return updated;
+  };
+
   // Mock refresh - just returns current events
   const refreshEvents = async () => {
     if (loadingDelay > 0) {
@@ -305,6 +337,7 @@ export function MockCalendarProvider({
     updateEvent,
     removeEvent,
     createEvent,
+    editEvent,
     deleteEvent,
     clearFilter,
     refreshEvents,

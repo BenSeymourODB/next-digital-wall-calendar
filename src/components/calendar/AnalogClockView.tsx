@@ -4,6 +4,7 @@ import { AnalogClock } from "@/components/calendar/analog-clock";
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { ThemeScope } from "@/components/theme/theme-scope";
 import { useEventDelete } from "@/hooks/useEventDelete";
+import { useEventEdit } from "@/hooks/useEventEdit";
 import { getColorClass } from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
@@ -59,11 +60,12 @@ function isAllDayToday(event: IEvent, today: Date): boolean {
  * events in a sibling list so they remain visible in this view.
  */
 export function AnalogClockView() {
-  const { events, use24HourFormat } = useCalendar();
+  const { events, use24HourFormat, getAccessRole } = useCalendar();
   const today = useDateNow();
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
+  const handleEdit = useEventEdit();
   const { resolvedTheme } = useTheme();
 
   // Emphasize the clock face with a light scope (issue #319). Only meaningful
@@ -193,6 +195,10 @@ export function AnalogClockView() {
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
+        onEdit={handleEdit}
+        accessRole={
+          selectedEvent ? getAccessRole(selectedEvent.calendarId) : undefined
+        }
       />
     </div>
   );
