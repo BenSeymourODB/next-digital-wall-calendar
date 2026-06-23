@@ -29,7 +29,7 @@ import type {
   TaskListSelection,
 } from "@/components/tasks/types";
 import { type UseTasksReturn, useTasks } from "@/components/tasks/use-tasks";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 import type React from "react";
 import { createContext, useContext, useEffect } from "react";
 

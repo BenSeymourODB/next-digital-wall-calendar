@@ -1,4 +1,4 @@
-import type { TTimeFormat } from "@/hooks/useUserSettings";
+import type { TTimeFormat } from "@/hooks/use-user-settings";
 import type { CalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
 import type { TDateFormat } from "@/lib/format-date";
 import type { TWeekStartDay } from "@/types/calendar";

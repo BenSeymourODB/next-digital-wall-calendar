@@ -1,5 +1,5 @@
 import { SettingsForm } from "@/components/settings/settings-form";
-import { isTimeFormat } from "@/hooks/useUserSettings";
+import { isTimeFormat } from "@/hooks/use-user-settings";
 import { getSession } from "@/lib/auth";
 import {
   DEFAULT_CALENDAR_TRANSITION_SPEED,

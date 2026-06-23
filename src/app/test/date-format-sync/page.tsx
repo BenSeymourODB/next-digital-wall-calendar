@@ -1,6 +1,6 @@
 "use client";
 
-import { useUserSettings } from "@/hooks/useUserSettings";
+import { useUserSettings } from "@/hooks/use-user-settings";
 import {
   VALID_DATE_FORMATS,
   formatUserDate,

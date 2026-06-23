@@ -8,7 +8,7 @@
  */
 import { CalendarContext } from "@/components/providers/CalendarProvider";
 import type { ICalendarContext } from "@/components/providers/CalendarProvider";
-import { useEventDelete } from "@/hooks/useEventDelete";
+import { useEventDelete } from "@/hooks/use-event-delete";
 import type { IEvent } from "@/types/calendar";
 import type { ReactNode } from "react";
 import { renderHook } from "@testing-library/react";

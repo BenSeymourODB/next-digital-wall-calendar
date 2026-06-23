@@ -1,7 +1,7 @@
 "use client";
 
 import { SettingsForm } from "@/components/settings/settings-form";
-import { useUserSettings } from "@/hooks/useUserSettings";
+import { useUserSettings } from "@/hooks/use-user-settings";
 import { Toaster } from "sonner";
 
 /**

@@ -3,8 +3,8 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useEventDelete } from "@/hooks/useEventDelete";
-import { useEventEdit } from "@/hooks/useEventEdit";
+import { useEventDelete } from "@/hooks/use-event-delete";
+import { useEventEdit } from "@/hooks/use-event-edit";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useRef, useState } from "react";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";

@@ -2,8 +2,8 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
-import type { WritableCalendar } from "@/hooks/useWritableCalendars";
-import { useWritableCalendars } from "@/hooks/useWritableCalendars";
+import type { WritableCalendar } from "@/hooks/use-writable-calendars";
+import { useWritableCalendars } from "@/hooks/use-writable-calendars";
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -21,7 +21,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/hooks/useWritableCalendars", () => ({
+vi.mock("@/hooks/use-writable-calendars", () => ({
   useWritableCalendars: vi.fn(),
 }));
 

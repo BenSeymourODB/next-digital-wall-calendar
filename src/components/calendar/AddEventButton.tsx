@@ -2,9 +2,9 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
-import { useEventCreate } from "@/hooks/useEventCreate";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { useWritableCalendars } from "@/hooks/useWritableCalendars";
+import { useEventCreate } from "@/hooks/use-event-create";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useWritableCalendars } from "@/hooks/use-writable-calendars";
 import type { IEvent, IUser } from "@/types/calendar";
 import { useState } from "react";
 import { Plus } from "lucide-react";

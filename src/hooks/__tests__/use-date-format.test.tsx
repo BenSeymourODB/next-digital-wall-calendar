@@ -1,7 +1,7 @@
 import { DEFAULT_DATE_FORMAT } from "@/lib/format-date";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useDateFormat } from "../useDateFormat";
+import { useDateFormat } from "../use-date-format";
 
 const mockUseSession = vi.hoisted(() => vi.fn());
 vi.mock("next-auth/react", () => ({

@@ -3,8 +3,8 @@
 import { AnalogClock } from "@/components/calendar/analog-clock";
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { ThemeScope } from "@/components/theme/theme-scope";
-import { useEventDelete } from "@/hooks/useEventDelete";
-import { useEventEdit } from "@/hooks/useEventEdit";
+import { useEventDelete } from "@/hooks/use-event-delete";
+import { useEventEdit } from "@/hooks/use-event-edit";
 import { getColorClass } from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent } from "@/types/calendar";
