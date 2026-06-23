@@ -3,6 +3,8 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useEventDelete } from "@/hooks/useEventDelete";
+import { useEventEdit } from "@/hooks/useEventEdit";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useRef, useState } from "react";
 import { format, isAfter, isBefore } from "date-fns";
@@ -200,6 +202,8 @@ export function AgendaList({
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
+  const handleDelete = useEventDelete();
+  const handleEdit = useEventEdit();
 
   const openModal = (event: IEvent, trigger: HTMLElement) => {
     triggerRef.current = trigger;
@@ -375,6 +379,8 @@ export function AgendaList({
         onClose={() => setSelectedEvent(null)}
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
+        onDelete={handleDelete}
+        onEdit={handleEdit}
         accessRole={
           selectedEvent ? getAccessRole(selectedEvent.calendarId) : undefined
         }
