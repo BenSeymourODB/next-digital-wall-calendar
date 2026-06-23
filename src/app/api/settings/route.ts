@@ -1,4 +1,4 @@
-import { isTimeFormat } from "@/hooks/useUserSettings";
+import { isTimeFormat } from "@/hooks/use-user-settings";
 import {
   ApiError,
   requireUserSession,

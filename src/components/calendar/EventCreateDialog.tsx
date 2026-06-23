@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { WritableCalendar } from "@/hooks/useWritableCalendars";
+import type { WritableCalendar } from "@/hooks/use-writable-calendars";
 import {
   parseDateOnly,
   parseDateTimeLocal,

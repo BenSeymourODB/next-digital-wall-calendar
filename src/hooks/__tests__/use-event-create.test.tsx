@@ -2,7 +2,7 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
-import { useEventCreate } from "@/hooks/useEventCreate";
+import { useEventCreate } from "@/hooks/use-event-create";
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import type { IEvent, IUser } from "@/types/calendar";
 import { type ReactNode } from "react";

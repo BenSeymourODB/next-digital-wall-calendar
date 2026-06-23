@@ -14,16 +14,16 @@ import {
 import {
   DEFAULT_USER_CALENDAR_SETTINGS,
   type UserCalendarSettings,
-} from "@/hooks/useUserSettings";
+} from "@/hooks/use-user-settings";
 import { SessionProvider } from "next-auth/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUseUserSettings = vi.hoisted(() => vi.fn());
-vi.mock("@/hooks/useUserSettings", async () => {
+vi.mock("@/hooks/use-user-settings", async () => {
   const actual = await vi.importActual<
-    typeof import("@/hooks/useUserSettings")
-  >("@/hooks/useUserSettings");
+    typeof import("@/hooks/use-user-settings")
+  >("@/hooks/use-user-settings");
   return { ...actual, useUserSettings: mockUseUserSettings };
 });
 

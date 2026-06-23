@@ -12,7 +12,7 @@ import {
   DEFAULT_USER_CALENDAR_SETTINGS,
   isTimeFormat,
   useUserSettings,
-} from "../useUserSettings";
+} from "../use-user-settings";
 
 const mockUseSession = vi.hoisted(() => vi.fn());
 vi.mock("next-auth/react", () => ({

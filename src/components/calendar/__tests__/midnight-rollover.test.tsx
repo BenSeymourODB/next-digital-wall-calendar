@@ -27,7 +27,7 @@ import { YearCalendar } from "../YearCalendar";
 // SimpleCalendar (used in some scenarios below) mounts AddEventButton, which
 // reads useWritableCalendars → useSession. These tests don't wrap in
 // SessionProvider; mock the hook so the rollover assertions stay focused.
-vi.mock("@/hooks/useWritableCalendars", () => ({
+vi.mock("@/hooks/use-writable-calendars", () => ({
   useWritableCalendars: () => ({ calendars: [], isLoading: false }),
 }));
 

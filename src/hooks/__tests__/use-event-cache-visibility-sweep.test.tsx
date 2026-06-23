@@ -5,7 +5,7 @@ import { eventCache } from "@/lib/event-cache";
 import { logger } from "@/lib/logger";
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useEventCacheVisibilitySweep } from "../useEventCacheVisibilitySweep";
+import { useEventCacheVisibilitySweep } from "../use-event-cache-visibility-sweep";
 
 vi.mock("@/lib/logger", () => ({
   logger: {

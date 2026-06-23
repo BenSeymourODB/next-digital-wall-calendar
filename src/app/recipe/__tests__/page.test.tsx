@@ -1,13 +1,13 @@
-import { DEFAULT_USER_CALENDAR_SETTINGS } from "@/hooks/useUserSettings";
+import { DEFAULT_USER_CALENDAR_SETTINGS } from "@/hooks/use-user-settings";
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import RecipePage from "../page";
 
 const mockUseUserSettings = vi.hoisted(() => vi.fn());
-vi.mock("@/hooks/useUserSettings", async () => {
+vi.mock("@/hooks/use-user-settings", async () => {
   const actual = await vi.importActual<
-    typeof import("@/hooks/useUserSettings")
-  >("@/hooks/useUserSettings");
+    typeof import("@/hooks/use-user-settings")
+  >("@/hooks/use-user-settings");
   return {
     ...actual,
     useUserSettings: mockUseUserSettings,

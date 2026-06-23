@@ -2,7 +2,7 @@
 
 import { RecipeDisplay } from "@/components/recipe";
 import { Button } from "@/components/ui/button";
-import { useUserSettings } from "@/hooks/useUserSettings";
+import { useUserSettings } from "@/hooks/use-user-settings";
 import { getRecipeById, sampleRecipes } from "@/lib/recipe/sample-recipes";
 import { useState } from "react";
 import { useSession } from "next-auth/react";

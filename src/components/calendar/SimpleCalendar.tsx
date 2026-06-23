@@ -3,9 +3,9 @@
 import { AnimatedSwap } from "@/components/calendar/animated-swap";
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { useEventDelete } from "@/hooks/use-event-delete";
+import { useEventEdit } from "@/hooks/use-event-edit";
 import { useSlideDirection } from "@/hooks/use-slide-direction";
-import { useEventDelete } from "@/hooks/useEventDelete";
-import { useEventEdit } from "@/hooks/useEventEdit";
 import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
 import {
   applyCalendarKeyboardAction,

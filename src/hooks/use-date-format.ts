@@ -1,7 +1,7 @@
 "use client";
 
 import { type TDateFormat, formatUserDate } from "@/lib/format-date";
-import { useUserSettings } from "./useUserSettings";
+import { useUserSettings } from "./use-user-settings";
 
 /**
  * Convenience hook pairing the user's current `dateFormat` with a
