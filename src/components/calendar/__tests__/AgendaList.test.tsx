@@ -343,6 +343,67 @@ describe("AgendaList", () => {
     });
   });
 
+  describe("event detail modal — edit + delete wiring (#451)", () => {
+    const writableEvent = makeEvent(
+      "writable",
+      "2026-05-04T09:00:00.000Z",
+      "2026-05-04T10:00:00.000Z",
+      { title: "Writable Event" }
+    );
+    const range = {
+      rangeStart: new Date("2026-05-04T00:00:00.000Z"),
+      rangeEnd: new Date("2026-05-04T23:59:59.999Z"),
+    };
+
+    it("renders Edit and Delete buttons in the modal when the calendar is writable", async () => {
+      const user = userEvent.setup();
+      renderList({ events: [writableEvent], ...range });
+
+      await user.click(screen.getByText("Writable Event"));
+
+      expect(
+        screen.getByRole("button", { name: /edit event/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /delete event/i })
+      ).toBeInTheDocument();
+    });
+
+    it("hides Edit and Delete buttons when accessRole is 'reader' (#266 gate)", async () => {
+      const user = userEvent.setup();
+      renderList(
+        { events: [writableEvent], ...range },
+        { getAccessRole: () => "reader" }
+      );
+
+      await user.click(screen.getByText("Writable Event"));
+
+      expect(
+        screen.queryByRole("button", { name: /edit event/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /delete event/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("hides Edit and Delete buttons when accessRole is 'freeBusyReader' (#266 gate)", async () => {
+      const user = userEvent.setup();
+      renderList(
+        { events: [writableEvent], ...range },
+        { getAccessRole: () => "freeBusyReader" }
+      );
+
+      await user.click(screen.getByText("Writable Event"));
+
+      expect(
+        screen.queryByRole("button", { name: /edit event/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /delete event/i })
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("collapses empty time gaps — does not render any hour-grid scaffolding", () => {
     const events: IEvent[] = [
       makeEvent(
