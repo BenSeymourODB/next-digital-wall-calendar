@@ -18,6 +18,11 @@
  * tests can exercise every branch deterministically without real timers.
  */
 
+// Exponential-backoff defaults tuned for Google API transients: start at
+// 300ms (long enough to clear a brief blip, short enough to stay invisible),
+// double each attempt (300 → 600 → 1200ms), and hard-cap any single wait at
+// 5s so a `Retry-After` or runaway exponent can't stall a request handler.
+// Three total attempts keeps worst-case added latency around ~1s with jitter.
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 300;
 const DEFAULT_MAX_DELAY_MS = 5_000;
@@ -177,6 +182,40 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Race a sleep against an AbortSignal so the inter-attempt wait short-circuits
+ * the moment the signal fires. Without this, `withRetry`'s wall-clock cost on
+ * an aborted run is `pending-attempt + one backoff`, not the bare timeout the
+ * caller asked for (issue #434).
+ *
+ * `{ once: true }` would self-remove on fire but leak on the sleep-wins path.
+ * Always remove the listener in a `finally` block; `removeEventListener` is a
+ * no-op if the listener already auto-removed, so this is safe in every branch.
+ */
+async function abortableSleep(
+  ms: number,
+  sleep: (ms: number) => Promise<void>,
+  signal: AbortSignal | undefined
+): Promise<void> {
+  if (!signal) {
+    await sleep(ms);
+    return;
+  }
+  if (signal.aborted) throw abortError();
+
+  let onAbort: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    onAbort = () => reject(abortError());
+    signal.addEventListener("abort", onAbort);
+  });
+
+  try {
+    await Promise.race([sleep(ms), abortPromise]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 function abortError(): Error {
   // DOMException isn't guaranteed in every runtime; a plain Error with
   // `name: "AbortError"` is what the Web `fetch` spec surfaces and what
@@ -226,7 +265,7 @@ export async function withRetry<T>(
 
       onRetry?.({ attempt, delayMs, error, retryAfterMs });
 
-      await sleep(delayMs);
+      await abortableSleep(delayMs, sleep, signal);
 
       if (signal?.aborted) throw abortError();
     }
@@ -247,6 +286,17 @@ export async function withRetry<T>(
  * two signals requires `AbortSignal.any` (Node 20+) and we want one simple
  * contract. If `init.signal` is absent and `options.signal` is provided, the
  * outer signal is threaded through.
+ *
+ * The signal that `withRetry` observes for its inter-attempt sleep follows
+ * the *opposite* precedence: `options.signal` if set, otherwise `init.signal`.
+ * This makes the per-flight `AbortSignal.timeout(N)` that callers pass via
+ * `init` bound the *entire* retry loop's wall time, not just each individual
+ * fetch attempt (issue #434). When both signals are set the two contracts
+ * become asymmetric: each `fetch()` call observes `init.signal`, while the
+ * inter-attempt sleep observes `options.signal`. That's an artefact of the
+ * "caller signal wins" rule for fetch; merging the two via `AbortSignal.any`
+ * is the natural next step but is intentionally deferred to keep this change
+ * minimal.
  */
 export async function fetchWithRetry(
   input: Parameters<typeof fetch>[0],
@@ -259,6 +309,11 @@ export async function fetchWithRetry(
   if (!effectiveInit.signal && options.signal) {
     effectiveInit.signal = options.signal;
   }
+
+  const effectiveOptions: RetryOptions =
+    options.signal == null && init?.signal != null
+      ? { ...options, signal: init.signal }
+      : options;
 
   // `fetchWithRetry` reads its own copy of maxAttempts so the inner function
   // can decide between "throw HttpRetryError" (ask `withRetry` to retry) and
@@ -297,7 +352,7 @@ export async function fetchWithRetry(
         retryAfterMs,
         `HTTP ${response.status} from ${safeUrl(input)}`
       );
-    }, options);
+    }, effectiveOptions);
   } catch (error) {
     // Only substitute the stored transient response when the retry loop
     // escalated *this* attempt via HttpRetryError. If the final attempt

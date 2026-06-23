@@ -81,13 +81,18 @@ let gisInitialized = false;
 let gisInitPromise: Promise<void> | null = null;
 let tokenClient: google.accounts.oauth2.TokenClient | null = null;
 
+/** How often to poll for the script-injected global, in ms. */
+const GLOBAL_CHECK_INTERVAL_MS = 100;
+/** How long to wait for the global before giving up, in ms. */
+const GLOBAL_MAX_WAIT_MS = 10_000;
+
 /**
  * Wait for a global object to be available (script loaded by Next.js Script component)
  */
 function waitForGlobal<T>(
   globalName: string,
-  checkInterval = 100,
-  maxWait = 10000
+  checkInterval = GLOBAL_CHECK_INTERVAL_MS,
+  maxWait = GLOBAL_MAX_WAIT_MS
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();

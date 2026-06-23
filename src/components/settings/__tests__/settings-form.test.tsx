@@ -632,3 +632,220 @@ describe("SettingsForm — bus rollback on PUT failure (#414)", () => {
     expect(busHandler).not.toHaveBeenCalledWith({ theme: "light" });
   });
 });
+
+/**
+ * Tests for SettingsForm — same-key rollback race (#420).
+ *
+ * Two `updateSettings` calls in flight on the same key. The second succeeds,
+ * the first fails. The first's rollback path must NOT regress the second's
+ * successful value — neither in local form state nor on the user-settings
+ * bus. Without the guard, the failed call's `previousPartial` snapshot
+ * (captured from the second call's optimistic value) becomes the rolled-back
+ * value, stomping on the most-recent committed truth.
+ */
+describe("SettingsForm — same-key rollback race (#420)", () => {
+  let unsubscribeBus: (() => void) | undefined;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockActiveProfile(ACTIVE_PROFILE_ID);
+    unsubscribeBus = undefined;
+  });
+
+  afterEach(() => {
+    unsubscribeBus?.();
+    unsubscribeBus = undefined;
+    vi.unstubAllGlobals();
+  });
+
+  it("does not emit the stale snapshot on the bus when a later same-key PUT succeeded", async () => {
+    const user = userEvent.setup();
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    let userSettingsCallIndex = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (typeof url === "string" && url.startsWith("/api/profiles/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              taskSortOrder: "dueDate",
+              showCompletedTasks: false,
+            }),
+          } as unknown as Response);
+        }
+        userSettingsCallIndex += 1;
+        return userSettingsCallIndex === 1 ? first.promise : second.promise;
+      })
+    );
+
+    const busHandler = vi.fn();
+    unsubscribeBus = subscribeUserSettings(busHandler);
+
+    renderSettings();
+
+    await screen.findByRole("switch", { name: /show completed tasks/i });
+
+    const lightRadio = screen.getByLabelText(/^light$/i);
+    const darkRadio = screen.getByLabelText(/^dark$/i);
+    const systemRadio = screen.getByLabelText(/^system$/i);
+
+    // A then B on the same key — `theme`. B captures A's optimistic value
+    // ("dark") as its `previousPartial`; A captured the original ("light").
+    await user.click(darkRadio);
+    await user.click(systemRadio);
+
+    // Resolve B first (success), then fail A. The order matters — we need
+    // B's success emit to land before A's catch path runs.
+    second.resolve({ ok: true } as Response);
+    first.reject(new Error("network failure"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to save settings");
+    });
+
+    // Bus subscribers must hold B's value, not A's pre-call snapshot.
+    expect(busHandler).not.toHaveBeenCalledWith({ theme: "light" });
+    // B's optimistic emit must still have landed.
+    expect(busHandler).toHaveBeenCalledWith({ theme: "system" });
+
+    // Local form must also hold B's value, not A's pre-call snapshot.
+    expect(systemRadio).toBeChecked();
+    expect(darkRadio).not.toBeChecked();
+    expect(lightRadio).not.toBeChecked();
+  });
+
+  it("still emits the rolled-back partial when no concurrent same-key PUT touched the field", async () => {
+    // Regression guard for the #414 single-call path — the new race guard
+    // must not suppress rollback when no later call has overwritten the key.
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (typeof url === "string" && url.startsWith("/api/profiles/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              taskSortOrder: "dueDate",
+              showCompletedTasks: false,
+            }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({ ok: false } as Response);
+      })
+    );
+
+    const busHandler = vi.fn();
+    unsubscribeBus = subscribeUserSettings(busHandler);
+
+    renderSettings();
+
+    await screen.findByRole("switch", { name: /show completed tasks/i });
+
+    const darkRadio = screen.getByLabelText(/^dark$/i);
+    await user.click(darkRadio);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to save settings");
+    });
+
+    expect(busHandler).toHaveBeenCalledTimes(1);
+    expect(busHandler).toHaveBeenCalledWith({ theme: "light" });
+  });
+});
+
+/**
+ * Tests for SettingsForm.updateTaskSettings optimistic-update rollback
+ * semantics (#413).
+ *
+ * Mirrors the #363/#366 rollback contract for the profile-scoped task
+ * settings: the failure path must restore the pre-call value of *only*
+ * the keys being updated, read from the truly-current state via the
+ * functional setter — not a stale closure of the entire
+ * `taskSettings` object. Without this, an overlapping successful PUT to
+ * a different task-settings key loses its optimistic value when an
+ * earlier PUT fails.
+ */
+describe("SettingsForm — updateTaskSettings rollback (#413)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockActiveProfile(ACTIVE_PROFILE_ID);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves a concurrent successful task-settings PUT when an earlier PUT fails", async () => {
+    const user = userEvent.setup();
+    const firstPut = deferred<Response>();
+    const secondPut = deferred<Response>();
+    let putIndex = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (
+          typeof url === "string" &&
+          url === `/api/profiles/${ACTIVE_PROFILE_ID}/settings`
+        ) {
+          if (init?.method === "PUT") {
+            putIndex += 1;
+            return putIndex === 1 ? firstPut.promise : secondPut.promise;
+          }
+          // GET on mount
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              taskSortOrder: "dueDate",
+              showCompletedTasks: false,
+            }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({ ok: true } as Response);
+      })
+    );
+
+    renderSettings();
+
+    const switchEl = await screen.findByRole("switch", {
+      name: /show completed tasks/i,
+    });
+    await waitFor(() =>
+      expect(switchEl).toHaveAttribute("data-state", "unchecked")
+    );
+
+    // PUT #1 — toggle showCompletedTasks on.
+    await user.click(switchEl);
+    expect(switchEl).toHaveAttribute("data-state", "checked");
+
+    // PUT #2 — change sort order to Priority. The task-sort-order
+    // combobox is the only one initialised to "Due Date".
+    const combobox = screen
+      .getAllByRole("combobox")
+      .find((el) => /due date/i.test(el.textContent ?? ""));
+    expect(combobox).toBeDefined();
+    await user.click(combobox!);
+    const option = await screen.findByRole("option", { name: /priority/i });
+    await user.click(option);
+
+    // Second resolves OK, first rejects — a whole-object rollback
+    // would wipe the successful sort-order change when the toggle
+    // reverts.
+    secondPut.resolve({ ok: true } as Response);
+    firstPut.reject(new Error("network failure"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to save task settings");
+    });
+
+    // showCompletedTasks reverts (its PUT failed)…
+    expect(switchEl).toHaveAttribute("data-state", "unchecked");
+    // …but the sort-order change must NOT be wiped by the failed
+    // toggle's rollback — its own PUT succeeded. Assert against the
+    // original combobox node identity so a different "priority"-bearing
+    // element elsewhere on the page cannot satisfy this check.
+    expect(combobox).toHaveTextContent(/priority/i);
+    expect(combobox).not.toHaveTextContent(/due date/i);
+  });
+});

@@ -25,6 +25,37 @@ export const GOOGLE_OAUTH_TOKEN_ENDPOINT =
   "https://oauth2.googleapis.com/token";
 
 /**
+ * Per-flight timeout for Google's OAuth token endpoint. 10 s is a generous
+ * upper bound for a single `client_credentials`-shaped exchange; tune via
+ * `GOOGLE_TOKEN_REFRESH_TIMEOUT_MS` if Google's tail latency shifts.
+ *
+ * Without this bound, a TCP connect that hangs with no RST would wait
+ * forever inside `undici`'s default fetch and — under the #216 singleflight
+ * — pin the in-flight slot for every concurrent caller until the Node
+ * process restarts. See #404.
+ */
+export const DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS = 10_000;
+const TIMEOUT_ENV_KEY = "GOOGLE_TOKEN_REFRESH_TIMEOUT_MS";
+
+/**
+ * Resolve the per-flight timeout in ms. Strict integer parsing: anything
+ * fractional, non-numeric, zero, or negative falls back to the default so
+ * a misconfigured env value can't accidentally configure a zero-budget
+ * timeout that instantly aborts every refresh.
+ */
+export function getRefreshTimeoutMs(
+  env: NodeJS.ProcessEnv = process.env
+): number {
+  const raw = env[TIMEOUT_ENV_KEY];
+  if (raw == null || !/^\d+$/.test(raw)) {
+    return DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (parsed <= 0) return DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS;
+  return parsed;
+}
+
+/**
  * Schema for the JSON body of a successful Google OAuth refresh-token grant
  * response. Only `access_token` and `expires_in` are strictly required for
  * the orchestrator to write a usable account row; `refresh_token` is omitted
@@ -84,6 +115,16 @@ export async function refreshGoogleAccessToken(
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }),
+    // Bound the entire retry flight with a per-flight timeout. `fetchWithRetry`
+    // threads this signal into both each individual `fetch()` call *and*
+    // (post-#435) `withRetry`'s inter-attempt sleep, so the configured timeout
+    // is the hard ceiling on wall-clock time spent here. On timeout, the abort
+    // surfaces as an Error(name="AbortError") (withRetry normalises the abort
+    // shape) — `classifyTokenRefreshError` defaults non-Google errors to
+    // `transient` (not `terminal`), so the singleflight slot releases in
+    // `.finally()` and the next caller starts a fresh flight rather than the
+    // user being kicked to re-auth.
+    signal: AbortSignal.timeout(getRefreshTimeoutMs()),
   });
 
   const rawBody: unknown = await response.json();
