@@ -84,7 +84,7 @@ logger.warn("Warning condition");
 - **`logger.critical(error, properties?)`** - For critical failures that require immediate attention
   - Outages, security incidents, data loss, cross-tenant data exposure
 
-- **`logger.log(message, properties?, LogLevel.Warn)`** or **`logger.warn(message, properties?)`** - For expected issues, validation failures
+- **`logger.warn(message, properties?)`** - For expected issues, validation failures
   - User input validation errors
   - "Not found" scenarios
   - Expected business logic conditions
@@ -92,10 +92,9 @@ logger.warn("Warning condition");
 **Examples:**
 
 ```typescript
-// ✅ Validation error (expected) - use logger.warn or logger.log with LogLevel.Warn
+// ✅ Validation error (expected) - use logger.warn
 if (!email || !isValidEmail(email)) {
   logger.warn("Invalid email provided", { field: "email" });
-  // Or: logger.log("Invalid email provided", { field: "email" }, LogLevel.Warn);
   return { error: "Please provide a valid email" };
 }
 
@@ -327,7 +326,7 @@ logger.event("CachePerformance", { cache: "redis" }, { hitRate: 0.87 });
 
 ### 1. `logger.error(error, properties?)`
 
-**Use when:** Unexpected errors and failures (NOT validation errors - use `logger.log(..., "warn")` for those)
+**Use when:** Unexpected errors and failures (NOT validation errors - use `logger.warn(...)` for those)
 
 ```typescript
 try {
@@ -358,18 +357,19 @@ logger.warn("Cache miss");
 logger.debug("Debug checkpoint");
 ```
 
-### 2a-c. Convenience Methods (shortcuts for common levels)
+### 2a-c. Convenience Methods (severity-specific traces)
 
-**Use when:** You want cleaner syntax without passing the level parameter
+**Use when:** You need a non-Info severity. `logger.log` always emits Info; for
+Debug and Warn use the convenience methods directly.
 
 ```typescript
-// Equivalent to logger.log(message, properties, LogLevel.Debug)
+// Severity 0 — Verbose / Debug
 logger.debug("Debug checkpoint", { step: 1 });
 
-// Equivalent to logger.log(message, properties, LogLevel.Info)
+// Severity 1 — Info (same severity as logger.log)
 logger.info("User logged in", { userId: "123" });
 
-// Equivalent to logger.log(message, properties, LogLevel.Warn)
+// Severity 2 — Warning
 logger.warn("Cache miss", { key: "user:123" });
 ```
 
@@ -1071,7 +1071,7 @@ export async function GET(request: NextRequest) {
 2. **User-Friendly Messages**: Return clear, actionable error messages to users
 3. **Detailed Logging**: Log technical details to Application Insights for debugging
 4. **Appropriate Status Codes**: Use correct HTTP status codes (400, 404, 503, 500)
-5. **Severity Levels**: Use `logger.log(..., "warn")` for client errors, `logger.error()` for server errors
+5. **Severity Levels**: Use `logger.warn(...)` for client errors, `logger.error()` for server errors
 6. **Context Information**: Include relevant metadata (endpoint, operation, userId) in all logs
 
 ### Dependency Tracking with Error Handling (External APIs)
@@ -1434,7 +1434,7 @@ function UserProfileForm() {
 1. **User-Facing Error Messages**: Display clear, actionable messages to users
 2. **Technical Logging**: Track detailed error information in Application Insights
 3. **Error Handling Strategy**:
-   - **Validation errors** (expected): Use `logger.log(..., "warn")` - not exceptional
+   - **Validation errors** (expected): Use `logger.warn(...)` - not exceptional
    - **Network errors** (unexpected): Use `logger.error()` - something went wrong
    - **Critical errors** (unexpected): Use `logger.critical()`
 4. **Error Context**: Include component name, action, error type, and relevant metadata
@@ -1525,7 +1525,7 @@ Use appropriate severity levels with `logger.log()`, `logger.error()`, and `logg
    - `503 Service Unavailable` - Database or external service failures
 
 4. **Log Severity Guidelines**
-   - Use `logger.log(..., "warn")` for expected/client errors (validation, not found)
+   - Use `logger.warn(...)` for expected/client errors (validation, not found)
    - Use `logger.error()` for unexpected errors (database, external API failures)
    - Use `logger.critical()` for critical failures requiring immediate attention
    - Include `errorType` in metadata for easier filtering
