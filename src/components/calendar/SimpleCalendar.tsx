@@ -214,7 +214,7 @@ export function SimpleCalendar() {
             className="text-muted-foreground text-sm"
             data-testid="calendar-date-range"
           >
-            {rangeText("month", selectedDate)}
+            {rangeText("month", selectedDate, weekStartDay)}
           </p>
         </div>
         <div className="flex items-center gap-2">

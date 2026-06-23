@@ -12,14 +12,7 @@ import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  addDays,
-  endOfWeek,
-  format,
-  isSameWeek,
-  startOfWeek,
-  subWeeks,
-} from "date-fns";
+import { addDays, isSameWeek, startOfWeek, subWeeks } from "date-fns";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WeekCalendar } from "../WeekCalendar";
 

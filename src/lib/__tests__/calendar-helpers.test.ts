@@ -46,7 +46,7 @@ describe("rangeText", () => {
 
   it("returns correct range for month view", () => {
     const result = rangeText("month", testDate, WEEK_STARTS_ON);
-    expect(result).toBe("Mar 1, 2024 - Mar 31, 2024");
+    expect(result).toBe("Mar 1, 2024 – Mar 31, 2024");
   });
 
   it("returns correct range for week view", () => {
@@ -68,7 +68,7 @@ describe("rangeText", () => {
 
   it("returns correct range for year view", () => {
     const result = rangeText("year", testDate, WEEK_STARTS_ON);
-    expect(result).toBe("Jan 1, 2024 - Dec 31, 2024");
+    expect(result).toBe("Jan 1, 2024 – Dec 31, 2024");
   });
 
   it("returns single date for clock view (12-hour period of selected day)", () => {

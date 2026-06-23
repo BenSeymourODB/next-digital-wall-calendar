@@ -3,7 +3,11 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { useSlideDirection } from "@/hooks/use-slide-direction";
-import { getEventsForYear, parseEventStart, rangeText } from "@/lib/calendar-helpers";
+import {
+  getEventsForYear,
+  parseEventStart,
+  rangeText,
+} from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useRef } from "react";
@@ -180,6 +184,7 @@ export function YearCalendar() {
     events,
     isLoading,
     loadEventsForYear,
+    weekStartDay,
   } = useCalendar();
 
   const today = useDateNow();
@@ -266,7 +271,7 @@ export function YearCalendar() {
             className="text-muted-foreground text-sm"
             data-testid="year-calendar-date-range"
           >
-            {rangeText("year", selectedDate)}
+            {rangeText("year", selectedDate, weekStartDay)}
           </p>
         </div>
         <div className="flex items-center gap-2">
