@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as ClientSdk from "../appinsights-client";
 
 // Mock both telemetry SDKs so `logger`'s dynamic `import("./appinsights-*")`
-// resolves to a spied shim. We assert against the spy after letting the
-// dynamic-import microtask chain settle (see `waitForSpyCall` below).
+// resolves to a spied shim. The lambda wrappers below assert against the SDK
+// signature via `Parameters<typeof ClientSdk.X>`, so a future signature
+// change immediately breaks `pnpm check-types` here instead of slipping
+// through as untyped drift.
 const trackTrace = vi.fn();
 const trackException = vi.fn();
 const trackEvent = vi.fn();
@@ -10,10 +13,19 @@ const trackEvent = vi.fn();
 // The logger uses bare relative dynamic imports (`import("./appinsights-*")`),
 // so the mock specifier must match — vi.mock keys aren't normalized across
 // alias vs relative forms in dynamic-import resolution.
+//
+// The lambda wrappers (rather than a direct `{ trackTrace }` reference) are
+// load-bearing: `vi.mock` factories are hoisted to the top of the file, so a
+// direct reference would read `undefined` from the temporal dead zone of
+// `const trackTrace = ...`. Looking the spy up at call time defers the read
+// until after module initialization.
 vi.mock("../appinsights-client", () => ({
-  trackTrace: (...args: unknown[]) => trackTrace(...args),
-  trackException: (...args: unknown[]) => trackException(...args),
-  trackEvent: (...args: unknown[]) => trackEvent(...args),
+  trackTrace: (...args: Parameters<typeof ClientSdk.trackTrace>) =>
+    trackTrace(...args),
+  trackException: (...args: Parameters<typeof ClientSdk.trackException>) =>
+    trackException(...args),
+  trackEvent: (...args: Parameters<typeof ClientSdk.trackEvent>) =>
+    trackEvent(...args),
   flush: vi.fn(),
   setAuthenticatedUserContext: vi.fn(),
   clearAuthenticatedUserContext: vi.fn(),
@@ -40,12 +52,18 @@ async function waitForSpyCall(spy: ReturnType<typeof vi.fn>): Promise<void> {
   });
 }
 
+// `Logger` chooses its SDK based on `typeof window === "undefined"` at module
+// load. We stub `window` here so the client branch is reachable regardless of
+// the vitest environment chosen for this file — observed on this host that
+// the `jsdom` env from `vitest.config.ts` doesn't always activate, leaving
+// `typeof window === "undefined"` and routing the logger at the server SDK.
+vi.stubGlobal("window", globalThis);
+
 describe("logger (#448)", () => {
   // The logger picks `appinsights-client` whenever `typeof window !== "undefined"`,
-  // which is true under vitest's default jsdom env. All assertions here exercise
-  // that client path. The server path is structurally identical (same dispatch,
-  // different SDK module) and is exercised by every API-route test that mocks
-  // `@/lib/logger`, so an env-swap is not needed.
+  // which is pinned by `vi.stubGlobal("window", …)` above. The mirrored server
+  // branch is covered by the sibling `logger.server.test.ts` (runs under
+  // `@vitest-environment node`, no stub).
   beforeEach(() => {
     trackTrace.mockClear();
     trackException.mockClear();
@@ -188,10 +206,18 @@ describe("logger (#448)", () => {
       const { logger, LogLevel } = await import("../logger");
       // @ts-expect-error - level positional argument was removed; use logger.warn()
       logger.log("cache miss", LogLevel.Warn);
-      // The @ts-expect-error directive IS the assertion. Wait for the spy to
-      // confirm the runtime path still wired through (it now treats the
-      // second arg as properties, since LogLevel is a string enum).
       await waitForSpyCall(trackTrace);
+      // Runtime fallout if someone bypasses the type check with a cast: the
+      // string `"warn"` reaches `{ ...properties }`, which spreads the four
+      // indexed characters into the merged payload. Pinning this behaviour
+      // here so a future migration to a stricter runtime guard is an
+      // intentional test-update, not a silent semantics change.
+      expect(trackTrace).toHaveBeenCalledWith("cache miss", 1, {
+        "0": "w",
+        "1": "a",
+        "2": "r",
+        "3": "n",
+      });
     });
 
     it("rejects (message, properties, level) — the 3-arg overload is gone", async () => {
@@ -199,6 +225,11 @@ describe("logger (#448)", () => {
       // @ts-expect-error - third positional argument was removed
       logger.log("with props and level", { userId: "u1" }, LogLevel.Warn);
       await waitForSpyCall(trackTrace);
+      // The third argument is dropped silently at runtime — properties win,
+      // severity stays Info. No level escalation possible via this path.
+      expect(trackTrace).toHaveBeenCalledWith("with props and level", 1, {
+        userId: "u1",
+      });
     });
   });
 });

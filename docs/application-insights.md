@@ -564,10 +564,8 @@ The logger exports helpful type aliases for better TypeScript experience:
 import {
   LogLevel,
   // Record<string, number>
-  type LogLevelInput,
-  // LogLevel | "debug" | "info" | "warn"
-  // Record<string, string | number | boolean>
   type Measurements,
+  // Record<string, string | number | boolean>
   type Properties,
   logger,
 } from "@/lib/logger";
@@ -577,9 +575,21 @@ function trackUserAction(action: string, props: Properties, metrics?: Measuremen
   logger.event(action, props, metrics);
 }
 
-// Type-safe log level parameter
-function conditionalLog(message: string, level: LogLevelInput) {
-  logger.log(message, level);
+// Severity is chosen by picking the matching method on the logger —
+// `logger.log` always emits Info, and `LogLevel` is exported only for
+// callers that need to thread a level through their own code.
+function conditionalLog(message: string, level: LogLevel, properties?: Properties) {
+  switch (level) {
+    case LogLevel.Debug:
+      logger.debug(message, properties);
+      break;
+    case LogLevel.Warn:
+      logger.warn(message, properties);
+      break;
+    case LogLevel.Info:
+    default:
+      logger.log(message, properties);
+  }
 }
 ```
 
