@@ -7,7 +7,11 @@ import {
   loadScheduleConfig,
   saveScheduleConfig,
 } from "@/lib/scheduler/schedule-storage";
-import { emitUserSettingsChange } from "@/lib/user-settings-bus";
+import {
+  type UserSettingsPartial,
+  emitUserSettingsChange,
+  subscribeUserSettings,
+} from "@/lib/user-settings-bus";
 import type { UserSettingsData } from "@/types/user-settings";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -75,6 +79,27 @@ export function SettingsForm({
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
+  // #424 — subscribe to the in-tab user-settings bus so a write from
+  // any other surface (calendar settings popover, tasks settings panel,
+  // sync fixtures) merges into the form's local state. Without this
+  // subscription the form was a publisher-only consumer and would drift
+  // from `useUserSettings.settings` the moment a second writer landed in
+  // the same tab — `AccountSection`'s `dateFormat` prop is the most
+  // visible drift today.
+  //
+  // The merge is a no-op for the form's own emits (the values are
+  // already present in `prev`), so the round-trip from
+  // `updateSettings → emitUserSettingsChange → subscribe → setSettings`
+  // costs at most one extra render and never re-PUTs. Mirrors the
+  // pattern at `useUserSettings.ts:177-185`.
+  useEffect(() => {
+    return subscribeUserSettings((partial) => {
+      const picked = pickSettingsBusFields(partial);
+      if (Object.keys(picked).length === 0) return;
+      setSettings((prev) => ({ ...prev, ...picked }));
+    });
+  }, []);
 
   // Load transition config from localStorage on mount
   useEffect(() => {
@@ -322,4 +347,23 @@ export function SettingsForm({
       />
     </div>
   );
+}
+
+// Trim `undefined` values off a bus partial. The bus payload type is
+// `Partial<UserSettingsData>`, which structurally matches the form's
+// `settings` shape — no key-level value narrowing is needed (unlike
+// `useUserSettings.pickCalendarFields`, which guards against the
+// `/api/settings` GET shipping rogue values from a stale DB row). The
+// only thing we strip is explicit `undefined`s, since spreading them
+// into local state would overwrite valid fields with `undefined`.
+function pickSettingsBusFields(
+  partial: UserSettingsPartial
+): Partial<UserSettingsData> {
+  const picked: Partial<UserSettingsData> = {};
+  for (const [key, value] of Object.entries(partial)) {
+    if (value !== undefined) {
+      (picked as Record<string, unknown>)[key] = value;
+    }
+  }
+  return picked;
 }
