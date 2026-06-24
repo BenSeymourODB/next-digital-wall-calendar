@@ -270,14 +270,84 @@ export async function requireGoogleTasksAccessToken(
 }
 
 /**
- * Custom error class for auth-related errors
+ * Custom error class for auth-related errors.
+ *
+ * The optional `requiresReauth` flag lets callers signal to the route's
+ * catch-block whether a "re-authenticate" CTA should be surfaced. When
+ * unset, the existing throw-sites are unchanged — the catch-block falls
+ * back to a `status === 401 || 403` inference. When set explicitly, it
+ * lets the helper distinguish a plain unauthenticated request
+ * (`requiresReauth: false`, no CTA) from a session that needs refreshing
+ * (`requiresReauth: true`).
  */
 export class AuthError extends Error {
   status: number;
+  requiresReauth?: boolean;
 
-  constructor(message: string, status: number = 401) {
+  constructor(
+    message: string,
+    status: number = 401,
+    options?: { requiresReauth?: boolean }
+  ) {
     super(message);
     this.name = "AuthError";
     this.status = status;
+    this.requiresReauth = options?.requiresReauth;
   }
+}
+
+/**
+ * Authenticated-session pre-flight shared by every API route that needs
+ * a signed-in user. Collapses the
+ *
+ *   getSession → !user check → RefreshTokenError check
+ *
+ * three-step preamble (4–10 duplicated lines per route) into one call
+ * that throws structured `AuthError`s carrying the right `requiresReauth`
+ * flag for each failure mode:
+ *
+ *   - no session / no `user.id` → 401, `requiresReauth: false`
+ *   - `session.error === "RefreshTokenError"` → 401, `requiresReauth: true`
+ *
+ * Routes that also need a Google Tasks access token should call
+ * {@link requireGoogleTasksSession} instead, which composes this helper
+ * with {@link requireGoogleTasksAccessToken}.
+ */
+export async function requireAuthenticatedSession(): Promise<{
+  session: Session & { user: { id: string } };
+}> {
+  const session = await getSession();
+  if (!session?.user?.id) {
+    throw new AuthError("Unauthorized", 401, { requiresReauth: false });
+  }
+  if (session.error === "RefreshTokenError") {
+    throw new AuthError("Session expired. Please sign in again.", 401, {
+      requiresReauth: true,
+    });
+  }
+  return { session: session as Session & { user: { id: string } } };
+}
+
+/**
+ * Pre-flight for Google Tasks API routes. Resolves a signed-in session
+ * (via {@link requireAuthenticatedSession}) and the user's decrypted
+ * Google Tasks access token (via {@link requireGoogleTasksAccessToken})
+ * in a single call.
+ *
+ * Failure modes (all `AuthError`):
+ * - 401 `requiresReauth: false` — no session
+ * - 401 `requiresReauth: true` — session has a refresh-token error
+ * - 403 — Google Tasks scope missing from stored grant
+ * - 401 — no Google account linked, or stored token undecryptable
+ *
+ * One Prisma query per call — `getSession()` is the only auth round-trip
+ * outside it.
+ */
+export async function requireGoogleTasksSession(): Promise<{
+  session: Session & { user: { id: string } };
+  accessToken: string;
+}> {
+  const { session } = await requireAuthenticatedSession();
+  const accessToken = await requireGoogleTasksAccessToken(session);
+  return { session, accessToken };
 }
