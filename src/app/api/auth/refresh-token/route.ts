@@ -17,7 +17,14 @@ export async function POST(request: NextRequest) {
   try {
     const { refreshToken } = await request.json();
 
-    if (!refreshToken) {
+    // `request.json()` returns `any`, so refreshToken is unconstrained at this
+    // point. Rejecting falsy *and* non-string values keeps the route's 400
+    // contract honest: pre-#285 the route forwarded malformed input (e.g. a
+    // number) to Google, which coerced it via URLSearchParams and replied
+    // `invalid_grant` → 401. The new singleflight path hashes the token via
+    // `createHash().update()`, which throws ERR_INVALID_ARG_TYPE on a non-
+    // string and would otherwise surface as a 500 — a silent contract drift.
+    if (!refreshToken || typeof refreshToken !== "string") {
       return NextResponse.json(
         { error: "Refresh token is required" },
         { status: 400 }

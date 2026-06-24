@@ -90,6 +90,26 @@ describe("POST /api/auth/refresh-token", () => {
     expect(refreshGoogleAccessToken).not.toHaveBeenCalled();
   });
 
+  // Regression for the #285 review: `request.json()` returns `any`, so a
+  // truthy non-string body (`{ refreshToken: 123 }`) would otherwise slip past
+  // the falsy guard and crash inside `createHash().update()` (ERR_INVALID_
+  // ARG_TYPE), surfacing as a 500. Pre-#285 the same input round-tripped to
+  // Google as `"123"` and came back 401. The hardened guard restores a 400
+  // for malformed input without paying for a Google round-trip.
+  it("returns 400 when refreshToken is a non-string truthy value", async () => {
+    const request = createMockRequest("/api/auth/refresh-token", {
+      method: "POST",
+      body: { refreshToken: 123 },
+    });
+
+    const response = await POST(request);
+    const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+    expect(status).toBe(400);
+    expect(data.error).toBe("Refresh token is required");
+    expect(refreshGoogleAccessToken).not.toHaveBeenCalled();
+  });
+
   it("returns 500 when GOOGLE_CLIENT_ID is missing (does NOT fall back to NEXT_PUBLIC_GOOGLE_CLIENT_ID)", async () => {
     vi.stubEnv("GOOGLE_CLIENT_ID", undefined);
     // The public var is still set; if the route falls back to it the test

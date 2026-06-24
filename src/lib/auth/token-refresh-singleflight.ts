@@ -107,6 +107,18 @@ export interface TokenRefreshDeps {
   ) => Promise<GoogleRefreshedTokens>;
 }
 
+/**
+ * **Invariant — credentials of joining callers are ignored.**
+ *
+ * Only `refreshToken` participates in the cache key. A second caller that
+ * arrives with the same token but different `clientId`/`clientSecret` (or a
+ * different injected `deps.refreshGoogleAccessToken`) joins the in-flight
+ * promise and silently uses the FIRST caller's arguments. In production this
+ * is benign because both callers read `clientId`/`clientSecret` from the same
+ * `process.env` values, so the args are always identical. If a future caller
+ * could legitimately pass different credentials for the same token (today
+ * none can), the key would need to include them.
+ */
 export function getOrStartTokenRefresh(
   refreshToken: string,
   clientId: string,

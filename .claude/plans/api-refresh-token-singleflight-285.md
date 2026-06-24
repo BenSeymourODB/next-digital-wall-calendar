@@ -12,11 +12,11 @@ This issue closes the gap.
 
 ## Acceptance criteria (from #285)
 
-- [ ] Concurrent calls to `/api/auth/refresh-token` for the same user dedupe to a
+- [x] Concurrent calls to `/api/auth/refresh-token` for the same user dedupe to a
       single upstream Google call.
-- [ ] Failure modes (unknown token, revoked token) handled gracefully — current
+- [x] Failure modes (unknown token, revoked token) handled gracefully — current
       route behaviour preserved bit-for-bit.
-- [ ] Unit tests cover concurrent + failure paths.
+- [x] Unit tests cover concurrent + failure paths.
 
 ## Key choice — what to key the singleflight on
 
@@ -174,10 +174,11 @@ gate/deferred pattern. Cases:
    wrapper case to prove the same `.finally()` discipline.
 7. **Test-only reset clears the cache.**
 
-### `src/app/api/auth/__tests__/refresh-token.route.test.ts` (NEW)
+### `src/app/api/auth/refresh-token/__tests__/route.test.ts` (extend existing)
 
-Integration test for the route at the HTTP boundary. Existing tests for this
-route don't appear to exist; the new test file is small but locks the contract:
+Integration tests at the HTTP boundary. The file already exists from PR #275
+(GOOGLE_CLIENT_ID server-only regression); extend it with the singleflight
+cases below:
 
 1. **400 when `refreshToken` is missing** — route validation preserved.
 2. **500 when OAuth env credentials are missing** — preserved.
