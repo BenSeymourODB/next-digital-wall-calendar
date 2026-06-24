@@ -13,10 +13,10 @@ import type { CalendarColorMapping } from "@/lib/calendar-storage";
 import {
   type GoogleCalendarEvent,
   type UserCalendar,
+  canWriteToCalendar,
   normalizeCalendarListEntry,
   normalizeFetchedEvent,
-} from "@/lib/google-calendar";
-import { canWriteToCalendar } from "@/lib/google-calendar-mappers";
+} from "@/lib/google-calendar-mappers";
 import { describe, expect, it } from "vitest";
 
 describe("normalizeFetchedEvent", () => {

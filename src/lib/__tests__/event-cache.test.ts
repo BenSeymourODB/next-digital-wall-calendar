@@ -6,7 +6,7 @@ import {
   IndexedDBEventStore,
   selectEventStore,
 } from "@/lib/event-cache";
-import type { GoogleCalendarEvent } from "@/lib/google-calendar";
+import type { GoogleCalendarEvent } from "@/lib/google-calendar-mappers";
 import { logger } from "@/lib/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
