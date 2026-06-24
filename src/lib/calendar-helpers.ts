@@ -1,9 +1,4 @@
-import type {
-  ICalendarCell,
-  IEvent,
-  TCalendarView,
-  TEventColor,
-} from "@/types/calendar";
+import type { IEvent, TCalendarView, TEventColor } from "@/types/calendar";
 import type { Day } from "date-fns";
 import {
   addDays,
@@ -18,9 +13,6 @@ import {
   endOfYear,
   format,
   isSameDay,
-  isSameMonth,
-  isSameWeek,
-  isSameYear,
   isValid,
   parseISO,
   startOfDay,
@@ -179,25 +171,6 @@ export function navigateDate(
   return operations[view](date, 1);
 }
 
-export function getEventsCount(
-  events: IEvent[],
-  date: Date,
-  view: TCalendarView,
-  weekStartsOn: Day
-): number {
-  const compareFns: Record<TCalendarView, (d1: Date, d2: Date) => boolean> = {
-    day: isSameDay,
-    week: (d1, d2) => isSameWeek(d1, d2, { weekStartsOn }),
-    month: isSameMonth,
-    year: isSameYear,
-    clock: isSameDay,
-  };
-
-  const compareFn = compareFns[view];
-  return events.filter((event) => compareFn(parseISO(event.startDate), date))
-    .length;
-}
-
 export function groupEvents(dayEvents: IEvent[]): IEvent[][] {
   const sortedEvents = dayEvents.sort(
     (a, b) => parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime()
@@ -223,44 +196,6 @@ export function groupEvents(dayEvents: IEvent[]): IEvent[][] {
   }
 
   return groups;
-}
-
-export function getCalendarCells(
-  selectedDate: Date,
-  weekStartsOn: Day
-): ICalendarCell[] {
-  const year = selectedDate.getFullYear();
-  const month = selectedDate.getMonth();
-
-  const daysInMonth = endOfMonth(selectedDate).getDate(); // Faster than new Date(year, month + 1, 0)
-  // Offset of the 1st relative to weekStartsOn (0..6).
-  const firstDayOffset =
-    (startOfMonth(selectedDate).getDay() - weekStartsOn + 7) % 7;
-  const daysInPrevMonth = endOfMonth(new Date(year, month - 1)).getDate();
-  const totalDays = firstDayOffset + daysInMonth;
-
-  const prevMonthCells = Array.from({ length: firstDayOffset }, (_, i) => ({
-    day: daysInPrevMonth - firstDayOffset + i + 1,
-    currentMonth: false,
-    date: new Date(year, month - 1, daysInPrevMonth - firstDayOffset + i + 1),
-  }));
-
-  const currentMonthCells = Array.from({ length: daysInMonth }, (_, i) => ({
-    day: i + 1,
-    currentMonth: true,
-    date: new Date(year, month, i + 1),
-  }));
-
-  const nextMonthCells = Array.from(
-    { length: (7 - (totalDays % 7)) % 7 },
-    (_, i) => ({
-      day: i + 1,
-      currentMonth: false,
-      date: new Date(year, month + 1, i + 1),
-    })
-  );
-
-  return [...prevMonthCells, ...currentMonthCells, ...nextMonthCells];
 }
 
 export function calculateMonthEventPositions(
@@ -448,22 +383,6 @@ export const getEventsForWeek = (
   });
 };
 
-export const getEventsForMonth = (events: IEvent[], date: Date): IEvent[] => {
-  const startOfMonthDate = startOfMonth(date);
-  const endOfMonthDate = endOfMonth(date);
-
-  return events.filter((event) => {
-    const eventStart = parseEventStart(event);
-    const eventEnd = parseEventEnd(event);
-    return (
-      isValid(eventStart) &&
-      isValid(eventEnd) &&
-      eventStart <= endOfMonthDate &&
-      eventEnd >= startOfMonthDate
-    );
-  });
-};
-
 export const getEventsForYear = (events: IEvent[], date: Date): IEvent[] => {
   if (!events || !Array.isArray(events) || !isValid(date)) return [];
 
@@ -508,27 +427,6 @@ export const getBgColor = (color: string): string => {
     purple: "bg-purple-400 dark:bg-purple-600",
   };
   return colorClasses[color as TEventColor] || "";
-};
-
-export const getEventsByMode = (
-  events: IEvent[],
-  view: TCalendarView,
-  selectedDate: Date,
-  weekStartsOn: Day
-) => {
-  switch (view) {
-    case "day":
-    case "clock":
-      return getEventsForDay(events, selectedDate);
-    case "week":
-      return getEventsForWeek(events, selectedDate, weekStartsOn);
-    case "month":
-      return getEventsForMonth(events, selectedDate);
-    case "year":
-      return getEventsForYear(events, selectedDate);
-    default:
-      return [];
-  }
 };
 
 export const toCapitalize = (str: string): string => {
