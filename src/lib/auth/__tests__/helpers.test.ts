@@ -747,6 +747,23 @@ describe("auth helpers", () => {
       });
     });
 
+    it("throws AuthError(401, requiresReauth: false) when user.id is an empty string", async () => {
+      // user.id is typed `string` but JS can hand us an empty string through
+      // a malformed session. `!session?.user?.id` already treats "" as falsy;
+      // this pins that behavior so a future refactor can't loosen the guard
+      // by switching to a `user.id === undefined` check.
+      mockAuth.mockResolvedValue({
+        ...mockSession,
+        user: { ...mockSession.user, id: "" },
+      } as unknown as typeof mockSession);
+
+      await expect(requireAuthenticatedSession()).rejects.toMatchObject({
+        status: 401,
+        message: "Unauthorized",
+        requiresReauth: false,
+      });
+    });
+
     it("throws AuthError(401, requiresReauth: true) when session.error === RefreshTokenError", async () => {
       mockAuth.mockResolvedValue(mockSessionWithError);
 

@@ -309,6 +309,12 @@ export class AuthError extends Error {
  *   - no session / no `user.id` → 401, `requiresReauth: false`
  *   - `session.error === "RefreshTokenError"` → 401, `requiresReauth: true`
  *
+ * Guard order: the `user.id` check runs before the `RefreshTokenError`
+ * check, but in practice they never collide — the NextAuth session
+ * callback only sets `RefreshTokenError` on sessions that already have
+ * a populated `user.id` (it short-circuits when the user lookup fails),
+ * so a refresh-error session is always picked up by the second guard.
+ *
  * Routes that also need a Google Tasks access token should call
  * {@link requireGoogleTasksSession} instead, which composes this helper
  * with {@link requireGoogleTasksAccessToken}.
