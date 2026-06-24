@@ -489,6 +489,64 @@ describe("/api/calendar/events", () => {
         expect(data.events[1].calendarId).toBe("work@example.com");
       });
 
+      // Regression pin (#446 extraction): on a `[non-401, 401]` fan-out the
+      // pre-extraction handler interleaved per-calendar logging with the
+      // results loop, so the non-401 "Calendar fetch error" envelope was
+      // logged BEFORE the 401 "Google Calendar API auth error" envelope.
+      // An aggregator that early-returned on the first 401 would drop the
+      // non-401 log; this test pins the existing order so a future refactor
+      // can't silently flip it.
+      it("logs the non-401 'Calendar fetch error' before the 401 envelope and returns 401", async () => {
+        vi.mocked(getSession).mockResolvedValue(mockSession);
+        vi.mocked(getAccessToken).mockResolvedValue(
+          mockGoogleAccount.access_token!
+        );
+
+        // 404 is non-transient (per `isTransientHttpError`) so
+        // `fetchWithRetry` returns it untouched on the first call. 401 is
+        // also non-transient. With two mocks queued we get exactly one
+        // outbound fetch per calendar.
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            json: () =>
+              Promise.resolve({ error: { message: "calendar missing" } }),
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 401,
+            json: () =>
+              Promise.resolve({ error: { message: "token rejected" } }),
+          });
+
+        const request = createMockRequest(
+          "/api/calendar/events?calendarIds=cal-a,cal-b"
+        );
+        const response = await GET(request);
+
+        expect(response.status).toBe(401);
+        const data = (await response.json()) as ApiErrorResponse;
+        expect(data.error).toBe(
+          "Google authentication failed. Please sign in again."
+        );
+        expect(data.requiresReauth).toBe(true);
+
+        const errorLogs = vi.mocked(logger.error).mock.calls;
+        const messages = errorLogs.map(([err]) => (err as Error).message ?? "");
+        const transportIdx = messages.indexOf("Calendar fetch error");
+        const authIdx = messages.indexOf("Google Calendar API auth error");
+        expect(transportIdx).toBeGreaterThanOrEqual(0);
+        expect(authIdx).toBeGreaterThan(transportIdx);
+        // The non-401 envelope carries the cal-a context.
+        expect(errorLogs[transportIdx][1]).toMatchObject({
+          calendarId: "cal-a",
+          errorStatus: 404,
+        });
+        // The 401 envelope carries cal-b.
+        expect(errorLogs[authIdx][1]).toMatchObject({ calendarId: "cal-b" });
+      });
+
       it("handles partial failure when one calendar fails", async () => {
         vi.mocked(getSession).mockResolvedValue(mockSession);
         vi.mocked(getAccessToken).mockResolvedValue(
