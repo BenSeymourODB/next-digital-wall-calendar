@@ -1,129 +1,23 @@
 /**
- * Ambient type declarations for the Google Calendar API v3 client (`gapi`)
- * and Google Identity Services (`google.accounts.oauth2`).
+ * Ambient augmentation of `gapi.client.calendar` for the Google Calendar API
+ * v3 surface this app reads at the server-route trust boundary.
  *
- * These are **custom partial type definitions** maintained by this project,
- * because:
- *
- *   - `@types/gapi` covers the core loader but does not include calendar-
- *     specific interfaces.
- *   - `@types/gapi.auth2` is for the legacy auth flow we no longer use.
- *   - There is no official DT package for `google.accounts` Identity Services
- *     at the time of writing.
+ * `@types/gapi` provides the core `gapi` / `gapi.client` namespaces; the
+ * declarations below extend `gapi.client.calendar` with the typed shapes the
+ * `src/app/api/calendar/events/**` routes cast Google's wire payload into.
  *
  * Field definitions are modelled on the public Google documentation:
- *   - Events resource:         https://developers.google.com/workspace/calendar/api/v3/reference/events
- *   - CalendarList resource:   https://developers.google.com/workspace/calendar/api/v3/reference/calendarList
- *   - Events.list parameters:  https://developers.google.com/workspace/calendar/api/v3/reference/events/list
- *   - Identity Services token: https://developers.google.com/identity/oauth2/web/reference/js-reference
+ *   - Events resource:        https://developers.google.com/workspace/calendar/api/v3/reference/events
+ *   - CalendarList resource:  https://developers.google.com/workspace/calendar/api/v3/reference/calendarList
+ *   - Events.list parameters: https://developers.google.com/workspace/calendar/api/v3/reference/events/list
  *
  * They are partial by design — we only declare fields the app uses or is
  * likely to use. Index signatures (`[key: string]: unknown`) are intentionally
  * avoided so the compiler catches typos. Extend as new fields are consumed.
+ *
+ * Replacing these casts with Zod-validated mapper types is tracked in #403;
+ * once that lands, this file can be deleted alongside `@types/gapi`.
  */
-
-/**
- * Google Identity Services (GIS) types for the `google.accounts.oauth2`
- * namespace. Loaded via https://accounts.google.com/gsi/client.
- */
-declare namespace google.accounts.oauth2 {
-  /** Successful or failed token response delivered to the callback. */
-  interface TokenResponse {
-    access_token: string;
-    /** Token lifetime in seconds (Google returns this as a string in some clients). */
-    expires_in: number;
-    /** Space-delimited list of scopes granted. */
-    scope: string;
-    token_type: string;
-    /**
-     * Refresh token. Only provided on initial consent (`prompt: "consent"`)
-     * and when `access_type=offline` is requested server-side.
-     */
-    refresh_token?: string;
-    /** Present when an error prevented the token from being issued. */
-    error?: string;
-    error_description?: string;
-    error_uri?: string;
-    /** State value echoed back if supplied in the request. */
-    state?: string;
-  }
-
-  /** A token client used to request OAuth2 access tokens. */
-  interface TokenClient {
-    callback: (response: TokenResponse) => void;
-    requestAccessToken: (overrideConfig?: {
-      prompt?: "" | "none" | "consent" | "select_account";
-      hint?: string;
-      state?: string;
-      /** Override scopes for this specific request. */
-      scope?: string;
-      include_granted_scopes?: boolean;
-      enable_granular_consent?: boolean;
-    }) => void;
-  }
-
-  interface TokenClientConfig {
-    client_id: string;
-    scope: string;
-    /**
-     * Either a callback function or an empty string placeholder. When empty,
-     * the caller must assign `tokenClient.callback` per request.
-     */
-    callback: string | ((response: TokenResponse) => void);
-    prompt?: "" | "none" | "consent" | "select_account";
-    hint?: string;
-    state?: string;
-    hosted_domain?: string;
-    include_granted_scopes?: boolean;
-    enable_granular_consent?: boolean;
-    error_callback?: (error: { type: string; message?: string }) => void;
-  }
-
-  function initTokenClient(config: TokenClientConfig): TokenClient;
-  function revoke(token: string, done?: () => void): void;
-  function hasGrantedAnyScope(
-    tokenResponse: TokenResponse,
-    ...scopes: string[]
-  ): boolean;
-  function hasGrantedAllScopes(
-    tokenResponse: TokenResponse,
-    ...scopes: string[]
-  ): boolean;
-}
-
-/**
- * `gapi` loader and client configuration.
- */
-declare namespace gapi {
-  function load(
-    apiName: string,
-    options: { callback: () => void; onerror?: (err?: unknown) => void }
-  ): void;
-
-  namespace client {
-    /**
-     * Initialise the gapi client. `apiKey` and `discoveryDocs` are the
-     * common pair; `clientId`/`scope` are optional legacy parameters that
-     * some older integrations still pass.
-     */
-    function init(config: {
-      apiKey?: string;
-      discoveryDocs?: string[];
-      clientId?: string;
-      scope?: string;
-    }): Promise<void>;
-
-    function getToken(): {
-      access_token: string;
-      expires_in?: number;
-      expires_at?: number;
-      scope?: string;
-      token_type?: string;
-    } | null;
-
-    function setToken(token: { access_token: string } | null): void;
-  }
-}
 
 /**
  * Google Calendar API v3 resources accessed through `gapi.client.calendar`.

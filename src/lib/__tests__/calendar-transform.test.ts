@@ -1,5 +1,5 @@
 import type { CalendarColorMapping } from "@/lib/calendar-storage";
-import type { GoogleCalendarEvent } from "@/lib/google-calendar";
+import type { GoogleCalendarEvent } from "@/lib/google-calendar-mappers";
 import { describe, expect, it } from "vitest";
 import { transformGoogleEvent } from "../calendar-transform";
 

@@ -27,7 +27,7 @@ import {
   transformGoogleEvent,
 } from "@/lib/calendar-transform";
 import { resolveTransitionDurationMs } from "@/lib/calendar/transition-speed";
-import type { GoogleCalendarEvent } from "@/lib/google-calendar";
+import type { GoogleCalendarEvent } from "@/lib/google-calendar-mappers";
 import { logger } from "@/lib/logger";
 import type {
   ICalendarInfo,

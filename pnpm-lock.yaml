@@ -104,9 +104,6 @@ importers:
       '@types/gapi':
         specifier: ^0.0.47
         version: 0.0.47
-      '@types/gapi.auth2':
-        specifier: ^0.0.61
-        version: 0.0.61
       applicationinsights:
         specifier: ^3.14.0
         version: 3.14.0
@@ -128,9 +125,6 @@ importers:
       embla-carousel-react:
         specifier: ^8.6.0
         version: 8.6.0(react@19.2.4)
-      gapi-script:
-        specifier: ^1.2.0
-        version: 1.2.0
       input-otp:
         specifier: ^1.4.2
         version: 1.4.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -2725,9 +2719,6 @@ packages:
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
-  '@types/gapi.auth2@0.0.61':
-    resolution: {integrity: sha512-cn+omiRoE/LTxZncnVl1QhcLggOT0sJ8Yz9RXIsw5R2zLyRf+0o6kaZzJ/Gr3Sxz6i7J/+PbXAF8yeZipCaiWw==}
-
   '@types/gapi@0.0.47':
     resolution: {integrity: sha512-/ZsLuq6BffMgbKMtZyDZ8vwQvTyKhKQ1G2K6VyWCgtHHhfSSXbk4+4JwImZiTjWNXfI2q1ZStAwFFHSkNoTkHA==}
 
@@ -3994,9 +3985,6 @@ packages:
 
   fzf@0.5.2:
     resolution: {integrity: sha512-Tt4kuxLXFKHy8KT40zwsUPUkg1CrsgY25FxA2U/j/0WgEDCk3ddc/zLTCCcbSHX9FcKtLuVaDGtGE/STWC+j3Q==}
-
-  gapi-script@1.2.0:
-    resolution: {integrity: sha512-NKTVKiIwFdkO1j1EzcrWu/Pz7gsl1GmBmgh+qhuV2Ytls04W/Eg5aiBL91SCiBM9lU0PMu7p1hTVxhh1rPT5Lw==}
 
   generate-function@2.3.1:
     resolution: {integrity: sha512-eeB5GfMNeevm/GRYq20ShmsaGcmI81kIX2K9XQx5miC8KdHaC6Jm0qQ8ZNeGOi7wYB8OsdxKs+Y2oVuTFuVwKQ==}
@@ -8844,10 +8832,6 @@ snapshots:
 
   '@types/estree@1.0.9': {}
 
-  '@types/gapi.auth2@0.0.61':
-    dependencies:
-      '@types/gapi': 0.0.47
-
   '@types/gapi@0.0.47': {}
 
   '@types/json-schema@7.0.15': {}
@@ -10392,8 +10376,6 @@ snapshots:
   fuzzysort@3.1.0: {}
 
   fzf@0.5.2: {}
-
-  gapi-script@1.2.0: {}
 
   generate-function@2.3.1:
     dependencies:

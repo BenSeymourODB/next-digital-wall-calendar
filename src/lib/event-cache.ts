@@ -15,7 +15,7 @@
  * Writes use upsert semantics (`put` keyed by event id) — there is no
  * `clear+rewrite` window during which the cache is empty.
  */
-import type { GoogleCalendarEvent } from "@/lib/google-calendar";
+import type { GoogleCalendarEvent } from "@/lib/google-calendar-mappers";
 import { logger } from "@/lib/logger";
 
 export const EVENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;

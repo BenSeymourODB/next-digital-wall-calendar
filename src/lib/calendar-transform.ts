@@ -10,7 +10,7 @@
  * - User-attribution fallback ladder for shared-calendar events (#307)
  */
 import type { CalendarColorMapping } from "@/lib/calendar-storage";
-import type { GoogleCalendarEvent } from "@/lib/google-calendar";
+import type { GoogleCalendarEvent } from "@/lib/google-calendar-mappers";
 import type { IEvent, TEventColor } from "@/types/calendar";
 
 /**

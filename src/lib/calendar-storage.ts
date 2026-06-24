@@ -6,9 +6,26 @@
  */
 import { logger } from "@/lib/logger";
 import type { TEventColor } from "@/types/calendar";
-import type { GoogleCalendarAccount } from "./google-calendar";
 
 export { eventCache } from "./event-cache";
+
+/**
+ * Legacy client-side Google Calendar account shape. Once carried OAuth tokens
+ * for the browser-side GIS flow that was retired in PR #27; the persistence
+ * helpers below (saveAccounts / loadAccounts / addAccount / removeAccount /
+ * getAccount / updateAccount / updateAccountCalendars) have no callers and
+ * are tracked for removal in #465.
+ */
+export interface GoogleCalendarAccount {
+  id: string;
+  email: string;
+  name: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+  /** List of calendar IDs to fetch from this account. */
+  calendarIds: string[];
+}
 
 const STORAGE_KEYS = {
   ACCOUNTS: "calendar_accounts",

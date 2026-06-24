@@ -2,13 +2,12 @@
  * Pure mappers and canonical domain types for Google Calendar API responses.
  *
  * This module is deliberately **universal**: it has no dependencies on
- * `window`, `gapi` at runtime, or any browser global, so both server routes
- * (Next.js route handlers in `src/app/api/calendar/**`) and the client-side
- * `src/lib/google-calendar.ts` module can import from it safely.
+ * `window`, `gapi` at runtime, or any browser global, so both Next.js route
+ * handlers in `src/app/api/calendar/**` and client components can import from
+ * it safely.
  *
  * Keep this module free of side effects and do not import anything that
- * references browser-only globals — if you need that, put it in
- * `src/lib/google-calendar.ts` and import the mappers from here.
+ * references browser-only globals.
  */
 import type { TCalendarAccessRole } from "@/types/calendar";
 
