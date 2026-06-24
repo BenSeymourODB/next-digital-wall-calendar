@@ -9,14 +9,10 @@ import {
   computeEventColumns,
   formatTime,
   getBgColor,
-  getCalendarCells,
   getColorClass,
   getCurrentTimePosition,
   getEventTimePosition,
-  getEventsByMode,
-  getEventsCount,
   getEventsForDay,
-  getEventsForMonth,
   getEventsForWeek,
   getEventsForYear,
   getFirstLetters,
@@ -140,56 +136,6 @@ describe("navigateDate", () => {
   });
 });
 
-describe("getEventsCount", () => {
-  const testDate = new Date(2024, 2, 15);
-  const events: IEvent[] = [
-    createMockEvent({ id: "1", startDate: "2024-03-15T10:00:00" }),
-    createMockEvent({ id: "2", startDate: "2024-03-15T14:00:00" }),
-    createMockEvent({ id: "3", startDate: "2024-03-20T10:00:00" }),
-  ];
-
-  it("counts events for the same day", () => {
-    const count = getEventsCount(events, testDate, "day", WEEK_STARTS_ON);
-    expect(count).toBe(2);
-  });
-
-  it("counts events for the same month", () => {
-    const count = getEventsCount(events, testDate, "month", WEEK_STARTS_ON);
-    expect(count).toBe(3);
-  });
-
-  it("counts events for the same day in clock view", () => {
-    const count = getEventsCount(events, testDate, "clock", WEEK_STARTS_ON);
-    expect(count).toBe(2);
-  });
-
-  it("counts events for the same week using WEEK_STARTS_ON", () => {
-    // testDate = Fri Mar 15 2024. With WEEK_STARTS_ON = 0 (Sunday), the week
-    // runs Sun Mar 10 – Sat Mar 16. Sun Mar 17 falls into the next week.
-    const weekEvents: IEvent[] = [
-      createMockEvent({ id: "same-week", startDate: "2024-03-10T10:00:00" }),
-      createMockEvent({ id: "next-week", startDate: "2024-03-17T10:00:00" }),
-    ];
-    expect(getEventsCount(weekEvents, testDate, "week", WEEK_STARTS_ON)).toBe(
-      1
-    );
-  });
-
-  it("counts events for the same week with Monday-first weekStartsOn=1", () => {
-    // testDate = Fri Mar 15 2024. With weekStartsOn = 1 (Monday), the week
-    // runs Mon Mar 11 – Sun Mar 17. Mar 10 falls into the prior week.
-    // Note: getEventsCount uses isSameWeek, which is boundary-safe (compares
-    // calendar-week membership, not raw timestamps), so unlike
-    // getEventsForWeek this test isn't affected by the midnight-boundary
-    // bug discussed in #201/PR #228.
-    const weekEvents: IEvent[] = [
-      createMockEvent({ id: "prior-week", startDate: "2024-03-10T10:00:00" }),
-      createMockEvent({ id: "same-week", startDate: "2024-03-17T10:00:00" }),
-    ];
-    expect(getEventsCount(weekEvents, testDate, "week", 1)).toBe(1);
-  });
-});
-
 describe("groupEvents", () => {
   it("groups non-overlapping events together", () => {
     const events: IEvent[] = [
@@ -231,75 +177,6 @@ describe("groupEvents", () => {
   it("handles empty array", () => {
     const groups = groupEvents([]);
     expect(groups).toEqual([]);
-  });
-});
-
-describe("getCalendarCells", () => {
-  it("returns cells for a full month grid", () => {
-    const date = new Date(2024, 2, 15); // March 2024
-    const cells = getCalendarCells(date, WEEK_STARTS_ON);
-
-    // Should always be a complete grid (multiple of 7)
-    expect(cells.length % 7).toBe(0);
-
-    // Should have cells from current month
-    const currentMonthCells = cells.filter((c) => c.currentMonth);
-    expect(currentMonthCells.length).toBe(31); // March has 31 days
-  });
-
-  it("marks current month cells correctly", () => {
-    const date = new Date(2024, 2, 15);
-    const cells = getCalendarCells(date, WEEK_STARTS_ON);
-
-    const currentMonthCells = cells.filter((c) => c.currentMonth);
-    currentMonthCells.forEach((cell) => {
-      expect(cell.date.getMonth()).toBe(2); // March
-    });
-  });
-
-  it("includes previous month cells", () => {
-    const date = new Date(2024, 2, 1); // March 2024 starts on Friday
-    const cells = getCalendarCells(date, WEEK_STARTS_ON);
-
-    // First cell should be from previous month (if March doesn't start on WEEK_STARTS_ON)
-    const prevMonthCells = cells.filter(
-      (c) => !c.currentMonth && c.date.getMonth() === 1
-    );
-    expect(prevMonthCells.length).toBeGreaterThan(0);
-  });
-
-  it("starts the grid on WEEK_STARTS_ON", () => {
-    const date = new Date(2024, 2, 15); // March 2024
-    const cells = getCalendarCells(date, WEEK_STARTS_ON);
-    expect(cells[0].date.getDay()).toBe(WEEK_STARTS_ON);
-  });
-
-  it("starts the grid on Monday when weekStartsOn=1", () => {
-    // March 2024 starts on Friday. Sunday-first → leading padding 5 (Sun–Thu
-    // of Feb). Monday-first → leading padding 4 (Mon–Thu of Feb).
-    const date = new Date(2024, 2, 15);
-    const cells = getCalendarCells(date, 1);
-    expect(cells[0].date.getDay()).toBe(1);
-
-    // Spot check: the grid should still cover all 31 days of March and pad
-    // to a multiple of 7.
-    expect(cells.length % 7).toBe(0);
-    expect(cells.filter((c) => c.currentMonth).length).toBe(31);
-  });
-
-  it("aligns the leading padding correctly for Monday-first when month starts on Sunday", () => {
-    // September 2024 starts on Sunday.
-    // - Sunday-first: 0 leading cells.
-    // - Monday-first: 6 leading cells (Mon Aug 26 – Sat Aug 31).
-    const date = new Date(2024, 8, 15);
-    const sundayFirst = getCalendarCells(date, 0);
-    const mondayFirst = getCalendarCells(date, 1);
-
-    expect(sundayFirst[0].date.getDay()).toBe(0);
-    expect(sundayFirst[0].currentMonth).toBe(true); // Sun Sep 1
-    expect(mondayFirst[0].date.getDay()).toBe(1);
-    expect(mondayFirst[0].currentMonth).toBe(false); // Mon Aug 26
-    expect(mondayFirst[6].date.getDay()).toBe(0); // Sun Sep 1
   });
 });
 
@@ -600,31 +477,6 @@ describe("getEventsForWeek", () => {
   });
 });
 
-describe("getEventsForMonth", () => {
-  it("returns events within the month", () => {
-    const events: IEvent[] = [
-      createMockEvent({
-        id: "1",
-        startDate: "2024-03-01T10:00:00",
-        endDate: "2024-03-01T11:00:00",
-      }),
-      createMockEvent({
-        id: "2",
-        startDate: "2024-03-31T10:00:00",
-        endDate: "2024-03-31T11:00:00",
-      }),
-      createMockEvent({
-        id: "3",
-        startDate: "2024-04-01T10:00:00",
-        endDate: "2024-04-01T11:00:00",
-      }),
-    ];
-
-    const result = getEventsForMonth(events, new Date(2024, 2, 15));
-    expect(result.length).toBe(2);
-  });
-});
-
 describe("getEventsForYear", () => {
   it("returns events within the year", () => {
     const events: IEvent[] = [
@@ -764,36 +616,6 @@ describe("getEventsForX bare-date inclusion (#375)", () => {
     const result = getEventsForYear(events, new Date(2026, 5, 15));
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("bare-dec-31");
-  });
-
-  it("includes a bare-date first-of-month event in getEventsForMonth", () => {
-    const events: IEvent[] = [
-      createMockEvent({
-        id: "bare-mar-1",
-        startDate: "2026-03-01",
-        endDate: "2026-03-01",
-        isAllDay: true,
-      }),
-    ];
-
-    const result = getEventsForMonth(events, new Date(2026, 2, 15));
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("bare-mar-1");
-  });
-
-  it("includes a bare-date last-of-month event in getEventsForMonth", () => {
-    const events: IEvent[] = [
-      createMockEvent({
-        id: "bare-mar-31",
-        startDate: "2026-03-31",
-        endDate: "2026-03-31",
-        isAllDay: true,
-      }),
-    ];
-
-    const result = getEventsForMonth(events, new Date(2026, 2, 1));
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("bare-mar-31");
   });
 
   it("includes a bare-date first-of-week event in getEventsForWeek", () => {
@@ -948,33 +770,6 @@ describe("getBgColor", () => {
 
   it("returns empty string for unknown color", () => {
     expect(getBgColor("unknown")).toBe("");
-  });
-});
-
-describe("getEventsByMode (clock)", () => {
-  const testDate = new Date(2024, 2, 15);
-  const events: IEvent[] = [
-    createMockEvent({
-      id: "today-1",
-      startDate: "2024-03-15T10:00:00",
-      endDate: "2024-03-15T11:00:00",
-    }),
-    createMockEvent({
-      id: "today-2",
-      startDate: "2024-03-15T14:00:00",
-      endDate: "2024-03-15T15:00:00",
-    }),
-    createMockEvent({
-      id: "tomorrow",
-      startDate: "2024-03-16T10:00:00",
-      endDate: "2024-03-16T11:00:00",
-    }),
-  ];
-
-  it("returns events for the selected day in clock view", () => {
-    const result = getEventsByMode(events, "clock", testDate, WEEK_STARTS_ON);
-    const ids = result.map((e) => e.id).sort();
-    expect(ids).toEqual(["today-1", "today-2"]);
   });
 });
 
