@@ -1,11 +1,15 @@
 /**
- * API endpoint for refreshing Google OAuth access tokens
- * This server-side endpoint securely handles token refresh using the client secret
+ * API endpoint for refreshing Google OAuth access tokens.
+ *
+ * This server-side endpoint securely handles token refresh using the client
+ * secret. Concurrent calls with the same refresh token are deduplicated by
+ * `getOrStartTokenRefresh` (#285) so two simultaneous requests share a single
+ * upstream Google round-trip — important because Google rotates refresh tokens
+ * on occasion, and otherwise the loser of the race would receive a stale
+ * envelope.
  */
-import {
-  GoogleTokenRefreshError,
-  refreshGoogleAccessToken,
-} from "@/lib/auth/refresh-google-token";
+import { GoogleTokenRefreshError } from "@/lib/auth/refresh-google-token";
+import { getOrStartTokenRefresh } from "@/lib/auth/token-refresh-singleflight";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -38,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const tokens = await refreshGoogleAccessToken(
+      const tokens = await getOrStartTokenRefresh(
         refreshToken,
         clientId,
         clientSecret
