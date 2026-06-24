@@ -38,6 +38,10 @@ import {
   normalizeCalendarListEntry,
   normalizeFetchedEvent,
 } from "./google-calendar-mappers";
+import {
+  GoogleEventsListResponseSchema,
+  parseGoogleResponse,
+} from "./google-calendar-schemas";
 
 export {
   type GoogleCalendarEvent,
@@ -460,7 +464,16 @@ export async function fetchCalendarEvents(
       orderBy: "startTime",
     });
 
-    const events = response.result.items || [];
+    // Validate the gapi-typed wire payload through the same Zod schema the
+    // server routes use (#403). This realigns the legacy client helper with
+    // the trust boundary established by #277 — the mapper now accepts
+    // `GoogleEventPayload`, not the looser `gapi.client.calendar.Event`.
+    const parsed = parseGoogleResponse(
+      response.result,
+      GoogleEventsListResponseSchema,
+      { endpoint: "events.list", calendarId }
+    );
+    const events = parsed.items ?? [];
     logger.log("Fetched calendar events", {
       calendarId,
       count: events.length,

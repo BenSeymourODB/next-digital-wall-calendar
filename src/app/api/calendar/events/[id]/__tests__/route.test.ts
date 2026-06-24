@@ -11,6 +11,7 @@ import {
   mockSession,
   mockSessionWithError,
 } from "@/lib/auth/__tests__/fixtures";
+import { logger } from "@/lib/logger";
 import {
   type ApiErrorResponse,
   createMockRequest,
@@ -875,5 +876,68 @@ describe("PATCH /api/calendar/events/[id]", () => {
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain("/calendars/primary/events/evt-1");
     expect(calledUrl).not.toContain("sneaky");
+  });
+
+  describe("Zod validation of Google patch response (#403)", () => {
+    it("returns 502 with structured log when Google's patch response is missing the required id", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      // 200 from Google but the body fails `GoogleEventSchema` — no `id`.
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            summary: "Updated event",
+            start: { dateTime: "2026-05-01T15:00:00.000Z" },
+            end: { dateTime: "2026-05-01T16:00:00.000Z" },
+          }),
+      });
+
+      const request = createMockRequest(
+        "/api/calendar/events/evt-1?calendarId=primary",
+        { method: "PATCH", body: makeBody() }
+      );
+      const response = await PATCH(request, { params: createParams("evt-1") });
+      const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(502);
+      expect(data.error).toMatch(/update/i);
+      expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "GoogleApiValidationError",
+        }),
+        expect.objectContaining({
+          endpoint: "events.patch",
+          calendarId: "primary",
+        })
+      );
+    });
+
+    it("returns 502 when Google's patch response is the wrong type (array instead of object)", async () => {
+      vi.mocked(getSession).mockResolvedValue(mockSession);
+      vi.mocked(getAccessToken).mockResolvedValue(
+        mockGoogleAccount.access_token!
+      );
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(["not", "an", "object"]),
+      });
+
+      const request = createMockRequest(
+        "/api/calendar/events/evt-1?calendarId=primary",
+        { method: "PATCH", body: makeBody() }
+      );
+      const response = await PATCH(request, { params: createParams("evt-1") });
+      const { status } = await parseResponse<ApiErrorResponse>(response);
+
+      expect(status).toBe(502);
+      expect(vi.mocked(logger.error)).toHaveBeenCalled();
+    });
   });
 });

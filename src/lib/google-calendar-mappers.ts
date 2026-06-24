@@ -10,6 +10,7 @@
  * references browser-only globals — if you need that, put it in
  * `src/lib/google-calendar.ts` and import the mappers from here.
  */
+import type { GoogleEventPayload } from "@/lib/google-calendar-schemas";
 import type { TCalendarAccessRole } from "@/types/calendar";
 
 /**
@@ -32,6 +33,16 @@ export function canWriteToCalendar(
  * `normalizeFetchedEvent` without any silent widening. `summary` is narrowed
  * to a required `string` because the mapper applies a `?? ""` fallback,
  * which matches what downstream UI code expects.
+ *
+ * Why the gapi-derived shape rather than `GoogleEventPayload` from the Zod
+ * schema? `GoogleEventSchema` uses `z.object(...).loose()` so unknown
+ * Google-API fields survive validation, but Zod's inferred type for a loose
+ * object widens every defined inner field to `unknown` — accessing
+ * `event.start.dateTime` or `event.creator.email` then fails strict TS
+ * checks throughout `calendar-transform.ts`. The gapi typings give the
+ * domain the structural shape it actually needs; the Zod schema remains the
+ * runtime trust boundary. {@link normalizeFetchedEvent} bridges the two
+ * once (#403), so routes no longer cast at every call site.
  */
 export interface GoogleCalendarEvent extends Omit<
   gapi.client.calendar.Event,
@@ -65,23 +76,35 @@ export interface UserCalendar {
 }
 
 /**
- * Normalise a raw Google Calendar API event into our {@link GoogleCalendarEvent}
- * shape, stamping the source `calendarId` so cached events can be looked up by
- * calendar later.
+ * Normalise a Zod-validated Google Calendar API event ({@link GoogleEventPayload})
+ * into our {@link GoogleCalendarEvent} shape, stamping the source `calendarId`
+ * so cached events can be looked up by calendar later.
  *
  * Applies a `summary ?? ""` fallback because the Google API marks
  * `Event.summary` as optional but our UI code (`transformGoogleEvent`) expects
  * a string.
+ *
+ * The input is the Zod-parsed `GoogleEventPayload` so the routes no longer
+ * cast at every call site (#403). The single structural assertion that
+ * bridges the Zod schema's loose-object inference and the gapi-derived
+ * domain shape lives here — the mapper IS the trust-boundary between
+ * "wire payload" and "internal canonical event". Both schemas describe the
+ * same JSON; the assertion is documented and safe because:
+ *
+ *   - Zod `.loose()` preserves unknown fields, so the spread carries every
+ *     gapi-declared property forward unchanged.
+ *   - `GoogleEventSchema` requires `id: string`, the only field the mapper
+ *     relies on for the canonical contract.
  */
 export function normalizeFetchedEvent(
-  event: gapi.client.calendar.Event,
+  event: GoogleEventPayload,
   calendarId: string
 ): GoogleCalendarEvent {
   return {
     ...event,
     summary: event.summary ?? "",
     calendarId,
-  };
+  } as GoogleCalendarEvent;
 }
 
 /**
