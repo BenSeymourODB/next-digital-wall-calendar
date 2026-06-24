@@ -25,12 +25,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { Info, Loader2 } from "lucide-react";
 import { ColorPicker, PROFILE_COLORS } from "./color-picker";
-
-/**
- * Profile type options
- */
-type ProfileType = "admin" | "standard";
-type AgeGroup = "adult" | "teen" | "child";
+import type { AgeGroup, ProfileType } from "./types";
 
 /**
  * Profile form props

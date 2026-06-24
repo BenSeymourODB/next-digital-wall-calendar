@@ -32,7 +32,7 @@ import { Key, Lock, RefreshCw, Unlock } from "lucide-react";
 import { NumericKeypad } from "./numeric-keypad";
 import { PinDisplay } from "./pin-display";
 import { PinSetupModal } from "./pin-setup-modal";
-import type { ProfileAvatar } from "./profile-context";
+import type { ProfileAvatar } from "./types";
 
 export interface PinSettingsProfile {
   id: string;

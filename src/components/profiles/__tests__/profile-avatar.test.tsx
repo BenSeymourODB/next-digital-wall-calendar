@@ -4,7 +4,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ProfileAvatar } from "../profile-avatar";
-import type { Profile } from "../profile-context";
+import type { Profile } from "../types";
 
 // ProfileAvatar's prop type is the narrow subset { name, color, avatar }.
 type ProfileAvatarFixture = Pick<Profile, "name" | "color" | "avatar">;
