@@ -14,7 +14,7 @@ export { eventCache } from "./event-cache";
  * for the browser-side GIS flow that was retired in PR #27; the persistence
  * helpers below (saveAccounts / loadAccounts / addAccount / removeAccount /
  * getAccount / updateAccount / updateAccountCalendars) have no callers and
- * are tracked for removal in a #438 follow-up issue.
+ * are tracked for removal in #465.
  */
 export interface GoogleCalendarAccount {
   id: string;
