@@ -6,7 +6,7 @@
  * - emoji: Shows an emoji character
  * - photo: Shows a profile photo
  */
-import { ProfileAvatar as ProfileAvatarType } from "./profile-context";
+import type { ProfileAvatar as ProfileAvatarType } from "./types";
 
 interface ProfileAvatarProps {
   profile: {

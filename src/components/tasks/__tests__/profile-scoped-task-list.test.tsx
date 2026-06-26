@@ -3,10 +3,10 @@
  * surrounding ProfileContext into a TaskList's per-profile filter.
  */
 import {
-  type Profile,
   ProfileProvider,
   useProfile,
 } from "@/components/profiles/profile-context";
+import { type Profile } from "@/components/profiles/types";
 import { makeProfile } from "@/test/fixtures/profile";
 import { type ReactNode } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";

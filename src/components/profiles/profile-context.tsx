@@ -16,37 +16,7 @@ import {
   useEffect,
   useState,
 } from "react";
-
-/**
- * Profile avatar configuration
- */
-export interface ProfileAvatar {
-  type: "initials" | "photo" | "emoji";
-  value: string;
-  backgroundColor?: string;
-}
-
-/**
- * Profile data structure
- */
-export interface Profile {
-  id: string;
-  userId: string;
-  name: string;
-  type: "admin" | "standard";
-  ageGroup: "adult" | "teen" | "child";
-  color: string;
-  avatar: ProfileAvatar;
-  pinEnabled: boolean;
-  isActive: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-/**
- * View mode for the calendar
- */
-export type ViewMode = "profile" | "family";
+import type { Profile, ViewMode } from "./types";
 
 /**
  * Profile context value

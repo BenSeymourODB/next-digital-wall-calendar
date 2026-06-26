@@ -5,8 +5,9 @@ import { makeProfile } from "@/test/fixtures/profile";
 import { type ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type Profile, ProfileProvider } from "../profile-context";
+import { ProfileProvider } from "../profile-context";
 import { ProfileSwitcher } from "../profile-switcher";
+import { type Profile } from "../types";
 
 // Mock fetch
 const mockFetch = vi.fn();

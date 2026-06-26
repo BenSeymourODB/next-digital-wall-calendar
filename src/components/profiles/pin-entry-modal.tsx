@@ -22,7 +22,7 @@ import { useEffect, useState } from "react";
 import { NumericKeypad } from "./numeric-keypad";
 import { PinDisplay } from "./pin-display";
 import { ProfileAvatar } from "./profile-avatar";
-import type { ProfileAvatar as ProfileAvatarType } from "./profile-context";
+import type { ProfileAvatar as ProfileAvatarType } from "./types";
 
 export interface PinEntryModalProfile {
   id: string;
