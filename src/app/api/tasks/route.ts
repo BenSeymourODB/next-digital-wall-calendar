@@ -2,11 +2,7 @@
  * API endpoint for Google Tasks
  * Uses server-side authentication with NextAuth.js
  */
-import {
-  AuthError,
-  getSession,
-  requireGoogleTasksAccessToken,
-} from "@/lib/auth";
+import { AuthError, requireGoogleTasksSession } from "@/lib/auth";
 import { createTask, listTasks } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
@@ -20,11 +16,6 @@ interface CreateTaskBody {
   due?: string;
 }
 
-interface GoogleTaskItem {
-  id: string;
-  [key: string]: unknown;
-}
-
 /**
  * GET /api/tasks - List tasks from a task list
  * Query params:
@@ -34,25 +25,9 @@ interface GoogleTaskItem {
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (session.error === "RefreshTokenError") {
-      return NextResponse.json(
-        {
-          error: "Session expired. Please sign in again.",
-          requiresReauth: true,
-        },
-        { status: 401 }
-      );
-    }
-
-    // Combined scope check + token decryption in a single DB call (#260).
-    // Short-circuits users missing the Tasks scope (#237) before URL
-    // parsing, matching the original assertGoogleTasksScope ordering.
-    const accessToken = await requireGoogleTasksAccessToken(session);
+    // Single helper handles session existence, RefreshTokenError, scope
+    // check, and decrypted-token acquisition (#441).
+    const { session, accessToken } = await requireGoogleTasksSession();
 
     const { searchParams } = new URL(request.url);
     const listId = searchParams.get("listId");
@@ -131,23 +106,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (session.error === "RefreshTokenError") {
-      return NextResponse.json(
-        {
-          error: "Session expired. Please sign in again.",
-          requiresReauth: true,
-        },
-        { status: 401 }
-      );
-    }
-
-    // Combined scope check + token decryption in a single DB call (#260).
-    const accessToken = await requireGoogleTasksAccessToken(session);
+    const { session, accessToken } = await requireGoogleTasksSession();
 
     const body = (await request.json()) as CreateTaskBody;
     const { listId, title, notes, due } = body;
@@ -178,13 +137,13 @@ function handleTasksApiError(
   errorType: "fetch_tasks" | "create_task"
 ): NextResponse {
   if (error instanceof AuthError) {
-    // Both 401 (no/expired session) and 403 (scope missing) are recoverable
-    // by re-authenticating, so the client uses the same `requiresReauth` flow.
-    const requiresReauth = error.status === 401 || error.status === 403;
-    return NextResponse.json(
-      { error: error.message, requiresReauth },
-      { status: error.status }
-    );
+    // Explicit AuthError.requiresReauth wins; otherwise fall back to the
+    // status-based inference so existing throw-sites are unchanged (#441).
+    const requiresReauth =
+      error.requiresReauth ?? (error.status === 401 || error.status === 403);
+    const body: Record<string, unknown> = { error: error.message };
+    if (requiresReauth) body.requiresReauth = true;
+    return NextResponse.json(body, { status: error.status });
   }
 
   if (error instanceof GoogleTasksApiError) {

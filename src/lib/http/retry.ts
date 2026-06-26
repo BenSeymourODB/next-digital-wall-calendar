@@ -282,38 +282,35 @@ export async function withRetry<T>(
  * keeps full control of its `!response.ok` branch — retry is invisible to
  * downstream error handling.
  *
- * Signal precedence: if `init.signal` is provided it wins, because merging
- * two signals requires `AbortSignal.any` (Node 20+) and we want one simple
- * contract. If `init.signal` is absent and `options.signal` is provided, the
- * outer signal is threaded through.
- *
- * The signal that `withRetry` observes for its inter-attempt sleep follows
- * the *opposite* precedence: `options.signal` if set, otherwise `init.signal`.
- * This makes the per-flight `AbortSignal.timeout(N)` that callers pass via
- * `init` bound the *entire* retry loop's wall time, not just each individual
- * fetch attempt (issue #434). When both signals are set the two contracts
- * become asymmetric: each `fetch()` call observes `init.signal`, while the
- * inter-attempt sleep observes `options.signal`. That's an artefact of the
- * "caller signal wins" rule for fetch; merging the two via `AbortSignal.any`
- * is the natural next step but is intentionally deferred to keep this change
- * minimal.
+ * Signal handling: when both `init.signal` and `options.signal` are passed,
+ * they are merged with `AbortSignal.any` (Node ≥ 20.3 / modern browsers; the
+ * project's `.nvmrc` pins Node 22) so either signal aborting tears down both
+ * the in-flight `fetch()` and the inter-attempt sleep in `withRetry`. When
+ * only one is set it is forwarded to both sides, so the per-flight
+ * `AbortSignal.timeout(N)` that callers pass via `init` still bounds the
+ * entire retry loop (issue #434 / #436).
  */
 export async function fetchWithRetry(
   input: Parameters<typeof fetch>[0],
   init?: Parameters<typeof fetch>[1],
   options: RetryOptions = {}
 ): Promise<Response> {
-  const effectiveInit: RequestInit = {
-    ...(init ?? {}),
-  };
-  if (!effectiveInit.signal && options.signal) {
-    effectiveInit.signal = options.signal;
+  // Merge both signals so either aborting tears down the entire operation —
+  // in-flight fetch AND inter-attempt sleep. When only one is set, the merge
+  // collapses to that signal (no fresh AbortSignal allocation needed).
+  const mergedSignal: AbortSignal | undefined =
+    init?.signal != null && options.signal != null
+      ? AbortSignal.any([init.signal, options.signal])
+      : (init?.signal ?? options.signal);
+
+  const effectiveInit: RequestInit = { ...(init ?? {}) };
+  if (mergedSignal) {
+    effectiveInit.signal = mergedSignal;
   }
 
-  const effectiveOptions: RetryOptions =
-    options.signal == null && init?.signal != null
-      ? { ...options, signal: init.signal }
-      : options;
+  const effectiveOptions: RetryOptions = mergedSignal
+    ? { ...options, signal: mergedSignal }
+    : options;
 
   // `fetchWithRetry` reads its own copy of maxAttempts so the inner function
   // can decide between "throw HttpRetryError" (ask `withRetry` to retry) and

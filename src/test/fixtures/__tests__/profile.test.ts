@@ -1,4 +1,4 @@
-import type { Profile as AppProfile } from "@/components/profiles/profile-context";
+import type { Profile as AppProfile } from "@/components/profiles/types";
 import type {
   Profile as PrismaProfile,
   ProfileSettings as PrismaProfileSettings,

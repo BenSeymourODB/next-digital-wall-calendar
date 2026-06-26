@@ -15,7 +15,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PinEntryModal } from "./pin-entry-modal";
 import { ProfileAvatar } from "./profile-avatar";
-import { Profile, useProfile } from "./profile-context";
+import { useProfile } from "./profile-context";
+import type { Profile } from "./types";
 
 export function ProfileSwitcher() {
   const { activeProfile, allProfiles, setActiveProfile, setViewMode } =

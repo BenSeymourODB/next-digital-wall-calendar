@@ -13,6 +13,7 @@ import {
   getInitialScrollTop,
   getShortWeekdayLabels,
   getWeekDates,
+  rangeText,
 } from "@/lib/calendar-helpers";
 import { useTodayStartOfDay } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
@@ -159,8 +160,7 @@ export function WeekCalendar() {
               className="text-foreground text-2xl font-bold"
               data-testid="week-calendar-range"
             >
-              {format(weekStart, "MMM d, yyyy")} –{" "}
-              {format(weekEnd, "MMM d, yyyy")}
+              {rangeText("week", selectedDate, weekStartDay)}
             </h2>
             <span
               className="text-muted-foreground text-sm"
