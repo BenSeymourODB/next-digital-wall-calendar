@@ -15,11 +15,45 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountInfo } from "../route";
 import { GET } from "../route";
 
-// Mock modules BEFORE imports
-vi.mock("@/lib/auth", () => ({
-  getSession: vi.fn(),
-  getGoogleAccount: vi.fn(),
-}));
+// Mock modules BEFORE imports. The route imports `requireAuthenticatedSession`
+// post-#441; we wire its mock to delegate through the existing
+// `getSession` mock so test setup keeps driving behavior the same way it did
+// before the refactor.
+vi.mock("@/lib/auth", () => {
+  class MockAuthError extends Error {
+    status: number;
+    requiresReauth?: boolean;
+    constructor(
+      message: string,
+      status: number = 401,
+      options?: { requiresReauth?: boolean }
+    ) {
+      super(message);
+      this.name = "AuthError";
+      this.status = status;
+      this.requiresReauth = options?.requiresReauth;
+    }
+  }
+  const getSession = vi.fn();
+  const requireAuthenticatedSession = vi.fn(async () => {
+    const session = await getSession();
+    if (!session?.user?.id) {
+      throw new MockAuthError("Unauthorized", 401, { requiresReauth: false });
+    }
+    if (session.error === "RefreshTokenError") {
+      throw new MockAuthError("Session expired. Please sign in again.", 401, {
+        requiresReauth: true,
+      });
+    }
+    return { session };
+  });
+  return {
+    AuthError: MockAuthError,
+    getSession,
+    getGoogleAccount: vi.fn(),
+    requireAuthenticatedSession,
+  };
+});
 
 vi.mock("@/lib/logger", () => ({
   logger: {

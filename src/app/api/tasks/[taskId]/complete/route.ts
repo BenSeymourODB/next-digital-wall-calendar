@@ -4,11 +4,7 @@
  *
  * POST - Complete a task and update streak
  */
-import {
-  AuthError,
-  getSession,
-  requireGoogleTasksAccessToken,
-} from "@/lib/auth";
+import { AuthError, requireGoogleTasksSession } from "@/lib/auth";
 import { patchTask } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
@@ -41,23 +37,9 @@ export async function POST(
   { params }: RouteContext
 ): Promise<NextResponse> {
   try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (session.error === "RefreshTokenError") {
-      return NextResponse.json(
-        {
-          error: "Session expired. Please sign in again.",
-          requiresReauth: true,
-        },
-        { status: 401 }
-      );
-    }
-
-    // Combined scope check + token decryption in a single DB call (#260).
-    const accessToken = await requireGoogleTasksAccessToken(session);
+    // Single helper handles session existence, RefreshTokenError, scope
+    // check, and decrypted-token acquisition (#441).
+    const { accessToken } = await requireGoogleTasksSession();
 
     const { taskId } = await params;
 
@@ -93,11 +75,11 @@ export async function POST(
     return NextResponse.json({ task, streak });
   } catch (error) {
     if (error instanceof AuthError) {
-      const requiresReauth = error.status === 401 || error.status === 403;
-      return NextResponse.json(
-        { error: error.message, requiresReauth },
-        { status: error.status }
-      );
+      const requiresReauth =
+        error.requiresReauth ?? (error.status === 401 || error.status === 403);
+      const body: Record<string, unknown> = { error: error.message };
+      if (requiresReauth) body.requiresReauth = true;
+      return NextResponse.json(body, { status: error.status });
     }
 
     if (error instanceof GoogleTasksApiError) {

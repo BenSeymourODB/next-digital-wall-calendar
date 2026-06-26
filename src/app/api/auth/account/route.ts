@@ -2,7 +2,11 @@
  * API endpoint for fetching authenticated user's Google account info
  * Used by client components to display account information
  */
-import { getGoogleAccount, getSession } from "@/lib/auth";
+import {
+  AuthError,
+  getGoogleAccount,
+  requireAuthenticatedSession,
+} from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
 
@@ -15,22 +19,8 @@ export interface AccountInfo {
 
 export async function GET() {
   try {
-    const session = await getSession();
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if token refresh failed
-    if (session.error === "RefreshTokenError") {
-      return NextResponse.json(
-        {
-          error: "Session expired. Please sign in again.",
-          requiresReauth: true,
-        },
-        { status: 401 }
-      );
-    }
+    // Handles session existence + RefreshTokenError in one place (#441).
+    const { session } = await requireAuthenticatedSession();
 
     // Get Google account data
     const googleAccount = await getGoogleAccount();
@@ -60,6 +50,14 @@ export async function GET() {
 
     return NextResponse.json(accountInfo);
   } catch (error) {
+    if (error instanceof AuthError) {
+      const requiresReauth =
+        error.requiresReauth ?? (error.status === 401 || error.status === 403);
+      const body: Record<string, unknown> = { error: error.message };
+      if (requiresReauth) body.requiresReauth = true;
+      return NextResponse.json(body, { status: error.status });
+    }
+
     logger.error(error as Error, {
       endpoint: "/api/auth/account",
       errorType: "fetch_account",
