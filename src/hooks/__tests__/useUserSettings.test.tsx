@@ -748,6 +748,68 @@ describe("useUserSettings", () => {
 
       unsubscribe();
     });
+
+    it("suppresses A's rollback when a parallel mutate B has already committed (#433)", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      // Initial GET — server says 12h.
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "12h" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+      await waitFor(() => {
+        expect(result.current.settings.timeFormat).toBe("12h");
+      });
+
+      // A: kick off a mutate to "24h" with a PUT that will be rejected later.
+      let rejectA: (reason?: unknown) => void = () => {};
+      const aPromise = new Promise<Response>((_resolve, reject) => {
+        rejectA = reject;
+      });
+      vi.mocked(global.fetch).mockImplementationOnce(() => aPromise);
+
+      let aMutate: Promise<void> | undefined;
+      await act(async () => {
+        aMutate = result.current.mutate({ timeFormat: "24h" }).catch(() => {});
+        // Let A's synchronous prelude (setSettings + bus emit) flush.
+        await Promise.resolve();
+      });
+      expect(result.current.settings.timeFormat).toBe("24h");
+
+      // B: a parallel mutate whose PUT resolves immediately. Drives the
+      // optimistic state-and-bus path for real (not a bus-emit stand-in),
+      // so settingsRef ends at B's value via the same code paths the
+      // production race traverses.
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({}),
+      } as Response);
+      await act(async () => {
+        await result.current.mutate({ timeFormat: "12h" });
+      });
+      expect(result.current.settings.timeFormat).toBe("12h");
+
+      // Subscribe AFTER B's emit so we only observe whether A's rollback
+      // path re-emits the stale snapshot.
+      const busHandler = vi.fn();
+      const unsubscribe = subscribeUserSettings(busHandler);
+
+      // Reject A — the CAS guard should compare live "12h" to A's
+      // optimistic "24h", suppress the rollback, and fire no emit.
+      await act(async () => {
+        rejectA(new Error("boom"));
+        await aMutate;
+      });
+
+      expect(busHandler).not.toHaveBeenCalled();
+      expect(result.current.settings.timeFormat).toBe("12h");
+
+      unsubscribe();
+    });
   });
 
   describe("bus subscription (#337)", () => {
