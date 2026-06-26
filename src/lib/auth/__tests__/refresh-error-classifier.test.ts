@@ -27,15 +27,6 @@ describe("classifyTokenRefreshError", () => {
       });
       expect(classifyTokenRefreshError(err)).toBe("terminal");
     });
-
-    it("classifies unsupported_grant_type as terminal", () => {
-      // Misconfiguration on our side — sending the wrong grant_type can
-      // never succeed on retry, so force re-auth.
-      const err = new GoogleTokenRefreshError(400, {
-        error: "unsupported_grant_type",
-      });
-      expect(classifyTokenRefreshError(err)).toBe("terminal");
-    });
   });
 
   describe("internal sentinel errors (locally-permanent state)", () => {
@@ -66,6 +57,17 @@ describe("classifyTokenRefreshError", () => {
       expect(classifyTokenRefreshError(err)).toBe("transient");
     });
 
+    it("classifies unsupported_grant_type as transient (#378)", () => {
+      // Server-side code/config bug — we control the grant_type we send, so
+      // re-auth can never fix it (the next refresh sends the same wrong
+      // grant_type). Treating it as transient keeps the cached UI working
+      // while the failure is loud in server logs for the operator to fix.
+      const err = new GoogleTokenRefreshError(400, {
+        error: "unsupported_grant_type",
+      });
+      expect(classifyTokenRefreshError(err)).toBe("transient");
+    });
+
     it("classifies a 5xx response with unknown body as transient", () => {
       const err = new GoogleTokenRefreshError(503, {
         error: "service_unavailable",
@@ -92,6 +94,17 @@ describe("classifyTokenRefreshError", () => {
   describe("non-Google errors", () => {
     it("classifies a generic TypeError (network failure) as transient", () => {
       const err = new TypeError("fetch failed");
+      expect(classifyTokenRefreshError(err)).toBe("transient");
+    });
+
+    it("classifies a TimeoutError DOMException (fetch timeout, #404) as transient", () => {
+      // `AbortSignal.timeout(...).reason` surfaces as exactly this shape
+      // when the timeout fires; once fetch propagates it out of
+      // `refreshGoogleAccessToken`, the session-refresh path must classify
+      // it as transient so the singleflight slot is released and the next
+      // callback retries — not as terminal, which would dump the user to
+      // a sign-in screen for a single hung connection.
+      const err = new DOMException("signal timed out", "TimeoutError");
       expect(classifyTokenRefreshError(err)).toBe("transient");
     });
 
@@ -127,6 +140,9 @@ describe("classifyTokenRefreshError", () => {
         "temporarily_unavailable",
         "rate_limit_exceeded",
         "slow_down",
+        // Recognised but intentionally transient — guards against a
+        // regression that re-promotes it to the terminal allow-list (#378).
+        "unsupported_grant_type",
         "",
       ];
       for (const code of codes) {

@@ -89,7 +89,13 @@ test.describe("Event detail modal — month view", () => {
 
 test.describe("Event detail modal — agenda view", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/test/calendar?events=default&view=agenda");
+    // "Client Call" is a +1-day event, so a single-day day-agenda would window
+    // it out. Use week-agenda with a Monday anchor so tomorrow's event is in
+    // range deterministically. transitionMs=0 keeps the swap from briefly
+    // duplicating the event card.
+    await page.goto(
+      "/test/calendar?events=default&view=week&agendaMode=true&anchor=2026-06-15&transitionMs=0"
+    );
     await expect(
       page.getByRole("button", { name: /Client Call/ })
     ).toBeVisible();

@@ -9,9 +9,12 @@
  * failures are retried instead of bubbling to the caller.
  */
 import { jsonResponse } from "@/lib/test-utils/api-test-helpers";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { classifyTokenRefreshError } from "../refresh-error-classifier";
 import {
+  DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS,
   GoogleTokenRefreshError,
+  getRefreshTimeoutMs,
   refreshGoogleAccessToken,
 } from "../refresh-google-token";
 
@@ -21,6 +24,13 @@ global.fetch = mockFetch;
 describe("refreshGoogleAccessToken", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Restore method spies (e.g. `vi.spyOn(AbortSignal, "timeout")`) so a
+    // `mockReturnValue` in one test cannot leak into the next and serve a
+    // pre-aborted or otherwise mismatched signal to unrelated assertions.
+    vi.restoreAllMocks();
   });
 
   it("POSTs the URL-encoded refresh-token body to Google's OAuth endpoint", async () => {
@@ -44,6 +54,27 @@ describe("refreshGoogleAccessToken", () => {
     expect(body.get("refresh_token")).toBe("rt-abc");
     expect(body.get("client_id")).toBe("client-id-123");
     expect(body.get("client_secret")).toBe("secret-xyz");
+  });
+
+  it("passes an AbortSignal bound to the configured timeout so a hung connection cannot hold the singleflight slot indefinitely (#404)", async () => {
+    // Spy on AbortSignal.timeout so we can confirm both that one is created
+    // and what timeout value is supplied. We don't intercept the static
+    // method on the AbortSignal type itself — just spy through the global
+    // object so the real timeout is still produced and threaded onto the
+    // fetch init exactly as production would.
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    mockFetch.mockResolvedValue(
+      jsonResponse({ access_token: "x", expires_in: 3600 })
+    );
+
+    await refreshGoogleAccessToken("rt", "cid", "sec");
+
+    expect(timeoutSpy).toHaveBeenCalledTimes(1);
+    expect(timeoutSpy).toHaveBeenCalledWith(
+      DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS
+    );
+    const init = mockFetch.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("returns the parsed tokens on success", async () => {
@@ -119,6 +150,107 @@ describe("refreshGoogleAccessToken", () => {
     }
   });
 
+  // Issue #405: Google can return a 200 with a non-token body (proxy error,
+  // partial payload, edge-case rate-limit JSON). Without runtime validation
+  // `expires_in` is undefined → `Math.floor(now/1000 + undefined)` is NaN and
+  // Prisma writes corrupt the account row's refresh window. These tests pin
+  // the shape-check at the wire boundary so the malformed payload surfaces as
+  // a transient `GoogleTokenRefreshError` instead of silent NaN downstream.
+  describe("runtime payload validation (issue #405)", () => {
+    it("throws GoogleTokenRefreshError when a 200 response is missing expires_in", async () => {
+      mockFetch.mockResolvedValue(
+        jsonResponse({ access_token: "valid-but-incomplete" })
+      );
+
+      await expect(
+        refreshGoogleAccessToken("rt", "cid", "sec")
+      ).rejects.toBeInstanceOf(GoogleTokenRefreshError);
+    });
+
+    it("throws GoogleTokenRefreshError when expires_in is the wrong type (string)", async () => {
+      mockFetch.mockResolvedValue(
+        jsonResponse({ access_token: "valid", expires_in: "3600" })
+      );
+
+      await expect(
+        refreshGoogleAccessToken("rt", "cid", "sec")
+      ).rejects.toBeInstanceOf(GoogleTokenRefreshError);
+    });
+
+    it("throws GoogleTokenRefreshError when the 200 body is null", async () => {
+      mockFetch.mockResolvedValue(jsonResponse(null));
+
+      await expect(
+        refreshGoogleAccessToken("rt", "cid", "sec")
+      ).rejects.toBeInstanceOf(GoogleTokenRefreshError);
+    });
+
+    it("throws GoogleTokenRefreshError when the 200 body is an unrelated JSON value", async () => {
+      // A proxy rewriting the response to a string or array still parses as
+      // JSON but doesn't satisfy the token shape.
+      mockFetch.mockResolvedValue(jsonResponse([]));
+
+      await expect(
+        refreshGoogleAccessToken("rt", "cid", "sec")
+      ).rejects.toBeInstanceOf(GoogleTokenRefreshError);
+    });
+
+    it("throws GoogleTokenRefreshError when expires_in is zero", async () => {
+      // `Math.floor(now/1000 + 0)` would still update the row to an already-
+      // expired window — caller would re-enter the refresh path on every
+      // session callback. Treat zero as malformed.
+      mockFetch.mockResolvedValue(
+        jsonResponse({ access_token: "valid", expires_in: 0 })
+      );
+
+      await expect(
+        refreshGoogleAccessToken("rt", "cid", "sec")
+      ).rejects.toBeInstanceOf(GoogleTokenRefreshError);
+    });
+
+    it("throws GoogleTokenRefreshError when expires_in is negative", async () => {
+      // Sibling to the zero case — pins that the schema's `positive()`
+      // constraint actually means `> 0`, not just non-NaN.
+      mockFetch.mockResolvedValue(
+        jsonResponse({ access_token: "valid", expires_in: -1 })
+      );
+
+      await expect(
+        refreshGoogleAccessToken("rt", "cid", "sec")
+      ).rejects.toBeInstanceOf(GoogleTokenRefreshError);
+    });
+
+    it("tags the malformed-payload error so classifyTokenRefreshError returns transient", async () => {
+      // The orchestrator's `.finally()` purges the singleflight slot on either
+      // classification, but a terminal classification would dump the user back
+      // to a sign-in screen for a Google-side anomaly. Pin it to transient.
+      mockFetch.mockResolvedValue(jsonResponse({}));
+
+      const caught = await refreshGoogleAccessToken("rt", "cid", "sec").catch(
+        (e: unknown) => e
+      );
+
+      expect(caught).toBeInstanceOf(GoogleTokenRefreshError);
+      const err = caught as GoogleTokenRefreshError;
+      expect(err.body).toMatchObject({ error: "malformed_token_response" });
+      expect(classifyTokenRefreshError(err)).toBe("transient");
+    });
+
+    it("accepts a canonical response (access_token + positive int expires_in) without throwing", async () => {
+      // Locks in that the validator doesn't reject the happy path, including
+      // when the optional refresh_token / scope / token_type fields are absent
+      // (Google omits refresh_token on routine refreshes).
+      mockFetch.mockResolvedValue(
+        jsonResponse({ access_token: "new-access", expires_in: 3599 })
+      );
+
+      const tokens = await refreshGoogleAccessToken("rt", "cid", "sec");
+
+      expect(tokens.access_token).toBe("new-access");
+      expect(tokens.expires_in).toBe(3599);
+    });
+  });
+
   it("propagates the underlying TypeError when transient network errors exhaust the retry budget", async () => {
     // Closes the coverage gap flagged in #276: the outer `catch` branch of
     // `fetchWithRetry` (DNS / TCP failure after every retry) was not
@@ -145,5 +277,84 @@ describe("refreshGoogleAccessToken", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("rejects with an abort-shaped error when the fetch hangs past the configured timeout, and the classifier marks it transient (#404)", async () => {
+    // Drive the timeout via an AbortController whose signal we substitute
+    // for `AbortSignal.timeout`'s. This is deterministic — fake timers
+    // don't intercept the C++ timer `AbortSignal.timeout` uses internally,
+    // so we abort it ourselves with the same DOMException shape Node
+    // produces when the timeout fires.
+    //
+    // Post-#435 `withRetry` is signal-aware: once the per-flight signal
+    // aborts, withRetry's catch normalises the rejection to `AbortError`
+    // rather than propagating the original `TimeoutError` reason. The
+    // *contract* this test pins down is therefore not the exact `.name`
+    // but the two guarantees that #404 cares about: (a) the flight
+    // terminates with an abort-named error (one of "AbortError" /
+    // "TimeoutError" — accept either so the test survives a future
+    // refactor that re-exposes the original reason), and (b) the error
+    // classifies as `transient` so the singleflight slot releases.
+    const controller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    mockFetch.mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => {
+            reject(init.signal?.reason ?? new Error("aborted"));
+          });
+        })
+    );
+
+    const promise = refreshGoogleAccessToken("rt", "cid", "sec");
+    controller.abort(new DOMException("signal timed out", "TimeoutError"));
+
+    const result = (await promise.catch((e: unknown) => e)) as {
+      name?: string;
+    };
+    expect(result.name).toMatch(/^(AbortError|TimeoutError)$/);
+    // Lock the classification: an aborted refresh must not force re-auth.
+    expect(classifyTokenRefreshError(result)).toBe("transient");
+    // And no retry burn — the abort short-circuits on the first attempt.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getRefreshTimeoutMs", () => {
+  const ENV_KEY = "GOOGLE_TOKEN_REFRESH_TIMEOUT_MS";
+  let originalValue: string | undefined;
+
+  beforeEach(() => {
+    originalValue = process.env[ENV_KEY];
+  });
+
+  afterEach(() => {
+    if (originalValue === undefined) {
+      delete process.env[ENV_KEY];
+    } else {
+      process.env[ENV_KEY] = originalValue;
+    }
+  });
+
+  it("returns the default 10s when the env var is unset", () => {
+    delete process.env[ENV_KEY];
+    expect(getRefreshTimeoutMs()).toBe(DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS);
+    expect(DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS).toBe(10_000);
+  });
+
+  it("honours a positive integer override from the env var", () => {
+    process.env[ENV_KEY] = "5000";
+    expect(getRefreshTimeoutMs()).toBe(5_000);
+  });
+
+  it.each([
+    ["not-a-number", "non-numeric input"],
+    ["", "empty string"],
+    ["0", "zero (no time budget)"],
+    ["-1000", "negative duration"],
+    ["1.5", "fractional ms (rejected; we only accept integers)"],
+  ])("falls back to the default for invalid env value %p (%s)", (raw) => {
+    process.env[ENV_KEY] = raw;
+    expect(getRefreshTimeoutMs()).toBe(DEFAULT_GOOGLE_TOKEN_REFRESH_TIMEOUT_MS);
   });
 });

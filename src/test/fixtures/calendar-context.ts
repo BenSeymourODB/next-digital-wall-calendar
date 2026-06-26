@@ -60,6 +60,19 @@ export function makeCalendarContext(
     updateEvent: vi.fn(),
     removeEvent: vi.fn(),
     createEvent: vi.fn().mockImplementation((event) => Promise.resolve(event)),
+    editEvent: vi.fn().mockImplementation((eventId, _calendarId, input) =>
+      Promise.resolve({
+        id: eventId,
+        title: input.title,
+        description: input.description ?? "",
+        color: input.color,
+        isAllDay: input.isAllDay,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        calendarId: input.calendarId,
+        user: { id: "local", name: "You", picturePath: null },
+      })
+    ),
     deleteEvent: vi.fn().mockResolvedValue(undefined),
     clearFilter: vi.fn(),
     refreshEvents: vi.fn(),

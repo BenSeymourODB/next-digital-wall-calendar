@@ -5,7 +5,8 @@ import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { useSlideDirection } from "@/hooks/use-slide-direction";
 import { useEventDelete } from "@/hooks/useEventDelete";
-import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import { useEventEdit } from "@/hooks/useEventEdit";
+import { getShortWeekdayLabels, rangeText } from "@/lib/calendar-helpers";
 import {
   applyCalendarKeyboardAction,
   keyboardEventToAction,
@@ -61,6 +62,7 @@ export function SimpleCalendar() {
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const handleDelete = useEventDelete();
+  const handleEdit = useEventEdit();
 
   const weekdayHeaders = getShortWeekdayLabels(weekStartDay);
 
@@ -212,8 +214,7 @@ export function SimpleCalendar() {
             className="text-muted-foreground text-sm"
             data-testid="calendar-date-range"
           >
-            {format(monthStart, "MMM d, yyyy")} –{" "}
-            {format(monthEnd, "MMM d, yyyy")}
+            {rangeText("month", selectedDate, weekStartDay)}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -408,6 +409,7 @@ export function SimpleCalendar() {
         use24HourFormat={use24HourFormat}
         returnFocusTo={triggerRef}
         onDelete={handleDelete}
+        onEdit={handleEdit}
         accessRole={
           selectedEvent ? getAccessRole(selectedEvent.calendarId) : undefined
         }

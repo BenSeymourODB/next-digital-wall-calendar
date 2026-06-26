@@ -2,11 +2,7 @@
  * API endpoint for updating a Google Task
  * Uses server-side authentication with NextAuth.js
  */
-import {
-  AuthError,
-  getSession,
-  requireGoogleTasksAccessToken,
-} from "@/lib/auth";
+import { AuthError, requireGoogleTasksSession } from "@/lib/auth";
 import { patchTask } from "@/lib/google/tasks-api";
 import {
   GoogleTasksApiError,
@@ -31,23 +27,9 @@ export async function PATCH(
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (session.error === "RefreshTokenError") {
-      return NextResponse.json(
-        {
-          error: "Session expired. Please sign in again.",
-          requiresReauth: true,
-        },
-        { status: 401 }
-      );
-    }
-
-    // Combined scope check + token decryption in a single DB call (#260).
-    const accessToken = await requireGoogleTasksAccessToken(session);
+    // Single helper handles session existence, RefreshTokenError, scope
+    // check, and decrypted-token acquisition (#441).
+    const { session, accessToken } = await requireGoogleTasksSession();
 
     const { taskId } = await params;
     const { searchParams } = new URL(request.url);
@@ -81,11 +63,11 @@ export async function PATCH(
     return NextResponse.json({ task: updatedTask });
   } catch (error) {
     if (error instanceof AuthError) {
-      const requiresReauth = error.status === 401 || error.status === 403;
-      return NextResponse.json(
-        { error: error.message, requiresReauth },
-        { status: error.status }
-      );
+      const requiresReauth =
+        error.requiresReauth ?? (error.status === 401 || error.status === 403);
+      const body: Record<string, unknown> = { error: error.message };
+      if (requiresReauth) body.requiresReauth = true;
+      return NextResponse.json(body, { status: error.status });
     }
 
     if (error instanceof GoogleTasksApiError) {

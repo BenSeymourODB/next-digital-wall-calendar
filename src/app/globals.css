@@ -2,18 +2,35 @@
 @import "tw-animate-css";
 
 /*
- * `dark` Tailwind variant — also activates under the Wall-Projector theme,
- * which inherits the dark token set by default. Components nested inside a
- * `[data-theme-scope="light"]` subtree should use semantic tokens
- * (bg-background, text-foreground, etc.) rather than `dark:` overrides; the
- * scope re-declares the tokens but cannot reverse the `dark:` variant on
- * descendants. The repo-wide audit of components that use `dark:` overrides
- * and may end up inside a ThemeScope island is tracked in #324.
+ * `dark` Tailwind variant — fires for descendants of `.dark` /
+ * `.wall-projector` (the dark-by-default themes) AND for descendants of a
+ * `[data-theme-scope="dark"]` island (symmetric with the token blocks below),
+ * but NOT for elements that sit inside `[data-theme-scope="light"]`. The
+ * `:not(:where(...))` suffix uses zero-specificity `:where()` so the variant
+ * keeps the same specificity weight as the original two-class form.
+ *
+ * Why: `ThemeScope` (src/components/theme/theme-scope.tsx) re-declares all
+ * shadcn/ui semantic tokens within `[data-theme-scope]`, but it cannot by
+ * itself reverse the `dark:` variant on Tailwind utilities. shadcn ships
+ * `dark:` overrides on 19 components in `src/components/ui/` (e.g. Button's
+ * outline variant, Switch thumb, Badge destructive). Tightening the variant
+ * here neutralizes the leakage centrally — durable across `pnpm bump-ui`,
+ * which overwrites `src/components/ui/`. The audit list lives in
+ * `docs/styling.md`; re-run `grep -rln 'dark:' src/components/ui/` after
+ * `pnpm bump-ui` to refresh it. Issue: #324.
+ *
+ * Limitation: re-nesting (light scope inside dark inside light) is not
+ * handled — any `[data-theme-scope="light"]` ancestor anywhere in the tree
+ * suppresses `dark:` for all of its descendants, including a re-entered
+ * dark island nested inside it. The token blocks themselves DO re-nest via
+ * CSS custom-property inheritance, but `dark:` utilities are stuck off in
+ * the re-entered dark island. No current consumer re-nests; documented in
+ * `src/components/theme/theme-scope.tsx`.
  *
  * NB: Tailwind requires `@custom-variant` on a single line — do not break it.
  */
 /* prettier-ignore */
-@custom-variant dark (&:where(.dark, .dark *, .wall-projector, .wall-projector *));
+@custom-variant dark (&:where([data-theme-scope="dark"], [data-theme-scope="dark"] *, .dark, .dark *, .wall-projector, .wall-projector *):not(:where([data-theme-scope="light"], [data-theme-scope="light"] *)));
 
 /* shadcn/ui semantic color tokens — light theme (slate base) */
 :root {
@@ -287,6 +304,19 @@
 
   .grecaptcha-badge {
     visibility: hidden;
+  }
+
+  /*
+   * Suppress the Webkit/Blink UA "cancel" button rendered inside
+   * `<input type="search">`. Both `AgendaCalendar` and `AgendaList` pair
+   * the input with a custom clear `<button>`; without this rule, Chrome,
+   * Edge, and Safari users see two overlapping clear controls. Issues
+   * #411 / #412.
+   */
+  input[type="search"]::-webkit-search-cancel-button {
+    display: none;
+    appearance: none;
+    -webkit-appearance: none;
   }
 }
 

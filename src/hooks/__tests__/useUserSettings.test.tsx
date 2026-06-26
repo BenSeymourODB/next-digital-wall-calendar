@@ -2,11 +2,15 @@
  * Tests for useUserSettings hook
  * Following TDD - tests written before implementation
  */
-import { emitUserSettingsChange } from "@/lib/user-settings-bus";
+import {
+  emitUserSettingsChange,
+  subscribeUserSettings,
+} from "@/lib/user-settings-bus";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_USER_CALENDAR_SETTINGS,
+  isTimeFormat,
   useUserSettings,
 } from "../useUserSettings";
 
@@ -276,6 +280,59 @@ describe("useUserSettings", () => {
     expect(result.current.settings.calendarTransitionSpeed).toBe(
       DEFAULT_USER_CALENDAR_SETTINGS.calendarTransitionSpeed
     );
+  });
+
+  it("surfaces dateFormat when the server provides a documented value", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ dateFormat: "DD/MM/YYYY" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.dateFormat).toBe("DD/MM/YYYY");
+  });
+
+  it("rejects unknown dateFormat values and keeps the default", async () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { id: "u1" } },
+      status: "authenticated",
+    });
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ dateFormat: "YYYY/MM/DD" }),
+    } as Response);
+
+    const { result } = renderHook(() => useUserSettings());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings.dateFormat).toBe(
+      DEFAULT_USER_CALENDAR_SETTINGS.dateFormat
+    );
+  });
+
+  it("propagates a dateFormat bus event to a second hook instance", async () => {
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+    const { result } = renderHook(() => useUserSettings());
+
+    act(() => {
+      emitUserSettingsChange({ dateFormat: "YYYY-MM-DD" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.settings.dateFormat).toBe("YYYY-MM-DD");
+    });
   });
 
   it("merges partial server values over defaults", async () => {
@@ -634,6 +691,66 @@ describe("useUserSettings", () => {
     });
   });
 
+  describe("same-key rollback race (#420)", () => {
+    it("does not roll back when the current state no longer matches this mutate's optimistic value", async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { id: "u1" } },
+        status: "authenticated",
+      });
+      // Initial GET — server says 12h.
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ timeFormat: "12h" }),
+      } as Response);
+
+      const { result } = renderHook(() => useUserSettings());
+      await waitFor(() => {
+        expect(result.current.settings.timeFormat).toBe("12h");
+      });
+
+      // A: kick off a mutate to "24h" with a PUT that will be rejected later.
+      let rejectA: (reason?: unknown) => void = () => {};
+      const aPromise = new Promise<Response>((_resolve, reject) => {
+        rejectA = reject;
+      });
+      vi.mocked(global.fetch).mockImplementationOnce(() => aPromise);
+
+      let aMutate: Promise<void> | undefined;
+      await act(async () => {
+        aMutate = result.current.mutate({ timeFormat: "24h" }).catch(() => {});
+        // Let the optimistic setSettings + bus emit run.
+        await Promise.resolve();
+      });
+      expect(result.current.settings.timeFormat).toBe("24h");
+
+      // Simulate B's success — a later same-key bus event overrides to "12h",
+      // standing in for a parallel `mutate({ timeFormat: "12h" })` whose PUT
+      // resolved before A's.
+      await act(async () => {
+        emitUserSettingsChange({ timeFormat: "12h" });
+      });
+      expect(result.current.settings.timeFormat).toBe("12h");
+
+      // Subscribe AFTER B's emit so we only observe whether A's rollback
+      // path re-emits the stale snapshot.
+      const busHandler = vi.fn();
+      const unsubscribe = subscribeUserSettings(busHandler);
+
+      // Reject A — the catch should compare the current state ("12h") to
+      // this call's optimistic value ("24h"). They differ, so the rollback
+      // and emit should be suppressed.
+      await act(async () => {
+        rejectA(new Error("boom"));
+        await aMutate;
+      });
+
+      expect(busHandler).not.toHaveBeenCalled();
+      expect(result.current.settings.timeFormat).toBe("12h");
+
+      unsubscribe();
+    });
+  });
+
   describe("bus subscription (#337)", () => {
     it("updates state when a bus event arrives from another consumer", async () => {
       mockUseSession.mockReturnValue({
@@ -681,5 +798,26 @@ describe("useUserSettings", () => {
       ).not.toThrow();
       expect(result.current.settings.timeFormat).toBe("12h");
     });
+  });
+});
+
+describe("isTimeFormat", () => {
+  it("accepts the two valid literal values", () => {
+    expect(isTimeFormat("12h")).toBe(true);
+    expect(isTimeFormat("24h")).toBe(true);
+  });
+
+  it("rejects similar-looking strings outside the allow-list", () => {
+    expect(isTimeFormat("13h")).toBe(false);
+    expect(isTimeFormat("12H")).toBe(false);
+    expect(isTimeFormat("12")).toBe(false);
+    expect(isTimeFormat("")).toBe(false);
+  });
+
+  it("rejects non-string inputs", () => {
+    expect(isTimeFormat(null)).toBe(false);
+    expect(isTimeFormat(undefined)).toBe(false);
+    expect(isTimeFormat(12)).toBe(false);
+    expect(isTimeFormat({})).toBe(false);
   });
 });

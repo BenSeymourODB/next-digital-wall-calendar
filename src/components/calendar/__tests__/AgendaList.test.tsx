@@ -10,6 +10,7 @@ import {
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import type { IEvent, IUser, TEventColor } from "@/types/calendar";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { AgendaList } from "../AgendaList";
 
@@ -140,6 +141,45 @@ describe("AgendaList", () => {
     expect(within(groups[1]).getByText("WednesdayEvent")).toBeInTheDocument();
   });
 
+  it("groups events by category with 'Uncategorised' last when groupBy is 'category' (#211)", () => {
+    const events: IEvent[] = [
+      makeEvent("w1", "2026-05-04T09:00:00.000Z", "2026-05-04T10:00:00.000Z", {
+        title: "Standup",
+        category: "Work",
+      }),
+      makeEvent("f1", "2026-05-04T11:00:00.000Z", "2026-05-04T12:00:00.000Z", {
+        title: "School Pickup",
+        category: "Family",
+      }),
+      makeEvent("u1", "2026-05-04T13:00:00.000Z", "2026-05-04T14:00:00.000Z", {
+        title: "Coffee with Sam",
+        // No category — should land under "Uncategorised"
+      }),
+    ];
+
+    renderList(
+      {
+        events,
+        rangeStart: new Date("2026-05-04T00:00:00.000Z"),
+        rangeEnd: new Date("2026-05-04T23:59:59.999Z"),
+      },
+      { agendaModeGroupBy: "category" }
+    );
+
+    const groups = screen.getAllByTestId("agenda-list-group");
+    expect(groups.length).toBe(3);
+    // Alphabetical Family → Work, then Uncategorised pinned last.
+    const headers = groups.map(
+      (group) =>
+        within(group).getByRole("heading", { level: 3 }).textContent?.trim() ??
+        ""
+    );
+    expect(headers).toEqual(["Family", "Work", "Uncategorised"]);
+    expect(within(groups[0]).getByText("School Pickup")).toBeInTheDocument();
+    expect(within(groups[1]).getByText("Standup")).toBeInTheDocument();
+    expect(within(groups[2]).getByText("Coffee with Sam")).toBeInTheDocument();
+  });
+
   it("renders an empty-state when no events fall within the range", () => {
     renderList({
       events: [],
@@ -149,6 +189,158 @@ describe("AgendaList", () => {
     });
 
     expect(screen.getByText("Nothing scheduled today")).toBeInTheDocument();
+  });
+
+  describe("search input (#264 — fold AgendaCalendar search into day/week agenda mode)", () => {
+    const morning = makeEvent(
+      "morning",
+      "2026-05-04T09:00:00.000Z",
+      "2026-05-04T10:00:00.000Z",
+      {
+        title: "Dentist Appointment",
+        description: "Annual cleaning",
+        user: user("u1", "Emma"),
+      }
+    );
+    const afternoon = makeEvent(
+      "afternoon",
+      "2026-05-04T14:00:00.000Z",
+      "2026-05-04T15:00:00.000Z",
+      {
+        title: "Soccer Practice",
+        description: "Bring water bottle",
+        user: user("u2", "Dad"),
+      }
+    );
+    const range = {
+      rangeStart: new Date("2026-05-04T00:00:00.000Z"),
+      rangeEnd: new Date("2026-05-04T23:59:59.999Z"),
+    };
+
+    it("renders the search input when events are in range", () => {
+      renderList({ events: [morning, afternoon], ...range });
+      expect(
+        screen.getByTestId("agenda-list-search-input")
+      ).toBeInTheDocument();
+    });
+
+    it("does not render the search input when no events are in range", () => {
+      renderList({ events: [], ...range });
+      expect(screen.queryByTestId("agenda-list-search-input")).toBeNull();
+    });
+
+    it("filters events by title (case-insensitive substring)", async () => {
+      const user = userEvent.setup();
+      renderList({ events: [morning, afternoon], ...range });
+
+      await user.type(screen.getByTestId("agenda-list-search-input"), "soccer");
+
+      const titles = screen
+        .getAllByTestId("agenda-list-event-title")
+        .map((el) => el.textContent);
+      expect(titles).toEqual(["Soccer Practice"]);
+    });
+
+    it("filters events by description (case-insensitive substring)", async () => {
+      const user = userEvent.setup();
+      renderList({ events: [morning, afternoon], ...range });
+
+      await user.type(
+        screen.getByTestId("agenda-list-search-input"),
+        "cleaning"
+      );
+
+      const titles = screen
+        .getAllByTestId("agenda-list-event-title")
+        .map((el) => el.textContent);
+      expect(titles).toEqual(["Dentist Appointment"]);
+    });
+
+    it("filters events by attendee (user) name", async () => {
+      const user = userEvent.setup();
+      renderList({ events: [morning, afternoon], ...range });
+
+      await user.type(screen.getByTestId("agenda-list-search-input"), "Emma");
+
+      const titles = screen
+        .getAllByTestId("agenda-list-event-title")
+        .map((el) => el.textContent);
+      expect(titles).toEqual(["Dentist Appointment"]);
+    });
+
+    it("renders a 'no matches' empty state when the query matches nothing in range, and restores the list on clear", async () => {
+      const user = userEvent.setup();
+      renderList({ events: [morning, afternoon], ...range });
+
+      await user.type(
+        screen.getByTestId("agenda-list-search-input"),
+        "nothing-matches"
+      );
+
+      expect(screen.queryByTestId("agenda-list-group")).toBeNull();
+      expect(
+        screen.getByTestId("agenda-list-search-no-matches")
+      ).toHaveTextContent(/nothing-matches/);
+      // The contextual range-empty state must not also appear.
+      expect(screen.queryByTestId("agenda-list-empty")).toBeNull();
+
+      // Clearing a non-matching query brings the original events back.
+      await user.click(screen.getByTestId("agenda-list-search-clear"));
+      expect(screen.queryByTestId("agenda-list-search-no-matches")).toBeNull();
+      const titles = screen
+        .getAllByTestId("agenda-list-event-title")
+        .map((el) => el.textContent);
+      expect(titles.sort()).toEqual(["Dentist Appointment", "Soccer Practice"]);
+    });
+
+    it("filters events by query when grouped by color", async () => {
+      const user = userEvent.setup();
+      renderList(
+        { events: [morning, afternoon], ...range },
+        { agendaModeGroupBy: "color" }
+      );
+
+      await user.type(screen.getByTestId("agenda-list-search-input"), "soccer");
+
+      const titles = screen
+        .getAllByTestId("agenda-list-event-title")
+        .map((el) => el.textContent);
+      expect(titles).toEqual(["Soccer Practice"]);
+    });
+
+    it("shows and uses the clear-search control once a query is typed", async () => {
+      const user = userEvent.setup();
+      renderList({ events: [morning, afternoon], ...range });
+
+      // Clear button starts hidden
+      expect(screen.queryByTestId("agenda-list-search-clear")).toBeNull();
+
+      await user.type(screen.getByTestId("agenda-list-search-input"), "soccer");
+
+      const clear = screen.getByTestId("agenda-list-search-clear");
+      await user.click(clear);
+
+      // Both events visible again after clearing.
+      const titles = screen
+        .getAllByTestId("agenda-list-event-title")
+        .map((el) => el.textContent);
+      expect(titles.sort()).toEqual(["Dentist Appointment", "Soccer Practice"]);
+      expect(screen.queryByTestId("agenda-list-search-clear")).toBeNull();
+    });
+
+    it("renders a match count and an sr-only live region announcing it", async () => {
+      const user = userEvent.setup();
+      renderList({ events: [morning, afternoon], ...range });
+
+      await user.type(screen.getByTestId("agenda-list-search-input"), "soccer");
+
+      expect(
+        screen.getByTestId("agenda-list-search-match-count")
+      ).toHaveTextContent("1 match");
+      expect(screen.getByTestId("agenda-list-search-status")).toHaveTextContent(
+        /1 event matches "soccer"/
+      );
+    });
   });
 
   it("collapses empty time gaps — does not render any hour-grid scaffolding", () => {

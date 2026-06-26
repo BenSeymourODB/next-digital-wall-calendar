@@ -1,47 +1,35 @@
 /**
  * Tests for GivePointsModal component
  */
+import { makeProfile } from "@/test/fixtures/profile";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GivePointsModal } from "../give-points-modal";
-import type { Profile } from "../profile-context";
+import type { Profile } from "../types";
 
 // Mock fetch for API calls
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 // Mock profiles
-const mockAdminProfile: Profile = {
+const mockAdminProfile = makeProfile({
   id: "admin-1",
   userId: "user-1",
   name: "Admin User",
-  type: "admin",
-  ageGroup: "adult",
-  color: "#3b82f6",
-  avatar: {
-    type: "initials",
-    value: "AU",
-    backgroundColor: "#3b82f6",
-  },
+  avatar: { type: "initials", value: "AU", backgroundColor: "#3b82f6" },
   pinEnabled: true,
-  isActive: true,
-};
+});
 
-const mockStandardProfile: Profile = {
+const mockStandardProfile = makeProfile({
   id: "child-1",
   userId: "user-1",
   name: "Child User",
   type: "standard",
   ageGroup: "child",
   color: "#22c55e",
-  avatar: {
-    type: "emoji",
-    value: "👦",
-  },
-  pinEnabled: false,
-  isActive: true,
-};
+  avatar: { type: "emoji", value: "👦" },
+});
 
 const mockProfiles: Profile[] = [mockAdminProfile, mockStandardProfile];
 

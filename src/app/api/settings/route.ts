@@ -1,3 +1,4 @@
+import { isTimeFormat } from "@/hooks/useUserSettings";
 import {
   ApiError,
   requireUserSession,
@@ -5,6 +6,7 @@ import {
 } from "@/lib/api/handler";
 import { isCalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
 import { prisma } from "@/lib/db";
+import { VALID_DATE_FORMATS } from "@/lib/format-date";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -12,8 +14,6 @@ import { NextRequest, NextResponse } from "next/server";
 // and `THEME_OPTIONS` in `src/components/settings/display-section.tsx`.
 // `auto` is a legacy alias for `system` (display-section maps it on display).
 const VALID_THEMES = ["light", "dark", "auto", "system", "wall-projector"];
-const VALID_TIME_FORMATS = ["12h", "24h"];
-const VALID_DATE_FORMATS = ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"];
 
 /**
  * GET /api/settings - Returns user settings
@@ -91,15 +91,19 @@ export const PUT = withApiHandler(
     }
 
     if (body.timeFormat !== undefined) {
-      if (!VALID_TIME_FORMATS.includes(body.timeFormat as string)) {
+      if (!isTimeFormat(body.timeFormat)) {
         throw new ApiError("Invalid timeFormat. Must be one of: 12h, 24h", 400);
       }
     }
 
     if (body.dateFormat !== undefined) {
-      if (!VALID_DATE_FORMATS.includes(body.dateFormat as string)) {
+      if (
+        !(VALID_DATE_FORMATS as readonly string[]).includes(
+          body.dateFormat as string
+        )
+      ) {
         throw new ApiError(
-          "Invalid dateFormat. Must be one of: MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD",
+          `Invalid dateFormat. Must be one of: ${VALID_DATE_FORMATS.join(", ")}`,
           400
         );
       }

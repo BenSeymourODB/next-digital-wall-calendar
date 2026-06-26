@@ -7,11 +7,12 @@ import {
 } from "@/components/providers/CalendarProvider";
 import { computeHiddenEventCounts } from "@/lib/calendar-filter-counts";
 import { TRANSITION_SPEED_TO_MS } from "@/lib/calendar/transition-speed";
-import type { TCalendarAccessRole } from "@/types/calendar";
 import type {
   ICalendarInfo,
   IEvent,
   IUser,
+  TAgendaGroupBy,
+  TCalendarAccessRole,
   TCalendarView,
   TEventColor,
   TWeekStartDay,
@@ -39,7 +40,7 @@ interface MockCalendarProviderProps {
   /** Which day the visible calendar week starts on (0 = Sunday, 1 = Monday) */
   weekStartDay?: TWeekStartDay;
   /** Initial agenda-mode group-by */
-  agendaModeGroupBy?: "date" | "color";
+  agendaModeGroupBy?: TAgendaGroupBy;
   /** Initial agenda-mode toggle (only meaningful for day/week views). */
   agendaMode?: boolean;
   /** Simulate loading delay in ms */
@@ -110,9 +111,8 @@ export function MockCalendarProvider({
   const [currentView, setCurrentViewState] = useState<TCalendarView>(view);
   const [use24HourFormat, setUse24HourFormatState] =
     useState<boolean>(initial24Hour);
-  const [agendaModeGroupBy, setAgendaModeGroupByState] = useState<
-    "date" | "color"
-  >(initialAgendaGroupBy);
+  const [agendaModeGroupBy, setAgendaModeGroupByState] =
+    useState<TAgendaGroupBy>(initialAgendaGroupBy);
   const [agendaMode, setAgendaModeState] = useState<boolean>(initialAgendaMode);
   const [weekStartDay, setWeekStartDayState] =
     useState<TWeekStartDay>(initialWeekStartDay);
@@ -154,7 +154,7 @@ export function MockCalendarProvider({
     setUse24HourFormatState(!use24HourFormat);
   };
 
-  const setAgendaModeGroupBy = (groupBy: "date" | "color") => {
+  const setAgendaModeGroupBy = (groupBy: TAgendaGroupBy) => {
     setAgendaModeGroupByState(groupBy);
   };
 
@@ -220,6 +220,38 @@ export function MockCalendarProvider({
   // their own provider wrapper.
   const deleteEvent = async (eventId: string, _calendarId: string) => {
     setAllEvents((prev) => prev.filter((e) => e.id !== eventId));
+  };
+
+  // Mock editEvent (#265): hermetic local merge so UI flows resolve without
+  // mocking fetch. Tests that need failure behaviour should override this
+  // in their own provider wrapper.
+  //
+  // Reads from the closure `allEvents` rather than the setState callback so
+  // we don't depend on React running the updater synchronously — concurrent
+  // mode can invoke the updater more than once, and capturing the merged
+  // event from an updater callback that may be replayed is a foot-gun. The
+  // mock has no real concurrency, so the closure value is the source of
+  // truth.
+  const editEvent = async (
+    eventId: string,
+    _calendarId: string,
+    input: CreateEventInput
+  ): Promise<IEvent> => {
+    const existing = allEvents.find((e) => e.id === eventId);
+    if (!existing) {
+      throw new Error(`Event ${eventId} not found in mock list`);
+    }
+    const updated: IEvent = {
+      ...existing,
+      title: input.title,
+      description: input.description,
+      color: input.color,
+      isAllDay: input.isAllDay,
+      startDate: input.startDate,
+      endDate: input.endDate,
+    };
+    setAllEvents((prev) => prev.map((e) => (e.id === eventId ? updated : e)));
+    return updated;
   };
 
   // Mock refresh - just returns current events
@@ -305,6 +337,7 @@ export function MockCalendarProvider({
     updateEvent,
     removeEvent,
     createEvent,
+    editEvent,
     deleteEvent,
     clearFilter,
     refreshEvents,

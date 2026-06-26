@@ -7,7 +7,7 @@ import { createMockEvent } from "@/test/fixtures/calendar-event";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { YearCalendar, bucketEventColorsByDayKey } from "../YearCalendar";
 
 function createMockContext(
@@ -536,6 +536,44 @@ describe("YearCalendar", () => {
     });
   });
 
+  describe("Bare-date count/dot parity (#375)", () => {
+    it("counts a bare-date Jan-1 event in the year header to match the dot", () => {
+      // Before #375 was fixed: the dot path used `parseEventStartLocal`
+      // (treats bare YYYY-MM-DD as the local calendar day) while the count
+      // path called `getEventsForYear`, which used `parseISO` (treats it as
+      // UTC midnight). In negative-offset zones, the count silently
+      // undercounted bare-date Jan-1 events while the dot still rendered.
+      // After the fix both paths share `parseEventStart`, so the count must
+      // equal the rendered-dot count for the exact scenario from #375.
+      const events = [
+        createMockEvent({
+          id: "bare-jan-1",
+          color: "blue",
+          startDate: "2026-01-01",
+          endDate: "2026-01-01",
+          isAllDay: true,
+        }),
+      ];
+
+      renderWithContext({ selectedDate: new Date(2026, 0, 1), events });
+
+      expect(screen.getByTestId("year-calendar-event-count")).toHaveTextContent(
+        "1 event"
+      );
+
+      const janCell = screen.getByTestId("year-calendar-day-2026-01-01");
+      expect(within(janCell).getAllByTestId("year-calendar-dot")).toHaveLength(
+        1
+      );
+
+      // Guard against the UTC-midnight slip reappearing across the whole
+      // year grid: if the parser ever regresses to `parseISO`, the dot
+      // would migrate off Jan-1 to a different cell in a negative-offset
+      // zone. The total dot count must stay at exactly 1.
+      expect(screen.getAllByTestId("year-calendar-dot")).toHaveLength(1);
+    });
+  });
+
   describe("All-day timezone correctness (#203 bug 1)", () => {
     it("renders the dot on the calendar-local day for an all-day bare-date startDate", () => {
       // All-day events from non-canonical sources may carry a bare YYYY-MM-DD
@@ -565,6 +603,90 @@ describe("YearCalendar", () => {
       expect(
         within(previousCell).queryAllByTestId("year-calendar-dot")
       ).toHaveLength(0);
+    });
+  });
+
+  describe("Slide animation on year navigation (#207)", () => {
+    function installMatchMediaMock(reducedMotion: boolean) {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: reducedMotion && query === "(prefers-reduced-motion: reduce)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+    }
+
+    beforeEach(() => {
+      installMatchMediaMock(false);
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function rerenderOn(
+      selectedDate: Date,
+      ctx: Partial<ICalendarContext>,
+      rerender: ReturnType<typeof renderWithContext>["rerender"]
+    ) {
+      rerender(
+        <CalendarContext.Provider
+          value={{ ...createMockContext(ctx), selectedDate }}
+        >
+          <YearCalendar />
+        </CalendarContext.Provider>
+      );
+    }
+
+    it("wraps the months grid in an AnimatedSwap container", () => {
+      renderWithContext({ selectedDate: new Date(2026, 3, 15) });
+      expect(screen.getByTestId("animated-swap")).toBeInTheDocument();
+    });
+
+    it("slides the outgoing months grid left on next-year", () => {
+      const baseCtx = { selectedDate: new Date(2026, 3, 15) };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(new Date(2027, 3, 15), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(-100%)");
+    });
+
+    it("slides the outgoing months grid right on prev-year", () => {
+      const baseCtx = { selectedDate: new Date(2026, 3, 15) };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(new Date(2025, 3, 15), baseCtx, rerender);
+
+      const outgoing = screen.getByTestId("animated-swap-outgoing");
+      expect(outgoing.style.transform).toBe("translateX(100%)");
+    });
+
+    it("does not animate when selectedDate moves within the same year", () => {
+      const baseCtx = { selectedDate: new Date(2026, 1, 1) };
+      const { rerender } = renderWithContext(baseCtx);
+
+      rerenderOn(new Date(2026, 11, 1), baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders no outgoing snapshot when prefers-reduced-motion is set", () => {
+      installMatchMediaMock(true);
+
+      const baseCtx = { selectedDate: new Date(2026, 3, 15) };
+      const { rerender } = renderWithContext(baseCtx);
+      rerenderOn(new Date(2027, 3, 15), baseCtx, rerender);
+
+      expect(
+        screen.queryByTestId("animated-swap-outgoing")
+      ).not.toBeInTheDocument();
     });
   });
 });

@@ -11,6 +11,7 @@ import {
   createParams,
   parseResponse,
 } from "@/lib/test-utils/api-test-helpers";
+import { makePrismaProfile } from "@/test/fixtures/profile";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   mockAdminProfile,
@@ -319,22 +320,15 @@ describe("/api/profiles/[id]/give-points", () => {
   });
 
   describe("multiple admin support", () => {
-    const mockSecondAdmin = {
+    const mockSecondAdmin = makePrismaProfile({
       id: "profile-admin-2",
       userId: mockUserId,
       name: "Second Admin",
-      type: "admin" as const,
-      ageGroup: "adult" as const,
       color: "#ef4444",
       avatar: { type: "initials", value: "SA", backgroundColor: "#ef4444" },
       pinHash: "$2b$10$mockHashedPin2",
       pinEnabled: true,
-      failedPinAttempts: 0,
-      pinLockedUntil: null,
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    });
 
     it("allows second admin to award points", async () => {
       vi.mocked(getSession).mockResolvedValue(mockSession);

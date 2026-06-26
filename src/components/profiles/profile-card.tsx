@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { Trophy } from "lucide-react";
 import { ProfileAvatar } from "./profile-avatar";
-import type { Profile } from "./profile-context";
+import type { Profile } from "./types";
 
 /**
  * Profile stats from API

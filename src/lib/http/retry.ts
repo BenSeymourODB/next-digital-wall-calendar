@@ -18,6 +18,11 @@
  * tests can exercise every branch deterministically without real timers.
  */
 
+// Exponential-backoff defaults tuned for Google API transients: start at
+// 300ms (long enough to clear a brief blip, short enough to stay invisible),
+// double each attempt (300 → 600 → 1200ms), and hard-cap any single wait at
+// 5s so a `Retry-After` or runaway exponent can't stall a request handler.
+// Three total attempts keeps worst-case added latency around ~1s with jitter.
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 300;
 const DEFAULT_MAX_DELAY_MS = 5_000;
@@ -177,6 +182,40 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Race a sleep against an AbortSignal so the inter-attempt wait short-circuits
+ * the moment the signal fires. Without this, `withRetry`'s wall-clock cost on
+ * an aborted run is `pending-attempt + one backoff`, not the bare timeout the
+ * caller asked for (issue #434).
+ *
+ * `{ once: true }` would self-remove on fire but leak on the sleep-wins path.
+ * Always remove the listener in a `finally` block; `removeEventListener` is a
+ * no-op if the listener already auto-removed, so this is safe in every branch.
+ */
+async function abortableSleep(
+  ms: number,
+  sleep: (ms: number) => Promise<void>,
+  signal: AbortSignal | undefined
+): Promise<void> {
+  if (!signal) {
+    await sleep(ms);
+    return;
+  }
+  if (signal.aborted) throw abortError();
+
+  let onAbort: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    onAbort = () => reject(abortError());
+    signal.addEventListener("abort", onAbort);
+  });
+
+  try {
+    await Promise.race([sleep(ms), abortPromise]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 function abortError(): Error {
   // DOMException isn't guaranteed in every runtime; a plain Error with
   // `name: "AbortError"` is what the Web `fetch` spec surfaces and what
@@ -226,7 +265,7 @@ export async function withRetry<T>(
 
       onRetry?.({ attempt, delayMs, error, retryAfterMs });
 
-      await sleep(delayMs);
+      await abortableSleep(delayMs, sleep, signal);
 
       if (signal?.aborted) throw abortError();
     }
@@ -243,22 +282,35 @@ export async function withRetry<T>(
  * keeps full control of its `!response.ok` branch — retry is invisible to
  * downstream error handling.
  *
- * Signal precedence: if `init.signal` is provided it wins, because merging
- * two signals requires `AbortSignal.any` (Node 20+) and we want one simple
- * contract. If `init.signal` is absent and `options.signal` is provided, the
- * outer signal is threaded through.
+ * Signal handling: when both `init.signal` and `options.signal` are passed,
+ * they are merged with `AbortSignal.any` (Node ≥ 20.3 / modern browsers; the
+ * project's `.nvmrc` pins Node 22) so either signal aborting tears down both
+ * the in-flight `fetch()` and the inter-attempt sleep in `withRetry`. When
+ * only one is set it is forwarded to both sides, so the per-flight
+ * `AbortSignal.timeout(N)` that callers pass via `init` still bounds the
+ * entire retry loop (issue #434 / #436).
  */
 export async function fetchWithRetry(
   input: Parameters<typeof fetch>[0],
   init?: Parameters<typeof fetch>[1],
   options: RetryOptions = {}
 ): Promise<Response> {
-  const effectiveInit: RequestInit = {
-    ...(init ?? {}),
-  };
-  if (!effectiveInit.signal && options.signal) {
-    effectiveInit.signal = options.signal;
+  // Merge both signals so either aborting tears down the entire operation —
+  // in-flight fetch AND inter-attempt sleep. When only one is set, the merge
+  // collapses to that signal (no fresh AbortSignal allocation needed).
+  const mergedSignal: AbortSignal | undefined =
+    init?.signal != null && options.signal != null
+      ? AbortSignal.any([init.signal, options.signal])
+      : (init?.signal ?? options.signal);
+
+  const effectiveInit: RequestInit = { ...(init ?? {}) };
+  if (mergedSignal) {
+    effectiveInit.signal = mergedSignal;
   }
+
+  const effectiveOptions: RetryOptions = mergedSignal
+    ? { ...options, signal: mergedSignal }
+    : options;
 
   // `fetchWithRetry` reads its own copy of maxAttempts so the inner function
   // can decide between "throw HttpRetryError" (ask `withRetry` to retry) and
@@ -297,7 +349,7 @@ export async function fetchWithRetry(
         retryAfterMs,
         `HTTP ${response.status} from ${safeUrl(input)}`
       );
-    }, options);
+    }, effectiveOptions);
   } catch (error) {
     // Only substitute the stored transient response when the retry loop
     // escalated *this* attempt via HttpRetryError. If the final attempt

@@ -1,10 +1,11 @@
 /**
  * Tests for ProfileGrid component
  */
+import { makeProfile } from "@/test/fixtures/profile";
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Profile } from "../profile-context";
 import { ProfileGrid, ProfileGridSkeleton } from "../profile-grid";
+import type { Profile } from "../types";
 
 // Mock fetch for stats API
 const mockFetch = vi.fn();
@@ -12,50 +13,30 @@ global.fetch = mockFetch;
 
 // Mock profile data
 const mockProfiles: Profile[] = [
-  {
+  makeProfile({
     id: "profile-1",
     userId: "user-1",
     name: "Admin User",
-    type: "admin",
-    ageGroup: "adult",
-    color: "#3b82f6",
-    avatar: {
-      type: "initials",
-      value: "AU",
-      backgroundColor: "#3b82f6",
-    },
-    pinEnabled: false,
-    isActive: true,
-  },
-  {
+    avatar: { type: "initials", value: "AU", backgroundColor: "#3b82f6" },
+  }),
+  makeProfile({
     id: "profile-2",
     userId: "user-1",
     name: "Child User",
     type: "standard",
     ageGroup: "child",
     color: "#22c55e",
-    avatar: {
-      type: "emoji",
-      value: "👦",
-    },
-    pinEnabled: false,
-    isActive: true,
-  },
-  {
+    avatar: { type: "emoji", value: "👦" },
+  }),
+  makeProfile({
     id: "profile-3",
     userId: "user-1",
     name: "Teen User",
     type: "standard",
     ageGroup: "teen",
     color: "#a855f7",
-    avatar: {
-      type: "initials",
-      value: "TU",
-      backgroundColor: "#a855f7",
-    },
-    pinEnabled: false,
-    isActive: true,
-  },
+    avatar: { type: "initials", value: "TU", backgroundColor: "#a855f7" },
+  }),
 ];
 
 const mockStats = {

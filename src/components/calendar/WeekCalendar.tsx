@@ -2,6 +2,7 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
+import { useSlideDirection } from "@/hooks/use-slide-direction";
 import {
   assignBarRows,
   computeEventColumns,
@@ -12,6 +13,7 @@ import {
   getInitialScrollTop,
   getShortWeekdayLabels,
   getWeekDates,
+  rangeText,
 } from "@/lib/calendar-helpers";
 import { useTodayStartOfDay } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
@@ -26,11 +28,21 @@ import {
   isSameDay,
   isSameWeek,
   parseISO,
+  startOfDay,
   startOfWeek,
   subWeeks,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AgendaList } from "./AgendaList";
+import { AnimatedSwap } from "./animated-swap";
+
+const INTRA_VIEW_SLIDE_DURATION_MS = 300;
+
+/** Stable absolute week index used for slide-direction tracking; flooring on
+ * the week-start ms keeps intra-week date moves from triggering a slide. */
+function absoluteWeekIndex(weekStart: Date): number {
+  return Math.floor(startOfDay(weekStart).getTime() / (86_400_000 * 7));
+}
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT_PX = 40;
@@ -137,6 +149,8 @@ export function WeekCalendar() {
   const nextWeek = () => setSelectedDate(addWeeks(selectedDate, 1));
   const goToToday = () => setSelectedDate(new Date());
 
+  const slideDirection = useSlideDirection(absoluteWeekIndex(weekStart));
+
   return (
     <div className="w-full space-y-4">
       <div className="flex items-center justify-between">
@@ -146,8 +160,7 @@ export function WeekCalendar() {
               className="text-foreground text-2xl font-bold"
               data-testid="week-calendar-range"
             >
-              {format(weekStart, "MMM d, yyyy")} –{" "}
-              {format(weekEnd, "MMM d, yyyy")}
+              {rangeText("week", selectedDate, weekStartDay)}
             </h2>
             <span
               className="text-muted-foreground text-sm"
@@ -196,25 +209,36 @@ export function WeekCalendar() {
         </div>
       )}
 
-      {agendaMode ? (
-        <AgendaList
-          events={weekEvents}
-          rangeStart={weekStart}
-          rangeEnd={weekEnd}
-          emptyLabel={`No events from ${format(weekStart, "MMM d")} to ${format(weekEnd, "MMM d")}`}
-        />
-      ) : (
-        <WeekGridView
-          weekStart={weekStart}
-          weekEnd={weekEnd}
-          weekDates={weekDates}
-          weekdayHeaders={weekdayHeaders}
-          weekEvents={weekEvents}
-          today={today}
-          use24HourFormat={use24HourFormat}
-          workingHoursStart={workingHoursStart}
-        />
-      )}
+      <AnimatedSwap
+        swapKey={format(weekStart, "yyyy-MM-dd")}
+        type="slide"
+        direction={slideDirection}
+        durationMs={INTRA_VIEW_SLIDE_DURATION_MS}
+      >
+        {agendaMode ? (
+          // Key on the week start so React remounts AgendaList on prev/next
+          // week navigation. Without this, AgendaList's local searchQuery
+          // state would silently carry over from one week to the next.
+          <AgendaList
+            key={weekStart.toISOString()}
+            events={weekEvents}
+            rangeStart={weekStart}
+            rangeEnd={weekEnd}
+            emptyLabel={`No events from ${format(weekStart, "MMM d")} to ${format(weekEnd, "MMM d")}`}
+          />
+        ) : (
+          <WeekGridView
+            weekStart={weekStart}
+            weekEnd={weekEnd}
+            weekDates={weekDates}
+            weekdayHeaders={weekdayHeaders}
+            weekEvents={weekEvents}
+            today={today}
+            use24HourFormat={use24HourFormat}
+            workingHoursStart={workingHoursStart}
+          />
+        )}
+      </AnimatedSwap>
     </div>
   );
 }

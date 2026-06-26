@@ -5,6 +5,12 @@
  * used by the scheduler to determine when to navigate.
  */
 
+/** Seconds in a minute / minutes in an hour — used for HH:MM <-> total math. */
+const SECONDS_PER_MINUTE = 60;
+const MINUTES_PER_HOUR = 60;
+/** Minutes in a full day (24 * 60), used to wrap clock-time differences. */
+const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
+
 /**
  * Check if the current time matches a scheduled time within a tolerance of +/- 1 minute.
  *
@@ -16,11 +22,12 @@ export function isTimeMatch(currentTime: Date, scheduledTime: string): boolean {
   const [scheduledHour, scheduledMinute] = scheduledTime.split(":").map(Number);
 
   const currentTotalMinutes =
-    currentTime.getHours() * 60 + currentTime.getMinutes();
-  const scheduledTotalMinutes = scheduledHour * 60 + scheduledMinute;
+    currentTime.getHours() * MINUTES_PER_HOUR + currentTime.getMinutes();
+  const scheduledTotalMinutes =
+    scheduledHour * MINUTES_PER_HOUR + scheduledMinute;
 
   const diff = Math.abs(currentTotalMinutes - scheduledTotalMinutes);
-  const wrappedDiff = Math.min(diff, 1440 - diff);
+  const wrappedDiff = Math.min(diff, MINUTES_PER_DAY - diff);
 
   return wrappedDiff <= 1;
 }
@@ -49,12 +56,12 @@ export function isActiveDay(
  * @returns Formatted string like "45s", "1m 30s", "61m 1s"
  */
 export function formatTimeRemaining(seconds: number): string {
-  if (seconds < 60) {
+  if (seconds < SECONDS_PER_MINUTE) {
     return `${seconds}s`;
   }
 
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
+  const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
+  const remainingSeconds = seconds % SECONDS_PER_MINUTE;
 
   return `${minutes}m ${remainingSeconds}s`;
 }

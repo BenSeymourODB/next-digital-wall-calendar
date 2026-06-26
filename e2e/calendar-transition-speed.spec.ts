@@ -72,7 +72,9 @@ test.describe("Calendar transition speed (#283)", () => {
   }) => {
     await page.goto("/test/calendar?events=default&view=month&transitionMs=0");
 
-    await page.getByTestId("view-switcher-day").click();
+    // After #235 the primary Day button switches view directly; the Grid/Agenda
+    // menu lives behind the `-mode` caret. Open the caret to pick Agenda.
+    await page.getByTestId("view-switcher-day-mode").click();
     await page.getByRole("menuitemradio", { name: /agenda/i }).click();
 
     // No outgoing snapshot for the cross-view fade either.

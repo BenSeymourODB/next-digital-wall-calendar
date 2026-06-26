@@ -26,12 +26,12 @@ export function TaskSection({ values, onChange }: TaskSectionProps) {
     <SettingsSection title="Tasks" description="Configure task list defaults">
       <div className="space-y-6">
         <div className="space-y-2">
-          <Label>Default sort order</Label>
+          <Label id="task-sort-order-label">Default sort order</Label>
           <Select
             value={values.taskSortOrder}
             onValueChange={(value) => onChange({ taskSortOrder: value })}
           >
-            <SelectTrigger>
+            <SelectTrigger aria-labelledby="task-sort-order-label">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

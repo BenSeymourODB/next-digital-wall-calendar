@@ -2,22 +2,28 @@
 
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
-import { getEventsForYear } from "@/lib/calendar-helpers";
+import { useSlideDirection } from "@/hooks/use-slide-direction";
+import {
+  getEventsForYear,
+  parseEventStart,
+  rangeText,
+} from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useRef } from "react";
 import {
   eachDayOfInterval,
   endOfMonth,
-  endOfYear,
   format,
   getDay,
   isSameDay,
   isSameYear,
   startOfMonth,
-  startOfYear,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AnimatedSwap } from "./animated-swap";
+
+const INTRA_VIEW_SLIDE_DURATION_MS = 300;
 
 const DOT_COLOR_CLASS: Record<TEventColor, string> = {
   blue: "bg-blue-500",
@@ -48,32 +54,20 @@ function formatDayKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-const BARE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-// All-day events from non-canonical sources can carry a bare YYYY-MM-DD
-// startDate. `new Date("YYYY-MM-DD")` parses it as UTC midnight, which slips
-// to the previous day in negative-offset zones — so the dot would render on
-// the wrong cell. Construct the date from local Y/M/D parts in that case.
-function parseEventStartLocal(event: IEvent): Date {
-  const match = BARE_DATE_RE.exec(event.startDate);
-  if (match) {
-    const [, y, m, d] = match;
-    return new Date(Number(y), Number(m) - 1, Number(d));
-  }
-  return new Date(event.startDate);
-}
-
 // Pre-bucket events into a Map<dayKey, Set<TEventColor>> so each day cell
 // reduces to an O(1) lookup instead of scanning the whole event array.
 // Drops the year-grid render from O(events × cells) to O(events + cells).
 // Exported for unit testing — the map shape is the contract that lets
 // MonthPanel render dots without ever touching the raw event list.
+//
+// Uses the shared `parseEventStart` so the dot path and the
+// `getEventsForX` count path agree on bare-date semantics (issue #375).
 export function bucketEventColorsByDayKey(
   events: IEvent[]
 ): Map<string, Set<TEventColor>> {
   const map = new Map<string, Set<TEventColor>>();
   for (const event of events) {
-    const key = formatDayKey(parseEventStartLocal(event));
+    const key = formatDayKey(parseEventStart(event));
     let colors = map.get(key);
     if (!colors) {
       colors = new Set<TEventColor>();
@@ -190,12 +184,11 @@ export function YearCalendar() {
     events,
     isLoading,
     loadEventsForYear,
+    weekStartDay,
   } = useCalendar();
 
   const today = useDateNow();
   const year = selectedDate.getFullYear();
-  const yearStart = startOfYear(selectedDate);
-  const yearEnd = endOfYear(selectedDate);
   const isCurrentYear = isSameYear(selectedDate, today);
 
   // Ask the provider to widen its loaded range to the full year. The
@@ -257,6 +250,8 @@ export function YearCalendar() {
     setView("month");
   };
 
+  const slideDirection = useSlideDirection(year);
+
   return (
     <div className="w-full space-y-4">
       <div className="flex items-center justify-between">
@@ -276,8 +271,7 @@ export function YearCalendar() {
             className="text-muted-foreground text-sm"
             data-testid="year-calendar-date-range"
           >
-            {format(yearStart, "MMM d, yyyy")} –{" "}
-            {format(yearEnd, "MMM d, yyyy")}
+            {rangeText("year", selectedDate, weekStartDay)}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -319,21 +313,28 @@ export function YearCalendar() {
         </div>
       )}
 
-      <div
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-        data-testid="year-calendar-grid"
+      <AnimatedSwap
+        swapKey={String(year)}
+        type="slide"
+        direction={slideDirection}
+        durationMs={INTRA_VIEW_SLIDE_DURATION_MS}
       >
-        {months.map((monthDate) => (
-          <MonthPanel
-            key={monthDate.getMonth()}
-            monthDate={monthDate}
-            today={today}
-            colorsByDayKey={colorsByDayKey}
-            onDayClick={handleDayClick}
-            onMonthClick={handleMonthClick}
-          />
-        ))}
-      </div>
+        <div
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          data-testid="year-calendar-grid"
+        >
+          {months.map((monthDate) => (
+            <MonthPanel
+              key={monthDate.getMonth()}
+              monthDate={monthDate}
+              today={today}
+              colorsByDayKey={colorsByDayKey}
+              onDayClick={handleDayClick}
+              onMonthClick={handleMonthClick}
+            />
+          ))}
+        </div>
+      </AnimatedSwap>
     </div>
   );
 }

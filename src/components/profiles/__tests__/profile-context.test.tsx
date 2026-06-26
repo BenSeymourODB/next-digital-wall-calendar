@@ -1,10 +1,12 @@
 /**
  * Tests for ProfileContext and ProfileProvider
  */
+import { makeProfile } from "@/test/fixtures/profile";
 import { type ReactNode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type Profile, ProfileProvider, useProfile } from "../profile-context";
+import { ProfileProvider, useProfile } from "../profile-context";
+import { type Profile } from "../types";
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -29,18 +31,14 @@ vi.stubGlobal("localStorage", {
 
 // Mock profiles data
 const mockProfiles: Profile[] = [
-  {
+  makeProfile({
     id: "profile-admin-1",
     userId: "user-1",
     name: "Admin User",
-    type: "admin",
-    ageGroup: "adult",
-    color: "#3b82f6",
     avatar: { type: "initials", value: "AU" },
     pinEnabled: true,
-    isActive: true,
-  },
-  {
+  }),
+  makeProfile({
     id: "profile-standard-1",
     userId: "user-1",
     name: "Child User",
@@ -48,9 +46,7 @@ const mockProfiles: Profile[] = [
     ageGroup: "child",
     color: "#22c55e",
     avatar: { type: "emoji", value: "👦" },
-    pinEnabled: false,
-    isActive: true,
-  },
+  }),
 ];
 
 // Wrapper component

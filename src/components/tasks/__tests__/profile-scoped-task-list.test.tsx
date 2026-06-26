@@ -3,10 +3,11 @@
  * surrounding ProfileContext into a TaskList's per-profile filter.
  */
 import {
-  type Profile,
   ProfileProvider,
   useProfile,
 } from "@/components/profiles/profile-context";
+import { type Profile } from "@/components/profiles/types";
+import { makeProfile } from "@/test/fixtures/profile";
 import { type ReactNode } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,18 +24,13 @@ vi.mock("../task-list", () => ({
 const mockTaskList = vi.mocked(TaskList);
 
 const mockProfiles: Profile[] = [
-  {
+  makeProfile({
     id: "profile-admin-1",
     userId: "user-1",
     name: "Admin",
-    type: "admin",
-    ageGroup: "adult",
-    color: "#3b82f6",
     avatar: { type: "initials", value: "AU" },
-    pinEnabled: false,
-    isActive: true,
-  },
-  {
+  }),
+  makeProfile({
     id: "profile-kid-1",
     userId: "user-1",
     name: "Kid",
@@ -42,9 +38,7 @@ const mockProfiles: Profile[] = [
     ageGroup: "child",
     color: "#22c55e",
     avatar: { type: "emoji", value: "👦" },
-    pinEnabled: false,
-    isActive: true,
-  },
+  }),
 ];
 
 const mockFetch = vi.fn();
