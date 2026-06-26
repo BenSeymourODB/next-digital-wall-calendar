@@ -736,11 +736,13 @@ describe("fetchWithRetry", () => {
     expect(firstArg).not.toBe(secondArg);
   });
 
-  it("does not clobber a pre-existing init.signal (caller signal wins)", async () => {
-    // If a caller passes their own signal via `init`, we keep it as-is. Merging
-    // two signals into one requires AbortSignal.any, which is available in
-    // Node 20+ but not universally, so the simpler contract is: caller's
-    // init.signal overrides options.signal.
+  it("merges init.signal and options.signal so either aborts the in-flight fetch (#436)", async () => {
+    // PR #435 left two-signals-set semantics asymmetric: fetch saw init.signal
+    // but the inter-attempt sleep saw options.signal. #436 unifies them with
+    // AbortSignal.any so either signal aborting tears down both the in-flight
+    // fetch and the retry loop. The signal passed to fetch is therefore the
+    // merged AbortSignal — not either input by reference — and firing the
+    // outer signal flips its `aborted` flag to true.
     mockFetch.mockResolvedValueOnce(okResponse());
     const innerController = new AbortController();
     const outerController = new AbortController();
@@ -756,10 +758,88 @@ describe("fetchWithRetry", () => {
       }
     );
 
-    expect(mockFetch).toHaveBeenCalledWith(
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const callInit = mockFetch.mock.calls[0]![1] as RequestInit;
+    const passedSignal = callInit.signal;
+    expect(passedSignal).toBeInstanceOf(AbortSignal);
+    expect(passedSignal).not.toBe(innerController.signal);
+    expect(passedSignal).not.toBe(outerController.signal);
+    expect(passedSignal!.aborted).toBe(false);
+
+    // Firing either source signal aborts the merged signal — outer side.
+    outerController.abort();
+    expect(passedSignal!.aborted).toBe(true);
+  });
+
+  it("merges init.signal and options.signal so init.signal also aborts the merged signal (#436)", async () => {
+    // Mirror of the previous test that fires the inner signal instead. Both
+    // directions are guaranteed by AbortSignal.any's contract, but exercising
+    // each input independently guards against a future regressor where the
+    // order of inputs to AbortSignal.any matters.
+    mockFetch.mockResolvedValueOnce(okResponse());
+    const innerController = new AbortController();
+    const outerController = new AbortController();
+    const { sleep } = createSleep();
+
+    await fetchWithRetry(
       "https://example.com/x",
-      expect.objectContaining({ signal: innerController.signal })
+      { method: "GET", signal: innerController.signal },
+      {
+        signal: outerController.signal,
+        sleep,
+        random: midpointRandom,
+      }
     );
+
+    const callInit = mockFetch.mock.calls[0]![1] as RequestInit;
+    const passedSignal = callInit.signal;
+    expect(passedSignal!.aborted).toBe(false);
+
+    innerController.abort();
+    expect(passedSignal!.aborted).toBe(true);
+  });
+
+  it("aborts mid-sleep when options.signal fires after both signals were passed (#436)", async () => {
+    // Mirrors the #434 init.signal-mid-sleep test, but fires the outer signal
+    // to prove the inter-attempt sleep observes BOTH inputs when merged.
+    mockFetch.mockResolvedValue(errorResponse(503));
+    const innerController = new AbortController();
+    const outerController = new AbortController();
+
+    let resolveSleep: (() => void) | undefined;
+    const sleep = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSleep = resolve;
+        })
+    );
+
+    const pending = fetchWithRetry(
+      "https://example.com/x",
+      { method: "GET", signal: innerController.signal },
+      {
+        signal: outerController.signal,
+        sleep,
+        random: midpointRandom,
+        maxAttempts: 3,
+        baseDelayMs: 1,
+      }
+    );
+
+    // Let the first fetch and the sleep entry run.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    outerController.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    // The second fetch was never issued.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    resolveSleep?.();
   });
 
   it("threads init.signal into withRetry's sleep when options.signal is unset (#434)", async () => {
