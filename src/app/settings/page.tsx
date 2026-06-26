@@ -1,5 +1,4 @@
 import { SettingsForm } from "@/components/settings/settings-form";
-import { isTimeFormat } from "@/hooks/useUserSettings";
 import { getSession } from "@/lib/auth";
 import {
   DEFAULT_CALENDAR_TRANSITION_SPEED,
@@ -7,6 +6,7 @@ import {
 } from "@/lib/calendar/transition-speed";
 import { prisma } from "@/lib/db";
 import { DEFAULT_DATE_FORMAT, isDateFormat } from "@/lib/format-date";
+import { isTimeFormat } from "@/lib/time-format";
 import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {

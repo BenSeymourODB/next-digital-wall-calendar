@@ -3,8 +3,8 @@
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Slider } from "@/components/ui/slider";
-import { type TTimeFormat, isTimeFormat } from "@/hooks/useUserSettings";
 import type { TDateFormat } from "@/lib/format-date";
+import { type TTimeFormat, isTimeFormat } from "@/lib/time-format";
 import type { TWeekStartDay } from "@/types/calendar";
 import { useTheme } from "next-themes";
 import { SettingsSection } from "./settings-section";
