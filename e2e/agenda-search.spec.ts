@@ -110,9 +110,12 @@ test.describe("Agenda Calendar — Webkit native cancel button", () => {
     );
 
     await page.goto("/test/calendar?events=default&view=agenda");
-    await expect(page.getByText("Upcoming Events")).toBeVisible();
+    // `AgendaList` is what /test/calendar?view=agenda mounts since #287 —
+    // wait on its wrapper rather than the "Upcoming Events" header that
+    // `AgendaCalendar` (no longer mounted) used to render.
+    await expect(page.getByTestId("agenda-list-wrapper")).toBeVisible();
 
-    const input = page.getByTestId("agenda-search-input");
+    const input = page.getByTestId("agenda-list-search-input");
     await input.fill("standup");
 
     const cancelButtonDisplay = await input.evaluate(
@@ -122,7 +125,7 @@ test.describe("Agenda Calendar — Webkit native cancel button", () => {
     expect(cancelButtonDisplay).toBe("none");
 
     // Custom clear control must still appear and function.
-    await expect(page.getByTestId("agenda-search-clear")).toBeVisible();
+    await expect(page.getByTestId("agenda-list-search-clear")).toBeVisible();
   });
 });
 
