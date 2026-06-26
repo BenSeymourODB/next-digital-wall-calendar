@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/select";
 import { useEffect, useState } from "react";
 import { ProfileAvatar } from "./profile-avatar";
-import type { Profile } from "./profile-context";
+import type { Profile } from "./types";
 
 export interface GivePointsModalProps {
   /** Whether the modal is open */

@@ -10,7 +10,7 @@
  * - Indicates active profile
  */
 import { ProfileCard, ProfileCardSkeleton } from "./profile-card";
-import type { Profile } from "./profile-context";
+import type { Profile } from "./types";
 
 interface ProfileGridProps {
   profiles: Profile[];

@@ -12,6 +12,7 @@ import {
   GoogleTokenRefreshError,
   refreshGoogleAccessToken,
 } from "@/lib/auth/refresh-google-token";
+import { __resetTokenRefreshSingleflightCache } from "@/lib/auth/token-refresh-singleflight";
 import {
   type ApiErrorResponse,
   createMockRequest,
@@ -55,6 +56,10 @@ const SUCCESS_TOKENS = {
 describe("POST /api/auth/refresh-token", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Purge the in-process singleflight (#285). Without this, a slot left in
+    // the Map by one case could collapse a later case's call and skew the
+    // `refreshGoogleAccessToken` call count.
+    __resetTokenRefreshSingleflightCache();
     // `vi.stubEnv` mutates `process.env` in-place (preserving Node's special
     // env object) and tracks each stub for `vi.unstubAllEnvs()` to revert in
     // afterEach. Reassigning `process.env = { ... }` would break the special
@@ -68,12 +73,33 @@ describe("POST /api/auth/refresh-token", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    __resetTokenRefreshSingleflightCache();
   });
 
   it("returns 400 when refreshToken is missing", async () => {
     const request = createMockRequest("/api/auth/refresh-token", {
       method: "POST",
       body: {},
+    });
+
+    const response = await POST(request);
+    const { status, data } = await parseResponse<ApiErrorResponse>(response);
+
+    expect(status).toBe(400);
+    expect(data.error).toBe("Refresh token is required");
+    expect(refreshGoogleAccessToken).not.toHaveBeenCalled();
+  });
+
+  // Regression for the #285 review: `request.json()` returns `any`, so a
+  // truthy non-string body (`{ refreshToken: 123 }`) would otherwise slip past
+  // the falsy guard and crash inside `createHash().update()` (ERR_INVALID_
+  // ARG_TYPE), surfacing as a 500. Pre-#285 the same input round-tripped to
+  // Google as `"123"` and came back 401. The hardened guard restores a 400
+  // for malformed input without paying for a Google round-trip.
+  it("returns 400 when refreshToken is a non-string truthy value", async () => {
+    const request = createMockRequest("/api/auth/refresh-token", {
+      method: "POST",
+      body: { refreshToken: 123 },
     });
 
     const response = await POST(request);
@@ -231,5 +257,68 @@ describe("POST /api/auth/refresh-token", () => {
 
     expect(status).toBe(500);
     expect(data.error).toBe("Internal server error");
+  });
+
+  // #285: in-process singleflight de-dupes concurrent client-driven refreshes.
+  // Two POSTs that arrive while the first is still in-flight must share one
+  // upstream Google call and both receive the same response payload.
+  it("dedupes two concurrent POSTs with the same refresh token to a single upstream call", async () => {
+    let resolveFlight!: (value: typeof SUCCESS_TOKENS) => void;
+    const flight = new Promise<typeof SUCCESS_TOKENS>((res) => {
+      resolveFlight = res;
+    });
+    vi.mocked(refreshGoogleAccessToken).mockReturnValue(flight);
+
+    const requestA = createMockRequest("/api/auth/refresh-token", {
+      method: "POST",
+      body: { refreshToken: "rt-shared" },
+    });
+    const requestB = createMockRequest("/api/auth/refresh-token", {
+      method: "POST",
+      body: { refreshToken: "rt-shared" },
+    });
+
+    // Issue both before resolving the gated upstream so they overlap inside
+    // the singleflight slot.
+    const responses = Promise.all([POST(requestA), POST(requestB)]);
+    resolveFlight(SUCCESS_TOKENS);
+    const [respA, respB] = await responses;
+
+    const { status: statusA, data: dataA } =
+      await parseResponse<RefreshSuccessResponse>(respA);
+    const { status: statusB, data: dataB } =
+      await parseResponse<RefreshSuccessResponse>(respB);
+
+    expect(statusA).toBe(200);
+    expect(statusB).toBe(200);
+    expect(dataA.access_token).toBe(SUCCESS_TOKENS.access_token);
+    expect(dataB.access_token).toBe(SUCCESS_TOKENS.access_token);
+    // The crucial invariant of #285: one upstream call, not two.
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT dedupe concurrent POSTs for distinct refresh tokens", async () => {
+    // Two different users refreshing concurrently must each get their own
+    // upstream round-trip — the singleflight keys by token, not globally.
+    let resolveFlight!: (value: typeof SUCCESS_TOKENS) => void;
+    const flight = new Promise<typeof SUCCESS_TOKENS>((res) => {
+      resolveFlight = res;
+    });
+    vi.mocked(refreshGoogleAccessToken).mockReturnValue(flight);
+
+    const requestA = createMockRequest("/api/auth/refresh-token", {
+      method: "POST",
+      body: { refreshToken: "rt-user-a" },
+    });
+    const requestB = createMockRequest("/api/auth/refresh-token", {
+      method: "POST",
+      body: { refreshToken: "rt-user-b" },
+    });
+
+    const responses = Promise.all([POST(requestA), POST(requestB)]);
+    resolveFlight(SUCCESS_TOKENS);
+    await responses;
+
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(2);
   });
 });

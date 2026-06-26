@@ -25,7 +25,7 @@
 import type {
   Profile as AppProfile,
   ProfileAvatar,
-} from "@/components/profiles/profile-context";
+} from "@/components/profiles/types";
 import type {
   Profile as PrismaProfile,
   ProfileSettings as PrismaProfileSettings,

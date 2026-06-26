@@ -1,11 +1,15 @@
 /**
- * API endpoint for refreshing Google OAuth access tokens
- * This server-side endpoint securely handles token refresh using the client secret
+ * API endpoint for refreshing Google OAuth access tokens.
+ *
+ * This server-side endpoint securely handles token refresh using the client
+ * secret. Concurrent calls with the same refresh token are deduplicated by
+ * `getOrStartTokenRefresh` (#285) so two simultaneous requests share a single
+ * upstream Google round-trip — important because Google rotates refresh tokens
+ * on occasion, and otherwise the loser of the race would receive a stale
+ * envelope.
  */
-import {
-  GoogleTokenRefreshError,
-  refreshGoogleAccessToken,
-} from "@/lib/auth/refresh-google-token";
+import { GoogleTokenRefreshError } from "@/lib/auth/refresh-google-token";
+import { getOrStartTokenRefresh } from "@/lib/auth/token-refresh-singleflight";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -13,7 +17,14 @@ export async function POST(request: NextRequest) {
   try {
     const { refreshToken } = await request.json();
 
-    if (!refreshToken) {
+    // `request.json()` returns `any`, so refreshToken is unconstrained at this
+    // point. Rejecting falsy *and* non-string values keeps the route's 400
+    // contract honest: pre-#285 the route forwarded malformed input (e.g. a
+    // number) to Google, which coerced it via URLSearchParams and replied
+    // `invalid_grant` → 401. The new singleflight path hashes the token via
+    // `createHash().update()`, which throws ERR_INVALID_ARG_TYPE on a non-
+    // string and would otherwise surface as a 500 — a silent contract drift.
+    if (!refreshToken || typeof refreshToken !== "string") {
       return NextResponse.json(
         { error: "Refresh token is required" },
         { status: 400 }
@@ -38,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const tokens = await refreshGoogleAccessToken(
+      const tokens = await getOrStartTokenRefresh(
         refreshToken,
         clientId,
         clientSecret

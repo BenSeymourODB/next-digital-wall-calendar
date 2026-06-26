@@ -1,8 +1,24 @@
 /**
  * Profile components barrel exports
  */
-export { ProfileProvider, useProfile } from "./profile-context";
-export type { Profile, ProfileAvatar, ViewMode } from "./profile-context";
+export {
+  ProfileProvider,
+  useProfile,
+  useProfileOptional,
+} from "./profile-context";
+
+// Domain types live in ./types — re-exported here so consumers can write
+// `import { Profile } from "@/components/profiles"` without reaching into
+// the internal module layout. Matches the `tasks` / `recipe` / `scheduler`
+// pattern.
+export type {
+  AgeGroup,
+  Profile,
+  ProfileAvatar,
+  ProfileType,
+  ViewMode,
+} from "./types";
+
 export { ProfileAvatar as ProfileAvatarComponent } from "./profile-avatar";
 export { ProfileSwitcher } from "./profile-switcher";
 export { ProfileCard, ProfileCardSkeleton } from "./profile-card";

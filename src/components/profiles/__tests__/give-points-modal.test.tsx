@@ -6,7 +6,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GivePointsModal } from "../give-points-modal";
-import type { Profile } from "../profile-context";
+import type { Profile } from "../types";
 
 // Mock fetch for API calls
 const mockFetch = vi.fn();

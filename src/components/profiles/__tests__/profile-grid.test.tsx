@@ -4,8 +4,8 @@
 import { makeProfile } from "@/test/fixtures/profile";
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Profile } from "../profile-context";
 import { ProfileGrid, ProfileGridSkeleton } from "../profile-grid";
+import type { Profile } from "../types";
 
 // Mock fetch for stats API
 const mockFetch = vi.fn();
