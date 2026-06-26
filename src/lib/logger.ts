@@ -47,7 +47,8 @@
  * ## Simple API - Only 4 methods
  *
  * 1. **`logger.error(error, properties?)`** - Log errors/exceptions
- * 2. **`logger.log(message, properties?, level?)`** - Log diagnostic messages
+ * 2. **`logger.log(message, properties?)`** - Log an Info-level diagnostic.
+ *    Use `logger.debug` / `logger.warn` for other severities.
  * 3. **`logger.event(name, properties?, measurements?)`** - Log user actions/events
  * 4. **`logger.dependency(name, target, duration, success, resultCode, type?)`** - Track external calls
  *
@@ -60,13 +61,9 @@
  * });
  *
  * // Diagnostic logging at different levels
- * logger.log('User logged in', { userId: '123', method: 'oauth' });
- * logger.log('Cache miss, using fallback', { key: 'user:123' }, LogLevel.Warn);
- * logger.log('Debug: Processing step 1', { step: 1, data: {...} }, LogLevel.Debug);
- *
- * // Or pass level directly without properties
- * logger.log('Cache miss', LogLevel.Warn);
- * logger.log('Debug info', LogLevel.Debug);
+ * logger.log('User logged in', { userId: '123', method: 'oauth' }); // Info
+ * logger.warn('Cache miss, using fallback', { key: 'user:123' });   // Severity 2
+ * logger.debug('Processing step 1', { step: 1, data: {...} });       // Severity 0
  *
  * // Event tracking with measurements
  * logger.event('ButtonClick', { buttonId: 'submit', page: '/checkout' });
@@ -88,10 +85,14 @@ const isServer = typeof window === "undefined";
  * - **Info**: General informational messages (Severity 1) - default
  * - **Warn**: Warning conditions that should be reviewed (Severity 2)
  *
+ * Selecting a level is done by picking the matching method on the logger
+ * — `logger.debug` / `logger.info` / `logger.warn`. The enum is exported for
+ * callers that need to thread a severity through their own code.
+ *
  * @example
- * logger.log('Processing step 1', { step: 1 }, LogLevel.Debug);
- * logger.log('User logged in', { userId: '123' }, LogLevel.Info);
- * logger.log('Cache miss', { key: 'user:123' }, LogLevel.Warn);
+ * logger.debug('Processing step 1', { step: 1 });
+ * logger.info('User logged in', { userId: '123' });
+ * logger.warn('Cache miss', { key: 'user:123' });
  */
 export enum LogLevel {
   Debug = "debug",
@@ -102,46 +103,17 @@ export enum LogLevel {
 // Developer-facing types for structured telemetry
 export type Properties = Record<string, string | number | boolean>;
 export type Measurements = Record<string, number>;
-export type LogLevelInput = LogLevel | "debug" | "info" | "warn";
 
 /**
  * Severity level for Application Insights (internal)
  */
 type SeverityLevel = 0 | 1 | 2 | 3 | 4;
 
-/**
- * Convert user-friendly log level to Application Insights severity
- */
-function normalizeLevel(level: LogLevelInput): LogLevel {
-  // Handle both enum values and string literals
-  switch (level) {
-    case LogLevel.Debug:
-    case "debug":
-      return LogLevel.Debug;
-    case LogLevel.Info:
-    case "info":
-      return LogLevel.Info;
-    case LogLevel.Warn:
-    case "warn":
-      return LogLevel.Warn;
-    default:
-      return LogLevel.Info;
-  }
-}
-
-function logLevelToSeverity(level: LogLevelInput): SeverityLevel {
-  const normalized = normalizeLevel(level);
-  switch (normalized) {
-    case LogLevel.Debug:
-      return 0; // Verbose
-    case LogLevel.Info:
-      return 1; // Information
-    case LogLevel.Warn:
-      return 2; // Warning
-    default:
-      return 1; // Default to info
-  }
-}
+const LOG_LEVEL_TO_SEVERITY: Record<LogLevel, SeverityLevel> = {
+  [LogLevel.Debug]: 0, // Verbose
+  [LogLevel.Info]: 1, // Information
+  [LogLevel.Warn]: 2, // Warning
+};
 
 /**
  * Unified Logger Implementation
@@ -158,7 +130,7 @@ class Logger {
    *
    * Use this for **unexpected errors** like API failures, database errors, network issues,
    * or uncaught exceptions. For **expected issues** like validation errors, use
-   * `logger.log(message, properties, 'warn')` instead.
+   * `logger.warn(message, properties)` instead.
    *
    * Works in both server and client contexts - automatically uses the correct SDK.
    *
@@ -197,7 +169,7 @@ class Logger {
    *
    * // ✅ Right - Use logger.log for validation
    * if (!email) {
-   *   logger.log('Email validation failed', { field: 'email' }, 'warn');
+   *   logger.warn('Email validation failed', { field: 'email' });
    * }
    */
   error(error: Error, properties?: Properties): void {
@@ -240,24 +212,23 @@ class Logger {
   }
 
   /**
-   * Log a diagnostic message (trace)
+   * Log a diagnostic message (trace) at Info severity.
    *
-   * Use this for informational messages, debug traces, warnings, and **validation errors**.
-   * This is the most versatile logging method - covers everything except unexpected exceptions.
+   * Use this for informational messages. For non-default severity, prefer the
+   * convenience wrappers:
+   * - {@link Logger.debug} (Severity 0) — detailed diagnostic info
+   * - {@link Logger.warn}  (Severity 2) — warning conditions, validation errors
    *
-   * Works in both server and client contexts - automatically uses the correct SDK.
+   * For **unexpected exceptions** use {@link Logger.error} instead.
    *
-   * @param message - Human-readable message describing what happened. Keep it concise and consistent.
+   * Works in both server and client contexts — automatically uses the correct SDK.
+   *
+   * @param message    - Human-readable message describing what happened.
    * @param properties - Optional structured metadata for filtering/grouping in Azure Portal.
-   *                     Common properties: userId, operation, component, action, field.
    *                     See "Properties (Structured Metadata)" in module docs for details.
-   * @param level - Severity level (default: LogLevel.Info):
-   *                - **LogLevel.Debug** (Severity 0): Detailed diagnostic info for troubleshooting
-   *                - **LogLevel.Info** (Severity 1): General informational messages - DEFAULT
-   *                - **LogLevel.Warn** (Severity 2): Warning conditions, validation errors, expected issues
    *
    * @example
-   * // Info level (default) - general messages
+   * // Info-level message (default severity)
    * logger.log('User logged in successfully', {
    *   userId: '123',
    *   method: 'oauth',
@@ -265,34 +236,8 @@ class Logger {
    * });
    *
    * @example
-   * // Debug level - detailed diagnostic info (with enum)
-   * logger.log('Processing payment workflow', {
-   *   step: 'validate-card',
-   *   cardType: 'visa',
-   *   last4: '1234'
-   * }, LogLevel.Debug);
-   *
-   * @example
-   * // Warning level - validation errors and expected issues
-   * if (!email || !isValidEmail(email)) {
-   *   logger.log('Invalid email provided', {
-   *     field: 'email',
-   *     value: email || 'empty',
-   *     component: 'signup-form'
-   *   }, LogLevel.Warn);
-   *   return { error: 'Please provide a valid email' };
-   * }
-   *
-   * @example
-   * // Improved DX - pass level directly without properties
-   * logger.log('Cache miss, falling back to database', LogLevel.Warn);
-   * logger.log('Cache miss, falling back to database', 'warn'); // also supported
-   * logger.log('Debugging step 1', LogLevel.Debug);
-   * logger.log('Operation completed'); // Defaults to LogLevel.Info
-   *
-   * @example
    * // ❌ Wrong - Don't use for unexpected errors
-   * logger.log('Database connection failed', LogLevel.Warn); // NO! Use logger.error()
+   * logger.warn('Database connection failed'); // NO! Use logger.error()
    *
    * // ✅ Right - Use logger.error for unexpected errors
    * try {
@@ -301,50 +246,44 @@ class Logger {
    *   logger.error(error as Error, { operation: 'connect-db' });
    * }
    */
-  log(message: string, level?: LogLevelInput): void;
-  log(message: string, properties?: Properties, level?: LogLevelInput): void;
-  log(
+  log(message: string, properties?: Properties): void {
+    this.emitTrace(message, LogLevel.Info, properties);
+  }
+
+  /**
+   * Convenience: Debug level message
+   */
+  debug(message: string, properties?: Properties): void {
+    this.emitTrace(message, LogLevel.Debug, properties);
+  }
+
+  /**
+   * Convenience: Info level message
+   */
+  info(message: string, properties?: Properties): void {
+    this.emitTrace(message, LogLevel.Info, properties);
+  }
+
+  /**
+   * Convenience: Warn level message
+   */
+  warn(message: string, properties?: Properties): void {
+    this.emitTrace(message, LogLevel.Warn, properties);
+  }
+
+  // Single dispatch point for every `log` / `debug` / `info` / `warn` call.
+  // Keeping the SDK selection here means the four public methods can stay
+  // one-liners and any future change to severity mapping or default-property
+  // merging touches exactly one place.
+  private emitTrace(
     message: string,
-    propertiesOrLevel?: Properties | LogLevelInput,
-    level?: LogLevelInput
+    level: LogLevel,
+    properties: Properties | undefined
   ): void {
-    // Determine if second argument is level or properties
-    let actualProperties: Properties | undefined;
-    let actualLevel: LogLevelInput = LogLevel.Info;
-
-    if (propertiesOrLevel !== undefined) {
-      // Check if it's a LogLevel enum value
-      if (
-        typeof propertiesOrLevel === "string" &&
-        (Object.values(LogLevel) as string[]).includes(
-          propertiesOrLevel as LogLevel
-        )
-      ) {
-        actualLevel = propertiesOrLevel as LogLevel;
-        actualProperties = undefined;
-      } else if (
-        typeof propertiesOrLevel === "string" &&
-        (propertiesOrLevel === "debug" ||
-          propertiesOrLevel === "info" ||
-          propertiesOrLevel === "warn")
-      ) {
-        actualLevel = propertiesOrLevel as LogLevelInput;
-        actualProperties = undefined;
-      } else if (
-        typeof propertiesOrLevel === "object" &&
-        propertiesOrLevel !== null
-      ) {
-        actualProperties = propertiesOrLevel;
-        actualLevel = level ?? LogLevel.Info;
-      }
-    } else {
-      actualLevel = level ?? LogLevel.Info;
-    }
-
-    const severity = logLevelToSeverity(actualLevel);
+    const severity = LOG_LEVEL_TO_SEVERITY[level];
     const merged = {
       ...this.defaultProperties,
-      ...(actualProperties ?? {}),
+      ...(properties ?? {}),
     };
 
     if (isServer) {
@@ -356,27 +295,6 @@ class Logger {
         trackTrace(message, severity, merged);
       });
     }
-  }
-
-  /**
-   * Convenience: Debug level message
-   */
-  debug(message: string, properties?: Properties): void {
-    this.log(message, properties, LogLevel.Debug);
-  }
-
-  /**
-   * Convenience: Info level message
-   */
-  info(message: string, properties?: Properties): void {
-    this.log(message, properties, LogLevel.Info);
-  }
-
-  /**
-   * Convenience: Warn level message
-   */
-  warn(message: string, properties?: Properties): void {
-    this.log(message, properties, LogLevel.Warn);
   }
 
   /**
@@ -729,11 +647,11 @@ export const logger = new Logger();
  *
  * const elapsed = timer.elapsed(); // Get time without logging
  * if (elapsed > 1000) {
- *   logger.log('Operation exceeded threshold', {
+ *   logger.warn('Operation exceeded threshold', {
  *     operation: 'process-data',
  *     elapsed,
  *     threshold: 1000
- *   }, 'warn');
+ *   });
  * }
  *
  * timer.end('process_data_duration', { slow: elapsed > 1000 });
@@ -819,7 +737,7 @@ export function startTimer() {
      * await step1();
      *
      * if (timer.elapsed() > 5000) {
-     *   logger.log('Step 1 is slow', { elapsed: timer.elapsed() }, 'warn');
+     *   logger.warn('Step 1 is slow', { elapsed: timer.elapsed() });
      * }
      *
      * await step2();

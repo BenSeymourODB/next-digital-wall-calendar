@@ -90,6 +90,45 @@ test.describe.skip("Agenda Calendar — Search (family scenario)", () => {
   });
 });
 
+test.describe("Agenda Calendar — Webkit native cancel button", () => {
+  // The agenda `<input type="search">` renders a UA cancel button on
+  // Webkit/Blink in addition to the custom clear `<button>`. Hide the UA
+  // one globally so users only see the custom control. Scope this
+  // assertion to chromium only: Firefox does not render the pseudo, and
+  // WebKit's JS reflection of `::-webkit-search-cancel-button` returns
+  // `""` (empty string) in both the before- and after-fix states across
+  // Safari/WebKit versions, which would let the test pass spuriously.
+  // Chromium reliably returns `""` before the rule and `"none"` after,
+  // so it is the trustworthy signal for this regression guard.
+  test("hides the native Webkit cancel button so only the custom clear control is visible", async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "chromium",
+      "Only chromium reliably reflects display:none on ::-webkit-search-cancel-button via getComputedStyle"
+    );
+
+    await page.goto("/test/calendar?events=default&view=agenda");
+    // `AgendaList` is what /test/calendar?view=agenda mounts since #287 —
+    // wait on its wrapper rather than the "Upcoming Events" header that
+    // `AgendaCalendar` (no longer mounted) used to render.
+    await expect(page.getByTestId("agenda-list-wrapper")).toBeVisible();
+
+    const input = page.getByTestId("agenda-list-search-input");
+    await input.fill("standup");
+
+    const cancelButtonDisplay = await input.evaluate(
+      (el) =>
+        window.getComputedStyle(el, "::-webkit-search-cancel-button").display
+    );
+    expect(cancelButtonDisplay).toBe("none");
+
+    // Custom clear control must still appear and function.
+    await expect(page.getByTestId("agenda-list-search-clear")).toBeVisible();
+  });
+});
+
 test.describe.skip("Agenda Calendar — Group By", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/test/calendar?events=default&view=agenda");
