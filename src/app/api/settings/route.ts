@@ -1,4 +1,3 @@
-import { isTimeFormat } from "@/hooks/useUserSettings";
 import {
   ApiError,
   requireUserSession,
@@ -8,6 +7,7 @@ import { isCalendarTransitionSpeed } from "@/lib/calendar/transition-speed";
 import { prisma } from "@/lib/db";
 import { VALID_DATE_FORMATS } from "@/lib/format-date";
 import { logger } from "@/lib/logger";
+import { VALID_TIME_FORMATS, isTimeFormat } from "@/lib/time-format";
 import { NextRequest, NextResponse } from "next/server";
 
 // Keep in sync with `THEMES` in `src/components/providers/ThemeProvider.tsx`
@@ -92,7 +92,10 @@ export const PUT = withApiHandler(
 
     if (body.timeFormat !== undefined) {
       if (!isTimeFormat(body.timeFormat)) {
-        throw new ApiError("Invalid timeFormat. Must be one of: 12h, 24h", 400);
+        throw new ApiError(
+          `Invalid timeFormat. Must be one of: ${VALID_TIME_FORMATS.join(", ")}`,
+          400
+        );
       }
     }
 

@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import {
+  type GoogleRefreshedTokens,
+  refreshGoogleAccessToken as defaultRefreshGoogleAccessToken,
+} from "./refresh-google-token";
 import {
   type GoogleAccountForRefresh,
   type RefreshOutcome,
@@ -63,4 +68,86 @@ export function getOrStartSessionRefresh(
 export function __resetSessionRefreshSingleflightCache(): void {
   if (process.env.NODE_ENV === "production") return;
   inflight.clear();
+}
+
+/**
+ * Per-token singleflight cache for the client-driven `/api/auth/refresh-token`
+ * endpoint (#285).
+ *
+ * The session-callback wrapper above runs inside `auth()` and owns the full
+ * decrypt → refresh → re-encrypt → DB-write orchestration. The client-driven
+ * endpoint is the other half of the refresh story: a client (browser tab,
+ * native shell) sends a *plaintext* refresh token in the POST body and gets
+ * fresh tokens back. The endpoint itself reads no DB rows and writes none —
+ * it's a stateless proxy in front of Google's token endpoint.
+ *
+ * So this wrapper can't share the session wrapper's Map: the operation,
+ * return type, and storage semantics differ. But the deduplication concern is
+ * identical — two concurrent client-driven refreshes for the same user race
+ * against Google's rate limit and, if Google rotates the refresh token
+ * mid-flight, can return a stale token to one of the callers.
+ *
+ * Key choice: SHA-256 of the refresh token. Two requests with the same
+ * refresh token are by construction for the same Google account, so the
+ * dedup semantic is identical to keying on userId — without the DB lookup the
+ * issue body considered. The hash is one-way (does not leak the token if
+ * accidentally logged) and is bounded-length regardless of token format.
+ *
+ * Cross-process dedupe is out of scope here — it's a different problem with a
+ * different solution (Redis lock, DB row-lock, etc.) and is tracked under
+ * #286.
+ */
+const tokenInflight = new Map<string, Promise<GoogleRefreshedTokens>>();
+
+export interface TokenRefreshDeps {
+  refreshGoogleAccessToken?: (
+    refreshToken: string,
+    clientId: string,
+    clientSecret: string
+  ) => Promise<GoogleRefreshedTokens>;
+}
+
+/**
+ * **Invariant — credentials of joining callers are ignored.**
+ *
+ * Only `refreshToken` participates in the cache key. A second caller that
+ * arrives with the same token but different `clientId`/`clientSecret` (or a
+ * different injected `deps.refreshGoogleAccessToken`) joins the in-flight
+ * promise and silently uses the FIRST caller's arguments. In production this
+ * is benign because both callers read `clientId`/`clientSecret` from the same
+ * `process.env` values, so the args are always identical. If a future caller
+ * could legitimately pass different credentials for the same token (today
+ * none can), the key would need to include them.
+ */
+export function getOrStartTokenRefresh(
+  refreshToken: string,
+  clientId: string,
+  clientSecret: string,
+  deps: TokenRefreshDeps = {}
+): Promise<GoogleRefreshedTokens> {
+  const key = createHash("sha256").update(refreshToken).digest("hex");
+  const existing = tokenInflight.get(key);
+  if (existing) return existing;
+
+  const refresh =
+    deps.refreshGoogleAccessToken ?? defaultRefreshGoogleAccessToken;
+  // Slot purges on both fulfilment and rejection — a transient Google outage
+  // must not pin the cache, or the next caller would attach to a long-dead
+  // promise and never see a fresh attempt. Errors are NOT classified here;
+  // the route's existing `catch (error)` block continues to own the
+  // `GoogleTokenRefreshError → HTTP response` translation.
+  const pending = refresh(refreshToken, clientId, clientSecret).finally(() => {
+    tokenInflight.delete(key);
+  });
+  tokenInflight.set(key, pending);
+  return pending;
+}
+
+/**
+ * Test-only escape hatch to clear the module-level cache between cases.
+ * NODE_ENV-gated so an accidental production call is a no-op.
+ */
+export function __resetTokenRefreshSingleflightCache(): void {
+  if (process.env.NODE_ENV === "production") return;
+  tokenInflight.clear();
 }

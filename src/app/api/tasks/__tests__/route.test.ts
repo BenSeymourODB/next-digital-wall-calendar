@@ -21,19 +21,50 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "../route";
 
-// Mock modules BEFORE imports
-vi.mock("@/lib/auth", () => ({
-  getSession: vi.fn(),
-  requireGoogleTasksAccessToken: vi.fn(),
-  AuthError: class AuthError extends Error {
+// Mock modules BEFORE imports.
+//
+// `requireGoogleTasksSession` is the helper the route actually imports
+// post-#441. We wire its mock factory to delegate through the same
+// `getSession` and `requireGoogleTasksAccessToken` mocks the existing
+// tests already drive — so test setup (`vi.mocked(getSession)…`) keeps
+// working end-to-end through the new helper.
+vi.mock("@/lib/auth", () => {
+  class MockAuthError extends Error {
     status: number;
-    constructor(message: string, status: number = 401) {
+    requiresReauth?: boolean;
+    constructor(
+      message: string,
+      status: number = 401,
+      options?: { requiresReauth?: boolean }
+    ) {
       super(message);
       this.name = "AuthError";
       this.status = status;
+      this.requiresReauth = options?.requiresReauth;
     }
-  },
-}));
+  }
+  const getSession = vi.fn();
+  const requireGoogleTasksAccessToken = vi.fn();
+  const requireGoogleTasksSession = vi.fn(async () => {
+    const session = await getSession();
+    if (!session?.user?.id) {
+      throw new MockAuthError("Unauthorized", 401, { requiresReauth: false });
+    }
+    if (session.error === "RefreshTokenError") {
+      throw new MockAuthError("Session expired. Please sign in again.", 401, {
+        requiresReauth: true,
+      });
+    }
+    const accessToken = await requireGoogleTasksAccessToken(session);
+    return { session, accessToken };
+  });
+  return {
+    AuthError: MockAuthError,
+    getSession,
+    requireGoogleTasksAccessToken,
+    requireGoogleTasksSession,
+  };
+});
 
 vi.mock("@/lib/logger", () => ({
   logger: {

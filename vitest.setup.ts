@@ -21,24 +21,29 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 // scrollIntoView when the listbox mounts — without these stubs userEvent
 // clicks throw before the listbox ever opens. Stub them at the prototype
 // level so every Element instance picks them up.
+//
+// Guarded so that tests opting into `@vitest-environment node` (where
+// `Element` is undefined) can still share this setup file without crashing.
 type ElementWithPointerCapture = Element & {
   hasPointerCapture(pointerId: number): boolean;
   releasePointerCapture(pointerId: number): void;
   setPointerCapture(pointerId: number): void;
   scrollIntoView(arg?: boolean | ScrollIntoViewOptions): void;
 };
-const elProto = Element.prototype as ElementWithPointerCapture;
-if (typeof elProto.hasPointerCapture !== "function") {
-  elProto.hasPointerCapture = () => false;
-}
-if (typeof elProto.releasePointerCapture !== "function") {
-  elProto.releasePointerCapture = () => {};
-}
-if (typeof elProto.setPointerCapture !== "function") {
-  elProto.setPointerCapture = () => {};
-}
-if (typeof elProto.scrollIntoView !== "function") {
-  elProto.scrollIntoView = () => {};
+if (typeof Element !== "undefined") {
+  const elProto = Element.prototype as ElementWithPointerCapture;
+  if (typeof elProto.hasPointerCapture !== "function") {
+    elProto.hasPointerCapture = () => false;
+  }
+  if (typeof elProto.releasePointerCapture !== "function") {
+    elProto.releasePointerCapture = () => {};
+  }
+  if (typeof elProto.setPointerCapture !== "function") {
+    elProto.setPointerCapture = () => {};
+  }
+  if (typeof elProto.scrollIntoView !== "function") {
+    elProto.scrollIntoView = () => {};
+  }
 }
 
 // Cleanup after each test to prevent memory leaks

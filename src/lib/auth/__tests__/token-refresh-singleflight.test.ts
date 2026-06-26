@@ -7,7 +7,9 @@ import type {
 } from "../refresh-session-tokens";
 import {
   __resetSessionRefreshSingleflightCache,
+  __resetTokenRefreshSingleflightCache,
   getOrStartSessionRefresh,
+  getOrStartTokenRefresh,
 } from "../token-refresh-singleflight";
 
 const FIXED_NOW = 1_700_000_000_000; // milliseconds
@@ -295,5 +297,235 @@ describe("getOrStartSessionRefresh (singleflight #216)", () => {
     expect(outcome).toEqual({ kind: "not-expired" });
     expect(deps.refreshGoogleAccessToken).not.toHaveBeenCalled();
     expect(deps.prisma.account.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("getOrStartTokenRefresh (singleflight #285)", () => {
+  const CLIENT_ID = "test-client-id";
+  const CLIENT_SECRET = "test-client-secret";
+  const REFRESH_TOKEN = "user-a-refresh-token";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    __resetTokenRefreshSingleflightCache();
+  });
+
+  afterEach(() => {
+    __resetTokenRefreshSingleflightCache();
+  });
+
+  it("collapses 5 concurrent calls for one refresh token onto a single upstream call", async () => {
+    // Gate the OAuth round-trip so every caller arrives at the singleflight
+    // slot before any flight resolves; otherwise the slot purges in `.finally()`
+    // between sequential calls and the test only proves serial reuse.
+    const gate = deferred<GoogleRefreshedTokens>();
+    const refreshGoogleAccessToken = vi.fn().mockReturnValue(gate.promise);
+
+    const calls = Array.from({ length: 5 }, () =>
+      getOrStartTokenRefresh(REFRESH_TOKEN, CLIENT_ID, CLIENT_SECRET, {
+        refreshGoogleAccessToken,
+      })
+    );
+
+    gate.resolve({ access_token: "fresh", expires_in: 3600 });
+    const tokens = await Promise.all(calls);
+
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(1);
+    expect(refreshGoogleAccessToken).toHaveBeenCalledWith(
+      REFRESH_TOKEN,
+      CLIENT_ID,
+      CLIENT_SECRET
+    );
+    expect(tokens).toEqual(
+      Array.from({ length: 5 }, () => ({
+        access_token: "fresh",
+        expires_in: 3600,
+      }))
+    );
+  });
+
+  it("does not collapse calls for distinct refresh tokens (true in-flight concurrency)", async () => {
+    // All three flights are held open by one shared gate so we can assert
+    // upstream was called 3× *before* any resolves — proving the keys don't
+    // collide.
+    const gate = deferred<GoogleRefreshedTokens>();
+    const refreshGoogleAccessToken = vi.fn().mockReturnValue(gate.promise);
+
+    const calls = [
+      getOrStartTokenRefresh("token-a", CLIENT_ID, CLIENT_SECRET, {
+        refreshGoogleAccessToken,
+      }),
+      getOrStartTokenRefresh("token-b", CLIENT_ID, CLIENT_SECRET, {
+        refreshGoogleAccessToken,
+      }),
+      getOrStartTokenRefresh("token-c", CLIENT_ID, CLIENT_SECRET, {
+        refreshGoogleAccessToken,
+      }),
+    ];
+
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(3);
+
+    gate.resolve({ access_token: "fresh", expires_in: 3600 });
+    await Promise.all(calls);
+  });
+
+  it("delivers the same rejection to every concurrent awaiter", async () => {
+    // Errors propagate via promise rejection (unlike the session wrapper which
+    // classifies). Every collapsed caller must see the exact same error
+    // instance, not a copy.
+    const err = new GoogleTokenRefreshError(503, {
+      error: "service_unavailable",
+    });
+    const gate = deferred<GoogleRefreshedTokens>();
+    const refreshGoogleAccessToken = vi.fn().mockReturnValue(gate.promise);
+
+    const calls = Array.from({ length: 5 }, () =>
+      getOrStartTokenRefresh(REFRESH_TOKEN, CLIENT_ID, CLIENT_SECRET, {
+        refreshGoogleAccessToken,
+      })
+    );
+
+    gate.reject(err);
+    const results = await Promise.allSettled(calls);
+
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(1);
+    expect(results).toEqual(
+      Array.from({ length: 5 }, () => ({
+        status: "rejected",
+        reason: err,
+      }))
+    );
+  });
+
+  it("releases the slot after success so a later call refreshes again", async () => {
+    const refreshGoogleAccessToken = vi
+      .fn()
+      .mockResolvedValueOnce({ access_token: "first", expires_in: 3600 })
+      .mockResolvedValueOnce({ access_token: "second", expires_in: 3600 });
+
+    const first = await getOrStartTokenRefresh(
+      REFRESH_TOKEN,
+      CLIENT_ID,
+      CLIENT_SECRET,
+      { refreshGoogleAccessToken }
+    );
+    const second = await getOrStartTokenRefresh(
+      REFRESH_TOKEN,
+      CLIENT_ID,
+      CLIENT_SECRET,
+      { refreshGoogleAccessToken }
+    );
+
+    expect(first.access_token).toBe("first");
+    expect(second.access_token).toBe("second");
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases the slot after a rejection so the next call can retry", async () => {
+    const refreshGoogleAccessToken = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new GoogleTokenRefreshError(500, { error: "transient" })
+      )
+      .mockResolvedValueOnce({ access_token: "recovered", expires_in: 3600 });
+
+    await expect(
+      getOrStartTokenRefresh(REFRESH_TOKEN, CLIENT_ID, CLIENT_SECRET, {
+        refreshGoogleAccessToken,
+      })
+    ).rejects.toBeInstanceOf(GoogleTokenRefreshError);
+
+    const second = await getOrStartTokenRefresh(
+      REFRESH_TOKEN,
+      CLIENT_ID,
+      CLIENT_SECRET,
+      { refreshGoogleAccessToken }
+    );
+    expect(second.access_token).toBe("recovered");
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases the slot after a TimeoutError so a later call starts a fresh flight (#404 parity)", async () => {
+    // Mirrors the session wrapper's hung-flight discipline: the per-flight
+    // AbortSignal fires inside `refreshGoogleAccessToken`, rejection bubbles,
+    // `.finally()` clears the slot, the next caller is not pinned to the dead
+    // flight.
+    const timeoutErr = Object.assign(new Error("signal timed out"), {
+      name: "TimeoutError",
+    });
+    const refreshGoogleAccessToken = vi
+      .fn()
+      .mockRejectedValueOnce(timeoutErr)
+      .mockResolvedValueOnce({ access_token: "recovered", expires_in: 3600 });
+
+    await expect(
+      getOrStartTokenRefresh(REFRESH_TOKEN, CLIENT_ID, CLIENT_SECRET, {
+        refreshGoogleAccessToken,
+      })
+    ).rejects.toBe(timeoutErr);
+
+    const second = await getOrStartTokenRefresh(
+      REFRESH_TOKEN,
+      CLIENT_ID,
+      CLIENT_SECRET,
+      { refreshGoogleAccessToken }
+    );
+    expect(second.access_token).toBe("recovered");
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("__resetTokenRefreshSingleflightCache clears in-flight state between tests", async () => {
+    // Park a flight in the cache. If the reset hook didn't actually clear,
+    // the next caller below would attach to this dead promise.
+    const stuckGate = deferred<GoogleRefreshedTokens>();
+    const stuck = getOrStartTokenRefresh(
+      REFRESH_TOKEN,
+      CLIENT_ID,
+      CLIENT_SECRET,
+      { refreshGoogleAccessToken: vi.fn().mockReturnValue(stuckGate.promise) }
+    );
+
+    __resetTokenRefreshSingleflightCache();
+
+    const refreshGoogleAccessToken = vi
+      .fn()
+      .mockResolvedValue({ access_token: "post-reset", expires_in: 3600 });
+    const fresh = await getOrStartTokenRefresh(
+      REFRESH_TOKEN,
+      CLIENT_ID,
+      CLIENT_SECRET,
+      { refreshGoogleAccessToken }
+    );
+    expect(fresh.access_token).toBe("post-reset");
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(1);
+
+    // Tidy: resolve the parked promise so we don't leave a dangling unhandled.
+    stuckGate.resolve({ access_token: "ignored", expires_in: 3600 });
+    await stuck;
+  });
+
+  it("isolates keys between distinct refresh tokens (no hash collisions for typical tokens)", async () => {
+    // Two refresh tokens that differ by one character must hash to different
+    // cache keys. Guards against any future hash-shortening optimisation.
+    const refreshGoogleAccessToken = vi
+      .fn()
+      .mockResolvedValueOnce({ access_token: "for-a", expires_in: 3600 })
+      .mockResolvedValueOnce({ access_token: "for-b", expires_in: 3600 });
+
+    const a = await getOrStartTokenRefresh(
+      "token-aaaaaa",
+      CLIENT_ID,
+      CLIENT_SECRET,
+      { refreshGoogleAccessToken }
+    );
+    const b = await getOrStartTokenRefresh(
+      "token-aaaaab",
+      CLIENT_ID,
+      CLIENT_SECRET,
+      { refreshGoogleAccessToken }
+    );
+    expect(a.access_token).toBe("for-a");
+    expect(b.access_token).toBe("for-b");
+    expect(refreshGoogleAccessToken).toHaveBeenCalledTimes(2);
   });
 });

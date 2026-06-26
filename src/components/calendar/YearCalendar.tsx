@@ -3,20 +3,22 @@
 import { useCalendar } from "@/components/providers/CalendarProvider";
 import { Button } from "@/components/ui/button";
 import { useSlideDirection } from "@/hooks/use-slide-direction";
-import { getEventsForYear, parseEventStart } from "@/lib/calendar-helpers";
+import {
+  getEventsForYear,
+  parseEventStart,
+  rangeText,
+} from "@/lib/calendar-helpers";
 import { useDateNow } from "@/lib/hooks/use-date-now";
 import type { IEvent, TEventColor } from "@/types/calendar";
 import { useEffect, useRef } from "react";
 import {
   eachDayOfInterval,
   endOfMonth,
-  endOfYear,
   format,
   getDay,
   isSameDay,
   isSameYear,
   startOfMonth,
-  startOfYear,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AnimatedSwap } from "./animated-swap";
@@ -182,12 +184,11 @@ export function YearCalendar() {
     events,
     isLoading,
     loadEventsForYear,
+    weekStartDay,
   } = useCalendar();
 
   const today = useDateNow();
   const year = selectedDate.getFullYear();
-  const yearStart = startOfYear(selectedDate);
-  const yearEnd = endOfYear(selectedDate);
   const isCurrentYear = isSameYear(selectedDate, today);
 
   // Ask the provider to widen its loaded range to the full year. The
@@ -270,8 +271,7 @@ export function YearCalendar() {
             className="text-muted-foreground text-sm"
             data-testid="year-calendar-date-range"
           >
-            {format(yearStart, "MMM d, yyyy")} –{" "}
-            {format(yearEnd, "MMM d, yyyy")}
+            {rangeText("year", selectedDate, weekStartDay)}
           </p>
         </div>
         <div className="flex items-center gap-2">
