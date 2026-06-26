@@ -12,6 +12,8 @@ export {
   isAuthenticated,
   needsReauthentication,
   requireAuth,
+  requireAuthenticatedSession,
   requireGoogleTasksAccessToken,
+  requireGoogleTasksSession,
   withAuth,
 } from "./helpers";

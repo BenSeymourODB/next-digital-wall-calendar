@@ -27,7 +27,9 @@ import {
   isAuthenticated,
   needsReauthentication,
   requireAuth,
+  requireAuthenticatedSession,
   requireGoogleTasksAccessToken,
+  requireGoogleTasksSession,
   withAuth,
 } from "../helpers";
 import {
@@ -672,6 +674,176 @@ describe("auth helpers", () => {
 
       expect(error).toBeInstanceOf(Error);
       expect(error).toBeInstanceOf(AuthError);
+    });
+
+    it("leaves requiresReauth undefined by default so the route catch-block can keep its status-based fallback", () => {
+      // Existing AuthError throw-sites do not set this flag. The route
+      // catch-block falls back to `status === 401 || 403` for them, so
+      // their response shape is unchanged after this refactor.
+      const error = new AuthError("Unauthorized", 401);
+
+      expect(error.requiresReauth).toBeUndefined();
+    });
+
+    it("accepts an explicit requiresReauth: false to suppress the re-auth CTA on plain unauthenticated requests", () => {
+      // The new requireAuthenticatedSession helper uses this to differentiate
+      // "no session at all" (no re-auth UI — could just be a logged-out user)
+      // from "session error — definitely needs re-auth".
+      const error = new AuthError("Unauthorized", 401, {
+        requiresReauth: false,
+      });
+
+      expect(error.requiresReauth).toBe(false);
+    });
+
+    it("accepts an explicit requiresReauth: true so the route catch-block can render the CTA without inferring from status", () => {
+      const error = new AuthError(
+        "Session expired. Please sign in again.",
+        401,
+        {
+          requiresReauth: true,
+        }
+      );
+
+      expect(error.requiresReauth).toBe(true);
+    });
+  });
+
+  describe("requireAuthenticatedSession", () => {
+    it("returns the session when authenticated and not in a refresh-error state", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+
+      const { session } = await requireAuthenticatedSession();
+
+      expect(session).toEqual(mockSession);
+    });
+
+    it("throws AuthError(401, requiresReauth: false) when there is no session", async () => {
+      // Distinct from RefreshTokenError: a missing session is just "not signed
+      // in" — the client should NOT pop a re-auth modal because the user may
+      // never have signed in at all.
+      mockAuth.mockResolvedValue(null);
+
+      const promise = requireAuthenticatedSession();
+
+      await expect(promise).rejects.toBeInstanceOf(AuthError);
+      await expect(promise).rejects.toMatchObject({
+        status: 401,
+        message: "Unauthorized",
+        requiresReauth: false,
+      });
+    });
+
+    it("throws AuthError(401, requiresReauth: false) when the session has no user.id", async () => {
+      mockAuth.mockResolvedValue({
+        ...mockSession,
+        user: undefined,
+      } as unknown as typeof mockSession);
+
+      await expect(requireAuthenticatedSession()).rejects.toMatchObject({
+        status: 401,
+        message: "Unauthorized",
+        requiresReauth: false,
+      });
+    });
+
+    it("throws AuthError(401, requiresReauth: false) when user.id is an empty string", async () => {
+      // user.id is typed `string` but JS can hand us an empty string through
+      // a malformed session. `!session?.user?.id` already treats "" as falsy;
+      // this pins that behavior so a future refactor can't loosen the guard
+      // by switching to a `user.id === undefined` check.
+      mockAuth.mockResolvedValue({
+        ...mockSession,
+        user: { ...mockSession.user, id: "" },
+      } as unknown as typeof mockSession);
+
+      await expect(requireAuthenticatedSession()).rejects.toMatchObject({
+        status: 401,
+        message: "Unauthorized",
+        requiresReauth: false,
+      });
+    });
+
+    it("throws AuthError(401, requiresReauth: true) when session.error === RefreshTokenError", async () => {
+      mockAuth.mockResolvedValue(mockSessionWithError);
+
+      const promise = requireAuthenticatedSession();
+
+      await expect(promise).rejects.toBeInstanceOf(AuthError);
+      await expect(promise).rejects.toMatchObject({
+        status: 401,
+        message: "Session expired. Please sign in again.",
+        requiresReauth: true,
+      });
+    });
+  });
+
+  describe("requireGoogleTasksSession", () => {
+    it("returns { session, accessToken } on the happy path", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findFirst).mockResolvedValue(mockGoogleAccount);
+
+      const { session, accessToken } = await requireGoogleTasksSession();
+
+      expect(session).toEqual(mockSession);
+      expect(accessToken).toBe(mockGoogleAccount.access_token);
+    });
+
+    it("does not call prisma when there is no session (short-circuits in requireAuthenticatedSession)", async () => {
+      mockAuth.mockResolvedValue(null);
+
+      await expect(requireGoogleTasksSession()).rejects.toMatchObject({
+        status: 401,
+        message: "Unauthorized",
+        requiresReauth: false,
+      });
+      expect(prisma.account.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("does not call prisma when the session is in RefreshTokenError", async () => {
+      mockAuth.mockResolvedValue(mockSessionWithError);
+
+      await expect(requireGoogleTasksSession()).rejects.toMatchObject({
+        status: 401,
+        requiresReauth: true,
+      });
+      expect(prisma.account.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("propagates a 403 from requireGoogleTasksAccessToken when scope is missing", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findFirst).mockResolvedValue({
+        ...mockGoogleAccount,
+        scope:
+          "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+      });
+
+      const promise = requireGoogleTasksSession();
+
+      await expect(promise).rejects.toBeInstanceOf(AuthError);
+      await expect(promise).rejects.toMatchObject({
+        status: 403,
+        message: expect.stringContaining("Google Tasks"),
+      });
+    });
+
+    it("propagates a 401 from requireGoogleTasksAccessToken when no Google account is linked", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findFirst).mockResolvedValue(null);
+
+      await expect(requireGoogleTasksSession()).rejects.toMatchObject({
+        status: 401,
+        message: expect.stringContaining("No Google account"),
+      });
+    });
+
+    it("calls prisma.account.findFirst exactly once (no duplicate query)", async () => {
+      mockAuth.mockResolvedValue(mockSession);
+      vi.mocked(prisma.account.findFirst).mockResolvedValue(mockGoogleAccount);
+
+      await requireGoogleTasksSession();
+
+      expect(prisma.account.findFirst).toHaveBeenCalledTimes(1);
     });
   });
 });

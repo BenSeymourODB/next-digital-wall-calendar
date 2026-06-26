@@ -2,11 +2,7 @@
  * API endpoint for Google Task Lists
  * Uses server-side authentication with NextAuth.js
  */
-import {
-  AuthError,
-  getSession,
-  requireGoogleTasksAccessToken,
-} from "@/lib/auth";
+import { AuthError, requireGoogleTasksSession } from "@/lib/auth";
 import { listTaskLists } from "@/lib/google/tasks-api";
 import { GoogleTasksApiError } from "@/lib/google/tasks-types";
 import { logger } from "@/lib/logger";
@@ -17,25 +13,9 @@ import { NextResponse } from "next/server";
  */
 export async function GET() {
   try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (session.error === "RefreshTokenError") {
-      return NextResponse.json(
-        {
-          error: "Session expired. Please sign in again.",
-          requiresReauth: true,
-        },
-        { status: 401 }
-      );
-    }
-
-    // Combined scope check + token decryption in a single DB call (#260).
-    // Short-circuits users missing the Tasks scope (#237) without burning a
-    // separate prisma.account.findMany.
-    const accessToken = await requireGoogleTasksAccessToken(session);
+    // Single helper handles session existence, RefreshTokenError, scope
+    // check, and decrypted-token acquisition (#441).
+    const { session, accessToken } = await requireGoogleTasksSession();
     const lists = await listTaskLists(accessToken);
 
     logger.event("TaskListsFetched", {
@@ -46,11 +26,11 @@ export async function GET() {
     return NextResponse.json({ lists });
   } catch (error) {
     if (error instanceof AuthError) {
-      const requiresReauth = error.status === 401 || error.status === 403;
-      return NextResponse.json(
-        { error: error.message, requiresReauth },
-        { status: error.status }
-      );
+      const requiresReauth =
+        error.requiresReauth ?? (error.status === 401 || error.status === 403);
+      const body: Record<string, unknown> = { error: error.message };
+      if (requiresReauth) body.requiresReauth = true;
+      return NextResponse.json(body, { status: error.status });
     }
 
     if (error instanceof GoogleTasksApiError) {
