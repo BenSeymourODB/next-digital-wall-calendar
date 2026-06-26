@@ -2,20 +2,17 @@ import {
   CalendarContext,
   type ICalendarContext,
 } from "@/components/providers/CalendarProvider";
-import { WEEK_STARTS_ON, getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import {
+  WEEK_STARTS_ON,
+  getShortWeekdayLabels,
+  rangeText,
+} from "@/lib/calendar-helpers";
 import { __resetUseDateNowForTests } from "@/lib/hooks/use-date-now";
 import { makeCalendarContext } from "@/test/fixtures/calendar-context";
 import { createMockEvent } from "@/test/fixtures/calendar-event";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  addDays,
-  endOfWeek,
-  format,
-  isSameWeek,
-  startOfWeek,
-  subWeeks,
-} from "date-fns";
+import { addDays, isSameWeek, startOfWeek, subWeeks } from "date-fns";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WeekCalendar } from "../WeekCalendar";
 
@@ -68,14 +65,12 @@ describe("WeekCalendar", () => {
       const selectedDate = new Date(2026, 3, 15); // Wed Apr 15 2026
       renderWithContext({ selectedDate });
 
-      const weekStart = startOfWeek(selectedDate, {
-        weekStartsOn: WEEK_STARTS_ON,
-      });
-      const weekEnd = endOfWeek(selectedDate, {
-        weekStartsOn: WEEK_STARTS_ON,
-      });
-
-      const expected = `${format(weekStart, "MMM d, yyyy")} – ${format(weekEnd, "MMM d, yyyy")}`;
+      // Source the expected string directly from `rangeText` so this
+      // test guards the helper-to-DOM round trip — if the separator
+      // glyph changes, both will move in lock-step and the unit-level
+      // assertion in calendar-helpers.test.ts catches the regression
+      // first.
+      const expected = rangeText("week", selectedDate, WEEK_STARTS_ON);
       expect(screen.getByTestId("week-calendar-range")).toHaveTextContent(
         expected
       );

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useSlideDirection } from "@/hooks/use-slide-direction";
 import { useEventDelete } from "@/hooks/useEventDelete";
 import { useEventEdit } from "@/hooks/useEventEdit";
-import { getShortWeekdayLabels } from "@/lib/calendar-helpers";
+import { getShortWeekdayLabels, rangeText } from "@/lib/calendar-helpers";
 import {
   applyCalendarKeyboardAction,
   keyboardEventToAction,
@@ -214,8 +214,7 @@ export function SimpleCalendar() {
             className="text-muted-foreground text-sm"
             data-testid="calendar-date-range"
           >
-            {format(monthStart, "MMM d, yyyy")} –{" "}
-            {format(monthEnd, "MMM d, yyyy")}
+            {rangeText("month", selectedDate, weekStartDay)}
           </p>
         </div>
         <div className="flex items-center gap-2">

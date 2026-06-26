@@ -124,6 +124,14 @@ export const getShortWeekdayLabels = (weekStartsOn: Day): string[] => [
   ...SHORT_WEEKDAY_LABELS.slice(0, weekStartsOn),
 ];
 
+/**
+ * Format the user-visible date range for a calendar view. The
+ * `weekStartsOn` argument is consulted only for the `"week"` view; the
+ * `"month"`, `"year"`, `"day"`, and `"clock"` branches all derive their
+ * boundaries from helpers (`startOfMonth`, `startOfYear`, …) that are
+ * independent of the week-start preference. Callers must still pass the
+ * value so the signature stays uniform across views.
+ */
 export function rangeText(
   view: TCalendarView,
   date: Date,
@@ -152,7 +160,7 @@ export function rangeText(
       return "Error while formatting";
   }
 
-  return `${format(start, FORMAT_STRING)} - ${format(end, FORMAT_STRING)}`;
+  return `${format(start, FORMAT_STRING)} – ${format(end, FORMAT_STRING)}`;
 }
 
 export function navigateDate(
