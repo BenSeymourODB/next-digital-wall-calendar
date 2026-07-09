@@ -9,6 +9,14 @@ import {
   validateEventBody,
 } from "@/lib/calendar/event-body";
 import {
+  type CalendarFetchError,
+  type InternalCalendarFetchError,
+  aggregateCalendarResults,
+  resolveAllFailStatus,
+  toWireFetchError,
+} from "@/lib/calendar/events-aggregate";
+import { parseCalendarEventsGetParams } from "@/lib/calendar/events-get-params";
+import {
   type GoogleCalendarEvent,
   normalizeFetchedEvent,
 } from "@/lib/google-calendar-mappers";
@@ -27,52 +35,6 @@ import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
-
-/**
- * Wire shape for per-calendar errors surfaced in the partial-failure response.
- * Mirrors {@link InternalCalendarFetchError} minus the internal `logged` flag,
- * which is a server-side dedupe guard and must not leak to clients.
- */
-interface CalendarFetchError {
-  calendarId: string;
-  error: string;
-  status?: number;
-}
-
-interface InternalCalendarFetchError extends CalendarFetchError {
-  /**
-   * `true` when the producer has already logged a structured `logger.error`
-   * for this failure (e.g. validation errors from `parseGoogleResponse`).
-   * The outer aggregation loop honours this to avoid double-logging the same
-   * failure with a generic "Calendar fetch error" envelope on top of the
-   * rich validation entry. Internal-only — stripped before serialisation.
-   */
-  logged?: boolean;
-}
-
-/**
- * Project an internal per-calendar error onto its public wire shape, dropping
- * the server-only `logged` dedupe flag.
- */
-function toWireFetchError(e: InternalCalendarFetchError): CalendarFetchError {
-  const wire: CalendarFetchError = { calendarId: e.calendarId, error: e.error };
-  if (e.status !== undefined) wire.status = e.status;
-  return wire;
-}
-
-/**
- * Pick the HTTP status to return when every calendar in a multi-calendar
- * GET failed. If all per-calendar statuses agree, bubble that status. On
- * mixed statuses, collapse to a 502 — proxy-style "upstream failures" that
- * signals the overall request couldn't be served without claiming any
- * single upstream status as canonical. Auth (401) errors short-circuit the
- * outer handler so they never reach this function. The caller's guard
- * (`errors.length === calendarIds.length`) ensures `errors` is non-empty.
- */
-function resolveAllFailStatus(errors: InternalCalendarFetchError[]): number {
-  const first = errors[0].status ?? 500;
-  return errors.every((e) => (e.status ?? 500) === first) ? first : 502;
-}
 
 /**
  * Fetch events from a single calendar
@@ -185,79 +147,58 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get query parameters
-    const { searchParams } = new URL(request.url);
-    const calendarIdsParam = searchParams.get("calendarIds");
-    const calendarId = searchParams.get("calendarId") || "primary";
-    const timeMin = searchParams.get("timeMin") || new Date().toISOString();
-    const timeMax = searchParams.get("timeMax");
-    const maxResults = searchParams.get("maxResults") || "250";
-    const singleEvents = searchParams.get("singleEvents") !== "false";
-
+    const params = parseCalendarEventsGetParams(new URL(request.url));
     // Get access token (automatically refreshed if needed)
     const accessToken = await getAccessToken();
 
-    // Determine which calendars to fetch from
-    const calendarIds = calendarIdsParam
-      ? calendarIdsParam.split(",")
-      : [calendarId];
-
     // Fetch events from all calendars in parallel
     const results = await Promise.all(
-      calendarIds.map((id) =>
+      params.calendarIds.map((id) =>
         fetchEventsFromCalendar(
           id,
           accessToken,
-          timeMin,
-          timeMax,
-          maxResults,
-          singleEvents
+          params.timeMin,
+          params.timeMax,
+          params.maxResults,
+          params.singleEvents
         )
       )
     );
 
-    // Collect events and errors
-    const allEvents: GoogleCalendarEvent[] = [];
-    const errors: InternalCalendarFetchError[] = [];
-    let summary: string | undefined;
-    let timeZone: string | undefined;
+    const agg = aggregateCalendarResults(results);
 
-    for (const result of results) {
-      allEvents.push(...result.events);
-      if (result.error) {
-        // Check if it's an auth error that should fail the whole request
-        if (result.error.status === 401) {
-          logger.error(new Error("Google Calendar API auth error"), {
-            calendarId: result.error.calendarId,
-            userId: session.user.id,
-          });
-          return NextResponse.json(
-            {
-              error: "Google authentication failed. Please sign in again.",
-              requiresReauth: true,
-            },
-            { status: 401 }
-          );
-        }
-        errors.push(result.error);
-        // Skip the generic envelope when the producer already logged a
-        // richer entry (e.g. `GoogleApiValidationError` from
-        // `parseGoogleResponse`). Otherwise we'd emit a bare
-        // "Calendar fetch error" alongside the structured one and degrade
-        // the signal in Application Insights.
-        if (!result.error.logged) {
-          logger.error(new Error("Calendar fetch error"), {
-            calendarId: result.error.calendarId,
-            errorMessage: result.error.error,
-            errorStatus: result.error.status || 0,
-            userId: session.user.id,
-          });
-        }
+    // Walk errors in input order so log emission matches the
+    // pre-extraction handler. A `[non-401, 401]` fan-out today logs the
+    // non-401 "Calendar fetch error" envelope first, then the 401
+    // "Google Calendar API auth error" envelope, then returns 401; an
+    // earlier draft that early-returned on a single `authError` field
+    // dropped the non-401 log.
+    for (const err of agg.errors) {
+      if (err.status === 401) {
+        logger.error(new Error("Google Calendar API auth error"), {
+          calendarId: err.calendarId,
+          userId: session.user.id,
+        });
+        return NextResponse.json(
+          {
+            error: "Google authentication failed. Please sign in again.",
+            requiresReauth: true,
+          },
+          { status: 401 }
+        );
       }
-      // Use summary/timezone from first successful calendar
-      if (!summary && result.summary) {
-        summary = result.summary;
-        timeZone = result.timeZone;
+      // Skip the generic envelope when the producer already logged a
+      // richer entry (e.g. `GoogleApiValidationError` from
+      // `parseGoogleResponse`). Otherwise we'd emit a bare
+      // "Calendar fetch error" alongside the structured one and degrade
+      // the signal in Application Insights.
+      if (!err.logged) {
+        logger.error(new Error("Calendar fetch error"), {
+          calendarId: err.calendarId,
+          errorMessage: err.error,
+          errorStatus: err.status || 0,
+          userId: session.user.id,
+        });
       }
     }
 
@@ -266,21 +207,21 @@ export async function GET(request: NextRequest) {
     // status without inspecting `errors[]`. Pre-#386 this was gated on
     // `calendarIds.length === 1` and multi-calendar all-fail leaked a 200
     // with an empty events array.
-    if (errors.length === calendarIds.length) {
+    if (agg.errors.length === params.calendarIds.length) {
       return NextResponse.json(
         {
           error: "Failed to fetch calendar events",
           events: [],
-          errors: errors.map(toWireFetchError),
+          errors: agg.errors.map(toWireFetchError),
         },
-        { status: resolveAllFailStatus(errors) }
+        { status: resolveAllFailStatus(agg.errors) }
       );
     }
 
     logger.log("Calendar events fetched", {
-      calendarCount: calendarIds.length,
-      eventCount: allEvents.length,
-      errorCount: errors.length,
+      calendarCount: params.calendarIds.length,
+      eventCount: agg.events.length,
+      errorCount: agg.errors.length,
       userId: session.user.id,
     });
 
@@ -291,16 +232,16 @@ export async function GET(request: NextRequest) {
       timeZone?: string;
       errors?: CalendarFetchError[];
     } = {
-      events: allEvents,
-      summary,
-      timeZone,
+      events: agg.events,
+      summary: agg.summary,
+      timeZone: agg.timeZone,
     };
 
     // Include errors array if there were partial failures. Strip the
     // server-only `logged` flag so the internal dedupe guard does not leak
     // onto the wire — clients should see only the public error shape.
-    if (errors.length > 0) {
-      response.errors = errors.map(toWireFetchError);
+    if (agg.errors.length > 0) {
+      response.errors = agg.errors.map(toWireFetchError);
     }
 
     return NextResponse.json(response);
