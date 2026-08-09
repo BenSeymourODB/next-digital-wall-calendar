@@ -19,7 +19,14 @@ import {
   validateEventBody,
 } from "@/lib/calendar/event-body";
 import { normalizeFetchedEvent } from "@/lib/google-calendar-mappers";
-import { parseGoogleErrorBody } from "@/lib/google-calendar-schemas";
+import {
+  GoogleApiValidationError,
+  type GoogleEventPayload,
+  GoogleEventSchema,
+  VALIDATION_ISSUES_SUMMARY_COUNT,
+  parseGoogleErrorBody,
+  parseGoogleResponse,
+} from "@/lib/google-calendar-schemas";
 import { fetchWithRetry } from "@/lib/http/retry";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
@@ -252,7 +259,37 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     });
 
     if (response.ok) {
-      const updated = (await response.json()) as gapi.client.calendar.Event;
+      // Validate Google's response through the Zod schema before mapping,
+      // matching the POST handler (#403). The mapper now takes
+      // `GoogleEventPayload`, so a raw-JSON cast at this boundary is the
+      // same anti-pattern #403 removed elsewhere.
+      const rawUpdated: unknown = await response.json();
+      let updated: GoogleEventPayload;
+      try {
+        updated = parseGoogleResponse(rawUpdated, GoogleEventSchema, {
+          endpoint: "events.patch",
+          calendarId,
+        });
+      } catch (validationError) {
+        if (validationError instanceof GoogleApiValidationError) {
+          logger.error(validationError, {
+            endpoint: validationError.endpoint,
+            ...(validationError.calendarId
+              ? { calendarId: validationError.calendarId }
+              : {}),
+            userId: session.user.id,
+            validationIssues: validationError.issues
+              .slice(0, VALIDATION_ISSUES_SUMMARY_COUNT)
+              .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+              .join("; "),
+          });
+          return NextResponse.json(
+            { error: "Failed to update calendar event" },
+            { status: 502 }
+          );
+        }
+        throw validationError;
+      }
       const normalized = normalizeFetchedEvent(updated, calendarId);
 
       logger.event("CalendarEventUpdated", {

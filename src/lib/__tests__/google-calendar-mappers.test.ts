@@ -1,13 +1,20 @@
 /**
  * Unit tests for Google Calendar API response mappers.
  *
- * These tests exercise the pure mappers that translate raw Google Calendar API
+ * These tests exercise the pure mappers that translate Google Calendar API
  * responses into the app's `GoogleCalendarEvent` and `UserCalendar` shapes.
  *
  * They serve as regression guards for two concerns:
- *  1. Extended optional fields surfaced by the richer `gapi.d.ts` types are
- *     preserved through the mappers (issue #76).
+ *  1. Extended optional fields surfaced by the schemas (and the richer
+ *     `gapi.d.ts` types used by the legacy client helpers) are preserved
+ *     through the mappers (issue #76).
  *  2. Comments/semantics around `fetchCalendarColorMappings` stay stable (#77).
+ *
+ * Per #403, `normalizeFetchedEvent` now accepts the Zod-validated
+ * `GoogleEventPayload` rather than `gapi.client.calendar.Event`. The
+ * end-to-end test below intentionally still asserts the gapi-typed wire
+ * fixture parses through `parseGoogleResponse` cleanly, so `gapi.d.ts`
+ * drift against the Google API surface still trips at compile time.
  */
 import type { CalendarColorMapping } from "@/lib/calendar-storage";
 import {
@@ -17,11 +24,16 @@ import {
   normalizeFetchedEvent,
 } from "@/lib/google-calendar";
 import { canWriteToCalendar } from "@/lib/google-calendar-mappers";
+import {
+  type GoogleEventPayload,
+  GoogleEventsListResponseSchema,
+  parseGoogleResponse,
+} from "@/lib/google-calendar-schemas";
 import { describe, expect, it } from "vitest";
 
 describe("normalizeFetchedEvent", () => {
   it("preserves required fields and stamps calendarId", () => {
-    const apiEvent: gapi.client.calendar.Event = {
+    const apiEvent: GoogleEventPayload = {
       id: "evt-1",
       summary: "Standup",
       start: { dateTime: "2026-05-01T09:00:00-04:00" },
@@ -38,7 +50,7 @@ describe("normalizeFetchedEvent", () => {
   });
 
   it("passes through extended optional fields from Google Calendar v3", () => {
-    const apiEvent: gapi.client.calendar.Event = {
+    const apiEvent: GoogleEventPayload = {
       id: "evt-rich",
       summary: "Board meeting",
       description: "Quarterly review",
@@ -94,7 +106,7 @@ describe("normalizeFetchedEvent", () => {
     // Google marks Event.summary as optional. Downstream UI code (see
     // `transformGoogleEvent` → `title: event.summary || "Untitled Event"`)
     // expects a string, so the mapper defensively normalises.
-    const apiEvent: gapi.client.calendar.Event = {
+    const apiEvent: GoogleEventPayload = {
       id: "evt-no-title",
       start: { dateTime: "2026-05-01T09:00:00Z" },
       end: { dateTime: "2026-05-01T09:30:00Z" },
@@ -115,7 +127,7 @@ describe("normalizeFetchedEvent", () => {
     // If `GoogleCalendarEvent` ever stops `extends Omit<Event, "summary">`,
     // these assertions fail at the type layer and the runtime round-trip
     // here fails as well.
-    const apiEvent: gapi.client.calendar.Event = {
+    const apiEvent: GoogleEventPayload = {
       id: "evt-full",
       summary: "All fields",
       start: { dateTime: "2026-05-01T09:00:00Z" },
@@ -158,7 +170,7 @@ describe("normalizeFetchedEvent", () => {
   });
 
   it("handles recurring-event instance fields (recurringEventId + originalStartTime)", () => {
-    const apiEvent: gapi.client.calendar.Event = {
+    const apiEvent: GoogleEventPayload = {
       id: "evt-instance_20260501T140000Z",
       summary: "Weekly sync (moved)",
       start: { dateTime: "2026-05-01T15:00:00Z" },
@@ -174,7 +186,7 @@ describe("normalizeFetchedEvent", () => {
   });
 
   it("accepts all-day events (date-only start/end with no dateTime)", () => {
-    const apiEvent: gapi.client.calendar.Event = {
+    const apiEvent: GoogleEventPayload = {
       id: "evt-allday",
       summary: "Holiday",
       start: { date: "2026-12-25" },
@@ -292,8 +304,17 @@ describe("end-to-end: enriched API responses flow through the mappers", () => {
       ],
     };
 
-    const mapped: GoogleCalendarEvent[] = (apiResponse.items ?? []).map(
-      (event) => normalizeFetchedEvent(event, "primary")
+    // #403: production now validates Google's wire payload through the
+    // Zod schema before handing items to the mapper. Mirror that here so
+    // the test exercises the real flow (gapi-typed fixture → Zod parse →
+    // GoogleEventPayload → mapper) end-to-end.
+    const parsed = parseGoogleResponse(
+      apiResponse,
+      GoogleEventsListResponseSchema,
+      { endpoint: "events.list", calendarId: "primary" }
+    );
+    const mapped: GoogleCalendarEvent[] = (parsed.items ?? []).map((event) =>
+      normalizeFetchedEvent(event, "primary")
     );
 
     expect(mapped).toHaveLength(1);

@@ -150,13 +150,11 @@ async function fetchEventsFromCalendar(
     throw error;
   }
 
-  // The mappers spread `{ ...event }` so unknown Google fields pass through
-  // unchanged (the Zod schema is `.loose()` for the same reason). The cast
-  // is safe because the schema requires `id` — the contract our mapper relies
-  // on — and treats every other field as optional, matching the Google API.
-  const events: GoogleCalendarEvent[] = (parsed.items ?? []).map(
-    (event: GoogleEventPayload) =>
-      normalizeFetchedEvent(event as gapi.client.calendar.Event, calendarId)
+  // The mapper accepts `GoogleEventPayload` directly (#403) and spreads
+  // `{ ...event }` so unknown Google fields pass through unchanged — the Zod
+  // schema is `.loose()` for the same reason.
+  const events: GoogleCalendarEvent[] = (parsed.items ?? []).map((event) =>
+    normalizeFetchedEvent(event, calendarId)
   );
 
   return {
@@ -418,10 +416,7 @@ export async function POST(request: NextRequest) {
         throw validationError;
       }
 
-      const normalized = normalizeFetchedEvent(
-        created as gapi.client.calendar.Event,
-        event.calendarId
-      );
+      const normalized = normalizeFetchedEvent(created, event.calendarId);
 
       logger.event("CalendarEventCreated", {
         userId: session.user.id,
