@@ -373,4 +373,75 @@ describe("AgendaList", () => {
       container.querySelector("[data-testid='week-calendar-multi-day-row']")
     ).toBeNull();
   });
+
+  describe("event detail modal edit/delete wiring (#451)", () => {
+    const writableEvent = makeEvent(
+      "writable",
+      "2026-05-04T09:00:00.000Z",
+      "2026-05-04T10:00:00.000Z",
+      { title: "Standup", calendarId: "primary" }
+    );
+    const range = {
+      rangeStart: new Date("2026-05-04T00:00:00.000Z"),
+      rangeEnd: new Date("2026-05-04T23:59:59.999Z"),
+    };
+
+    it("renders Edit and Delete buttons in the modal for a writable event", async () => {
+      const userEvt = userEvent.setup();
+      renderList({ events: [writableEvent], ...range });
+
+      await userEvt.click(screen.getByText("Standup"));
+
+      expect(
+        screen.getByRole("button", { name: /^edit event$/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^delete event$/i })
+      ).toBeInTheDocument();
+    });
+
+    it("hides Edit and Delete buttons in the modal when the calendar is reader (#266 regression guard)", async () => {
+      const userEvt = userEvent.setup();
+      renderList(
+        { events: [writableEvent], ...range },
+        { getAccessRole: (id) => (id === "primary" ? "reader" : undefined) }
+      );
+
+      await userEvt.click(screen.getByText("Standup"));
+
+      // Modal still opens (event detail is visible).
+      expect(
+        screen.getByRole("heading", { name: "Standup" })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^edit event$/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("hides Edit and Delete buttons in the modal when the calendar is freeBusyReader", async () => {
+      const userEvt = userEvent.setup();
+      renderList(
+        { events: [writableEvent], ...range },
+        {
+          getAccessRole: (id) =>
+            id === "primary" ? "freeBusyReader" : undefined,
+        }
+      );
+
+      await userEvt.click(screen.getByText("Standup"));
+
+      expect(
+        screen.getByRole("heading", { name: "Standup" })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^edit event$/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^delete event$/i })
+      ).not.toBeInTheDocument();
+    });
+  });
 });
